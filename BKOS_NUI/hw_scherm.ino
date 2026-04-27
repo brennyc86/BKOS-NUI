@@ -28,7 +28,7 @@ void tft_loop() {
         if (scherm_timer > 0 &&
             millis() > scherm_touched + (unsigned long)scherm_timer * 1000) {
             tft_actief = false;
-            tft_helderheid_zet(0);
+            tft_helderheid_zet(TFT_MIN_HELDER);
         }
     }
 }

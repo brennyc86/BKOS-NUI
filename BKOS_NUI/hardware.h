@@ -8,6 +8,7 @@
 #include "app_state.h"
 #include "screen_info.h"
 #include "screen_wifi.h"
+#include "screen_io_cfg.h"
 
 void hw_setup();
 void hw_loop();

@@ -81,6 +81,11 @@ void io_cyclus() {
                 if (io_wacht_byte(c, t)) {
                     bool nieuw = (c == '1');
                     if (nieuw != io_input[kanaal]) {
+                        if (io_richting[kanaal] == IO_RICHTING_IN) {
+                            io_actie_uitvoeren(
+                                nieuw ? io_actie_aan[kanaal] : io_actie_uit[kanaal],
+                                io_actie_param[kanaal]);
+                        }
                         io_input[kanaal] = nieuw;
                         io_gewijzigd[kanaal] = true;
                     }
@@ -155,5 +160,38 @@ void io_apparaat_toggle(const char* prefix) {
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
         if (io_naam_is(i, prefix))
             io_output[i] = (io_output[i] == IO_AAN) ? IO_UIT : IO_AAN;
+    }
+}
+
+int io_zichtbaar() {
+    int n = (io_kanalen_cfg > 0)
+            ? max(io_kanalen_cnt, io_kanalen_cfg)
+            : io_kanalen_cnt;
+    return min(n, MAX_IO_KANALEN);
+}
+
+void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
+    switch (actie) {
+        case IO_ACTIE_MODUS_HAVEN:
+            vaar_modus = MODE_HAVEN;  scherm_bouwen = true; break;
+        case IO_ACTIE_MODUS_ZEILEN:
+            vaar_modus = MODE_ZEILEN; scherm_bouwen = true; break;
+        case IO_ACTIE_MODUS_MOTOR:
+            vaar_modus = MODE_MOTOR;  scherm_bouwen = true; break;
+        case IO_ACTIE_MODUS_ANKER:
+            vaar_modus = MODE_ANKER;  scherm_bouwen = true; break;
+        case IO_ACTIE_OUTPUT_AAN:
+            if (param < MAX_IO_KANALEN) {
+                io_output[param]    = IO_AAN;
+                io_gewijzigd[param] = true;
+            }
+            break;
+        case IO_ACTIE_OUTPUT_UIT:
+            if (param < MAX_IO_KANALEN) {
+                io_output[param]    = IO_UIT;
+                io_gewijzigd[param] = true;
+            }
+            break;
+        default: break;
     }
 }

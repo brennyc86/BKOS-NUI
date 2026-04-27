@@ -10,6 +10,7 @@
 #define SCREEN_OTA     3
 #define SCREEN_INFO    4
 #define SCREEN_WIFI    5  // niet in nav bar, toegankelijk via OTA scherm
+#define SCREEN_IO_CFG  6  // niet in nav bar, toegankelijk via config scherm
 
 // Vaarmodi
 #define MODE_HAVEN   0
@@ -60,6 +61,12 @@ extern bool   wifi_verbonden;
 
 // Apparaat lokale staat (fallback als geen IO module)
 extern bool dev_lokaal[5];
+
+// Weergave-instellingen
+#define ZEILNR_LEN 16
+extern byte kleurenschema;   // 0=donker, 1=licht, 2=nacht
+extern byte boot_type;       // 0=zeilboot, 1=motorboot, 2=catamaran, 3=motorzeiler
+extern char zeilnummer[];
 
 void state_save();
 void state_load();

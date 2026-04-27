@@ -58,8 +58,9 @@ void hw_loop() {
             case SCREEN_IO:     screen_io_teken();     break;
             case SCREEN_CONFIG: screen_config_teken(); break;
             case SCREEN_OTA:    screen_ota_teken();    break;
-            case SCREEN_INFO:   screen_info_teken();   break;
-            case SCREEN_WIFI:   screen_wifi_teken();   break;
+            case SCREEN_INFO:   screen_info_teken();     break;
+            case SCREEN_WIFI:   screen_wifi_teken();     break;
+            case SCREEN_IO_CFG: screen_io_cfg_teken();   break;
         }
     }
 
@@ -82,8 +83,9 @@ void hw_loop() {
                 case SCREEN_IO:     screen_io_run(ts_x, ts_y, true);     break;
                 case SCREEN_CONFIG: screen_config_run(ts_x, ts_y, true); break;
                 case SCREEN_OTA:    screen_ota_run(ts_x, ts_y, true);    break;
-                case SCREEN_INFO:   screen_info_run(ts_x, ts_y, true);   break;
-                case SCREEN_WIFI:   screen_wifi_run(ts_x, ts_y, true);   break;
+                case SCREEN_INFO:   screen_info_run(ts_x, ts_y, true);     break;
+                case SCREEN_WIFI:   screen_wifi_run(ts_x, ts_y, true);     break;
+                case SCREEN_IO_CFG: screen_io_cfg_run(ts_x, ts_y, true);   break;
             }
         } else {
             touch_verwerkt = true;  // te snel na vorige touch — negeren

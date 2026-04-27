@@ -2,9 +2,10 @@
 #include <Arduino_GFX_Library.h>
 #include "ui_colors.h"
 
-#define TFT_BL 2
-#define TFT_W  800
-#define TFT_H  480
+#define TFT_BL         2
+#define TFT_W          800
+#define TFT_H          480
+#define TFT_MIN_HELDER 3   // GT911 slaap-drempel: nooit volledig uit
 
 Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     41 /* DE */, 40 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,

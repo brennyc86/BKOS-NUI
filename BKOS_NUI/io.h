@@ -11,3 +11,5 @@ byte  io_licht_staat(int kanaal);
 void  io_verlichting_update();
 bool  io_apparaat_staat(const char* prefix);
 void  io_apparaat_toggle(const char* prefix);
+void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
+int   io_zichtbaar();

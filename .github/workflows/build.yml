@@ -8,6 +8,9 @@ on:
       - 'BKOS_NUI/**.h'
       - '.github/workflows/build.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest

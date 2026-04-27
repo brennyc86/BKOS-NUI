@@ -1,6 +1,5 @@
 #pragma once
 #include <Arduino.h>
-#include <Preferences.h>
 #include "hw_io.h"   // MAX_IO_KANALEN, IO_NAAM_LEN hier gedefinieerd
 
 // Actief scherm

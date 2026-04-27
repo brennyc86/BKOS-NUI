@@ -1,4 +1,5 @@
 #pragma once
+#include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <HTTPClient.h>

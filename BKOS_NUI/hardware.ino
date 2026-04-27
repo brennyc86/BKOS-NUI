@@ -16,6 +16,7 @@ void hw_setup() {
     ts_setup();
     hw_io_setup();
     state_load();
+    palette_toepassen(kleurenschema);
     tft_helderheid_zet(tft_helderheid);
 
     tft.fillScreen(C_BG);

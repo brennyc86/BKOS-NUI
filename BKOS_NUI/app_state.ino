@@ -1,5 +1,6 @@
 #include "app_state.h"
 #include "hw_io.h"
+#include <SPIFFS.h>
 
 int   actief_scherm    = SCREEN_MAIN;
 bool  scherm_bouwen    = true;
@@ -14,38 +15,59 @@ byte  kleurenschema    = 0;
 byte  boot_type        = 0;
 char  zeilnummer[ZEILNR_LEN] = "";
 
-static Preferences prefs_state;
+#define CONFIG_BESTAND "/bkos_config.csv"
 
 void state_save() {
-    prefs_state.begin("bkos_state", false);
-    prefs_state.putUChar("modus",   vaar_modus);
-    prefs_state.putUChar("licht",   licht_instelling);
-    prefs_state.putInt("helderh",   tft_helderheid);
-    prefs_state.putLong("timer",    scherm_timer);
-    prefs_state.putUChar("schema",  kleurenschema);
-    prefs_state.putUChar("btype",   boot_type);
-    prefs_state.putString("zeilnr", zeilnummer);
-    for (int i = 0; i < 5; i++) {
-        char k[6]; snprintf(k, sizeof(k), "dev%d", i);
-        prefs_state.putBool(k, dev_lokaal[i]);
-    }
-    prefs_state.end();
+    File f = SPIFFS.open(CONFIG_BESTAND, "w");
+    if (!f) return;
+    f.printf("modus=%d\n",   (int)vaar_modus);
+    f.printf("licht=%d\n",   (int)licht_instelling);
+    f.printf("helderh=%d\n", tft_helderheid);
+    f.printf("timer=%ld\n",  scherm_timer);
+    f.printf("schema=%d\n",  (int)kleurenschema);
+    f.printf("btype=%d\n",   (int)boot_type);
+    f.printf("zeilnr=%s\n",  zeilnummer);
+    for (int i = 0; i < 5; i++) f.printf("dev%d=%d\n", i, dev_lokaal[i] ? 1 : 0);
+    f.close();
 }
 
 void state_load() {
-    prefs_state.begin("bkos_state", true);
-    vaar_modus       = prefs_state.getUChar("modus",   MODE_HAVEN);
-    licht_instelling = prefs_state.getUChar("licht",   LICHT_UIT);
-    tft_helderheid   = prefs_state.getInt("helderh",   75);
-    scherm_timer     = prefs_state.getLong("timer",    30);
-    kleurenschema    = prefs_state.getUChar("schema",  0);
-    boot_type        = prefs_state.getUChar("btype",   0);
-    String zn        = prefs_state.getString("zeilnr", "");
-    strncpy(zeilnummer, zn.c_str(), ZEILNR_LEN - 1);
-    zeilnummer[ZEILNR_LEN - 1] = '\0';
-    for (int i = 0; i < 5; i++) {
-        char k[6]; snprintf(k, sizeof(k), "dev%d", i);
-        dev_lokaal[i] = prefs_state.getBool(k, false);
+    vaar_modus       = MODE_HAVEN;
+    licht_instelling = LICHT_UIT;
+    tft_helderheid   = 75;
+    scherm_timer     = 30;
+    kleurenschema    = 0;
+    boot_type        = 0;
+    zeilnummer[0]    = '\0';
+    for (int i = 0; i < 5; i++) dev_lokaal[i] = false;
+
+    if (!SPIFFS.exists(CONFIG_BESTAND)) return;
+    File f = SPIFFS.open(CONFIG_BESTAND, "r");
+    if (!f) return;
+
+    while (f.available()) {
+        String lijn = f.readStringUntil('\n');
+        lijn.trim();
+        if (lijn.length() == 0) continue;
+        int sep = lijn.indexOf('=');
+        if (sep < 1) continue;
+        String key = lijn.substring(0, sep);
+        String val = lijn.substring(sep + 1);
+
+        if (key == "modus")   vaar_modus       = (byte)val.toInt();
+        if (key == "licht")   licht_instelling  = (byte)val.toInt();
+        if (key == "helderh") tft_helderheid    = (int)val.toInt();
+        if (key == "timer")   scherm_timer      = val.toInt();
+        if (key == "schema")  kleurenschema     = (byte)val.toInt();
+        if (key == "btype")   boot_type         = (byte)val.toInt();
+        if (key == "zeilnr")  {
+            strncpy(zeilnummer, val.c_str(), ZEILNR_LEN - 1);
+            zeilnummer[ZEILNR_LEN - 1] = '\0';
+        }
+        for (int i = 0; i < 5; i++) {
+            char dk[8]; snprintf(dk, sizeof(dk), "dev%d", i);
+            if (key == dk) dev_lokaal[i] = (val.toInt() != 0);
+        }
     }
-    prefs_state.end();
+    f.close();
 }

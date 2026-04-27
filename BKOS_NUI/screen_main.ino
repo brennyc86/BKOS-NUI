@@ -148,34 +148,112 @@ static void boot_seg_teken(const int data[][2], int cnt, uint16_t kleur) {
 }
 
 // ─── Boot tekening (zij-aanzicht CR 1070) ───────────────────────────
-void boot_teken() {
-    tft.fillRect(BDX, BDY, BDW, BDH, C_BG);
-
-    // Zeilen (subtiele donkere kleur, eerst tekenen zodat andere lijnen er overheen gaan)
+static void boot_teken_zeilboot() {
+    // Zeilen (subtiele donkere kleur, eerst tekenen)
     boot_seg_teken(BOOT_ZEILEN, sizeof(BOOT_ZEILEN)/sizeof(BOOT_ZEILEN[0]), RGB565(30,55,90));
-
     // Romp, opbouw, verstaging, details
     boot_seg_teken(BOOT_ROMP, sizeof(BOOT_ROMP)/sizeof(BOOT_ROMP[0]), C_TEXT_DIM);
-
-    // Mast (lichtere staallook)
+    // Mast
     boot_seg_teken(BOOT_MAST, sizeof(BOOT_MAST)/sizeof(BOOT_MAST[0]), RGB565(160,170,190));
-
-    // Ramen (cyan accent)
+    // Ramen
     boot_seg_teken(BOOT_RAAM1, sizeof(BOOT_RAAM1)/sizeof(BOOT_RAAM1[0]), C_CYAN);
     boot_seg_teken(BOOT_RAAM2, sizeof(BOOT_RAAM2)/sizeof(BOOT_RAAM2[0]), C_CYAN);
     boot_seg_teken(BOOT_RAAM3, sizeof(BOOT_RAAM3)/sizeof(BOOT_RAAM3[0]), C_CYAN);
-
-    // Patrijspoorten
     tft.drawCircle(BOOT_BX(75), BOOT_BY(139), 4, C_CYAN);
     tft.drawCircle(BOOT_BX(83), BOOT_BY(139), 4, C_CYAN);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(BOOT_BX(42), BOOT_BY(58)); tft.print("CR");
+    tft.setCursor(BOOT_BX(37), BOOT_BY(68)); tft.print("1070");
+}
 
-    // Boot naam (uit info-scherm of standaard)
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(BOOT_BX(42), BOOT_BY(58));
-    tft.print("CR");
-    tft.setCursor(BOOT_BX(37), BOOT_BY(68));
-    tft.print("1070");
+// ─── Motorboot kruizer (boot_type=1) ────────────────────────────────
+static const int MBK_ROMP[][2] = {
+    {0,160},{0,160},{115,160},{115,138},{105,132},{20,132},{8,142},{0,160},{0,160}
+};
+static const int MBK_HUIS[][2] = {
+    {22,132},{22,132},{22,102},{28,96},{70,96},{76,102},{76,132},{76,132},
+    {76,132},{76,132},{76,118},{98,118},{98,132},{98,132}
+};
+static const int MBK_RAMEN[][2] = {
+    {30,104},{30,104},{30,116},{40,116},{40,104},{40,104},
+    {46,104},{46,104},{46,116},{56,116},{56,104},{56,104},
+    {62,104},{62,104},{62,116},{72,116},{72,104},{72,104}
+};
+static const int MBK_ANT[][2] = {
+    {48,96},{48,96},{48,82},{48,82}
+};
+
+static void boot_teken_motorboot_kruizer() {
+    boot_seg_teken(MBK_ROMP,  sizeof(MBK_ROMP) /sizeof(MBK_ROMP[0]),  C_TEXT_DIM);
+    boot_seg_teken(MBK_HUIS,  sizeof(MBK_HUIS) /sizeof(MBK_HUIS[0]),  C_TEXT_DIM);
+    boot_seg_teken(MBK_RAMEN, sizeof(MBK_RAMEN)/sizeof(MBK_RAMEN[0]), C_CYAN);
+    boot_seg_teken(MBK_ANT,   sizeof(MBK_ANT)  /sizeof(MBK_ANT[0]),   RGB565(160,170,190));
+    tft.drawCircle(BOOT_BX(82), BOOT_BY(147), 4, C_CYAN);
+    tft.drawCircle(BOOT_BX(92), BOOT_BY(147), 4, C_CYAN);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(BOOT_BX(30), BOOT_BY(85)); tft.print("KRUIZER");
+}
+
+// ─── Motorboot strijkijzer / speedboat (boot_type=2) ────────────────
+static const int MBS_ROMP[][2] = {
+    {0,155},{0,155},{115,163},{115,140},{15,133},{0,155},{0,155}
+};
+static const int MBS_HUIS[][2] = {
+    {28,133},{28,133},{24,116},{62,110},{80,116},{80,133},{80,133}
+};
+static const int MBS_RAAM[][2] = {
+    {34,120},{34,120},{36,115},{62,115},{62,120},{34,120},{34,120}
+};
+static const int MBS_ACHTERDEK[][2] = {
+    {80,133},{80,133},{80,122},{104,122},{104,133},{104,133}
+};
+
+static void boot_teken_strijkijzer() {
+    boot_seg_teken(MBS_ROMP,     sizeof(MBS_ROMP)    /sizeof(MBS_ROMP[0]),     C_TEXT_DIM);
+    boot_seg_teken(MBS_HUIS,     sizeof(MBS_HUIS)    /sizeof(MBS_HUIS[0]),     C_TEXT_DIM);
+    boot_seg_teken(MBS_RAAM,     sizeof(MBS_RAAM)    /sizeof(MBS_RAAM[0]),     C_CYAN);
+    boot_seg_teken(MBS_ACHTERDEK,sizeof(MBS_ACHTERDEK)/sizeof(MBS_ACHTERDEK[0]),C_TEXT_DIM);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(BOOT_BX(36), BOOT_BY(100)); tft.print("SPEEDBOAT");
+}
+
+// ─── Catamaran (boot_type=3) ─────────────────────────────────────────
+static const int CAT_HULL1[][2] = {
+    {0,158},{0,158},{2,164},{90,164},{96,158},{88,154},{4,154},{0,158},{0,158}
+};
+static const int CAT_HULL2[][2] = {
+    {18,145},{18,145},{20,150},{108,150},{114,145},{106,141},{22,141},{18,145},{18,145}
+};
+static const int CAT_BRUG[][2] = {
+    {30,154},{30,154},{30,141},{30,141},
+    {82,154},{82,154},{82,141},{82,141},
+    {30,148},{30,148},{82,148},{82,148}
+};
+static const int CAT_MAST[][2] = {
+    {57,148},{57,148},{57,40},{56,40},{56,148},{55,148},{55,40},{55,40}
+};
+static const int CAT_ZEIL[][2] = {
+    {22,143},{22,143},{57,45},{57,143},{57,143}
+};
+
+static void boot_teken_catamaran() {
+    boot_seg_teken(CAT_ZEIL,  sizeof(CAT_ZEIL) /sizeof(CAT_ZEIL[0]),  RGB565(30,55,90));
+    boot_seg_teken(CAT_HULL1, sizeof(CAT_HULL1)/sizeof(CAT_HULL1[0]), C_TEXT_DIM);
+    boot_seg_teken(CAT_HULL2, sizeof(CAT_HULL2)/sizeof(CAT_HULL2[0]), C_TEXT_DIM);
+    boot_seg_teken(CAT_BRUG,  sizeof(CAT_BRUG) /sizeof(CAT_BRUG[0]),  C_TEXT_DIM);
+    boot_seg_teken(CAT_MAST,  sizeof(CAT_MAST) /sizeof(CAT_MAST[0]),  RGB565(160,170,190));
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(BOOT_BX(34), BOOT_BY(20)); tft.print("CATAMARAN");
+}
+
+void boot_teken() {
+    tft.fillRect(BDX, BDY, BDW, BDH, C_BG);
+    switch (boot_type) {
+        case 1:  boot_teken_motorboot_kruizer(); break;
+        case 2:  boot_teken_strijkijzer();       break;
+        case 3:  boot_teken_catamaran();         break;
+        default: boot_teken_zeilboot();          break;
+    }
 }
 
 // ─── Licht indicatoren op de boot ───────────────────────────────────

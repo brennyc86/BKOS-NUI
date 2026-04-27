@@ -151,17 +151,23 @@ void io_verlichting_update() {
 
 bool io_apparaat_staat(const char* prefix) {
     int n = io_zichtbaar();
+    int gevonden = 0, aan = 0;
     for (int i = 0; i < n; i++) {
-        if (io_naam_is(i, prefix)) return (io_output[i] == IO_AAN);
+        if (io_naam_is(i, prefix)) {
+            gevonden++;
+            if (io_output[i] == IO_AAN || io_output[i] == IO_INV_AAN) aan++;
+        }
     }
-    return false;
+    return (gevonden > 0 && aan == gevonden);
 }
 
 void io_apparaat_toggle(const char* prefix) {
-    int n = io_zichtbaar();
+    bool staat = io_apparaat_staat(prefix);
+    byte nieuw  = staat ? IO_UIT : IO_AAN;
+    int  n      = io_zichtbaar();
     for (int i = 0; i < n; i++) {
         if (io_naam_is(i, prefix)) {
-            io_output[i]    = (io_output[i] == IO_AAN) ? IO_UIT : IO_AAN;
+            io_output[i]    = nieuw;
             io_gewijzigd[i] = true;
         }
     }

@@ -1,4 +1,5 @@
 #include "screen_info.h"
+#include "screen_config.h"   // hergebruik config keyboard
 #include "nav_bar.h"
 #include <SPIFFS.h>
 
@@ -10,12 +11,17 @@ static byte info_tab = 0;
 static const char* boot_labels[6]  = {"Naam", "Type", "Lengte", "Breedte", "Diepgang", "Hoogte"};
 static const char* boot_keys[6]    = {"b_naam","b_type","b_len","b_br","b_dg","b_hg"};
 static char        boot_vals[6][INFO_VELD_LEN];
+static const bool  boot_numeriek[6] = {false, false, true, true, true, true};
 
 static const char* eig_labels[5]   = {"Naam", "Telefoon", "Stad", "Adres", "E-mail"};
 static const char* eig_keys[5]     = {"e_naam","e_tel","e_stad","e_adres","e_email"};
 static char        eig_vals[5][INFO_VELD_LEN];
 
 static bool info_geladen = false;
+static bool info_kb_actief = false;
+static int  info_kb_idx    = -1;
+static bool info_kb_boot   = true;
+static unsigned long info_kb_sloot = 0;
 
 // ─── SPIFFS opslaan/laden ─────────────────────────────────────────────
 void info_laden() {
@@ -23,7 +29,6 @@ void info_laden() {
     for (int i = 0; i < 5; i++) eig_vals[i][0]  = '\0';
 
     if (!SPIFFS.exists(INFO_BESTAND)) { info_geladen = true; return; }
-
     File f = SPIFFS.open(INFO_BESTAND, "r");
     if (!f) { info_geladen = true; return; }
 
@@ -54,7 +59,7 @@ void info_laden() {
 
 void info_opslaan() {
     File f = SPIFFS.open(INFO_BESTAND, "w");
-    if (!f) { Serial.println("info_opslaan: SPIFFS open mislukt"); return; }
+    if (!f) return;
     for (int i = 0; i < 6; i++) {
         if (strlen(boot_vals[i]) > 0) f.printf("%s=%s\n", boot_keys[i], boot_vals[i]);
     }
@@ -64,98 +69,14 @@ void info_opslaan() {
     f.close();
 }
 
-// ─── Toetsenbord ─────────────────────────────────────────────────────
-static bool   info_kb_actief  = false;
-static int    info_kb_idx     = -1;
-static bool   info_kb_boot    = true;
-static char   info_kb_invoer[INFO_VELD_LEN] = "";
-static unsigned long info_kb_sloot = 0;
-
-static const char* info_kb_rijen[4] = {"1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM_."};
-
-#define IKB_X       40
-#define IKB_W       (TFT_W - 80)
-#define IKB_INV_Y   (CONTENT_Y + 8)
-#define IKB_INV_H   44
-#define IKB_KEYS_Y  (IKB_INV_Y + IKB_INV_H + 8)
-#define IKB_TH      46
-#define IKB_BTN_Y   (IKB_KEYS_Y + 4 * (IKB_TH + 4) + 6)
-#define IKB_BTN_H   42
-
-static void info_kb_teken() {
-    tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_SURFACE);
-
-    tft.fillRoundRect(IKB_X, IKB_INV_Y, IKB_W, IKB_INV_H, 6, C_SURFACE2);
-    tft.drawRoundRect(IKB_X, IKB_INV_Y, IKB_W, IKB_INV_H, 6, C_CYAN);
-    tft.setTextSize(2); tft.setTextColor(C_WHITE);
-    tft.setCursor(IKB_X + 12, IKB_INV_Y + (IKB_INV_H - 16) / 2);
-
-    const char* lbl = info_kb_boot ? boot_labels[info_kb_idx] : eig_labels[info_kb_idx];
-    tft.setTextColor(C_TEXT_DIM); tft.print(lbl); tft.print(": ");
-    tft.setTextColor(C_WHITE); tft.print(info_kb_invoer); tft.print("_");
-
-    for (int rij = 0; rij < 4; rij++) {
-        const char* keys = info_kb_rijen[rij];
-        int cnt = strlen(keys);
-        int tw = IKB_W / cnt;
-        for (int k = 0; k < cnt; k++) {
-            int kx = IKB_X + k * tw;
-            int ky = IKB_KEYS_Y + rij * (IKB_TH + 4);
-            tft.fillRoundRect(kx + 2, ky + 2, tw - 4, IKB_TH - 4, 5, C_SURFACE2);
-            tft.drawRoundRect(kx + 2, ky + 2, tw - 4, IKB_TH - 4, 5, C_SURFACE3);
-            tft.setTextSize(2); tft.setTextColor(C_TEXT);
-            tft.setCursor(kx + (tw - 12) / 2, ky + (IKB_TH - 16) / 2);
-            tft.print(keys[k]);
-        }
-    }
-
-    ui_knop(IKB_X,           IKB_BTN_Y, 110, IKB_BTN_H, "< DEL",   C_SURFACE2, C_RED_BRIGHT);
-    ui_knop(IKB_X + 118,     IKB_BTN_Y, 160, IKB_BTN_H, "SPATIE",  C_SURFACE2, C_TEXT);
-    ui_knop(IKB_X + 286,     IKB_BTN_Y, 160, IKB_BTN_H, "OPSLAAN", C_GREEN,    C_TEXT_DARK);
-    ui_knop(IKB_X + 454,     IKB_BTN_Y, 120, IKB_BTN_H, "CANCEL",  C_SURFACE2, C_TEXT_DIM);
-}
-
-static bool info_kb_run(int x, int y) {
-    for (int rij = 0; rij < 4; rij++) {
-        const char* keys = info_kb_rijen[rij];
-        int cnt = strlen(keys);
-        int tw = IKB_W / cnt;
-        int ky = IKB_KEYS_Y + rij * (IKB_TH + 4);
-        if (y >= ky && y < ky + IKB_TH) {
-            int k = (x - IKB_X) / tw;
-            if (k >= 0 && k < cnt) {
-                int len = strlen(info_kb_invoer);
-                if (len < INFO_VELD_LEN - 1) {
-                    info_kb_invoer[len] = keys[k];
-                    info_kb_invoer[len + 1] = '\0';
-                }
-                info_kb_teken();
-                return false;
-            }
-        }
-    }
-
-    if (y >= IKB_BTN_Y && y < IKB_BTN_Y + IKB_BTN_H) {
-        if (x >= IKB_X && x < IKB_X + 110) {
-            int len = strlen(info_kb_invoer);
-            if (len > 0) info_kb_invoer[len - 1] = '\0';
-            info_kb_teken();
-        } else if (x >= IKB_X + 118 && x < IKB_X + 278) {
-            int len = strlen(info_kb_invoer);
-            if (len < INFO_VELD_LEN - 1) { info_kb_invoer[len] = ' '; info_kb_invoer[len+1] = '\0'; }
-            info_kb_teken();
-        } else if (x >= IKB_X + 286 && x < IKB_X + 446) {
-            if (info_kb_boot) strncpy(boot_vals[info_kb_idx], info_kb_invoer, INFO_VELD_LEN - 1);
-            else              strncpy(eig_vals[info_kb_idx],  info_kb_invoer, INFO_VELD_LEN - 1);
-            info_opslaan();
-            info_kb_actief = false;
-            return true;
-        } else if (x >= IKB_X + 454) {
-            info_kb_actief = false;
-            return true;
-        }
-    }
-    return false;
+// ─── Omreken helper (meters → feet/inches) ───────────────────────────
+static void meter_naar_ft(const char* val, char* buf, int len) {
+    if (strlen(val) == 0) { buf[0] = '\0'; return; }
+    float m = atof(val);
+    float ft_totaal = m * 3.28084f;
+    int   ft  = (int)ft_totaal;
+    int   in_ = (int)((ft_totaal - ft) * 12.0f + 0.5f);
+    snprintf(buf, len, "%.2fm  (%d'%d\")", m, ft, in_);
 }
 
 // ─── Tab balk ────────────────────────────────────────────────────────
@@ -186,14 +107,22 @@ static void info_tabs_teken() {
 #define VELD_H        50
 #define VELD_LABEL_W  120
 
-static void info_veld_teken(int idx, int y, const char* label, const char* waarde) {
+static void info_veld_teken(int idx, int y, const char* label, const char* waarde, bool numeriek) {
     tft.fillRect(10, y, TFT_W - 20, VELD_H - 2, (idx % 2 == 0) ? C_SURFACE : C_BG);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(18, y + (VELD_H - 8) / 2); tft.print(label);
-    tft.setTextSize(2);
-    tft.setTextColor(strlen(waarde) > 0 ? C_TEXT : C_DARK_GRAY);
-    tft.setCursor(VELD_LABEL_W + 18, y + (VELD_H - 16) / 2);
-    tft.print(strlen(waarde) > 0 ? waarde : "(niet ingevuld)");
+
+    if (numeriek && strlen(waarde) > 0) {
+        char buf[40]; meter_naar_ft(waarde, buf, sizeof(buf));
+        tft.setTextSize(1); tft.setTextColor(C_TEXT);
+        tft.setCursor(VELD_LABEL_W + 18, y + (VELD_H - 8) / 2);
+        tft.print(buf);
+    } else {
+        tft.setTextSize(2);
+        tft.setTextColor(strlen(waarde) > 0 ? C_TEXT : C_DARK_GRAY);
+        tft.setCursor(VELD_LABEL_W + 18, y + (VELD_H - 16) / 2);
+        tft.print(strlen(waarde) > 0 ? waarde : "(niet ingevuld)");
+    }
     tft.setTextColor(C_SURFACE3);
     tft.setCursor(TFT_W - 30, y + (VELD_H - 8) / 2); tft.print(">");
 }
@@ -202,9 +131,15 @@ static void info_velden_teken() {
     int fy = VELD_START_Y;
     tft.fillRect(0, VELD_START_Y, TFT_W, TFT_H - NAV_H - VELD_START_Y, C_BG);
     if (info_tab == 0) {
-        for (int i = 0; i < 6; i++) { info_veld_teken(i, fy, boot_labels[i], boot_vals[i]); fy += VELD_H; }
+        for (int i = 0; i < 6; i++) {
+            info_veld_teken(i, fy, boot_labels[i], boot_vals[i], boot_numeriek[i]);
+            fy += VELD_H;
+        }
     } else {
-        for (int i = 0; i < 5; i++) { info_veld_teken(i, fy, eig_labels[i], eig_vals[i]);  fy += VELD_H; }
+        for (int i = 0; i < 5; i++) {
+            info_veld_teken(i, fy, eig_labels[i], eig_vals[i], false);
+            fy += VELD_H;
+        }
     }
 }
 
@@ -226,8 +161,18 @@ void screen_info_run(int x, int y, bool aanraking) {
     if (millis() - info_kb_sloot < 400) return;
 
     if (info_kb_actief) {
-        bool klaar = info_kb_run(x, y);
+        bool klaar = screen_config_toetsenbord_run(x, y);
         if (klaar) {
+            if (cfg_kb_opgeslagen) {
+                if (info_kb_boot) {
+                    strncpy(boot_vals[info_kb_idx], cfg_invoer, INFO_VELD_LEN - 1);
+                    boot_vals[info_kb_idx][INFO_VELD_LEN - 1] = '\0';
+                } else {
+                    strncpy(eig_vals[info_kb_idx], cfg_invoer, INFO_VELD_LEN - 1);
+                    eig_vals[info_kb_idx][INFO_VELD_LEN - 1] = '\0';
+                }
+                info_opslaan();
+            }
             info_kb_actief = false;
             info_kb_sloot  = millis();
             scherm_bouwen  = true;
@@ -254,13 +199,19 @@ void screen_info_run(int x, int y, bool aanraking) {
         int veld_idx = (y - VELD_START_Y) / VELD_H;
         int n_velden = (info_tab == 0) ? 6 : 5;
         if (veld_idx >= 0 && veld_idx < n_velden) {
-            info_kb_idx   = veld_idx;
-            info_kb_boot  = (info_tab == 0);
+            info_kb_idx  = veld_idx;
+            info_kb_boot = (info_tab == 0);
             const char* huidige = info_kb_boot ? boot_vals[veld_idx] : eig_vals[veld_idx];
-            strncpy(info_kb_invoer, huidige, INFO_VELD_LEN - 1);
-            info_kb_invoer[INFO_VELD_LEN - 1] = '\0';
-            info_kb_actief = true;
-            info_kb_teken();
+            // Config keyboard instellen
+            strncpy(cfg_invoer, huidige, CFG_INVOER_LEN - 1);
+            cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+            cfg_geselecteerd       = -1;
+            cfg_bewerk_zeilnr      = false;
+            cfg_kb_info_mode       = true;   // geen chips, OPSLAAN laat aan ons
+            cfg_kb_opgeslagen      = false;  // reset, wordt true bij OPSLAAN
+            kb_sym                 = false;
+            info_kb_actief         = true;
+            screen_config_toetsenbord_teken();
         }
     }
 }

@@ -246,19 +246,31 @@ static void cfg_io_rij_teken(int kanaal, int rij_y) {
 
 void screen_config_rijen_teken() {
     tft.fillRect(0, CFG_IO_Y, TFT_W, TFT_H - NAV_H - CFG_IO_Y, C_BG);
-    int rijen_n = (TFT_H - NAV_H - CFG_IO_Y) / CFG_RIJ_H;
+    int rijen_n   = CFG_IO_RIJEN_N;
+    int n_kanalen = io_zichtbaar();
     for (int r = 0; r < rijen_n; r++) {
         cfg_io_rij_teken(cfg_scroll + r, CFG_IO_Y + r * CFG_RIJ_H);
     }
+
+    // Scroll footer strip
+    int strip_y = CFG_IO_Y + rijen_n * CFG_RIJ_H;
+    int n_pag   = max(1, (n_kanalen + rijen_n - 1) / rijen_n);
+    int huidig  = cfg_scroll / rijen_n + 1;
+    bool voor   = (cfg_scroll > 0);
+    bool achter = (cfg_scroll + rijen_n < n_kanalen);
+
+    tft.fillRect(0, strip_y, TFT_W, CFG_SCROLL_H, C_SURFACE);
+    tft.drawFastHLine(0, strip_y, TFT_W, C_SURFACE2);
+
+    ui_knop(8,              strip_y + 4, 130, CFG_SCROLL_H - 8, "< VORIGE",
+            voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
+    char pag[12]; snprintf(pag, sizeof(pag), "%d/%d", huidig, n_pag);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    char hdr[50];
-    snprintf(hdr, sizeof(hdr), "Kanalen %d-%d  |  Tik om naam te wijzigen",
-             cfg_scroll, cfg_scroll + rijen_n - 1);
-    int hint_y = CFG_IO_Y + rijen_n * CFG_RIJ_H + 2;
-    if (hint_y < (int)(TFT_H - NAV_H - 8)) {
-        tft.fillRect(0, hint_y, TFT_W, 10, C_BG);
-        tft.setCursor(10, hint_y); tft.print(hdr);
-    }
+    int tw = strlen(pag) * 6;
+    tft.setCursor(TFT_W / 2 - tw / 2, strip_y + (CFG_SCROLL_H - 8) / 2);
+    tft.print(pag);
+    ui_knop(TFT_W - 138,   strip_y + 4, 130, CFG_SCROLL_H - 8, "VOLGENDE >",
+            achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
 }
 
 // ─── Chips rij helper ───────────────────────────────────────────────────
@@ -533,9 +545,11 @@ static void cfg_io_namen_run(int x, int y) {
         }
     }
 
-    int rijen_h = (int)(TFT_H - NAV_H - CFG_IO_Y);
-    int rijen_n = rijen_h / CFG_RIJ_H;
-    if (y >= CFG_IO_Y && y < CFG_IO_Y + rijen_n * CFG_RIJ_H) {
+    int rijen_n   = CFG_IO_RIJEN_N;
+    int n_kanalen = io_zichtbaar();
+    int strip_y   = CFG_IO_Y + rijen_n * CFG_RIJ_H;
+
+    if (y >= CFG_IO_Y && y < strip_y) {
         int rij    = (y - CFG_IO_Y) / CFG_RIJ_H;
         int kanaal = cfg_scroll + rij;
         if (kanaal < MAX_IO_KANALEN) {
@@ -549,10 +563,14 @@ static void cfg_io_namen_run(int x, int y) {
         return;
     }
 
-    if (y >= CFG_IO_Y + rijen_n * CFG_RIJ_H && y < (int)(TFT_H - NAV_H)) {
-        if (x < TFT_W / 2) cfg_scroll = max(0, cfg_scroll - rijen_n);
-        else cfg_scroll = min(max(0, io_zichtbaar() - rijen_n), cfg_scroll + rijen_n);
-        screen_config_rijen_teken();
+    if (y >= strip_y && y < strip_y + CFG_SCROLL_H) {
+        if (x < TFT_W / 2 && cfg_scroll > 0) {
+            cfg_scroll = max(0, cfg_scroll - rijen_n);
+            screen_config_rijen_teken();
+        } else if (x >= TFT_W / 2 && cfg_scroll + rijen_n < n_kanalen) {
+            cfg_scroll = min(n_kanalen - rijen_n, cfg_scroll + rijen_n);
+            screen_config_rijen_teken();
+        }
     }
 }
 

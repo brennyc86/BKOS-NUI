@@ -19,6 +19,8 @@ static uint8_t ov_param;
 #define IOCFG_COUNT_H    46
 #define IOCFG_LIST_Y     (IOCFG_COUNT_Y + IOCFG_COUNT_H)
 #define IOCFG_RIJ_H      43
+#define IOCFG_SCROLL_H   35   // scroll-footer strip hoogte
+#define IOCFG_RIJEN_N    7    // (NAV_Y(438)-IOCFG_LIST_Y(90)-IOCFG_SCROLL_H(35))/43 = 7
 
 // Overlay covers content area
 #define OV_X    30
@@ -127,15 +129,37 @@ static void iocfg_rij_teken(int kanaal, int rij_y) {
     tft.drawFastHLine(0, rij_y + IOCFG_RIJ_H - 1, TFT_W, C_SURFACE);
 }
 
+static void iocfg_scroll_teken() {
+    int strip_y   = IOCFG_LIST_Y + IOCFG_RIJEN_N * IOCFG_RIJ_H;
+    int n_kanalen = io_zichtbaar();
+    int n_pag     = max(1, (n_kanalen + IOCFG_RIJEN_N - 1) / IOCFG_RIJEN_N);
+    int huidig    = iocfg_scroll / IOCFG_RIJEN_N + 1;
+    bool voor     = (iocfg_scroll > 0);
+    bool achter   = (iocfg_scroll + IOCFG_RIJEN_N < n_kanalen);
+
+    tft.fillRect(0, strip_y, TFT_W, IOCFG_SCROLL_H, C_SURFACE);
+    tft.drawFastHLine(0, strip_y, TFT_W, C_SURFACE2);
+
+    ui_knop(8,            strip_y + 4, 120, IOCFG_SCROLL_H - 8, "< VORIGE",
+            voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
+    char pag[12]; snprintf(pag, sizeof(pag), "%d/%d", huidig, n_pag);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    int tw = strlen(pag) * 6;
+    tft.setCursor(TFT_W / 2 - tw / 2, strip_y + (IOCFG_SCROLL_H - 8) / 2);
+    tft.print(pag);
+    ui_knop(TFT_W - 128, strip_y + 4, 120, IOCFG_SCROLL_H - 8, "VOLGENDE >",
+            achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
+}
+
 static void iocfg_lijst_teken() {
     tft.fillRect(0, IOCFG_LIST_Y, TFT_W, NAV_Y - IOCFG_LIST_Y, C_BG);
-    int n_rijen = (NAV_Y - IOCFG_LIST_Y) / IOCFG_RIJ_H;
     int n_kanalen = io_zichtbaar();
-    for (int r = 0; r < n_rijen; r++) {
+    for (int r = 0; r < IOCFG_RIJEN_N; r++) {
         int k = iocfg_scroll + r;
         if (k >= n_kanalen) break;
         iocfg_rij_teken(k, IOCFG_LIST_Y + r * IOCFG_RIJ_H);
     }
+    iocfg_scroll_teken();
 }
 
 // ─── Overlay: kanaaldetail bewerken ─────────────────────────────────────
@@ -158,17 +182,18 @@ static void iocfg_overlay_teken() {
     tft.fillRoundRect(OV_X, OV_Y, OV_W, OV_H, 10, C_SURFACE);
     tft.drawRoundRect(OV_X, OV_Y, OV_W, OV_H, 10, C_CYAN);
 
-    // Titel
+    // Titel + BEWERK naam knop
     char titel[32];
     snprintf(titel, sizeof(titel), "Kanaal %d: %s", iocfg_kanaal, io_namen[iocfg_kanaal]);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     tft.setCursor(OV_IX, OV_Y + 10);
     tft.print(titel);
+    ui_knop(OV_X + OV_W - 110, OV_Y + 8, 90, 24, "NAAM..", C_SURFACE2, C_AMBER);
 
-    tft.drawFastHLine(OV_IX, OV_Y + 32, OV_IW, C_SURFACE3);
+    tft.drawFastHLine(OV_IX, OV_Y + 38, OV_IW, C_SURFACE3);
 
     // Richting knoppen
-    int ry = OV_Y + 40;
+    int ry = OV_Y + 46;
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(OV_IX, ry + (34 - 8) / 2); tft.print("RICHTING:");
 
@@ -179,9 +204,9 @@ static void iocfg_overlay_teken() {
     ui_knop(rbx + 128, ry, 120, 34, "INGANG",
             is_in ? C_CYAN : C_SURFACE2,  is_in ? C_TEXT_DARK : C_TEXT);
 
-    tft.drawFastHLine(OV_IX, OV_Y + 82, OV_IW, C_SURFACE3);
+    tft.drawFastHLine(OV_IX, OV_Y + 88, OV_IW, C_SURFACE3);
 
-    int cy = OV_Y + 90;
+    int cy = OV_Y + 96;
 
     if (!is_in) {
         // UITGANG: alert instelling
@@ -265,8 +290,22 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
 
     // Overlay open
     if (iocfg_overlay) {
+        // NAAM bewerken knop (in titelbalk)
+        if (y >= OV_Y + 8 && y < OV_Y + 34 && x >= OV_X + OV_W - 110) {
+            cfg_geselecteerd      = iocfg_kanaal;
+            cfg_bewerk_zeilnr     = false;
+            strncpy(cfg_invoer, io_namen[iocfg_kanaal], CFG_INVOER_LEN - 1);
+            cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+            cfg_toetsenbord_actief = true;
+            cfg_tab                = 1;
+            iocfg_overlay          = false;
+            actief_scherm          = SCREEN_CONFIG;
+            scherm_bouwen          = true;
+            return;
+        }
+
         // Richting knoppen
-        int ry = OV_Y + 40;
+        int ry = OV_Y + 46;
         int rbx = OV_IX + 90;
         if (y >= ry && y < ry + 34) {
             if (x >= rbx && x < rbx + 120)       ov_richting = IO_RICHTING_UIT;
@@ -274,7 +313,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             iocfg_overlay_teken(); return;
         }
 
-        int cy = OV_Y + 90;
+        int cy = OV_Y + 96;
         bool is_in = (ov_richting == IO_RICHTING_IN);
 
         if (!is_in) {
@@ -347,10 +386,12 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
     }
 
     // Kanaallijst
-    if (y >= IOCFG_LIST_Y && y < NAV_Y) {
+    int strip_y   = IOCFG_LIST_Y + IOCFG_RIJEN_N * IOCFG_RIJ_H;
+    int n_kanalen = io_zichtbaar();
+
+    if (y >= IOCFG_LIST_Y && y < strip_y) {
         int rij    = (y - IOCFG_LIST_Y) / IOCFG_RIJ_H;
         int kanaal = iocfg_scroll + rij;
-        int n_kanalen = io_zichtbaar();
         if (kanaal >= 0 && kanaal < n_kanalen) {
             iocfg_kanaal  = kanaal;
             ov_richting   = io_richting[kanaal];
@@ -363,5 +404,16 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             iocfg_overlay_teken();
         }
         return;
+    }
+
+    // Scroll strip
+    if (y >= strip_y && y < strip_y + IOCFG_SCROLL_H) {
+        if (x < TFT_W / 2 && iocfg_scroll > 0) {
+            iocfg_scroll = max(0, iocfg_scroll - IOCFG_RIJEN_N);
+            iocfg_lijst_teken();
+        } else if (x >= TFT_W / 2 && iocfg_scroll + IOCFG_RIJEN_N < n_kanalen) {
+            iocfg_scroll = min(n_kanalen - IOCFG_RIJEN_N, iocfg_scroll + IOCFG_RIJEN_N);
+            iocfg_lijst_teken();
+        }
     }
 }

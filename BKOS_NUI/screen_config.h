@@ -15,7 +15,9 @@
 #define HLD_BTN_W 44
 
 // IO namen tab
-#define CFG_IO_Y  (CFG_CONT_Y + HLD_H + 6)
+#define CFG_IO_Y      (CFG_CONT_Y + HLD_H + 6)
+#define CFG_SCROLL_H  40   // hoogte van de scroll-footer strip
+#define CFG_IO_RIJEN_N 5   // (480-42-124-40)/52 = 5 rijen passen boven de strip
 
 extern int  cfg_scroll;
 extern int  cfg_geselecteerd;

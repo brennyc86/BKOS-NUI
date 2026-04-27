@@ -9,8 +9,8 @@ void tft_setup() {
 }
 
 void tft_helderheid_zet(int pct) {
-    tft_helderheid = constrain(pct, 0, 100);
-    analogWrite(TFT_BL, map(tft_helderheid, 0, 100, 0, 255));
+    // Pas ALLEEN de PWM aan — tft_helderheid bewaart de gebruikersinstelling
+    analogWrite(TFT_BL, map(constrain(pct, 0, 100), 0, 100, 0, 255));
 }
 
 void tft_schermvullen(uint16_t kleur) {

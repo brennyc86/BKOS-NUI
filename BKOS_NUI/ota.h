@@ -1,7 +1,7 @@
 #pragma once
 #include "wifi.h"
 
-#define BKOS_NUI_VERSIE     "8.N270426"
+#define BKOS_NUI_VERSIE     "9.N270426"
 #define OTA_GITHUB_VERSIE_URL   "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/BKOS_NUI/versie.txt"
 #define OTA_GITHUB_FIRMWARE_URL "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/BKOS_NUI/firmware.bin"
 

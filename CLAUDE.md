@@ -194,6 +194,11 @@ Touch debouncing via `touch_verwerkt` flag; eerste touch na display wake wordt g
 | 47 | Sessie 5 | Boot tekening schaal 1.75 (was 2): vrije ruimte rondom boot en boven meteo strip | ✅ Afgerond |
 | 48 | Sessie 5 | Maanfase: tekst + springtij/doodtij indicator in meteo strip en METEO WEER tab | ✅ Afgerond |
 | 49 | Sessie 5 | Getij tabel: 2-regelige weergave per rij (tijd+HW/LW groter, hoogte+LAT kleiner eronder) | ✅ Afgerond |
+| 50 | Sessie 6 | Status bar centrale functie sb_teken_basis(): WiFi(x=8)+BT placeholder(x=36)+Alert placeholder(x=56)+Klok(x=732) op alle schermen | ✅ Afgerond |
+| 51 | Sessie 6 | Getij tab: 16 entries (8×2), groter lettertype voor hoogte (size2), waterstand nu + opkomend/afgaand pijl, maanfase altijd zichtbaar | ✅ Afgerond |
+| 52 | Sessie 6 | PANEEL: toont altijd maanfase + eerstvolgende HW én LW; bij geen weer ook waterstand nu + richting | ✅ Afgerond |
+| 53 | Sessie 6 | Vlissingen stationsdata gecorrigeerd: MLWS -2.13m, MLWN -0.74m (waren -0.52/-0.07, onjuist) | ✅ Afgerond |
+| 54 | Sessie 6 | Open-Meteo API gewijzigd naar http:// (was https://) om SSL-handshake problemen op ESP32 te omzeilen | ✅ Afgerond |
 
 ---
 

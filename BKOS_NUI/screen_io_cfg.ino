@@ -266,12 +266,7 @@ static void iocfg_overlay_teken() {
 // ─── Hoofd scherm ───────────────────────────────────────────────────────
 void screen_io_cfg_teken() {
     tft.fillScreen(C_BG);
-    tft.fillRect(0, 0, TFT_W, SB_H, C_STATUSBAR);
-    tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
-    tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(10, (SB_H - 16) / 2); tft.print("IO CONFIGURATIE");
-    sb_wifi_teken(TFT_W - 30);
-    sb_naam_teken(TFT_W - 30);
+    sb_scherm_teken("IO CONFIGURATIE", C_CYAN);
 
     if (iocfg_naam_kb) {
         screen_config_toetsenbord_teken();

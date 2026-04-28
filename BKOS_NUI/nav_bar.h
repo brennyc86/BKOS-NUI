@@ -6,7 +6,15 @@
 #define NAV_ITEMS 6
 static const char* nav_labels[NAV_ITEMS] = {"PANEEL", "IO", "METEO", "CONFIG", "OTA", "INFO"};
 
+// Status bar vaste posities (SB_H = 42px):
+//   x=8:   WiFi signaal icoon (22px)
+//   x=36:  Bluetooth placeholder (14px)
+//   x=56:  Alert placeholder (14px)
+//   x=732: Klok HH:MM (5 chars × 12px = 60px)
+//   x=86..724: vrij voor schermnaam / bootnaam
+#define SB_KLOK_X  732
+
 void nav_bar_teken();
-int  nav_bar_klik(int x, int y);  // geeft scherm index of -1
-void sb_wifi_teken(int x);         // WiFi icoon op positie x in status bar (22px breed)
-void sb_naam_teken(int x_max);     // Boot naam rechts van x_max, links van WiFi icoon
+int  nav_bar_klik(int x, int y);
+void sb_teken_basis();                                     // achtergrond + WiFi + BT + Alert + klok
+void sb_scherm_teken(const char* titel, uint16_t kleur);  // sb_teken_basis + schermnaam

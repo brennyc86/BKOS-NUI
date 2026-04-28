@@ -7,8 +7,8 @@
 
 // ─── Stationsdata ─────────────────────────────────────────────────────────
 const GetijStation getij_stations[GETIJ_STATIONS] = {
-    // naam,          lat,    lon,   LAT_nap, MHWS, MHWN, MLWS, MLWN, hwfc
-    { "Vlissingen",  51.44,  3.57,  -2.97f,  2.45f, 1.90f, -0.52f, -0.07f, 11.25f },
+    // naam,          lat,    lon,   LAT_nap, MHWS,   MHWN,  MLWS,   MLWN,  hwfc
+    { "Vlissingen",  51.44,  3.57,  -2.97f,  2.35f, 1.88f, -2.13f, -0.74f, 11.40f },
     { "Hoek v.Holl", 51.98,  4.12,  -1.62f,  0.95f, 0.72f, -0.67f, -0.44f, 12.00f },
     { "Rotterdam",   51.90,  4.48,  -1.55f,  0.90f, 0.68f, -0.65f, -0.43f, 12.25f },
     { "Den Helder",  52.96,  4.75,  -1.35f,  0.80f, 0.62f, -0.55f, -0.37f, 11.75f },
@@ -211,14 +211,15 @@ const char* meteo_wind_richting(int graden) {
 void meteo_weer_ophalen() {
     char url[256];
     snprintf(url, sizeof(url),
-        "https://api.open-meteo.com/v1/forecast"
+        "http://api.open-meteo.com/v1/forecast"
         "?latitude=%.4f&longitude=%.4f"
         "&current=temperature_2m,weathercode,windspeed_10m,winddirection_10m,windgusts_10m,is_day"
         "&daily=weathercode,temperature_2m_max,temperature_2m_min,windspeed_10m_max,winddirection_10m_dominant"
         "&timezone=Europe%%2FAmsterdam&forecast_days=4",
         meteo_lat, meteo_lon);
 
-    String body = http_get(url, true);
+    // http:// (geen SSL) voorkomt TLS-handshake problemen op ESP32
+    String body = http_get(url, false);
     if (body.length() < 50) return;
 
     // Huidige weer — zoek "current" blok
@@ -274,12 +275,10 @@ void meteo_stad_zoeken(const char* naam) {
     if (!wifi_verbonden || strlen(naam) == 0) return;
     char url[128];
     snprintf(url, sizeof(url),
-        "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=nl&format=json",
+        "http://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=nl&format=json",
         naam);
-    // URL encode spaces
     for (int i = 0; url[i]; i++) if (url[i] == ' ') url[i] = '+';
-
-    String body = http_get(url, true);
+    String body = http_get(url, false);
     if (body.length() < 20) return;
 
     int ri = body.indexOf("\"results\":[{");
@@ -394,6 +393,31 @@ void meteo_loop() {
 
 float meteo_maan_dag() {
     return _maanleeftijd_uren() / 24.0f;  // 0..29.53 days
+}
+
+float meteo_waterstand_nu() {
+    if (getij_ext_cnt < 2) return 0.0f;
+    time_t nu = time(nullptr);
+    if (nu < 1000000L) return 0.0f;
+    for (int i = 0; i < getij_ext_cnt - 1; i++) {
+        if (getij_ext[i].tijd <= nu && getij_ext[i+1].tijd > nu) {
+            float frac = (float)(nu - getij_ext[i].tijd) /
+                         (float)(getij_ext[i+1].tijd - getij_ext[i].tijd);
+            float h1 = getij_ext[i].hoogte, h2 = getij_ext[i+1].hoogte;
+            return h1 + (h2 - h1) * (1.0f - cosf(frac * M_PI)) / 2.0f;
+        }
+    }
+    return 0.0f;
+}
+
+int meteo_getij_richting() {
+    time_t nu = time(nullptr);
+    if (nu < 1000000L) return 0;
+    for (int i = 0; i < getij_ext_cnt - 1; i++) {
+        if (getij_ext[i].tijd <= nu && getij_ext[i+1].tijd > nu)
+            return getij_ext[i+1].hoog_water ? 1 : -1;
+    }
+    return 0;
 }
 
 const char* meteo_maan_fase_naam(float dag) {

@@ -71,25 +71,21 @@ static void io_sb_teken() {
     bool voor  = (io_pagina > 0);
     bool achter = (io_pagina < n_pag - 1);
 
-    tft.fillRect(0, 0, TFT_W, SB_H, C_STATUSBAR);
-    tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
+    sb_teken_basis();
 
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(10, (SB_H - 16) / 2);
+    tft.setCursor(86, (SB_H - 16) / 2);
     tft.print("IO OVERZICHT");
 
-    // Paginering rechts in statusbalk (eindigt op TFT_W-295+100+190=~TFT_W-5)
+    // Paginering: eindigt vóór klok (SB_KLOK_X=732), px+246 < 732 → px < 486
     char pag[12]; snprintf(pag, sizeof(pag), "%d/%d", io_pagina + 1, n_pag);
-    int px = TFT_W - 295;
-    ui_knop(px,       4, 90, SB_H - 8, "< VORIG",   voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
+    int px = TFT_W - 340;   // 460 → button2 eindigt op 460+156+80=696 < 732 ✓
+    ui_knop(px,       4, 80, SB_H - 8, "< VORIG",   voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
     tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
     int tw = strlen(pag) * 12;
-    tft.setCursor(px + 96 + (54 - tw) / 2, (SB_H - 16) / 2);
+    tft.setCursor(px + 86 + (44 - tw) / 2, (SB_H - 16) / 2);
     tft.print(pag);
-    ui_knop(px + 156, 4, 90, SB_H - 8, "VOLG >",  achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
-
-    // WiFi icoon uiterst rechts
-    sb_wifi_teken(TFT_W - 26);
+    ui_knop(px + 136, 4, 80, SB_H - 8, "VOLG >",  achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
 }
 
 void screen_io_teken_rijen() {
@@ -134,16 +130,16 @@ void screen_io_run(int x, int y, bool aanraking) {
     }
 
     // Paginering (knoppen in statusbalk)
-    if (y < SB_H) {
+    if (y >= 0 && y < SB_H) {
         int n_vis = io_zichtbaar();
         int n_pag = max(1, (n_vis + IO_RIJEN_PER_PAGINA - 1) / IO_RIJEN_PER_PAGINA);
-        int px    = TFT_W - 290;
-        if (x >= px && x < px + 90 && io_pagina > 0) {
+        int px    = TFT_W - 340;  // zelfde als io_sb_teken
+        if (x >= px && x < px + 80 && io_pagina > 0) {
             io_pagina--;
             prev_pagina = -1;
             io_sb_teken();
             screen_io_teken_rijen();
-        } else if (x >= px + 162 && x < px + 262 && io_pagina < n_pag - 1) {
+        } else if (x >= px + 136 && x < px + 216 && io_pagina < n_pag - 1) {
             io_pagina++;
             prev_pagina = -1;
             io_sb_teken();

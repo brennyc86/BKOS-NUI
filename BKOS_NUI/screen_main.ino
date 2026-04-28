@@ -456,13 +456,9 @@ static void interieur_status_teken() {
 
 // ─── Status bar ─────────────────────────────────────────────────────
 static void status_bar_teken() {
-    tft.fillRect(0, 0, TFT_W, SB_H, C_STATUSBAR);
-    tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
+    sb_teken_basis();
 
-    // WiFi icoon links
-    sb_wifi_teken(8);
-
-    // Boot naam gecentreerd
+    // Boot naam gecentreerd (tussen iconen links en klok rechts)
     const char* naam = info_boot_naam();
     if (strlen(naam) > 0) {
         char buf[15]; strncpy(buf, naam, 14); buf[14] = '\0';
@@ -471,18 +467,11 @@ static void status_bar_teken() {
         tft.setCursor(TFT_W / 2 - tw / 2, (SB_H - 16) / 2);
         tft.print(buf);
     } else {
-        // Fallback: versienummer
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         int tw = strlen(BKOS_NUI_VERSIE) * 6;
         tft.setCursor(TFT_W / 2 - tw / 2, (SB_H - 8) / 2);
         tft.print(BKOS_NUI_VERSIE);
     }
-
-    // Klok rechts (40px van rechterrand voor WiFi icoon)
-    tft.setTextSize(2); tft.setTextColor(C_TEXT);
-    int tw = klok_tijd.length() * 12;
-    tft.setCursor(TFT_W - tw - 36, (SB_H - 16) / 2);
-    tft.print(klok_tijd);
 }
 
 static void scheidingslijn_teken() {
@@ -500,96 +489,112 @@ static void meteo_strip_teken() {
     tft.fillRect(sx, sy, sw, sh, C_SURFACE);
     tft.drawRect(sx, sy, sw, sh, C_SURFACE2);
 
-    if (!meteo_geladen) {
-        tft.setTextSize(1);
-        tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(sx + 8, sy + (sh - 8) / 2);
-        tft.print(wifi_verbonden ? "Meteo ophalen..." : "Geen WiFi");
-        return;
-    }
-
-    // ── Links: actueel weer ──────────────────────────────────────────
     int lx = sx + 4, ly = sy + 4;
 
-    // WMO code → unicode-achtig teken via ASCII
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(lx, ly);
-    tft.print(meteo_weer_omschrijving(meteo_weer_code));
+    if (meteo_geladen) {
+        // ── Links: actueel weer ──────────────────────────────────────
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(lx, ly);
+        tft.print(meteo_weer_omschrijving(meteo_weer_code));
 
-    tft.setTextSize(2);
-    tft.setTextColor(C_TEXT);
-    tft.setCursor(lx, ly + 12);
-    char tbuf[10]; snprintf(tbuf, 10, "%.1f", meteo_temp);
-    tft.print(tbuf);
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.print("\xF7""C");
+        tft.setTextSize(2); tft.setTextColor(C_TEXT);
+        tft.setCursor(lx, ly + 12);
+        char tbuf[10]; snprintf(tbuf, 10, "%.1f", meteo_temp);
+        tft.print(tbuf);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.print("\xF7""C");
 
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(lx, ly + 32);
-    tft.print("max ");
-    tft.setTextColor(C_TEXT);
-    char mxbuf[8]; snprintf(mxbuf, 8, "%.0f\xF7", meteo_temp_max);
-    tft.print(mxbuf);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(lx, ly + 32);
+        tft.print("max ");
+        tft.setTextColor(C_TEXT);
+        char mxbuf[8]; snprintf(mxbuf, 8, "%.0f\xF7", meteo_temp_max);
+        tft.print(mxbuf);
 
-    // ── Midden: wind ──────────────────────────────────────────────────
-    int mx = sx + 100;
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(mx, ly);
-    tft.print("Wind");
-    tft.setTextColor(C_TEXT);
-    tft.setCursor(mx, ly + 12);
-    char wbuf[12];
-    snprintf(wbuf, 12, "%s B%d", meteo_wind_richting(meteo_wind_dir), meteo_beaufort(meteo_wind_ms));
-    tft.setTextSize(1);
-    tft.print(wbuf);
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(mx, ly + 26);
-    char gbuf[10]; snprintf(gbuf, 10, "stoot B%d", meteo_beaufort(meteo_wind_max));
-    tft.print(gbuf);
-    tft.setCursor(mx, ly + 38);
-    snprintf(gbuf, 10, "%.1fm/s", meteo_wind_ms);
-    tft.print(gbuf);
+        // ── Midden: wind ────────────────────────────────────────────
+        int mx = sx + 100;
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(mx, ly); tft.print("Wind");
+        tft.setTextColor(C_TEXT); tft.setCursor(mx, ly + 12);
+        char wbuf[12];
+        snprintf(wbuf, 12, "%s B%d", meteo_wind_richting(meteo_wind_dir), meteo_beaufort(meteo_wind_ms));
+        tft.setTextSize(1); tft.print(wbuf);
+        tft.setTextColor(C_TEXT_DIM); tft.setCursor(mx, ly + 26);
+        char gbuf[10]; snprintf(gbuf, 10, "stoot B%d", meteo_beaufort(meteo_wind_max));
+        tft.print(gbuf);
+        tft.setCursor(mx, ly + 38);
+        snprintf(gbuf, 10, "%.1fm/s", meteo_wind_ms);
+        tft.print(gbuf);
+    } else {
+        // ── Geen weerdata: toon waterstand + richting ────────────────
+        float ws = meteo_waterstand_nu();
+        int richting = meteo_getij_richting();
 
-    // ── Rechts: maanfase + getij HW/LW ──────────────────────────────────────
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(lx, ly); tft.print("Waterstand nu");
+
+        char wsbuf[10]; snprintf(wsbuf, 10, "%.2fm", ws);
+        tft.setTextSize(2); tft.setTextColor(C_CYAN);
+        tft.setCursor(lx, ly + 10); tft.print(wsbuf);
+
+        // Richting pijl (driehoek)
+        int ax = lx + strlen(wsbuf) * 12 + 6, ay = ly + 10 + 8;
+        if (richting > 0) {
+            uint16_t pc = C_GREEN;
+            tft.fillTriangle(ax + 5, ay - 8, ax, ay + 2, ax + 10, ay + 2, pc);
+        } else if (richting < 0) {
+            uint16_t pc = RGB565(80, 150, 255);
+            tft.fillTriangle(ax + 5, ay + 2, ax, ay - 8, ax + 10, ay - 8, pc);
+        }
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(lx, ly + 30);
+        tft.print(richting > 0 ? "opkomend" : (richting < 0 ? "afgaand" : ""));
+        if (!wifi_verbonden) {
+            tft.setCursor(lx, ly + 40);
+            tft.setTextColor(RGB565(60,70,90)); tft.print("geen WiFi");
+        }
+    }
+
+    // ── Rechts: maanfase + getij HW/LW (altijd tonen) ──────────────
     int rx = sx + 200;
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(rx, ly);
     tft.print("Getij ");
     tft.setTextColor(C_CYAN);
     tft.print(getij_stations[meteo_station_idx].naam);
 
-    // Maanfase
     float maan_dag = meteo_maan_dag();
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(rx, ly + 12);
     tft.print("Maan: ");
     tft.setTextColor(C_CYAN);
     tft.print(meteo_maan_fase_naam(maan_dag));
-    char maanbuf[12]; snprintf(maanbuf, 12, " (d%.1f)", maan_dag);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.print(maanbuf);
 
-    int cnt = min(getij_ext_cnt, 2);
-    for (int i = 0; i < cnt; i++) {
+    // Volgende HW én LW (los van volgorde)
+    time_t nu = time(nullptr);
+    int hw_i = -1, lw_i = -1;
+    for (int i = 0; i < getij_ext_cnt && (hw_i < 0 || lw_i < 0); i++) {
+        if (getij_ext[i].tijd > nu) {
+            if (hw_i < 0 && getij_ext[i].hoog_water)  hw_i = i;
+            if (lw_i < 0 && !getij_ext[i].hoog_water) lw_i = i;
+        }
+    }
+    int rij = 0;
+    int idxs[2] = {hw_i, lw_i};
+    for (int k = 0; k < 2; k++) {
+        int i = idxs[k];
+        if (i < 0) continue;
         const GetijExtreme& e = getij_ext[i];
         struct tm* lt = localtime(&e.tijd);
-        char ebuf[24];
-        float lat_af = e.hoogte - getij_stations[meteo_station_idx].LAT_nap;
-        snprintf(ebuf, 24, "%s %02d:%02d %.2fm+%.1f",
+        char ebuf[22];
+        snprintf(ebuf, sizeof(ebuf), "%s %02d:%02d %.2fm",
             e.hoog_water ? "HW" : "LW",
-            lt->tm_hour, lt->tm_min,
-            e.hoogte, lat_af);
-        uint16_t ec = e.hoog_water ? C_BLUE : C_TEXT_DIM;
+            lt->tm_hour, lt->tm_min, e.hoogte);
+        uint16_t ec = e.hoog_water ? C_BLUE : RGB565(80, 150, 255);
         tft.setTextColor(ec);
-        tft.setCursor(rx, ly + 14 + i * 18);
+        tft.setCursor(rx, ly + 26 + rij * 16);
         tft.print(ebuf);
+        rij++;
     }
     if (getij_ext_cnt == 0) {
         tft.setTextColor(C_TEXT_DIM);

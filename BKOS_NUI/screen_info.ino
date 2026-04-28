@@ -161,11 +161,7 @@ static void info_velden_teken() {
 void screen_info_teken() {
     if (!info_geladen) info_laden();
     tft.fillScreen(C_BG);
-    tft.fillRect(0, 0, TFT_W, SB_H, C_STATUSBAR);
-    tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
-    tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(10, (SB_H - 16) / 2); tft.print("BOOT & EIGENAAR");
-    sb_wifi_teken(TFT_W - 30);
+    sb_scherm_teken("BOOT & EIGENAAR", C_CYAN);
     info_tabs_teken();
     info_velden_teken();
     nav_bar_teken();

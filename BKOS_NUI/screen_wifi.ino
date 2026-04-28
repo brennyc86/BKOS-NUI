@@ -201,16 +201,10 @@ static void wifi_lijst_teken() {
 // ─── Hoofdfuncties ───────────────────────────────────────────────────
 void screen_wifi_teken() {
     tft.fillScreen(C_BG);
-    tft.fillRect(0, 0, TFT_W, SB_H, C_STATUSBAR);
-    tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
-    tft.setTextSize(2);
-    tft.setTextColor(C_CYAN);
-    tft.setCursor(10, (SB_H - 16) / 2);
-    tft.print("WIFI NETWERKEN");
-    sb_wifi_teken(TFT_W - 30);
+    sb_scherm_teken("WIFI NETWERKEN", C_CYAN);
 
-    // Terug knop (iets naar links om naast WiFi icoon te passen)
-    ui_knop(TFT_W - 146, (SB_H - 26) / 2, 108, 26, "< TERUG", C_SURFACE2, C_TEXT_DIM);
+    // Terug knop (vóór klok, die begint op SB_KLOK_X=732)
+    ui_knop(SB_KLOK_X - 120, (SB_H - 26) / 2, 112, 26, "< TERUG", C_SURFACE2, C_TEXT_DIM);
 
     if (wifi_staat == WIFI_ST_IDLE) {
         tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);

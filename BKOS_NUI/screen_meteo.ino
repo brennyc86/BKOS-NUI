@@ -2,6 +2,7 @@
 #include "meteo.h"
 #include "nav_bar.h"
 #include "ui_draw.h"
+#include "screen_info.h"
 #include "screen_config.h"
 
 int meteo_tab = METEO_TAB_WEER;
@@ -169,6 +170,9 @@ static void meteo_sb_teken() {
         tft.setCursor(130, (SB_H - 8) / 2);
         tft.print(wifi_verbonden ? "Ophalen..." : "Geen WiFi");
     }
+    // WiFi icoon + boot naam rechts
+    sb_wifi_teken(TFT_W - 30);
+    sb_naam_teken(TFT_W - 30);
 }
 
 // ─── WEER TAB ─────────────────────────────────────────────────────────────

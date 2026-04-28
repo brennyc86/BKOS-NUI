@@ -4,6 +4,7 @@
 #include "screen_meteo.h"
 #include "screen_config.h"
 #include "screen_ota.h"
+#include "screen_info.h"
 #include "meteo.h"
 #include "nav_bar.h"
 
@@ -34,6 +35,7 @@ void hw_setup() {
     tft.setCursor(TFT_W / 2 - 80, TFT_H / 2 + 62);
     tft.print("Opstarten...");
 
+    info_laden();    // boot naam en eigenaar uit SPIFFS (voor status bar)
     meteo_setup();   // laadt NVS-instellingen (snel, geen netwerk)
     ota_setup();     // init OTA (snel)
     io_boot();       // UART IO discovery

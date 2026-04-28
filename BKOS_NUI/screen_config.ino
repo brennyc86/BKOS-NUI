@@ -847,6 +847,8 @@ void screen_config_teken() {
     tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     tft.setCursor(10, (SB_H - 16) / 2); tft.print("CONFIG");
+    sb_wifi_teken(TFT_W - 30);
+    sb_naam_teken(TFT_W - 30);
 
     cfg_tabs_teken();
 

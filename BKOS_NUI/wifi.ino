@@ -1,4 +1,5 @@
 #include "wifi.h"
+#include "ota.h"
 #include "hw_scherm.h"
 #include "ui_colors.h"
 #include "app_state.h"
@@ -15,6 +16,16 @@ static unsigned long ntp_last_sync = 0;
 static void _wifi_verbinden_intern() {
     if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(false);
+
+    // Probeer eerst met intern opgeslagen credentials (ESP32 NVS)
+    WiFi.begin();
+    for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++)
+        vTaskDelay(300 / portTICK_PERIOD_MS);
+
+    if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
+
+    // Fallback: credentials uit Preferences (opgeslagen via screen_wifi)
     Preferences wprefs;
     wprefs.begin("wifi_creds", true);
     String ssid = wprefs.getString("ssid", "");
@@ -22,9 +33,8 @@ static void _wifi_verbinden_intern() {
     wprefs.end();
     if (ssid.length() == 0) { wifi_verbonden = false; return; }
     WiFi.begin(ssid.c_str(), pass.c_str());
-    for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) {
+    for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++)
         vTaskDelay(300 / portTICK_PERIOD_MS);
-    }
     wifi_verbonden = (WiFi.status() == WL_CONNECTED);
 }
 
@@ -41,14 +51,15 @@ static void netwerk_taak(void* param) {
     // Wacht tot main loop gestart is
     vTaskDelay(1800 / portTICK_PERIOD_MS);
 
-    // ── Eerste verbinding: NTP + meteo ───────────────────────────────────
+    // ── Eerste verbinding: NTP + meteo + OTA check ───────────────────────
     _wifi_verbinden_intern();
     if (wifi_verbonden) {
         configTime(NTP_GMT_OFFSET, NTP_DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);  // even wachten op NTP sync
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
         if (!meteo_geladen) meteo_locatie_ophalen();
         meteo_weer_ophalen();
         meteo_getij_berekenen();
+        ota_git_check();
     }
     _wifi_verbreken_intern();
 
@@ -70,8 +81,8 @@ static void netwerk_taak(void* param) {
             if (update_nodig) {
                 meteo_weer_ophalen();
                 meteo_getij_berekenen();
+                ota_git_check();
             }
-            // OTA modus: verbonden laten (OTA loop draait in main loop)
         }
 
         if (!wifi_ota_modus) _wifi_verbreken_intern();

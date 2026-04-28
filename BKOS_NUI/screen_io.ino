@@ -78,15 +78,18 @@ static void io_sb_teken() {
     tft.setCursor(10, (SB_H - 16) / 2);
     tft.print("IO OVERZICHT");
 
-    // Paginering rechts in statusbalk
+    // Paginering rechts in statusbalk (eindigt op TFT_W-295+100+190=~TFT_W-5)
     char pag[12]; snprintf(pag, sizeof(pag), "%d/%d", io_pagina + 1, n_pag);
-    int px = TFT_W - 290;
+    int px = TFT_W - 295;
     ui_knop(px,       4, 90, SB_H - 8, "< VORIG",   voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
     tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
     int tw = strlen(pag) * 12;
-    tft.setCursor(px + 96 + (60 - tw) / 2, (SB_H - 16) / 2);
+    tft.setCursor(px + 96 + (54 - tw) / 2, (SB_H - 16) / 2);
     tft.print(pag);
-    ui_knop(px + 162, 4, 100, SB_H - 8, "VOLG >",  achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
+    ui_knop(px + 156, 4, 90, SB_H - 8, "VOLG >",  achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
+
+    // WiFi icoon uiterst rechts
+    sb_wifi_teken(TFT_W - 26);
 }
 
 void screen_io_teken_rijen() {

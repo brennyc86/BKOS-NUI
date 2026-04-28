@@ -207,9 +207,10 @@ void screen_wifi_teken() {
     tft.setTextColor(C_CYAN);
     tft.setCursor(10, (SB_H - 16) / 2);
     tft.print("WIFI NETWERKEN");
+    sb_wifi_teken(TFT_W - 30);
 
-    // Terug knop
-    ui_knop(TFT_W - 110, (SB_H - 26) / 2, 100, 26, "< TERUG", C_SURFACE2, C_TEXT_DIM);
+    // Terug knop (iets naar links om naast WiFi icoon te passen)
+    ui_knop(TFT_W - 146, (SB_H - 26) / 2, 108, 26, "< TERUG", C_SURFACE2, C_TEXT_DIM);
 
     if (wifi_staat == WIFI_ST_IDLE) {
         tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);

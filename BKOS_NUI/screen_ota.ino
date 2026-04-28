@@ -59,6 +59,8 @@ void screen_ota_teken() {
     tft.setTextColor(C_CYAN);
     tft.setCursor(10, (SB_H - 16) / 2);
     tft.print("OTA UPDATE");
+    sb_wifi_teken(TFT_W - 30);
+    sb_naam_teken(TFT_W - 30);
 
     // Knop 1: GitHub controleren
     ui_knop_groot(OTA_BTN_X, OTA_BTN_Y1, OTA_BTN_W, OTA_BTN_H,
@@ -115,8 +117,7 @@ void screen_ota_run(int x, int y, bool aanraking) {
     if (y >= OTA_BTN_Y1 && y < OTA_BTN_Y1 + OTA_BTN_H) {
         ota_status_tekst = "Controleren...";
         ota_info_teken();
-        if (wifi_check()) ota_git_check();
-        else ota_status_tekst = "Geen WiFi verbinding";
+        ota_git_check();
         screen_ota_teken();
         return;
     }

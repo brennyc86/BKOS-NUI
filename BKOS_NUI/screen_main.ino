@@ -1,6 +1,7 @@
 #include "screen_main.h"
 #include "meteo.h"
 #include "nav_bar.h"
+#include "screen_info.h"
 
 // ─── Icoon types ────────────────────────────────
 #define I_HAVEN      0
@@ -458,21 +459,29 @@ static void status_bar_teken() {
     tft.fillRect(0, 0, TFT_W, SB_H, C_STATUSBAR);
     tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
 
-    tft.setTextSize(2);
-    tft.setTextColor(wifi_verbonden ? C_GREEN : C_RED_BRIGHT);
-    tft.setCursor(8, (SB_H - 16) / 2);
-    tft.print(wifi_verbonden ? "WiFi" : "!WiFi");
+    // WiFi icoon links
+    sb_wifi_teken(8);
 
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    int tw = strlen(BKOS_NUI_VERSIE) * 6;
-    tft.setCursor(TFT_W / 2 - tw / 2, (SB_H - 8) / 2);
-    tft.print(BKOS_NUI_VERSIE);
+    // Boot naam gecentreerd
+    const char* naam = info_boot_naam();
+    if (strlen(naam) > 0) {
+        char buf[15]; strncpy(buf, naam, 14); buf[14] = '\0';
+        tft.setTextSize(2); tft.setTextColor(C_TEXT);
+        int tw = strlen(buf) * 12;
+        tft.setCursor(TFT_W / 2 - tw / 2, (SB_H - 16) / 2);
+        tft.print(buf);
+    } else {
+        // Fallback: versienummer
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        int tw = strlen(BKOS_NUI_VERSIE) * 6;
+        tft.setCursor(TFT_W / 2 - tw / 2, (SB_H - 8) / 2);
+        tft.print(BKOS_NUI_VERSIE);
+    }
 
-    tft.setTextSize(2);
-    tft.setTextColor(C_TEXT);
-    tw = klok_tijd.length() * 12;
-    tft.setCursor(TFT_W - tw - 10, (SB_H - 16) / 2);
+    // Klok rechts (40px van rechterrand voor WiFi icoon)
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    int tw = klok_tijd.length() * 12;
+    tft.setCursor(TFT_W - tw - 36, (SB_H - 16) / 2);
     tft.print(klok_tijd);
 }
 

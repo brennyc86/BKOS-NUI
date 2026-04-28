@@ -149,7 +149,7 @@ void io_verlichting_update() {
     }
 }
 
-bool io_apparaat_staat(const char* prefix) {
+byte io_apparaat_staat3(const char* prefix) {
     int n = io_zichtbaar();
     int gevonden = 0, aan = 0;
     for (int i = 0; i < n; i++) {
@@ -158,13 +158,15 @@ bool io_apparaat_staat(const char* prefix) {
             if (io_output[i] == IO_AAN || io_output[i] == IO_INV_AAN) aan++;
         }
     }
-    return (gevonden > 0 && aan == gevonden);
+    if (gevonden == 0 || aan == 0) return 0;
+    if (aan == gevonden) return 2;
+    return 1;
 }
 
 void io_apparaat_toggle(const char* prefix) {
-    bool staat = io_apparaat_staat(prefix);
-    byte nieuw  = staat ? IO_UIT : IO_AAN;
-    int  n      = io_zichtbaar();
+    byte s    = io_apparaat_staat3(prefix);
+    byte nieuw = (s > 0) ? IO_UIT : IO_AAN;
+    int  n     = io_zichtbaar();
     for (int i = 0; i < n; i++) {
         if (io_naam_is(i, prefix)) {
             io_output[i]    = nieuw;

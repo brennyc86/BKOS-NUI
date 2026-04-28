@@ -404,9 +404,15 @@ static void apparaat_knoppen_teken() {
         {"DEKLICHT", I_DEKLICHT, "**E_dek", DKNOP2_X2, DKNOP_Y2},
     };
     for (int i = 0; i < 5; i++) {
-        bool aan = (io_kanalen_cnt > 0) ? io_apparaat_staat(ap[i].prefix) : dev_lokaal[i];
+        byte staat3 = (io_kanalen_cnt > 0) ? io_apparaat_staat3(ap[i].prefix) : (dev_lokaal[i] ? 2 : 0);
+        bool aan = (staat3 == 2);
+        bool mix = (staat3 == 1);
         schakelaars_knop(ap[i].x, ap[i].y, DKNOP_W, DKNOP_H,
                          ap[i].label, ap[i].icoon, C_CYAN, aan);
+        if (mix) {
+            // Toon mix-toestand: halve accent balk
+            tft.fillRoundRect(ap[i].x, ap[i].y, DKNOP_W / 2, 4, 2, C_ORANGE);
+        }
     }
 }
 
@@ -477,8 +483,8 @@ static void scheidingslijn_teken() {
 
 // ─── Hoofdfuncties ──────────────────────────────────────────────────
 // ─── Meteo strip onderaan bootpaneel ────────────────────────────────────
-#define METEO_SY  (BDY + BDH - 58)   // y = bodem bootpaneel - 58px
-#define METEO_SH  56                  // strip hoogte
+#define METEO_SH  (BDH - 330)          // remaining space after boot (386-330=56)
+#define METEO_SY  (BDY + 330)          // directly below boot bottom at scale 2
 
 static void meteo_strip_teken() {
     int sx = BDX, sy = METEO_SY, sw = BDW, sh = METEO_SH;
@@ -669,7 +675,7 @@ void screen_main_run(int x, int y, bool aanraking) {
         if (x >= ap[i].x && x < ap[i].x + DKNOP_W &&
             y >= ap[i].y && y < ap[i].y + DKNOP_H) {
             io_apparaat_toggle(ap[i].prefix);
-            dev_lokaal[i] = !dev_lokaal[i];  // altijd lokale staat bijhouden
+            dev_lokaal[i] = !dev_lokaal[i];  // lokale staat bijhouden (toggle)
             gewijzigd = true;
         }
     }

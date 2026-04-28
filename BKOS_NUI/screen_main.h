@@ -10,9 +10,9 @@
 #define BDH   (CONTENT_H - 10)      // 386
 
 // Boot tekening schaal: raw x 0..120, y 0..165 → display (schaal 2)
-// BX_OFF = 5 + (380-240)/2 = 77  BY_OFF = 47 + (386-330)/2 = 75
+// BX_OFF = 5 + (380-240)/2 = 77  BY_OFF = BDY = CONTENT_Y + 5 = 47
 #define BOOT_BX_OFF  77
-#define BOOT_BY_OFF  75
+#define BOOT_BY_OFF  47
 #define BOOT_BX(x)   (BOOT_BX_OFF + (x)*2)
 #define BOOT_BY(y)   (BOOT_BY_OFF + (y)*2)
 #define BOOT_LICHT_R 10

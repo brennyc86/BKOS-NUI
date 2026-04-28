@@ -27,7 +27,6 @@ void state_save() {
     f.printf("schema=%d\n",  (int)kleurenschema);
     f.printf("btype=%d\n",   (int)boot_type);
     f.printf("zeilnr=%s\n",  zeilnummer);
-    for (int i = 0; i < 5; i++) f.printf("dev%d=%d\n", i, dev_lokaal[i] ? 1 : 0);
     f.close();
 }
 
@@ -63,10 +62,6 @@ void state_load() {
         if (key == "zeilnr")  {
             strncpy(zeilnummer, val.c_str(), ZEILNR_LEN - 1);
             zeilnummer[ZEILNR_LEN - 1] = '\0';
-        }
-        for (int i = 0; i < 5; i++) {
-            char dk[8]; snprintf(dk, sizeof(dk), "dev%d", i);
-            if (key == dk) dev_lokaal[i] = (val.toInt() != 0);
         }
     }
     f.close();

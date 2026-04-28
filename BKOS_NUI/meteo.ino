@@ -1,6 +1,7 @@
 #include "meteo.h"
 #include "wifi.h"
 #include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 #include <HTTPClient.h>
 #include <time.h>
 
@@ -20,7 +21,8 @@ const GetijStation getij_stations[GETIJ_STATIONS] = {
 int  meteo_station_idx = 0;
 float meteo_lat = 52.37f;
 float meteo_lon = 4.90f;
-char  meteo_stad[32] = "Amsterdam";
+char  meteo_stad[32]      = "Amsterdam";
+char  meteo_weer_stad[32] = "";
 
 float meteo_temp      = 0.0f;
 float meteo_temp_max  = 0.0f;
@@ -43,6 +45,7 @@ int          getij_ext_cnt = 0;
 bool          meteo_geladen             = false;
 unsigned long meteo_laatste_update      = 0;
 unsigned long getij_laatste_berekend    = 0;
+time_t        meteo_update_tijd         = 0;
 
 // ─── NVS instellingen via Preferences ────────────────────────────────────
 #include <Preferences.h>
@@ -75,12 +78,13 @@ static String http_get(const char* url, bool https_onveilig = false) {
     if (!wifi_verbonden) return "";
     HTTPClient http;
     WiFiClientSecure sc;
+    WiFiClient wc;
     if (https_onveilig) sc.setInsecure();
 
     if (strncmp(url, "https", 5) == 0) {
         http.begin(sc, url);
     } else {
-        http.begin(url);
+        http.begin(wc, url);  // explicit WiFiClient for plain HTTP
     }
     http.setTimeout(8000);
     int code = http.GET();
@@ -143,7 +147,9 @@ void meteo_locatie_ophalen() {
     }
     if (stad.length() > 0) {
         strncpy(meteo_stad, stad.c_str(), 31);
+        strncpy(meteo_weer_stad, stad.c_str(), 31);  // ook weerlocatie bijwerken
         meteo_stad[31] = '\0';
+        meteo_weer_stad[31] = '\0';
     }
     // Dichtstbijzijnde getijstation
     float min_d = 999.0f;
@@ -260,6 +266,41 @@ void meteo_weer_ophalen() {
 
     meteo_geladen = true;
     meteo_laatste_update = millis();
+    meteo_update_tijd = time(nullptr);
+}
+
+// ─── Geocoding: zoek stad op naam ────────────────────────────────────────
+void meteo_stad_zoeken(const char* naam) {
+    if (!wifi_verbonden || strlen(naam) == 0) return;
+    char url[128];
+    snprintf(url, sizeof(url),
+        "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=nl&format=json",
+        naam);
+    // URL encode spaces
+    for (int i = 0; url[i]; i++) if (url[i] == ' ') url[i] = '+';
+
+    String body = http_get(url, true);
+    if (body.length() < 20) return;
+
+    int ri = body.indexOf("\"results\":[{");
+    if (ri < 0) return;
+    String res = body.substring(ri);
+
+    float lat = json_float(res, "latitude");
+    float lon = json_float(res, "longitude");
+    String gevonden = json_str(res, "name");
+
+    if (lat != 0.0f) {
+        meteo_lat = lat;
+        meteo_lon = lon;
+        if (gevonden.length() > 0) {
+            strncpy(meteo_weer_stad, gevonden.c_str(), 31);
+            meteo_weer_stad[31] = '\0';
+        }
+        _meteo_prefs_schrijven();
+        meteo_laatste_update = 0;  // force refresh
+        meteo_weer_ophalen();
+    }
 }
 
 // ─── Getij berekening (harmonisch, maanfase) ─────────────────────────────
@@ -297,17 +338,17 @@ void meteo_getij_berekenen() {
     struct tm* lt = localtime(&now);
     float nu_uur = lt->tm_hour + lt->tm_min / 60.0f;
 
-    // Bouw lijst van HW/LW extremen voor vandaag + morgen
+    // Bouw lijst van HW/LW extremen: gisteren (-1) t/m 4 dagen vooruit
     getij_ext_cnt = 0;
     time_t dag_start = now - (lt->tm_hour * 3600 + lt->tm_min * 60 + lt->tm_sec);
 
-    for (int dag = 0; dag < 2 && getij_ext_cnt < GETIJ_N; dag++) {
+    for (int dag = -1; dag < 5 && getij_ext_cnt < GETIJ_N; dag++) {
         time_t ds = dag_start + dag * 86400L;
         // HW tijden op deze dag
         for (float off = 0.0f; off < 24.0f && getij_ext_cnt < GETIJ_N; off += 12.417f) {
             float hw_t = fmodf(hw_uur + off, 24.0f);
             time_t hw_unix = ds + (time_t)(hw_t * 3600.0f);
-            if (hw_unix > now - 3600L) {
+            if (hw_unix > now - 7200L) {  // inclusief entries tot 2 uur geleden
                 GetijExtreme& e = getij_ext[getij_ext_cnt++];
                 e.tijd       = hw_unix;
                 e.hoogte     = HW_h;
@@ -315,7 +356,7 @@ void meteo_getij_berekenen() {
             }
             float lw_t = fmodf(hw_t + 6.208f, 24.0f);
             time_t lw_unix = ds + (time_t)(lw_t * 3600.0f);
-            if (lw_unix > now - 3600L && getij_ext_cnt < GETIJ_N) {
+            if (lw_unix > now - 7200L && getij_ext_cnt < GETIJ_N) {  // inclusief entries tot 2 uur geleden
                 GetijExtreme& e = getij_ext[getij_ext_cnt++];
                 e.tijd       = lw_unix;
                 e.hoogte     = LW_h;
@@ -347,23 +388,18 @@ void meteo_loop() {
     if (!wifi_verbonden) return;
     unsigned long nu = millis();
 
-    // Eerste keer: locatie ophalen, daarna om het uur
-    static bool eerste = true;
-    if (eerste) {
-        eerste = false;
-        meteo_locatie_ophalen();
+    // Ophalen als nog niet gedaan, of na 10 minuten
+    if (!meteo_geladen || nu - meteo_laatste_update > 600000UL) {
+        if (!meteo_geladen) {
+            // Eerste keer: ook locatie ophalen
+            meteo_locatie_ophalen();
+        }
         meteo_weer_ophalen();
         meteo_getij_berekenen();
-        return;
     }
 
-    // Weer: elke 10 minuten
-    if (nu - meteo_laatste_update > 600000UL) {
-        meteo_weer_ophalen();
-    }
-
-    // Getij: elke 30 minuten
-    if (nu - getij_laatste_berekend > 1800000UL) {
+    // Getij: elke 30 minuten opnieuw berekenen
+    if (meteo_geladen && nu - getij_laatste_berekend > 1800000UL) {
         meteo_getij_berekenen();
     }
 }

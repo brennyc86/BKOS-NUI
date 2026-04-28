@@ -1,5 +1,6 @@
 #include "screen_config.h"
 #include "nav_bar.h"
+#include "meteo.h"
 
 // ─── State ──────────────────────────────────────────────────────────────
 byte cfg_tab                    = 0;
@@ -13,6 +14,7 @@ bool kb_sym                     = false;
 bool cfg_kb_info_mode           = false;
 bool cfg_kb_opgeslagen          = false;
 bool cfg_kb_numeriek            = false;
+bool cfg_kb_meteo_stad          = false;
 char cfg_kb_label[24]           = "Naam:";
 static unsigned long cfg_kb_sloot = 0;
 static bool cfg_preset_menu     = false;
@@ -645,7 +647,17 @@ bool screen_config_toetsenbord_run(int x, int y) {
             screen_config_toetsenbord_teken();
         } else if (x >= KB_X + KB_OPS_X && x < KB_X + KB_OPS_X + KB_OPS_W) {
             // OPSLAAN
-            if (cfg_kb_info_mode) {
+            if (cfg_kb_meteo_stad) {
+                meteo_stad_zoeken(cfg_invoer);
+                cfg_kb_meteo_stad      = false;
+                cfg_toetsenbord_actief = false;
+                cfg_kb_info_mode       = false;
+                cfg_kb_numeriek        = false;
+                kb_sym                 = false;
+                actief_scherm          = SCREEN_METEO;
+                scherm_bouwen          = true;
+                return true;
+            } else if (cfg_kb_info_mode) {
                 cfg_kb_opgeslagen = true;   // caller slaat op via cfg_invoer
             } else if (cfg_bewerk_zeilnr) {
                 strncpy(zeilnummer, cfg_invoer, ZEILNR_LEN - 1);
@@ -664,6 +676,17 @@ bool screen_config_toetsenbord_run(int x, int y) {
             return true;
         } else if (x >= KB_X + KB_CAN_X) {
             // CANCEL
+            if (cfg_kb_meteo_stad) {
+                cfg_kb_meteo_stad      = false;
+                cfg_toetsenbord_actief = false;
+                cfg_kb_info_mode       = false;
+                cfg_kb_opgeslagen      = false;
+                cfg_kb_numeriek        = false;
+                kb_sym                 = false;
+                actief_scherm          = SCREEN_METEO;
+                scherm_bouwen          = true;
+                return true;
+            }
             cfg_bewerk_zeilnr      = false;
             cfg_toetsenbord_actief = false;
             cfg_kb_info_mode       = false;

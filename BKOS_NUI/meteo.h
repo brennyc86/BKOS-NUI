@@ -20,6 +20,7 @@ extern int meteo_station_idx;
 extern float meteo_lat;
 extern float meteo_lon;
 extern char  meteo_stad[32];
+extern char  meteo_weer_stad[32];  // stad voor weerlocatie (handmatig of geocoded)
 
 // ─── Actueel weer ─────────────────────────────────────────────────────────
 extern float meteo_temp;
@@ -44,7 +45,7 @@ struct GetijExtreme {
     float  hoogte;      // NAP meters
     bool   hoog_water;
 };
-#define GETIJ_N 8
+#define GETIJ_N 24
 extern GetijExtreme getij_ext[GETIJ_N];
 extern int          getij_ext_cnt;
 
@@ -52,6 +53,7 @@ extern int          getij_ext_cnt;
 extern bool          meteo_geladen;
 extern unsigned long meteo_laatste_update;
 extern unsigned long getij_laatste_berekend;
+extern time_t        meteo_update_tijd;
 
 void meteo_setup();
 void meteo_loop();
@@ -59,6 +61,7 @@ void meteo_locatie_ophalen();
 void meteo_weer_ophalen();
 void meteo_getij_berekenen();
 void meteo_inst_opslaan();
+void meteo_stad_zoeken(const char* naam);
 
 const char* meteo_wind_richting(int graden);
 const char* meteo_weer_omschrijving(int code);

@@ -13,7 +13,7 @@
 #define NTP_GMT_OFFSET   3600   // CET = UTC+1
 #define NTP_DST_OFFSET   3600   // CEST = +1 extra
 
-extern bool wifi_verbonden;
+extern volatile bool wifi_verbonden;
 extern bool wifi_aangesloten;
 extern volatile bool wifi_ota_modus;   // true = OTA scherm actief, WiFi aanhouden
 extern TaskHandle_t  netwerk_task_handle;

@@ -1,6 +1,8 @@
 #include "io.h"
 #include "app_state.h"
 
+byte licht_cfg_idx = 0;
+
 static unsigned long io_timeout_start = 0;
 static char io_buf[4];
 
@@ -107,6 +109,11 @@ void io_loop() {
     if (millis() - io_gecheckt >= IO_INTERVAL) {
         io_cyclus();
     }
+    static unsigned long zekering_gecheckt = 0;
+    if (millis() - zekering_gecheckt >= 5000) {
+        zekering_gecheckt = millis();
+        io_zekering_check();
+    }
 }
 
 bool io_naam_is(int kanaal, const char* prefix) {
@@ -129,6 +136,7 @@ byte io_licht_staat(int kanaal) {
 }
 
 void io_verlichting_update() {
+    // Modi relais
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
         if (io_naam_is(i, "**haven"))  io_output[i] = (vaar_modus == MODE_HAVEN)  ? IO_AAN : IO_UIT;
         if (io_naam_is(i, "**zeilen")) io_output[i] = (vaar_modus == MODE_ZEILEN) ? IO_AAN : IO_UIT;
@@ -136,22 +144,54 @@ void io_verlichting_update() {
         if (io_naam_is(i, "**anker"))  io_output[i] = (vaar_modus == MODE_ANKER)  ? IO_AAN : IO_UIT;
     }
 
-    // Navigatielichten per vaarmodus
-    // ZEILEN: 3kl (rood/groen/wit gecombineerd) + heklicht
-    // MOTOR:  stoomlicht + heklicht + navi (aparte boordlichten)
-    // ANKER:  ankerlicht
-    // HAVEN:  alle navigatieverlichting uit
+    // Alle navigatielichten eerst uit
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
-        if (io_naam_is(i, "**L_3kl"))
-            io_output[i] = (vaar_modus == MODE_ZEILEN) ? IO_AAN : IO_UIT;
-        if (io_naam_is(i, "**L_navi"))
-            io_output[i] = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR) ? IO_AAN : IO_UIT;
-        if (io_naam_is(i, "**L_stoom"))
-            io_output[i] = (vaar_modus == MODE_MOTOR) ? IO_AAN : IO_UIT;
-        if (io_naam_is(i, "**L_hek"))
-            io_output[i] = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR) ? IO_AAN : IO_UIT;
-        if (io_naam_is(i, "**L_anker"))
-            io_output[i] = (vaar_modus == MODE_ANKER) ? IO_AAN : IO_UIT;
+        if (io_naam_is(i, "**L_3kl")   || io_naam_is(i, "**L_navi") ||
+            io_naam_is(i, "**L_stoom") || io_naam_is(i, "**L_hek")  ||
+            io_naam_is(i, "**L_anker"))
+            io_output[i] = IO_UIT;
+    }
+
+    // Clamp cfg index op geldig bereik per modus
+    byte max_cfg = 0;
+    if      (vaar_modus == MODE_ZEILEN) max_cfg = 1;
+    else if (vaar_modus == MODE_MOTOR)  max_cfg = 2;
+    else if (vaar_modus == MODE_ANKER)  max_cfg = 1;
+    if (licht_cfg_idx > max_cfg) licht_cfg_idx = 0;
+
+    // Navigatielichten per modus + configuratie
+    // ZEILEN cfg0: L_3kl; cfg1: L_navi + L_hek
+    // MOTOR  cfg0: L_stoom + L_hek + L_navi; cfg1: L_navi + L_anker; cfg2: L_3kl + L_stoom
+    // ANKER  cfg0: L_anker; cfg1: L_stoom + L_hek
+    // HAVEN: alles uit (al gedaan)
+    for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
+        switch (vaar_modus) {
+            case MODE_ZEILEN:
+                if (licht_cfg_idx == 0) {
+                    if (io_naam_is(i, "**L_3kl"))  io_output[i] = IO_AAN;
+                } else {
+                    if (io_naam_is(i, "**L_navi") || io_naam_is(i, "**L_hek")) io_output[i] = IO_AAN;
+                }
+                break;
+            case MODE_MOTOR:
+                if (licht_cfg_idx == 0) {
+                    if (io_naam_is(i, "**L_stoom") || io_naam_is(i, "**L_hek") ||
+                        io_naam_is(i, "**L_navi"))  io_output[i] = IO_AAN;
+                } else if (licht_cfg_idx == 1) {
+                    if (io_naam_is(i, "**L_navi") || io_naam_is(i, "**L_anker")) io_output[i] = IO_AAN;
+                } else {
+                    if (io_naam_is(i, "**L_3kl") || io_naam_is(i, "**L_stoom")) io_output[i] = IO_AAN;
+                }
+                break;
+            case MODE_ANKER:
+                if (licht_cfg_idx == 0) {
+                    if (io_naam_is(i, "**L_anker")) io_output[i] = IO_AAN;
+                } else {
+                    if (io_naam_is(i, "**L_stoom") || io_naam_is(i, "**L_hek")) io_output[i] = IO_AAN;
+                }
+                break;
+            default: break;
+        }
     }
 
     bool ext_aan = (licht_instelling == LICHT_AAN) ||
@@ -164,6 +204,21 @@ void io_verlichting_update() {
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
         if (io_naam_is(i, "**IL_wit"))  io_output[i] = int_wit  ? IO_AAN : IO_UIT;
         if (io_naam_is(i, "**IL_rood")) io_output[i] = int_rood ? IO_AAN : IO_UIT;
+    }
+}
+
+void io_zekering_check() {
+    if (vaar_modus == MODE_HAVEN) return;
+    for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
+        if ((io_naam_is(i, "**L_3kl") || io_naam_is(i, "**L_navi") ||
+             io_naam_is(i, "**L_stoom") || io_naam_is(i, "**L_hek") ||
+             io_naam_is(i, "**L_anker")) &&
+            io_output[i] == IO_AAN &&
+            io_licht_staat(i) == LSTATE_GEEN_SIGNAAL) {
+            licht_cfg_idx++;
+            io_verlichting_update();
+            return;
+        }
     }
 }
 

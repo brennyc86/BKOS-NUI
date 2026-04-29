@@ -1,4 +1,5 @@
 #include "screen_wifi.h"
+#include "screen_config.h"
 #include "nav_bar.h"
 
 // ─── State ──────────────────────────────────────────────────────────
@@ -21,119 +22,31 @@ static unsigned long wifi_kb_sloot = 0;
 #define WIFI_RIJEN_N 6
 #define WIFI_LIST_Y  (CONTENT_Y + 46)
 
-// ─── Toetsenbord voor wachtwoord ─────────────────────────────────────
-static const char* wkb_rijen[4] = {"1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM_!"};
-#define WKB_X       40
-#define WKB_W       (TFT_W - 80)
-#define WKB_INV_Y   (CONTENT_Y + 8)
-#define WKB_INV_H   44
-#define WKB_KEYS_Y  (WKB_INV_Y + WKB_INV_H + 8)
-#define WKB_TH      46
-#define WKB_BTN_Y   (WKB_KEYS_Y + 4 * (WKB_TH + 4) + 6)
-#define WKB_BTN_H   42
-
-static void wifi_kb_teken() {
-    tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_SURFACE);
-
-    // Invoerveld
-    tft.fillRoundRect(WKB_X, WKB_INV_Y, WKB_W, WKB_INV_H, 6, C_SURFACE2);
-    tft.drawRoundRect(WKB_X, WKB_INV_Y, WKB_W, WKB_INV_H, 6, C_CYAN);
-    tft.setTextSize(1);
+static void wifi_verbind_uitvoeren() {
+    wifi_staat = WIFI_ST_VERBINDEN;
+    tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    tft.setCursor(40, CONTENT_Y + 80);
+    tft.print("Verbinden met: "); tft.print(wifi_ssid_buf);
     tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(WKB_X + 10, WKB_INV_Y + 6);
-    tft.print("Wachtwoord voor: ");
-    tft.setTextColor(C_CYAN);
-    tft.print(wifi_ssid_buf);
-    tft.setTextSize(2);
-    tft.setTextColor(C_WHITE);
-    tft.setCursor(WKB_X + 10, WKB_INV_Y + 22);
-    // Toon sterretjes voor beveiliging
-    for (size_t i = 0; i < strlen(wifi_pass_buf); i++) tft.print("*");
-    tft.print("_");
-
-    // Toetsen
-    for (int rij = 0; rij < 4; rij++) {
-        const char* keys = wkb_rijen[rij];
-        int cnt = strlen(keys);
-        int tw = WKB_W / cnt;
-        for (int k = 0; k < cnt; k++) {
-            int kx = WKB_X + k * tw;
-            int ky = WKB_KEYS_Y + rij * (WKB_TH + 4);
-            tft.fillRoundRect(kx + 2, ky + 2, tw - 4, WKB_TH - 4, 5, C_SURFACE2);
-            tft.drawRoundRect(kx + 2, ky + 2, tw - 4, WKB_TH - 4, 5, C_SURFACE3);
-            tft.setTextSize(2);
-            tft.setTextColor(C_TEXT);
-            tft.setCursor(kx + (tw - 12) / 2, ky + (WKB_TH - 16) / 2);
-            tft.print(keys[k]);
-        }
-    }
-
-    ui_knop(WKB_X,       WKB_BTN_Y, 110, WKB_BTN_H, "< DEL",     C_SURFACE2, C_RED_BRIGHT);
-    ui_knop(WKB_X + 118, WKB_BTN_Y, 160, WKB_BTN_H, "SPATIE",    C_SURFACE2, C_TEXT);
-    ui_knop(WKB_X + 286, WKB_BTN_Y, 180, WKB_BTN_H, "VERBINDEN", C_GREEN,    C_TEXT_DARK);
-    ui_knop(WKB_X + 474, WKB_BTN_Y, 100, WKB_BTN_H, "CANCEL",    C_SURFACE2, C_TEXT_DIM);
-}
-
-static void wifi_kb_run(int x, int y) {
-    for (int rij = 0; rij < 4; rij++) {
-        const char* keys = wkb_rijen[rij];
-        int cnt = strlen(keys);
-        int tw = WKB_W / cnt;
-        int ky = WKB_KEYS_Y + rij * (WKB_TH + 4);
-        if (y >= ky && y < ky + WKB_TH) {
-            int k = (x - WKB_X) / tw;
-            if (k >= 0 && k < cnt) {
-                int len = strlen(wifi_pass_buf);
-                if (len < 63) { wifi_pass_buf[len] = keys[k]; wifi_pass_buf[len+1] = '\0'; }
-                wifi_kb_teken();
-                return;
-            }
-        }
-    }
-
-    if (y >= WKB_BTN_Y && y < WKB_BTN_Y + WKB_BTN_H) {
-        if (x >= WKB_X && x < WKB_X + 110) {
-            int len = strlen(wifi_pass_buf);
-            if (len > 0) wifi_pass_buf[len - 1] = '\0';
-            wifi_kb_teken();
-        } else if (x >= WKB_X + 118 && x < WKB_X + 278) {
-            int len = strlen(wifi_pass_buf);
-            if (len < 63) { wifi_pass_buf[len] = ' '; wifi_pass_buf[len+1] = '\0'; }
-            wifi_kb_teken();
-        } else if (x >= WKB_X + 286 && x < WKB_X + 466) {
-            // Verbinden
-            wifi_staat = WIFI_ST_VERBINDEN;
-            tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);
-            tft.setTextSize(2);
-            tft.setTextColor(C_CYAN);
-            tft.setCursor(40, CONTENT_Y + 80);
-            tft.print("Verbinden met: ");
-            tft.print(wifi_ssid_buf);
-            tft.setTextColor(C_TEXT_DIM);
-            tft.setCursor(40, CONTENT_Y + 110);
-            tft.print("Even geduld...");
-            bool ok = wifi_verbind(wifi_ssid_buf, wifi_pass_buf);
-            tft.fillRect(40, CONTENT_Y + 80, TFT_W - 80, 80, C_BG);
-            if (ok) {
-                wifi_staat = WIFI_ST_KLAAR;
-                tft.setTextColor(C_GREEN);
-                tft.setCursor(40, CONTENT_Y + 80);
-                tft.print("Verbonden! Instellingen opgeslagen.");
-                delay(1500);
-                actief_scherm = SCREEN_OTA;
-                scherm_bouwen = true;
-            } else {
-                wifi_staat = WIFI_ST_LIJST;
-                tft.setTextColor(C_RED_BRIGHT);
-                tft.setCursor(40, CONTENT_Y + 80);
-                tft.print("Verbinding mislukt. Probeer opnieuw.");
-                delay(2000);
-                scherm_bouwen = true;
-            }
-        } else if (x >= WKB_X + 474) {
-            wifi_staat = WIFI_ST_LIJST;
-            scherm_bouwen = true;
-        }
+    tft.setCursor(40, CONTENT_Y + 110); tft.print("Even geduld...");
+    bool ok = wifi_verbind(wifi_ssid_buf, wifi_pass_buf);
+    tft.fillRect(40, CONTENT_Y + 80, TFT_W - 80, 80, C_BG);
+    if (ok) {
+        wifi_staat = WIFI_ST_KLAAR;
+        tft.setTextColor(C_GREEN);
+        tft.setCursor(40, CONTENT_Y + 80);
+        tft.print("Verbonden! Instellingen opgeslagen.");
+        delay(1500);
+        actief_scherm = SCREEN_OTA;
+        scherm_bouwen = true;
+    } else {
+        wifi_staat = WIFI_ST_LIJST;
+        tft.setTextColor(C_RED_BRIGHT);
+        tft.setCursor(40, CONTENT_Y + 80);
+        tft.print("Verbinding mislukt. Probeer opnieuw.");
+        delay(2000);
+        scherm_bouwen = true;
     }
 }
 
@@ -226,7 +139,7 @@ void screen_wifi_teken() {
                       "WIFI WISSEN",  "Verbinding vergeten — herstart vereist",
                       C_SURFACE, C_RED_BRIGHT, C_RED_BRIGHT, false);
     } else if (wifi_staat == WIFI_ST_WACHTWOORD) {
-        wifi_kb_teken();
+        screen_config_toetsenbord_teken();
     } else {
         wifi_lijst_teken();
     }
@@ -245,7 +158,17 @@ void screen_wifi_run(int x, int y, bool aanraking) {
     }
 
     if (wifi_staat == WIFI_ST_WACHTWOORD) {
-        wifi_kb_run(x, y);
+        bool klaar = screen_config_toetsenbord_run(x, y);
+        if (klaar) {
+            if (cfg_kb_opgeslagen) {
+                strncpy(wifi_pass_buf, cfg_invoer, 63);
+                wifi_pass_buf[63] = '\0';
+                wifi_verbind_uitvoeren();
+            } else {
+                wifi_staat = WIFI_ST_LIJST;
+                scherm_bouwen = true;
+            }
+        }
         return;
     }
 
@@ -295,7 +218,18 @@ void screen_wifi_run(int x, int y, bool aanraking) {
                 wifi_ssid_buf[32] = '\0';
                 wifi_pass_buf[0] = '\0';
                 wifi_staat = WIFI_ST_WACHTWOORD;
-                wifi_kb_teken();
+                // Stel config-toetsenbord in voor wachtwoord invoer
+                cfg_invoer[0]      = '\0';
+                cfg_kb_info_mode   = true;
+                cfg_kb_wachtwoord  = true;
+                cfg_kb_opgeslagen  = false;
+                cfg_kb_numeriek    = false;
+                cfg_bewerk_zeilnr  = false;
+                cfg_kb_meteo_stad  = false;
+                snprintf(cfg_kb_label, 24, "Ww %s:", wifi_ssid_buf);
+                kb_hoofdletters    = true;
+                kb_sym             = false;
+                screen_config_toetsenbord_teken();
             }
             return;
         }

@@ -34,6 +34,7 @@ bool cfg_kb_info_mode           = false;
 bool cfg_kb_opgeslagen          = false;
 bool cfg_kb_numeriek            = false;
 bool cfg_kb_meteo_stad          = false;
+bool cfg_kb_wachtwoord          = false;
 char cfg_kb_label[24]           = "Naam:";
 static unsigned long cfg_kb_sloot = 0;
 static bool cfg_preset_menu     = false;
@@ -551,8 +552,9 @@ static void cfg_instellingen_run(int x, int y) {
     }
 
     int iy = zy + 50;
-    // IO Configuratie
+    // IO Configuratie — PIN vereist
     if (y >= iy && y < iy + 50) {
+        if (!config_ontgrendeld) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_IO_CFG;
         scherm_bouwen = true;
         return;
@@ -704,7 +706,12 @@ void screen_config_toetsenbord_teken() {
     tft.print(cfg_kb_label[0] ? cfg_kb_label : "Naam:");
     tft.print(" ");
     tft.setTextColor(C_WHITE);
-    tft.print(cfg_invoer); tft.print("_");
+    if (cfg_kb_wachtwoord) {
+        for (size_t i = 0; i < strlen(cfg_invoer); i++) tft.print("*");
+    } else {
+        tft.print(cfg_invoer);
+    }
+    tft.print("_");
 
     if (!cfg_bewerk_zeilnr && !cfg_kb_info_mode && !cfg_kb_numeriek) cfg_chips_teken();
 
@@ -840,13 +847,15 @@ bool screen_config_toetsenbord_run(int x, int y) {
                 cfg_toetsenbord_actief = false;
                 cfg_kb_info_mode  = false;
                 cfg_kb_numeriek   = false;
+                cfg_kb_wachtwoord = false;
                 return true;
             } else if (x >= KB_X + KB_CAN_X) {
-                cfg_bewerk_zeilnr     = false;
+                cfg_bewerk_zeilnr      = false;
                 cfg_toetsenbord_actief = false;
-                cfg_kb_info_mode      = false;
-                cfg_kb_opgeslagen     = false;
-                cfg_kb_numeriek       = false;
+                cfg_kb_info_mode       = false;
+                cfg_kb_opgeslagen      = false;
+                cfg_kb_numeriek        = false;
+                cfg_kb_wachtwoord      = false;
                 return true;
             }
         }
@@ -904,6 +913,7 @@ bool screen_config_toetsenbord_run(int x, int y) {
                 cfg_toetsenbord_actief = false;
                 cfg_kb_info_mode       = false;
                 cfg_kb_numeriek        = false;
+                cfg_kb_wachtwoord      = false;
                 kb_sym                 = false;
                 actief_scherm          = SCREEN_METEO;
                 scherm_bouwen          = true;
@@ -921,8 +931,9 @@ bool screen_config_toetsenbord_run(int x, int y) {
                 hw_io_namen_opslaan();
             }
             cfg_toetsenbord_actief = false;
-            cfg_kb_info_mode  = false;
-            cfg_kb_numeriek   = false;
+            cfg_kb_info_mode       = false;
+            cfg_kb_numeriek        = false;
+            cfg_kb_wachtwoord      = false;
             kb_sym = false;
             return true;
         } else if (x >= KB_X + KB_CAN_X) {
@@ -933,6 +944,7 @@ bool screen_config_toetsenbord_run(int x, int y) {
                 cfg_kb_info_mode       = false;
                 cfg_kb_opgeslagen      = false;
                 cfg_kb_numeriek        = false;
+                cfg_kb_wachtwoord      = false;
                 kb_sym                 = false;
                 actief_scherm          = SCREEN_METEO;
                 scherm_bouwen          = true;
@@ -943,6 +955,7 @@ bool screen_config_toetsenbord_run(int x, int y) {
             cfg_kb_info_mode       = false;
             cfg_kb_opgeslagen      = false;
             cfg_kb_numeriek        = false;
+            cfg_kb_wachtwoord      = false;
             kb_sym                 = false;
             return true;
         }

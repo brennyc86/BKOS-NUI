@@ -28,6 +28,7 @@ extern bool cfg_kb_info_mode;    // true = geen chips, OPSLAAN laat opslaan aan 
 extern bool cfg_kb_opgeslagen;   // true = OPSLAAN gekozen, false = CANCEL
 extern bool cfg_kb_numeriek;     // true = alleen cijfertoetsenbord (0-9 + komma)
 extern bool cfg_kb_meteo_stad;   // true = keyboard geopend vanuit METEO scherm
+extern bool cfg_kb_wachtwoord;   // true = invoer als sterretjes tonen
 extern char cfg_kb_label[24];    // label dat in het invoerveld getoond wordt
 extern char cfg_invoer[];
 extern byte cfg_tab;

@@ -675,11 +675,14 @@ void screen_main_run(int x, int y, bool aanraking) {
     for (int i = 0; i < 4; i++) {
         if (x >= modi[i].x && x < modi[i].x + MKNOP_W &&
             y >= modi[i].y && y < modi[i].y + MKNOP_H) {
-            if (vaar_modus != modi[i].modus) {
+            if (vaar_modus == modi[i].modus) {
+                licht_cfg_idx++;  // zelfde modus: volgende lichconfiguratie
+            } else {
                 vaar_modus = modi[i].modus;
-                io_verlichting_update();
-                gewijzigd = true;
+                licht_cfg_idx = 0;  // nieuwe modus: standaard configuratie
             }
+            io_verlichting_update();
+            gewijzigd = true;
         }
     }
 

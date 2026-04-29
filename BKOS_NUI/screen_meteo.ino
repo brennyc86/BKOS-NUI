@@ -176,32 +176,63 @@ static void meteo_weer_teken() {
 
     // ── Status header ────────────────────────────────────────────────────
     tft.fillRoundRect(4, y, TFT_W - 8, 22, 4, C_SURFACE);
-    tft.setTextColor(C_CYAN);
+    tft.setTextColor(meteo_debug_body_len > 0 ? C_CYAN : C_RED_BRIGHT);
     tft.setCursor(10, y + 4);
     if (meteo_debug_body_len == 0) {
-        tft.print("HTTP: geen response (0 bytes)  — WiFi verbonden: ");
+        tft.print("HTTP: geen response (0 bytes)  WiFi: ");
         tft.print(wifi_verbonden ? "JA" : "NEE");
     } else {
-        char hdr[64];
-        snprintf(hdr, sizeof(hdr), "HTTP OK  %d bytes  temp[0]=%.1f C", meteo_debug_body_len, meteo_temp);
+        char hdr[80];
+        snprintf(hdr, sizeof(hdr), "HTTP OK  %d bytes  WiFi:%s",
+            meteo_debug_body_len, wifi_verbonden ? "ja" : "nee");
         tft.print(hdr);
+    }
+    y += 26;
 
-        // Zonsopgang/-ondergang als geparsed
+    // ── Geparsede waarden ─────────────────────────────────────────────────
+    if (meteo_debug_body_len > 0) {
+        tft.fillRoundRect(4, y, TFT_W - 8, 42, 4, RGB565(5, 20, 40));
+        tft.setTextColor(C_TEXT_DIM); tft.setCursor(10, y + 4);
+        tft.print("current:");
+        tft.setTextColor(C_TEXT);
+        char pbuf[120];
+        snprintf(pbuf, sizeof(pbuf), "  %.1fC  B%d(%s %.1fm/s)  stoten B%d  code=%d  %s",
+            meteo_temp,
+            meteo_beaufort(meteo_wind_ms), meteo_wind_richting(meteo_wind_dir), meteo_wind_ms,
+            meteo_beaufort(meteo_wind_max),
+            meteo_weer_code, meteo_is_dag ? "dag" : "nacht");
+        tft.print(pbuf);
+
+        tft.setTextColor(C_TEXT_DIM); tft.setCursor(10, y + 18);
+        tft.print("daily[0]:");
+        tft.setTextColor(C_TEXT);
+        char dbuf[80];
+        snprintf(dbuf, sizeof(dbuf), "  max=%.1f min=%.1f  wind=%s B%d  code=%d",
+            meteo_dag_temp_max[0], meteo_dag_temp_min[0],
+            meteo_wind_richting(meteo_dag_wind_dir[0]), meteo_beaufort(meteo_dag_wind[0]),
+            meteo_dag_code[0]);
+        tft.print(dbuf);
+
+        tft.setTextColor(C_TEXT_DIM); tft.setCursor(10, y + 32);
+        tft.print("zon:");
+        tft.setTextColor(C_TEXT);
         if (meteo_zonsopgang > 0) {
             struct tm* sr = localtime(&meteo_zonsopgang);
             struct tm* ss = localtime(&meteo_zonsondergang);
-            char zonbuf[32];
-            snprintf(zonbuf, sizeof(zonbuf), "  zon op %02d:%02d  onder %02d:%02d",
+            char zbuf[40];
+            snprintf(zbuf, sizeof(zbuf), "  op %02d:%02d  onder %02d:%02d",
                 sr->tm_hour, sr->tm_min, ss->tm_hour, ss->tm_min);
-            tft.print(zonbuf);
-        }
+            tft.print(zbuf);
+        } else { tft.print("  niet geparsed"); }
+        y += 46;
     }
-    y += 26;
 
     // ── Ruwe response tekst ───────────────────────────────────────────────
     tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(6, y);
-    tft.print("URL: https://api.open-meteo.com/...latitude=52.52&longitude=5.41");
+    char ulbuf[60];
+    snprintf(ulbuf, sizeof(ulbuf), "URL: ...lat=%.4f lon=%.4f&current=...daily=...&wind_unit=kn", meteo_lat, meteo_lon);
+    tft.print(ulbuf);
     y += LH + 2;
 
     if (meteo_debug_body_len > 0) {

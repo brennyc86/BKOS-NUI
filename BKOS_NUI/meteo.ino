@@ -244,12 +244,14 @@ const char* meteo_wind_richting(int graden) {
 
 // ─── Weer ophalen (diagnostische URL — hardcoded voor debug) ─────────────
 void meteo_weer_ophalen() {
-    // DIAGNOSTIEK: variabele locatie, rest van URL hardcoded
-    char url[256];
+    // DIAGNOSTIEK: variabele locatie + current/daily/hourly voor UI opbouw
+    char url[512];
     snprintf(url, sizeof(url),
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=%.4f&longitude=%.4f"
-        "&daily=sunrise,sunset"
+        "&current=temperature_2m,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
+        "&daily=sunrise,sunset,temperature_2m_max,temperature_2m_min,weather_code"
+        ",wind_speed_10m_max,wind_direction_10m_dominant"
         "&hourly=temperature_2m,precipitation"
         "&timezone=Europe%%2FBerlin&past_days=0&forecast_days=3&wind_speed_unit=kn",
         meteo_lat, meteo_lon);
@@ -260,7 +262,6 @@ void meteo_weer_ophalen() {
     String body = http_get(url, true);
     meteo_debug_body_len = (int)body.length();
 
-    // Sla eerste METEO_DEBUG_LEN-1 bytes op voor weergave op scherm
     if (meteo_debug_body_len > 0) {
         int opslaan = min(meteo_debug_body_len, METEO_DEBUG_LEN - 1);
         strncpy(meteo_debug_body, body.c_str(), opslaan);
@@ -269,20 +270,34 @@ void meteo_weer_ophalen() {
 
     if (meteo_debug_body_len < 50) return;
 
-    // Parseer wat er in zit: daily sunrise/sunset, hourly temp[0]
+    // Current blok
+    int cur_start = body.indexOf("\"current\":");
+    if (cur_start >= 0) {
+        String cur = body.substring(cur_start, body.indexOf('}', cur_start) + 1);
+        meteo_temp      = json_float(cur, "temperature_2m");
+        meteo_wind_ms   = json_float(cur, "wind_speed_10m") / 1.944f;   // kn -> m/s
+        meteo_wind_max  = json_float(cur, "wind_gusts_10m") / 1.944f;
+        meteo_wind_dir  = json_int(cur,   "wind_direction_10m");
+        meteo_weer_code = json_int(cur,   "weather_code");
+        meteo_is_dag    = json_int(cur,   "is_day") == 1;
+    }
+
+    // Daily blok
     int daily_start = body.indexOf("\"daily\":");
     if (daily_start >= 0) {
         String daily = body.substring(daily_start);
+        meteo_temp_max = json_array_nth(daily, "temperature_2m_max", 0);
+        for (int i = 0; i < 4; i++) {
+            meteo_dag_temp_max[i] = json_array_nth(daily, "temperature_2m_max", i);
+            meteo_dag_temp_min[i] = json_array_nth(daily, "temperature_2m_min", i);
+            meteo_dag_wind[i]     = json_array_nth(daily, "wind_speed_10m_max", i) / 1.944f;
+            meteo_dag_wind_dir[i] = (int)json_array_nth(daily, "wind_direction_10m_dominant", i);
+            meteo_dag_code[i]     = (int)json_array_nth(daily, "weather_code", i);
+        }
         String sr = json_array_str_nth(daily, "sunrise", 0);
         String ss = json_array_str_nth(daily, "sunset",  0);
         if (sr.length() >= 16) meteo_zonsopgang    = iso_naar_epoch(sr);
         if (ss.length() >= 16) meteo_zonsondergang = iso_naar_epoch(ss);
-    }
-
-    int hourly_start = body.indexOf("\"hourly\":");
-    if (hourly_start >= 0) {
-        String hourly = body.substring(hourly_start);
-        meteo_temp = json_array_nth(hourly, "temperature_2m", 0);
     }
 
     meteo_geladen = true;

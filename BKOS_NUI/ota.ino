@@ -143,10 +143,25 @@ bool ota_download_toepassen(String url) {
 
     if (!Update.begin(len)) { http.end(); return false; }
 
+    // Voortgangsscherm initialiseren
+    tft.fillScreen(C_BG);
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    tft.setCursor(50, 80); tft.print("Firmware downloaden...");
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(50, 112);
+    char szb[32]; snprintf(szb, sizeof(szb), "Grootte: %d KB", len / 1024);
+    tft.print(szb);
+    tft.setCursor(50, 124); tft.print("Niet uitschakelen!");
+
+    // Lege voortgangsbalk tekenen
+    int bx = 50, by = 160, bw = TFT_W - 100, bh = 36;
+    tft.drawRoundRect(bx, by, bw, bh, 6, C_SURFACE2);
+
     WiFiClient* stream = http.getStreamPtr();
     size_t written = 0;
     uint8_t buf[512];
     unsigned long last_data = millis();
+    int laaste_pct = -1;
 
     while (written < (size_t)len) {
         if (stream->available()) {
@@ -154,10 +169,30 @@ bool ota_download_toepassen(String url) {
             if (rd > 0) { Update.write(buf, rd); written += rd; last_data = millis(); }
         }
         if (millis() - last_data > 15000) { Update.abort(); http.end(); return false; }
+
+        // Voortgangsbalk bijwerken (alleen bij %-verandering)
+        int pct = (int)(written * 100UL / (size_t)len);
+        if (pct != laaste_pct) {
+            laaste_pct = pct;
+            int fill = (int)((long)bw * pct / 100);
+            tft.fillRoundRect(bx + 1, by + 1, bw - 2, bh - 2, 5, C_BG);
+            if (fill > 0) tft.fillRoundRect(bx + 1, by + 1, fill - 2, bh - 2, 5, C_GREEN);
+            tft.setTextSize(2); tft.setTextColor(C_TEXT);
+            tft.fillRect(bx, by + bh + 8, 160, 20, C_BG);
+            tft.setCursor(bx, by + bh + 8);
+            char pb[24];
+            snprintf(pb, sizeof(pb), "%d%%  %d / %d KB", pct, (int)(written/1024), len/1024);
+            tft.print(pb);
+        }
         yield();
     }
     http.end();
     if (!Update.end()) return false;
+
+    tft.fillRect(bx, by + bh + 8, 300, 20, C_BG);
+    tft.setTextSize(2); tft.setTextColor(C_GREEN);
+    tft.setCursor(bx, by + bh + 8); tft.print("100%  Klaar! Herstarten...");
+    delay(1200);
     ESP.restart();
     return true;
 }

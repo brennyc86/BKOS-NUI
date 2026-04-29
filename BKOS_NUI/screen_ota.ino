@@ -153,12 +153,6 @@ void screen_ota_run(int x, int y, bool aanraking) {
             } else if (x >= ox + 32 + bw && x < ox + 32 + bw + bw) {
                 // BEVESTIG — blanco firmware flashen
                 ota_verwijder_bevestig = false;
-                tft.fillScreen(C_BG);
-                tft.setTextSize(2); tft.setTextColor(C_RED_BRIGHT);
-                tft.setCursor(50, 100); tft.print("Blanco firmware downloaden...");
-                tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-                tft.setCursor(50, 140); tft.print("Even geduld — dit kan 30-60 seconden duren.");
-                tft.setCursor(50, 160); tft.print("Het apparaat herstart automatisch.");
                 ota_download_toepassen("https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/BKOS_blanco/firmware.bin");
             }
         }
@@ -178,15 +172,7 @@ void screen_ota_run(int x, int y, bool aanraking) {
     if (y >= OTA_BTN_Y2 && y < OTA_BTN_Y2 + OTA_BTN_H) {
         bool update_beschikbaar = (ota_versie_github.length() > 0 &&
                                     ota_versie_github != BKOS_NUI_VERSIE);
-        if (update_beschikbaar) {
-            tft.fillScreen(C_BG);
-            tft.setTextSize(3); tft.setTextColor(C_CYAN);
-            tft.setCursor(50, 100); tft.print("Update starten...");
-            tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
-            tft.setCursor(50, 160);
-            tft.print(BKOS_NUI_VERSIE); tft.print(" > "); tft.print(ota_versie_github);
-            ota_git_update();
-        }
+        if (update_beschikbaar) ota_git_update();
         return;
     }
 

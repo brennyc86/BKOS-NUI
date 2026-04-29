@@ -211,6 +211,12 @@ Touch debouncing via `touch_verwerkt` flag; eerste touch na display wake wordt g
 | 64 | Sessie 8 | Vaarmodi navigatielichten: ZEILEN→L_3kl+L_hek; MOTOR→L_stoom+L_hek; ANKER→L_anker; HAVEN→alles uit | ✅ Afgerond |
 | 65 | Sessie 8 | IO NAMEN tab verwijderd uit CONFIG scherm (CFG_TAB_H=0, tab UI weg) | ✅ Afgerond |
 | 66 | Sessie 8 | PIN beveiliging CONFIG: cijfertoetsenbord, kleur/boot/zeilnr achter PIN; helderheid vrij; PIN wijzigen → SPIFFS /bkos_pin.txt | ✅ Afgerond |
+| 67 | Sessie 9 | Vaarmodi lichtconfiguraties: ZEILEN cfg0=L_3kl, cfg1=L_navi+L_hek; MOTOR cfg0=L_stoom+L_hek+L_navi, cfg1=L_navi+L_anker, cfg2=L_3kl+L_stoom; ANKER cfg0=L_anker, cfg1=L_stoom+L_hek | ✅ Afgerond |
+| 68 | Sessie 9 | licht_cfg_idx cyclus: zelfde modus klikken → volgende cfg; andere modus → reset naar 0 | ✅ Afgerond |
+| 69 | Sessie 9 | io_zekering_check(): elke 5s, detecteer LSTATE_GEEN_SIGNAAL op actief nav licht → auto volgende cfg | ✅ Afgerond |
+| 70 | Sessie 9 | WiFi wachtwoord toetsenbord: volledig CONFIG keyboard (CAPS/SYM/kleine letters/speciale tekens), wachtwoord als sterretjes | ✅ Afgerond |
+| 71 | Sessie 9 | IO CONFIGURATIE achter PIN beveiliging in CONFIG scherm | ✅ Afgerond |
+| 72 | Sessie 9 | BKOS-NUI VERWIJDEREN knop in OTA scherm: bevestigingsoverlay, flash blanco firmware van brennyc86/BKOS-blanco | ✅ Afgerond |
 
 ---
 

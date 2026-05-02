@@ -22,7 +22,7 @@ uint8_t io_actie_param[MAX_IO_KANALEN];
 #define IO_CFG_BESTAND   "/io_cfg.csv"
 
 void hw_io_setup() {
-    IO_SERIAL.begin(IO_BAUD);
+    Serial.begin(IO_BAUD);
     memset(io_output,    0, sizeof(io_output));
     memset(io_input,     0, sizeof(io_input));
     memset(io_gewijzigd, 0, sizeof(io_gewijzigd));

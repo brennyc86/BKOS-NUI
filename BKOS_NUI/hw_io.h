@@ -3,7 +3,6 @@
 #include <SPIFFS.h>
 
 // UART naar ATtiny3217 — standaard Serial (UART0, USB uitgang)
-#define IO_SERIAL       Serial
 #define IO_BAUD         9600
 
 // IO limieten

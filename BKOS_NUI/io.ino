@@ -9,16 +9,16 @@ static char io_buf[4];
 
 static bool io_wacht_byte(char &c, unsigned long timeout_ms = IO_TIMEOUT) {
     unsigned long t = millis();
-    while (!IO_SERIAL.available()) {
+    while (!Serial.available()) {
         if (millis() - t > timeout_ms) return false;
         yield();
     }
-    c = IO_SERIAL.read();
+    c = Serial.read();
     return true;
 }
 
 void io_boot() {
-    IO_SERIAL.flush();
+    Serial.flush();
     io_detect();
 }
 
@@ -26,25 +26,25 @@ void io_detect() {
     io_aparaten_cnt = 0;
     io_kanalen_cnt  = 0;
 
-    IO_SERIAL.print("IOD\n");   // newline vereist (origineel protocol)
+    Serial.print("IOD\n");   // newline vereist (origineel protocol)
     delay(50);
-    while (IO_SERIAL.available()) IO_SERIAL.read();
+    while (Serial.available()) Serial.read();
 
     for (int m = 0; m < MAX_MODULES; m++) {
-        IO_SERIAL.print("00000000");
+        Serial.print("00000000");
 
         // Wacht op eerste byte (ATtiny heeft tijd nodig)
         unsigned long t = millis();
-        while (!IO_SERIAL.available() && millis() - t < 500) delay(10);
-        if (!IO_SERIAL.available()) break;
+        while (!Serial.available() && millis() - t < 500) delay(10);
+        if (!Serial.available()) break;
 
         // Lees 8 bits (LSB eerst)
         byte id  = 0;
         int  bit = 0;
         unsigned long tbit = millis();
         while (bit < 8) {
-            if (IO_SERIAL.available()) {
-                char c = IO_SERIAL.read();
+            if (Serial.available()) {
+                char c = Serial.read();
                 if (c == '1') id |= (1 << bit);
                 bit++;
                 tbit = millis();
@@ -60,9 +60,9 @@ void io_detect() {
         io_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
     }
 
-    IO_SERIAL.print('\n');
+    Serial.print('\n');
     delay(50);
-    while (IO_SERIAL.available()) IO_SERIAL.read();
+    while (Serial.available()) Serial.read();
 }
 
 void io_cyclus() {
@@ -72,23 +72,23 @@ void io_cyclus() {
     int n = min(io_kanalen_cnt, MAX_IO_KANALEN);
     if (n == 0) { io_actief = false; return; }
 
-    while (IO_SERIAL.available()) IO_SERIAL.read();
-    IO_SERIAL.print("IO\n");
+    while (Serial.available()) Serial.read();
+    Serial.print("IO\n");
     delay(10);
-    while (IO_SERIAL.available()) IO_SERIAL.read();
+    while (Serial.available()) Serial.read();
 
     // Stuur eerste min(8,n) outputs in omgekeerde volgorde (shift-register pipeline)
     int eerste = min(8, n);
     for (int i = 0; i < eerste; i++) {
         byte out = io_output[n - (i + 1)];
-        IO_SERIAL.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
+        Serial.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
     }
 
     // Interleaved: per kanaal wacht op input, stuur daarna volgend output
     for (int i = 0; i < n; i++) {
         delay(25);
         char c = '0';
-        if (IO_SERIAL.available()) c = IO_SERIAL.read();
+        if (Serial.available()) c = Serial.read();
 
         bool nieuw = (c == '1');
         if (nieuw != io_input[i]) {
@@ -103,13 +103,13 @@ void io_cyclus() {
 
         if (i + 8 < n) {
             byte out = io_output[n - (i + 9)];
-            IO_SERIAL.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
+            Serial.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
         } else if (i + 8 == n) {
-            IO_SERIAL.print('\n');
+            Serial.print('\n');
         }
     }
 
-    while (IO_SERIAL.available()) IO_SERIAL.read();
+    while (Serial.available()) Serial.read();
     io_runned = true;
     io_actief = false;
     io_gecheckt = millis();

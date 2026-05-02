@@ -26,31 +26,42 @@ void io_detect() {
     io_aparaten_cnt = 0;
     io_kanalen_cnt  = 0;
 
-    IO_SERIAL.print("IOD");
+    IO_SERIAL.print("IOD\n");   // newline vereist (origineel protocol)
     delay(50);
-    IO_SERIAL.flush();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
 
     for (int m = 0; m < MAX_MODULES; m++) {
         IO_SERIAL.print("00000000");
-        delay(10);
 
-        byte id = 0;
-        bool ok = true;
-        for (int b = 0; b < 8; b++) {
-            char c;
-            if (!io_wacht_byte(c, 500)) { ok = false; break; }
-            if (c == '1') id |= (1 << b);
+        // Wacht op eerste byte (ATtiny heeft tijd nodig)
+        unsigned long t = millis();
+        while (!IO_SERIAL.available() && millis() - t < 500) delay(10);
+        if (!IO_SERIAL.available()) break;
+
+        // Lees 8 bits (LSB eerst)
+        byte id  = 0;
+        int  bit = 0;
+        unsigned long tbit = millis();
+        while (bit < 8) {
+            if (IO_SERIAL.available()) {
+                char c = IO_SERIAL.read();
+                if (c == '1') id |= (1 << bit);
+                bit++;
+                tbit = millis();
+            } else if (millis() - tbit > 150) {
+                break;
+            }
+            delay(2);
         }
-        if (!ok) break;
+        if (bit < 8) break;      // timeout — geen volledig ID
         if (id == 0 || id == 255) break;
 
         io_aparaten[io_aparaten_cnt++] = id;
-
-        int kanalen = (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
-        io_kanalen_cnt += kanalen;
+        io_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
     }
 
     IO_SERIAL.print('\n');
+    delay(50);
     while (IO_SERIAL.available()) IO_SERIAL.read();
 }
 
@@ -58,58 +69,63 @@ void io_cyclus() {
     if (io_actief) return;
     io_actief = true;
 
-    IO_SERIAL.print("IO");
+    int n = min(io_kanalen_cnt, MAX_IO_KANALEN);
+    if (n == 0) { io_actief = false; return; }
 
-    int kanaal = 0;
-    for (int m = 0; m < io_aparaten_cnt; m++) {
-        int kanalen = (io_aparaten[m] == MODULE_LOGICA16 || io_aparaten[m] == MODULE_SCHAKEL16) ? 16 : 8;
-        for (int k = 0; k < kanalen; k++) {
-            if (kanaal < MAX_IO_KANALEN) {
-                byte out = io_output[kanaal];
-                IO_SERIAL.print((out == IO_AAN || out == IO_INV_AAN || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
-            }
-            kanaal++;
-        }
-    }
-
-    // Lees inputs — geen delay() per kanaal, io_wacht_byte regelt de timing
-    kanaal = 0;
-    for (int m = 0; m < io_aparaten_cnt; m++) {
-        int kanalen = (io_aparaten[m] == MODULE_LOGICA16 || io_aparaten[m] == MODULE_SCHAKEL16) ? 16 : 8;
-        for (int k = 0; k < kanalen; k++) {
-            char c;
-            if (kanaal < MAX_IO_KANALEN) {
-                // Eerste byte per module krijgt meer tijd, daarna gaat het snel
-                unsigned long t = (k == 0) ? 100 : 30;
-                if (io_wacht_byte(c, t)) {
-                    bool nieuw = (c == '1');
-                    if (nieuw != io_input[kanaal]) {
-                        if (io_richting[kanaal] == IO_RICHTING_IN) {
-                            io_actie_uitvoeren(
-                                nieuw ? io_actie_aan[kanaal] : io_actie_uit[kanaal],
-                                io_actie_param[kanaal]);
-                        }
-                        io_input[kanaal] = nieuw;
-                        io_gewijzigd[kanaal] = true;
-                    }
-                }
-            }
-            kanaal++;
-        }
-    }
-
-    IO_SERIAL.print('\n');
+    while (IO_SERIAL.available()) IO_SERIAL.read();
+    IO_SERIAL.print("IO\n");
+    delay(10);
     while (IO_SERIAL.available()) IO_SERIAL.read();
 
+    // Stuur eerste min(8,n) outputs in omgekeerde volgorde (shift-register pipeline)
+    int eerste = min(8, n);
+    for (int i = 0; i < eerste; i++) {
+        byte out = io_output[n - (i + 1)];
+        IO_SERIAL.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
+    }
+
+    // Interleaved: per kanaal wacht op input, stuur daarna volgend output
+    for (int i = 0; i < n; i++) {
+        delay(25);
+        char c = '0';
+        if (IO_SERIAL.available()) c = IO_SERIAL.read();
+
+        bool nieuw = (c == '1');
+        if (nieuw != io_input[i]) {
+            if (io_richting[i] == IO_RICHTING_IN) {
+                io_actie_uitvoeren(
+                    nieuw ? io_actie_aan[i] : io_actie_uit[i],
+                    io_actie_param[i]);
+            }
+            io_input[i] = nieuw;
+            io_gewijzigd[i] = true;
+        }
+
+        if (i + 8 < n) {
+            byte out = io_output[n - (i + 9)];
+            IO_SERIAL.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
+        } else if (i + 8 == n) {
+            IO_SERIAL.print('\n');
+        }
+    }
+
+    while (IO_SERIAL.available()) IO_SERIAL.read();
     io_runned = true;
     io_actief = false;
     io_gecheckt = millis();
 }
 
 void io_loop() {
+    static unsigned long detectie_gecheckt = 0;
+    if (io_aparaten_cnt == 0 && millis() - detectie_gecheckt >= IO_DETECTIE_INT) {
+        detectie_gecheckt = millis();
+        io_detect();
+    }
+
     if (millis() - io_gecheckt >= IO_INTERVAL) {
         io_cyclus();
     }
+
     static unsigned long zekering_gecheckt = 0;
     if (millis() - zekering_gecheckt >= 5000) {
         zekering_gecheckt = millis();

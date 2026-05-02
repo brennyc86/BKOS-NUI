@@ -165,107 +165,169 @@ static void meteo_sb_teken() {
     }
 }
 
-// ─── WEER TAB — DEBUG dump ────────────────────────────────────────────────
-// Toont ruwe HTTP response + geparsede waarden (tijdelijk voor diagnostiek)
+// ─── Zon-boog helper ──────────────────────────────────────────────────────
+static void _zon_boog(int cx, int cy, int r, float frac_dag, bool is_dag) {
+    // Halve cirkel (boog) boven horizon
+    for (int a = 0; a <= 180; a += 3) {
+        float rad = a * M_PI / 180.0f;
+        int px = cx + (int)(r * cosf(rad));
+        int py = cy - (int)(r * sinf(rad));
+        tft.fillRect(px - 1, py - 1, 3, 3, C_SURFACE3);
+    }
+    // Zonnepositie op de boog (180° = opgang, 0° = ondergang)
+    float sun_a = (1.0f - frac_dag) * M_PI;
+    int sx = cx + (int)(r * cosf(sun_a));
+    int sy = cy - (int)(r * sinf(sun_a));
+    uint16_t sc = is_dag ? RGB565(255, 220, 40) : RGB565(180, 180, 140);
+    tft.fillCircle(sx, sy, 7, sc);
+    if (is_dag) {   // zonnestralen
+        for (int a = 0; a < 360; a += 45) {
+            float ra = a * M_PI / 180.0f;
+            tft.drawLine(sx + (int)(9*cosf(ra)), sy + (int)(9*sinf(ra)),
+                         sx + (int)(13*cosf(ra)), sy + (int)(13*sinf(ra)), sc);
+        }
+    }
+}
+
+// ─── WEER TAB ─────────────────────────────────────────────────────────────
 static void meteo_weer_teken() {
     tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
-    tft.setTextSize(1);
 
-    int y = PANEL_Y + 4;
-    const int LH = 10;  // regel hoogte
-
-    // ── Status header ────────────────────────────────────────────────────
-    tft.fillRoundRect(4, y, TFT_W - 8, 22, 4, C_SURFACE);
-    tft.setTextColor(meteo_debug_body_len > 0 ? C_CYAN : C_RED_BRIGHT);
-    tft.setCursor(10, y + 4);
-    if (meteo_debug_body_len == 0) {
-        tft.print("HTTP: geen response (0 bytes)  WiFi: ");
-        tft.print(wifi_verbonden ? "JA" : "NEE");
-    } else {
-        char hdr[80];
-        snprintf(hdr, sizeof(hdr), "HTTP OK  %d bytes  WiFi:%s",
-            meteo_debug_body_len, wifi_verbonden ? "ja" : "nee");
-        tft.print(hdr);
-    }
-    y += 26;
-
-    // ── Geparsede waarden ─────────────────────────────────────────────────
-    if (meteo_debug_body_len > 0) {
-        tft.fillRoundRect(4, y, TFT_W - 8, 42, 4, RGB565(5, 20, 40));
-        tft.setTextColor(C_TEXT_DIM); tft.setCursor(10, y + 4);
-        tft.print("current:");
-        tft.setTextColor(C_TEXT);
-        char pbuf[120];
-        snprintf(pbuf, sizeof(pbuf), "  %.1fC  B%d(%s %.1fm/s)  stoten B%d  code=%d  %s",
-            meteo_temp,
-            meteo_beaufort(meteo_wind_ms), meteo_wind_richting(meteo_wind_dir), meteo_wind_ms,
-            meteo_beaufort(meteo_wind_max),
-            meteo_weer_code, meteo_is_dag ? "dag" : "nacht");
-        tft.print(pbuf);
-
-        tft.setTextColor(C_TEXT_DIM); tft.setCursor(10, y + 18);
-        tft.print("daily[0]:");
-        tft.setTextColor(C_TEXT);
-        char dbuf[80];
-        snprintf(dbuf, sizeof(dbuf), "  max=%.1f min=%.1f  wind=%s B%d  code=%d",
-            meteo_dag_temp_max[0], meteo_dag_temp_min[0],
-            meteo_wind_richting(meteo_dag_wind_dir[0]), meteo_beaufort(meteo_dag_wind[0]),
-            meteo_dag_code[0]);
-        tft.print(dbuf);
-
-        tft.setTextColor(C_TEXT_DIM); tft.setCursor(10, y + 32);
-        tft.print("zon:");
-        tft.setTextColor(C_TEXT);
-        if (meteo_zonsopgang > 0) {
-            struct tm* sr = localtime(&meteo_zonsopgang);
-            struct tm* ss = localtime(&meteo_zonsondergang);
-            char zbuf[40];
-            snprintf(zbuf, sizeof(zbuf), "  op %02d:%02d  onder %02d:%02d",
-                sr->tm_hour, sr->tm_min, ss->tm_hour, ss->tm_min);
-            tft.print(zbuf);
-        } else { tft.print("  niet geparsed"); }
-        y += 46;
+    if (!meteo_geladen) {
+        tft.fillRoundRect(6, PANEL_Y + 4, TFT_W - 12, 80, 8, C_SURFACE);
+        ui_tekst_midden(6, PANEL_Y + 36, TFT_W - 12,
+            wifi_verbonden ? "Weerdata ophalen..." : "Geen WiFi — kan geen weerdata laden",
+            C_TEXT_DIM, 2);
+        return;
     }
 
-    // ── Ruwe response tekst ───────────────────────────────────────────────
-    tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(6, y);
-    char ulbuf[60];
-    snprintf(ulbuf, sizeof(ulbuf), "URL: ...lat=%.4f lon=%.4f&current=...daily=...&wind_unit=kn", meteo_lat, meteo_lon);
-    tft.print(ulbuf);
-    y += LH + 2;
+    // ── Huidig weer (links) ───────────────────────────────────────────────
+    int lx = 6, ly = PANEL_Y + 4;
+    int lw = 476, lh = 166;
+    tft.fillRoundRect(lx, ly, lw, lh, 8, C_SURFACE);
 
-    if (meteo_debug_body_len > 0) {
-        tft.setTextColor(C_TEXT);
-        // Teken de body regel voor regel (max 130 chars per regel bij size 1)
-        const int MAX_PER_REGEL = 130;
-        int pos = 0;
-        int len = strlen(meteo_debug_body);
-        while (pos < len && y < NAV_Y - LH) {
-            int regel_len = min(len - pos, MAX_PER_REGEL);
-            char regelbuf[132];
-            strncpy(regelbuf, meteo_debug_body + pos, regel_len);
-            regelbuf[regel_len] = '\0';
-            tft.setCursor(6, y);
-            tft.print(regelbuf);
-            y += LH;
-            pos += regel_len;
-        }
-        if (pos < len) {
-            tft.setTextColor(C_TEXT_DIM);
-            tft.setCursor(6, y);
-            char restbuf[24];
-            snprintf(restbuf, sizeof(restbuf), "... (%d bytes meer)", len - pos);
-            tft.print(restbuf);
-        }
-    } else {
-        tft.setTextColor(C_RED_BRIGHT);
-        tft.setCursor(6, y);
-        tft.print("Geen data ontvangen.");
-        y += LH + 2;
+    // Groot weericon
+    weer_icon(meteo_weer_code, lx + 44, ly + lh/2, 52, meteo_is_dag);
+
+    // Temperatuur
+    tft.setTextSize(4); tft.setTextColor(C_TEXT);
+    char tbuf[8]; snprintf(tbuf, sizeof(tbuf), "%.1f", meteo_temp);
+    tft.setCursor(lx + 96, ly + 10);
+    tft.print(tbuf);
+    tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
+    tft.print(" \xF7""C");
+
+    // Max/min temp
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(lx + 96, ly + 62);
+    char mmbuf[28];
+    snprintf(mmbuf, sizeof(mmbuf), "max %.1f\xF7   min %.1f\xF7",
+        meteo_dag_temp_max[0], meteo_dag_temp_min[0]);
+    tft.print(mmbuf);
+
+    // Omschrijving
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    tft.setCursor(lx + 96, ly + 78);
+    tft.print(meteo_weer_omschrijving(meteo_weer_code));
+
+    // Wind
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(lx + 96, ly + 108);
+    char wbuf[48];
+    snprintf(wbuf, sizeof(wbuf), "Wind: %s  B%d  (%.1f m/s)   stoten: B%d",
+        meteo_wind_richting(meteo_wind_dir), meteo_beaufort(meteo_wind_ms),
+        meteo_wind_ms, meteo_beaufort(meteo_wind_max));
+    tft.print(wbuf);
+
+    // Windkompas rechts in blok
+    wind_kompas(lx + lw - 52, ly + lh/2, 36, meteo_wind_dir, meteo_wind_ms);
+
+    // ── Daglicht venster (rechts) ──────────────────────────────────────────
+    int rx = lx + lw + 8, ry = ly;
+    int rw = TFT_W - rx - 6, rh = lh;
+    tft.fillRoundRect(rx, ry, rw, rh, 8, C_SURFACE);
+
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    ui_tekst_midden(rx, ry + 6, rw, "DAGLICHT", C_CYAN, 1);
+
+    if (meteo_zonsopgang > 0 && meteo_zonsondergang > meteo_zonsopgang) {
+        // localtime geeft statische pointer — kopie nemen vóór tweede aanroep!
+        struct tm sr_val = *localtime(&meteo_zonsopgang);
+        struct tm ss_val = *localtime(&meteo_zonsondergang);
+
+        char srbuf[6], ssbuf[6];
+        snprintf(srbuf, sizeof(srbuf), "%02d:%02d", sr_val.tm_hour, sr_val.tm_min);
+        snprintf(ssbuf, sizeof(ssbuf), "%02d:%02d", ss_val.tm_hour, ss_val.tm_min);
+
+        // Daglichtduur
+        long duur_s = meteo_zonsondergang - meteo_zonsopgang;
+        char duurbuf[16];
+        snprintf(duurbuf, sizeof(duurbuf), "%ldh%02ldm daglicht", duur_s/3600, (duur_s%3600)/60);
+
+        // Boog
+        int cx = rx + rw/2;
+        int cy = ry + rh - 32;
+        int r  = min(rw/2 - 18, rh - 56);
+        tft.drawFastHLine(rx + 10, cy, rw - 20, C_SURFACE2);
+
+        // Dagvorderingsfractie
+        time_t nu = time(nullptr);
+        float frac = 0.5f;
+        if (nu >= meteo_zonsopgang && nu <= meteo_zonsondergang)
+            frac = (float)(nu - meteo_zonsopgang) / (float)(meteo_zonsondergang - meteo_zonsopgang);
+        else if (nu > meteo_zonsondergang) frac = 1.0f;
+        else frac = 0.0f;
+
+        _zon_boog(cx, cy, r, frac, meteo_is_dag);
+
+        // Tijden bij de eindpunten van de boog
+        tft.setTextSize(1); tft.setTextColor(RGB565(255, 200, 80));
+        tft.setCursor(rx + 8, cy + 6); tft.print(srbuf);
+        tft.setCursor(rx + rw - strlen(ssbuf)*6 - 8, cy + 6); tft.print(ssbuf);
+
+        // Duur onderaan
         tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(6, y);
-        tft.print("Mogelijke oorzaken: geen WiFi, SSL-fout, timeout (15s).");
+        ui_tekst_midden(rx, ry + rh - 14, rw, duurbuf, C_TEXT_DIM, 1);
+    } else {
+        ui_tekst_midden(rx, ry + rh/2 - 4, rw, "Geen zondata", C_TEXT_DIM, 1);
+    }
+
+    // ── 4-daagse voorspelling ─────────────────────────────────────────────
+    int dy = ly + lh + 6;
+    int dh = PANEL_H - lh - 14;
+    int dw = (TFT_W - 12) / 4 - 4;
+
+    time_t now = time(nullptr);
+    struct tm now_t = *localtime(&now);
+    const char* dag_afk[] = {"Zo","Ma","Di","Wo","Do","Vr","Za"};
+
+    for (int i = 0; i < 4; i++) {
+        int bx = 6 + i * (dw + 4);
+        bool vndg = (i == 0);
+        tft.fillRoundRect(bx, dy, dw, dh, 6, vndg ? C_SURFACE2 : C_SURFACE);
+        if (vndg) tft.drawRoundRect(bx, dy, dw, dh, 6, C_SURFACE3);
+
+        // Dagnaam
+        char dagnm[6];
+        if      (i == 0) strncpy(dagnm, "Vndg", 6);
+        else if (i == 1) strncpy(dagnm, "Mrgn", 6);
+        else { snprintf(dagnm, sizeof(dagnm), "%s", dag_afk[(now_t.tm_wday + i) % 7]); }
+
+        tft.setTextSize(1);
+        ui_tekst_midden(bx, dy + 5, dw, dagnm, vndg ? C_CYAN : C_TEXT_DIM, 1);
+
+        // Weericon
+        weer_icon(meteo_dag_code[i], bx + dw/2, dy + dh/2 - 8, 28, true);
+
+        // Temperatuur
+        char dmbuf[10];
+        snprintf(dmbuf, sizeof(dmbuf), "%.0f/%.0f\xF7", meteo_dag_temp_max[i], meteo_dag_temp_min[i]);
+        ui_tekst_midden(bx, dy + dh - 26, dw, dmbuf, C_TEXT, 1);
+
+        // Wind
+        char dwbuf[10];
+        snprintf(dwbuf, sizeof(dwbuf), "%s B%d", meteo_wind_richting(meteo_dag_wind_dir[i]), meteo_beaufort(meteo_dag_wind[i]));
+        ui_tekst_midden(bx, dy + dh - 14, dw, dwbuf, C_TEXT_DIM, 1);
     }
 }
 

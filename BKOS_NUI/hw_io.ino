@@ -22,7 +22,7 @@ uint8_t io_actie_param[MAX_IO_KANALEN];
 #define IO_CFG_BESTAND   "/io_cfg.csv"
 
 void hw_io_setup() {
-    IO_SERIAL.begin(IO_BAUD, SERIAL_8N1, IO_RX_PIN, IO_TX_PIN);
+    IO_SERIAL.begin(IO_BAUD);
     memset(io_output,    0, sizeof(io_output));
     memset(io_input,     0, sizeof(io_input));
     memset(io_gewijzigd, 0, sizeof(io_gewijzigd));
@@ -31,9 +31,7 @@ void hw_io_setup() {
     memset(io_actie_aan, 0, sizeof(io_actie_aan));
     memset(io_actie_uit, 0, sizeof(io_actie_uit));
     memset(io_actie_param,0,sizeof(io_actie_param));
-    if (!SPIFFS.begin(true)) {
-        Serial.println("SPIFFS mount mislukt");
-    }
+    SPIFFS.begin(true);
     hw_io_namen_laden();
     hw_io_cfg_laden();
 }
@@ -63,10 +61,7 @@ void hw_io_namen_laden() {
 
 void hw_io_namen_opslaan() {
     File f = SPIFFS.open(IO_NAMEN_BESTAND, "w");
-    if (!f) {
-        Serial.println("SPIFFS schrijven mislukt");
-        return;
-    }
+    if (!f) return;
     for (int i = 0; i < MAX_IO_KANALEN; i++) {
         char standaard[IO_NAAM_LEN];
         snprintf(standaard, IO_NAAM_LEN, "IO %d", i);

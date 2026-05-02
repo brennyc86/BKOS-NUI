@@ -14,7 +14,6 @@ static unsigned long laatste_touch_ms    = 0;
 #define TOUCH_DEBOUNCE_MS  320   // minimale tijd tussen twee aparte aanrakingen
 
 void hw_setup() {
-    Serial.begin(115200);
     tft_setup();
     ts_setup();
     hw_io_setup();

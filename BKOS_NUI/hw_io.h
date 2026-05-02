@@ -2,10 +2,8 @@
 #include <FS.h>
 #include <SPIFFS.h>
 
-// UART naar ATtiny3217
-#define IO_SERIAL       Serial2
-#define IO_TX_PIN       17
-#define IO_RX_PIN       16
+// UART naar ATtiny3217 — standaard Serial (UART0, USB uitgang)
+#define IO_SERIAL       Serial
 #define IO_BAUD         9600
 
 // IO limieten

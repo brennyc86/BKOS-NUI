@@ -6,6 +6,7 @@
 #include "screen_ota.h"
 #include "screen_info.h"
 #include "screen_apps.h"
+#include "screen_calibratie.h"
 #include "meteo.h"
 #include "nav_bar.h"
 #include "data_store.h"
@@ -135,7 +136,8 @@ void hw_loop() {
                 case SCREEN_INFO:    screen_info_teken();   break;
                 case SCREEN_WIFI:    screen_wifi_teken();   break;
                 case SCREEN_IO_CFG:  screen_io_cfg_teken(); break;
-                case SCREEN_APPS:    screen_apps_teken();   break;
+                case SCREEN_APPS:       screen_apps_teken();        break;
+                case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                 case SCREEN_LUA_APP: // forceer verlopen — terug naar apps
                     lua_forceer_app = -1;
                     actief_scherm   = SCREEN_APPS;
@@ -205,8 +207,9 @@ void hw_loop() {
                         case SCREEN_OTA:    screen_ota_run(ts_x, ts_y, true);    break;
                         case SCREEN_INFO:   screen_info_run(ts_x, ts_y, true);   break;
                         case SCREEN_WIFI:   screen_wifi_run(ts_x, ts_y, true);   break;
-                        case SCREEN_IO_CFG: screen_io_cfg_run(ts_x, ts_y, true); break;
-                        case SCREEN_APPS:   screen_apps_run(ts_x, ts_y, true);   break;
+                        case SCREEN_IO_CFG:     screen_io_cfg_run(ts_x, ts_y, true);     break;
+                        case SCREEN_APPS:       screen_apps_run(ts_x, ts_y, true);       break;
+                        case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                     }
                 }
             }
@@ -226,9 +229,10 @@ void hw_loop() {
             lua_app_run(app_upd, 0, 0, false);
         } else {
             switch (actief_scherm) {
-                case SCREEN_MAIN:   screen_main_run(0, 0, false);   break;
-                case SCREEN_IO:     screen_io_run(0, 0, false);     break;
-                case SCREEN_OTA:    screen_ota_run(0, 0, false);    break;
+                case SCREEN_MAIN:       screen_main_run(0, 0, false);       break;
+                case SCREEN_IO:         screen_io_run(0, 0, false);         break;
+                case SCREEN_OTA:        screen_ota_run(0, 0, false);        break;
+                case SCREEN_CALIBRATIE: screen_calibratie_run(0, 0, false); break;
                 default: break;
             }
         }

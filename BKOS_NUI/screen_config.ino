@@ -458,9 +458,15 @@ static void pico_cfg_instellingen_teken() {
     tft.print(ontg ? (strlen(zeilnummer) > 0 ? zeilnummer : "(tik)") : "***");
     y += 30;
 
-    // IO Configuratie
+    // IO Configuratie + Touch Kalibreren (gedeelde rij)
+#if defined(PICO_TOUCH_XPT2046) || defined(WROOM_TOUCH_XPT2046)
+    ui_knop(4, y, 140, 26, "IO CONFIGURATIE  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    ui_knop(148, y, TFT_W - 152, 26, "TOUCH KAL.  >", C_SURFACE, C_CYAN);
+#else
     ui_knop(4, y, TFT_W - 8, 26, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+#endif
     y += 30;
 
     // Firmware
@@ -534,8 +540,13 @@ static void pico_cfg_instellingen_run(int x, int y) {
         screen_config_toetsenbord_teken(); return;
     }
     y0 += 30;
-    // IO Configuratie
+    // IO Configuratie + Touch Kalibreren
     if (y >= y0 && y < y0 + 26) {
+#if defined(PICO_TOUCH_XPT2046) || defined(WROOM_TOUCH_XPT2046)
+        if (x >= 148) {
+            actief_scherm = SCREEN_CALIBRATIE; scherm_bouwen = true; return;
+        }
+#endif
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_IO_CFG; scherm_bouwen = true; return;
     }
@@ -1034,10 +1045,12 @@ static void cfg_instellingen_teken() {
     tft.setCursor(98, zy + 4 + (32 - 16) / 2);
     tft.print(ontg ? (strlen(zeilnummer) > 0 ? zeilnummer : "(tik om in te stellen)") : "***");
 
-    // IO Configuratie
+    // IO Configuratie + Touch Kalibreren (grijs: capacitief scherm)
     int iy = zy + 44;
-    ui_knop(10, iy + 4, TFT_W - 20, 38, "IO CONFIGURATIE  >",
+    ui_knop(10,  iy + 4, 488, 38, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    ui_knop(502, iy + 4, TFT_W - 512, 38, "TOUCH KALIBREREN  >",
+            C_SURFACE, C_DARK_GRAY);
 
     // Firmware updaten
     int uy = iy + 46;
@@ -1159,8 +1172,9 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // IO Configuratie — PIN vereist
+    // IO Configuratie + Touch Kalibreren (grijs op dit scherm)
     if (y >= iy && y < iy + 46) {
+        if (x >= 502) return;  // kalibreer-knop grijs: geen actie op capacitief scherm
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_IO_CFG;
         scherm_bouwen = true;

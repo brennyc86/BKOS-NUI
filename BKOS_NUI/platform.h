@@ -136,6 +136,11 @@
 // Als FreeRTOS niet aanwezig is: minimale stubs voor standaard Pico (zonder WiFi).
 #if PLATFORM_PICO
   #if __has_include(<FreeRTOS.h>)
+    // arduino-pico 5.x vereist __FREERTOS 1 vóór include van FreeRTOS.h.
+    // Pico W heeft FreeRTOS sowieso nodig voor de CYW43 WiFi-stack.
+    #ifndef __FREERTOS
+      #define __FREERTOS 1
+    #endif
     #include <FreeRTOS.h>
     #include <task.h>
     // TaskHandle_t, BaseType_t, pdTRUE, portTICK_PERIOD_MS, vTaskDelay, vTaskDelete

@@ -130,27 +130,19 @@
 #endif
 
 // ─── FreeRTOS types voor RP2040 ──────────────────────────────────────────────
-// Pico W gebruikt FreeRTOS intern voor de WiFi-stack (pico-sdk CYW43 driver).
-// Als FreeRTOS.h beschikbaar is: gebruik echte types zodat er geen typedef-
-// conflict ontstaat wanneer WiFi.h/WiFiClientSecure.h dezelfde headers includeert.
-// Als FreeRTOS niet aanwezig is: minimale stubs voor standaard Pico (zonder WiFi).
-#if PLATFORM_PICO
-  #if __has_include(<FreeRTOS.h>)
-    // arduino-pico 5.x vereist __FREERTOS 1 vóór include van FreeRTOS.h.
-    // Pico W heeft FreeRTOS sowieso nodig voor de CYW43 WiFi-stack.
-    #ifndef __FREERTOS
-      #define __FREERTOS 1
-    #endif
-    #include <FreeRTOS.h>
-    #include <task.h>
-    // TaskHandle_t, BaseType_t, pdTRUE, portTICK_PERIOD_MS, vTaskDelay, vTaskDelete
-    // zijn nu beschikbaar — geen stubs nodig
-  #else
-    typedef void*  TaskHandle_t;
-    typedef long   BaseType_t;
-    #define pdTRUE             ((BaseType_t)1)
-    #define portTICK_PERIOD_MS 1
-    static inline void vTaskDelay(unsigned long ms) { delay(ms); }
-    static inline void vTaskDelete(TaskHandle_t)    { }
-  #endif
+// Pico W gebruikt FreeRTOS intern voor WiFi (CYW43), maar exposeert het NIET
+// naar user code. FreeRTOS.h direct includen veroorzaakt een linker-fout omdat
+// de library dan verwacht wordt maar niet meegecombineerd wordt.
+// Oplossing: compatibele forward-declaraties + macro-stubs zodat code die
+// vTaskDelay/TaskHandle_t gebruikt gewoon compileert en delay() aanroept.
+// INC_FREERTOS_H: als FreeRTOS.h elders al geïncludeerd is, gebruik die types.
+#if PLATFORM_PICO && !defined(INC_FREERTOS_H)
+  struct tskTaskControlBlock;
+  typedef struct tskTaskControlBlock* TaskHandle_t;
+  typedef long          BaseType_t;
+  typedef unsigned long TickType_t;
+  #define pdTRUE             ((BaseType_t)1)
+  #define portTICK_PERIOD_MS 1
+  #define vTaskDelay(ms)     delay((unsigned long)(ms))
+  static inline void vTaskDelete(TaskHandle_t) {}
 #endif

@@ -79,16 +79,13 @@ jobs:
             --output-dir build_esp32s3/ \
             BKOS_NUI/
 
-      - name: Copy firmware to firmware/ folder
-        run: |
-          mkdir -p firmware
-          cp build_esp32s3/BKOS_NUI.ino.bin firmware/bkos_esp32s3_8048s070.bin
-
       - name: Commit ESP32-S3 firmware
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
           git pull --rebase
+          mkdir -p firmware
+          cp build_esp32s3/BKOS_NUI.ino.bin firmware/bkos_esp32s3_8048s070.bin
           git add firmware/bkos_esp32s3_8048s070.bin firmware/versie_esp32s3.txt
           git diff --staged --quiet || git commit -m "ci: ESP32-S3 firmware $(cat firmware/versie_esp32s3.txt)"
           git push
@@ -129,16 +126,13 @@ jobs:
             --output-dir build_wroom/ \
             BKOS_NUI/
 
-      - name: Copy firmware to firmware/ folder
-        run: |
-          mkdir -p firmware
-          cp build_wroom/BKOS_NUI.ino.bin firmware/bkos_esp32wroom2432.bin
-
       - name: Commit WROOM firmware
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
           git pull --rebase
+          mkdir -p firmware
+          cp build_wroom/BKOS_NUI.ino.bin firmware/bkos_esp32wroom2432.bin
           git add firmware/bkos_esp32wroom2432.bin firmware/versie_wroom.txt
           git diff --staged --quiet || git commit -m "ci: WROOM firmware $(cat firmware/versie_wroom.txt)"
           git push
@@ -169,6 +163,7 @@ jobs:
           arduino-cli lib install "GFX Library for Arduino@1.3.7"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "Preferences" || true
 
       - name: Compile Pico W firmware
         run: |
@@ -177,17 +172,14 @@ jobs:
             --output-dir build_pico/ \
             BKOS_NUI/
 
-      - name: Copy firmware to firmware/ folder
-        run: |
-          mkdir -p firmware
-          cp build_pico/BKOS_NUI.ino.bin firmware/bkos_pico1w2432.bin
-          cp build_pico/BKOS_NUI.ino.uf2 firmware/bkos_pico1w2432.uf2
-
       - name: Commit Pico firmware
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
           git pull --rebase
+          mkdir -p firmware
+          cp build_pico/BKOS_NUI.ino.bin firmware/bkos_pico1w2432.bin
+          cp build_pico/BKOS_NUI.ino.uf2 firmware/bkos_pico1w2432.uf2
           git add firmware/bkos_pico1w2432.bin firmware/bkos_pico1w2432.uf2 firmware/versie_pico.txt
           git diff --staged --quiet || git commit -m "ci: Pico firmware $(cat firmware/versie_pico.txt)"
           git push

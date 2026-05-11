@@ -168,7 +168,7 @@ jobs:
       - name: Compile Pico W firmware
         run: |
           arduino-cli compile \
-            --fqbn "rp2040:rp2040:rpipicow:flash=2097152_65536,freq=133,opt=Optimize2,rtti=disabled,stackprotect=disabled,exceptions=disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only" \
+            --fqbn "rp2040:rp2040:rpipicow:flash=2097152_65536,freq=133,opt=Optimize2,rtti=disabled,exceptions=disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only" \
             --output-dir build_pico/ \
             BKOS_NUI/
 

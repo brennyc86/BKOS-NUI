@@ -2,7 +2,7 @@
 #include "platform.h"
 #include "wifi.h"
 
-#define BKOS_NUI_VERSIE     "0.1.260512.3"
+#define BKOS_NUI_VERSIE     "0.1.260512.4"
 
 #if PLATFORM_PICO
   #define OTA_GITHUB_VERSIE_URL   "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_pico.txt"

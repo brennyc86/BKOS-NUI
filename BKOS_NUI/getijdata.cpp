@@ -144,13 +144,19 @@ bool getijdata_update() {
     return alles_ok;
 }
 
-void getijdata_check_update() {
-    static time_t laatste_update = 0;
+void getijdata_check_update(int locatie_index) {
+    if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return;
     time_t nu = time(nullptr);
-    if (nu - laatste_update > (time_t)(GETIJ_CACHE_UREN * 3600)) {
-        Serial.println("[Getij] Data verouderd, update starten...");
-        if (getijdata_update()) {
-            laatste_update = nu;
+    if (nu < 1000000) return;  // NTP nog niet gesync
+
+    static time_t laatste_update[12] = {};
+    if (nu - laatste_update[locatie_index] > (time_t)(GETIJ_CACHE_UREN * 3600)) {
+        Serial.printf("[Getij] Station %s: data verouderd, update starten...\n",
+            GETIJ_LOCATIES[locatie_index].naam);
+        if (_getij_haal_op_en_sla_op(GETIJ_LOCATIES[locatie_index],
+                nu - (GETIJ_WEKEN_TERUG * 7 * 24 * 3600),
+                nu + (6 * 7 * 24 * 3600))) {
+            laatste_update[locatie_index] = nu;
         }
     }
 }

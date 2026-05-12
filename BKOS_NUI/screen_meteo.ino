@@ -926,6 +926,8 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                 rws_geladen_idx = -1;  // cache ongeldig maken
                 rws_ext_cnt = 0;
                 meteo_inst_opslaan();
+                // Haal data op als nog niet aanwezig
+                if (!getijdata_beschikbaar(i)) wifi_verbind_aanvragen();
                 meteo_locatie_teken();
                 return;
             }

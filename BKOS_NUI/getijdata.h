@@ -107,9 +107,9 @@ bool getijdata_init();
 // Aanroepen na WiFi verbinding en NTP synchronisatie
 bool getijdata_update();
 
-// Controleer of data verouderd is en update indien nodig
+// Controleer of data voor een specifieke locatie verouderd is en update indien nodig
 // Aanroepen in loop() — doet niets als data nog vers genoeg is
-void getijdata_check_update();
+void getijdata_check_update(int locatie_index);
 
 // Lees opgeslagen extremen voor een locatie op index (0 t/m 11)
 // extremen[] wordt gevuld, aantal bevat het werkelijke aantal punten

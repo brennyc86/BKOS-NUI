@@ -61,7 +61,7 @@ static void netwerk_taak(void* param) {
         if (!meteo_geladen) meteo_locatie_ophalen();
         meteo_weer_ophalen();
         meteo_getij_berekenen();
-        getijdata_check_update();
+        getijdata_check_update(getijdata_station_idx);
         ota_git_check();
     }
     _wifi_verbreken_intern();
@@ -77,7 +77,8 @@ static void netwerk_taak(void* param) {
 
         unsigned long nu = millis();
         bool update_nodig = (!meteo_geladen) ||
-                            (nu - meteo_laatste_update > 1800000UL);
+                            (nu - meteo_laatste_update > 1800000UL) ||
+                            !getijdata_beschikbaar(getijdata_station_idx);
 
         if (!update_nodig && !wifi_ota_modus) continue;
 
@@ -88,7 +89,7 @@ static void netwerk_taak(void* param) {
             if (update_nodig) {
                 meteo_weer_ophalen();
                 meteo_getij_berekenen();
-                getijdata_check_update();
+                getijdata_check_update(getijdata_station_idx);
                 ota_git_check();
             }
         }

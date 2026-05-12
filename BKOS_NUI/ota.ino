@@ -10,14 +10,68 @@ String ota_status_tekst  = "Niet gecontroleerd";
 static unsigned long ota_last_git_check = 0;
 #define OTA_GIT_INTERVAL  300000UL  // 5 minuten
 
+// ota_gestart: ArduinoOTA.begin() al aangeroepen voor deze WiFi-sessie
+// ota_callbacks_ok: ArduinoOTA.onStart/onEnd/... al ingesteld
+static bool ota_gestart      = false;
+static bool ota_callbacks_ok = false;
+
 void ota_setup() {
-    // ArduinoOTA push is standaard uitgeschakeld
-    // Activeer alleen via scherm_ota als de gebruiker het inschakelt
+    // Standaard uitgeschakeld; activeer via scherm_ota
 }
 
 void ota_loop() {
 #if PLATFORM_ESP32
-    if (ota_push_actief) ArduinoOTA.handle();
+    if (ota_push_actief) {
+        // Callbacks registreren zodra push OTA ingeschakeld is (éénmalig per activatie)
+        if (!ota_callbacks_ok) {
+            ArduinoOTA.setHostname("BKOS-NUI");
+            ArduinoOTA.setPassword("bkos2025");
+
+            ArduinoOTA.onStart([]() {
+                tft.fillScreen(C_BG);
+                tft.setTextSize(3); tft.setTextColor(C_CYAN);
+                tft.setCursor(50, 100); tft.print("OTA Push update...");
+                tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
+                tft.setCursor(50, 148); tft.print("Niet uitschakelen!");
+            });
+
+            ArduinoOTA.onProgress([](unsigned int p, unsigned int t) {
+                ota_voortgang_teken(p, t);
+            });
+
+            ArduinoOTA.onEnd([]() {
+                tft.fillRect(50, 280, TFT_W - 100, 40, C_BG);
+                tft.setTextSize(3); tft.setTextColor(C_GREEN);
+                tft.setCursor(50, 290); tft.print("Klaar! Herstart...");
+                delay(1500);
+            });
+
+            ArduinoOTA.onError([](ota_error_t err) {
+                tft.fillRect(50, 280, TFT_W - 100, 40, C_BG);
+                tft.setTextSize(2); tft.setTextColor(C_RED_BRIGHT);
+                tft.setCursor(50, 290);
+                char buf[30]; snprintf(buf, sizeof(buf), "Fout: %u", err);
+                tft.print(buf);
+            });
+
+            ota_callbacks_ok = true;
+        }
+
+        // begin() aanroepen zodra WiFi verbonden is (of na herverbinding)
+        if (wifi_verbonden && !ota_gestart) {
+            ArduinoOTA.begin();
+            ota_gestart = true;
+            ota_status_tekst = "Push OTA actief";
+        }
+        if (!wifi_verbonden && ota_gestart) {
+            ota_gestart = false;
+            ota_status_tekst = "Push OTA: wacht op WiFi";
+        }
+        if (ota_gestart) ArduinoOTA.handle();
+    } else {
+        ota_gestart = false;
+        ota_callbacks_ok = false;
+    }
 #endif
     if (millis() - ota_last_git_check > OTA_GIT_INTERVAL) {
         ota_last_git_check = millis();

@@ -106,7 +106,7 @@ void io_detect() {
     }
 
     Serial.print('\n');   // sluit IOD commando af
-    delay(50);
+    delay(100);
     while (Serial.available()) Serial.read();
 }
 
@@ -187,7 +187,7 @@ void io_cyclus() {
     }
 
     Serial.print('\n');   // sluit IO commando af
-    delay(30);
+    delay(60);
     while (Serial.available()) Serial.read();
 
     io_runned = true;

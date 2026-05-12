@@ -26,7 +26,7 @@ extern bool bkoss_actief;
 #define MODULE_EINDE     255
 
 // Timing
-#define IO_INTERVAL      50    // ms tussen IO cycli
+#define IO_INTERVAL      100   // ms tussen IO cycli (was 50, verhoogd voor stabiliteit)
 #define IO_TIMEOUT       5000  // ms timeout per actie
 #define IO_DETECTIE_INT  30000 // ms herdetectie interval
 

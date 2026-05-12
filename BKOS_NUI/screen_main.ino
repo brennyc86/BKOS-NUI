@@ -971,7 +971,7 @@ static void meteo_strip_teken() {
     for (int k = 0; k < 2; k++) {
         int i = idxs[k];
         if (i < 0) continue;
-        const GetijExtreme& e = getij_ext[i];
+        const GetijHarmExt& e = getij_ext[i];
         struct tm* lt = localtime(&e.tijd);
         char ebuf[22];
         snprintf(ebuf, sizeof(ebuf), "%s %02d:%02d %.2fm",

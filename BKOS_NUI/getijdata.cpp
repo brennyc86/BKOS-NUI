@@ -4,8 +4,9 @@
 
 #include "getijdata.h"
 #include "platform.h"
+#include "platform_fs.h"
 #include <HTTPClient.h>
-#include <LittleFS.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 
 // ------------------------------------------------------------
@@ -32,8 +33,10 @@ static String _getij_maak_request_body(const char* code, time_t van, time_t tot)
 }
 
 static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, time_t van, time_t tot) {
+    WiFiClientSecure sc;
+    sc.setInsecure();
     HTTPClient http;
-    http.begin(GETIJ_API_URL);
+    http.begin(sc, GETIJ_API_URL);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(GETIJ_TIMEOUT_MS);
 
@@ -70,8 +73,8 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, time_t van, time_t
         m["w"] = meting["Meetwaarde"]["Waarde_Numeriek"].as<float>();
     }
 
-    // Schrijf naar LittleFS
-    File f = LittleFS.open(loc.bestand, "w");
+    // Schrijf naar SPIFFS
+    File f = SPIFFS.open(loc.bestand, "w");
     if (!f) {
         Serial.printf("[Getij] %s: Kan bestand niet openen\n", loc.naam);
         return false;
@@ -100,15 +103,11 @@ static time_t _getij_parseer_tijdstip(const char* iso) {
 // ------------------------------------------------------------
 
 bool getijdata_init() {
-#if PLATFORM_PICO
-    if (!LittleFS.begin()) {
-#else
-    if (!LittleFS.begin(true)) {
-#endif
-        Serial.println("[Getij] LittleFS mount mislukt!");
-        return false;
+    // SPIFFS/LittleFS wordt al geïnitialiseerd door hw_io.ino via SPIFFS_BEGIN()
+    // Controleer of het bestandssysteem beschikbaar is
+    if (!SPIFFS_BEGIN()) {
+        // begin() geeft false als al gemount — dat is OK
     }
-    Serial.println("[Getij] LittleFS klaar");
     return true;
 }
 
@@ -151,7 +150,7 @@ bool getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, in
     if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return false;
 
     const GetijLocatie& loc = GETIJ_LOCATIES[locatie_index];
-    File f = LittleFS.open(loc.bestand, "r");
+    File f = SPIFFS.open(loc.bestand, "r");
     if (!f) {
         Serial.printf("[Getij] Bestand niet gevonden: %s\n", loc.bestand);
         return false;
@@ -218,5 +217,5 @@ int getijdata_aantal_locaties() {
 
 bool getijdata_beschikbaar(int locatie_index) {
     if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return false;
-    return LittleFS.exists(GETIJ_LOCATIES[locatie_index].bestand);
+    return SPIFFS.exists(GETIJ_LOCATIES[locatie_index].bestand);
 }

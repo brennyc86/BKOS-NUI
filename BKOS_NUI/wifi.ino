@@ -4,6 +4,7 @@
 #include "ui_colors.h"
 #include "app_state.h"
 #include "meteo.h"
+#include "getijdata.h"
 
 bool wifi_aangesloten     = false;
 volatile bool wifi_ota_modus = false;
@@ -60,6 +61,7 @@ static void netwerk_taak(void* param) {
         if (!meteo_geladen) meteo_locatie_ophalen();
         meteo_weer_ophalen();
         meteo_getij_berekenen();
+        getijdata_check_update();
         ota_git_check();
     }
     _wifi_verbreken_intern();
@@ -86,6 +88,7 @@ static void netwerk_taak(void* param) {
             if (update_nodig) {
                 meteo_weer_ophalen();
                 meteo_getij_berekenen();
+                getijdata_check_update();
                 ota_git_check();
             }
         }

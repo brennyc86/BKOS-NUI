@@ -1,4 +1,5 @@
 #include "hardware.h"
+#include "getijdata.h"
 #include "screen_main.h"
 #include "screen_io.h"
 #include "screen_meteo.h"
@@ -53,6 +54,7 @@ void hw_setup() {
     info_laden();       // boot naam en eigenaar uit SPIFFS (voor status bar)
     data_setup();       // gestructureerde data-opslag laden
     meteo_setup();      // laadt NVS-instellingen (snel, geen netwerk)
+    getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
     ota_setup();        // init OTA (snel)
     fout_log_setup();   // laad foutrapportage token uit Preferences
     io_boot();              // BKOSS check + UART IO discovery

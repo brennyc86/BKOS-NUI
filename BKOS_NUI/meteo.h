@@ -31,27 +31,39 @@ extern int   meteo_wind_dir;
 extern int   meteo_weer_code;
 extern bool  meteo_is_dag;
 
-// ─── Dagsvoorspelling (4 dagen) ───────────────────────────────────────────
-extern float meteo_dag_temp_max[4];
-extern float meteo_dag_temp_min[4];
-extern float meteo_dag_wind[4];
-extern int   meteo_dag_wind_dir[4];
-extern int   meteo_dag_code[4];
-extern char  meteo_dag_naam[4][10];
+// ─── Dagsvoorspelling (7 dagen) ───────────────────────────────────────────
+extern float  meteo_dag_temp_max[7];
+extern float  meteo_dag_temp_min[7];
+extern float  meteo_dag_wind[7];
+extern int    meteo_dag_wind_dir[7];
+extern int    meteo_dag_code[7];
+extern char   meteo_dag_naam[7][10];
+extern time_t meteo_dag_zonsopgang[7];
+extern time_t meteo_dag_zonsondergang[7];
 
-// ─── Getij extremen ───────────────────────────────────────────────────────
-struct GetijExtreme {
+// ─── Uurlijkse voorspelling (7 × 24 = 168 uur) ───────────────────────────
+extern float   meteo_uur_temp[168];
+extern uint8_t meteo_uur_neerslag_kans[168];
+extern uint8_t meteo_uur_cloud[168];
+extern uint8_t meteo_uur_wcode[168];
+extern bool    meteo_uur_geladen;
+
+// ─── Getij extremen (harmonisch berekend) ─────────────────────────────────
+struct GetijHarmExt {
     time_t tijd;
     float  hoogte;      // NAP meters
     bool   hoog_water;
 };
 #define GETIJ_N 24
-extern GetijExtreme getij_ext[GETIJ_N];
+extern GetijHarmExt getij_ext[GETIJ_N];
 extern int          getij_ext_cnt;
 
-// ─── Zon op/onder (van dagelijkse API) ────────────────────────────────────
+// ─── Zon op/onder ─────────────────────────────────────────────────────────
 extern time_t meteo_zonsopgang;
 extern time_t meteo_zonsondergang;
+
+// ─── RWS getij station index ──────────────────────────────────────────────
+extern int getijdata_station_idx;
 
 // ─── Debug / diagnostiek ──────────────────────────────────────────────────
 #define METEO_DEBUG_LEN 512

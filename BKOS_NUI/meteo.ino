@@ -32,15 +32,25 @@ int   meteo_wind_dir  = 0;
 int   meteo_weer_code = 0;
 bool  meteo_is_dag    = true;
 
-float meteo_dag_temp_max[4] = {};
-float meteo_dag_temp_min[4] = {};
-float meteo_dag_wind[4]     = {};
-int   meteo_dag_wind_dir[4] = {};
-int   meteo_dag_code[4]     = {};
-char  meteo_dag_naam[4][10] = {};
+float  meteo_dag_temp_max[7]     = {};
+float  meteo_dag_temp_min[7]     = {};
+float  meteo_dag_wind[7]         = {};
+int    meteo_dag_wind_dir[7]     = {};
+int    meteo_dag_code[7]         = {};
+char   meteo_dag_naam[7][10]     = {};
+time_t meteo_dag_zonsopgang[7]   = {};
+time_t meteo_dag_zonsondergang[7]= {};
 
-GetijExtreme getij_ext[GETIJ_N] = {};
+float   meteo_uur_temp[168]         = {};
+uint8_t meteo_uur_neerslag_kans[168]= {};
+uint8_t meteo_uur_cloud[168]        = {};
+uint8_t meteo_uur_wcode[168]        = {};
+bool    meteo_uur_geladen           = false;
+
+GetijHarmExt getij_ext[GETIJ_N] = {};
 int          getij_ext_cnt = 0;
+
+int getijdata_station_idx = 0;
 
 time_t        meteo_zonsopgang          = 0;
 time_t        meteo_zonsondergang       = 0;
@@ -58,7 +68,8 @@ int  meteo_debug_body_len              = 0;
 static void _meteo_prefs_lezen() {
     Preferences p;
     p.begin("meteo", true);
-    meteo_station_idx = p.getInt("station", 0);
+    meteo_station_idx      = p.getInt("station", 0);
+    getijdata_station_idx  = p.getInt("rws_station", 0);
     meteo_lat = p.getFloat("lat", 52.37f);
     meteo_lon = p.getFloat("lon", 4.90f);
     String s = p.getString("stad", "Amsterdam");
@@ -68,7 +79,8 @@ static void _meteo_prefs_lezen() {
 static void _meteo_prefs_schrijven() {
     Preferences p;
     p.begin("meteo", false);
-    p.putInt("station", meteo_station_idx);
+    p.putInt("station",     meteo_station_idx);
+    p.putInt("rws_station", getijdata_station_idx);
     p.putFloat("lat", meteo_lat);
     p.putFloat("lon", meteo_lon);
     p.putString("stad", meteo_stad);
@@ -151,6 +163,25 @@ static time_t iso_naar_epoch(const String& iso) {
     t.tm_min   = iso.substring(14, 16).toInt();
     t.tm_isdst = -1;
     return mktime(&t);
+}
+
+// Haal alle getallen op uit een JSON array in één scan (efficiënter dan Nth × n)
+static int json_array_all(const String& json, const char* key, float* out, int max) {
+    String k = "\""; k += key; k += "\":[";
+    int i = json.indexOf(k);
+    if (i < 0) return 0;
+    i += k.length();
+    int cnt = 0;
+    while (cnt < max && i < (int)json.length()) {
+        int j = i;
+        char c = '\0';
+        while (j < (int)json.length() && (c = json[j]) != ',' && c != ']') j++;
+        String tok = json.substring(i, j);
+        out[cnt++] = (tok == "null") ? 0.0f : tok.toFloat();
+        if (c == ']' || j >= (int)json.length()) break;
+        i = j + 1;
+    }
+    return cnt;
 }
 
 // Haal Nth getal op uit een JSON array (0-based)
@@ -244,16 +275,15 @@ const char* meteo_wind_richting(int graden) {
 
 // ─── Weer ophalen (diagnostische URL — hardcoded voor debug) ─────────────
 void meteo_weer_ophalen() {
-    // DIAGNOSTIEK: variabele locatie + current/daily/hourly voor UI opbouw
-    char url[512];
+    char url[600];
     snprintf(url, sizeof(url),
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=%.4f&longitude=%.4f"
         "&current=temperature_2m,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
         "&daily=sunrise,sunset,temperature_2m_max,temperature_2m_min,weather_code"
         ",wind_speed_10m_max,wind_direction_10m_dominant"
-        "&hourly=temperature_2m,precipitation"
-        "&timezone=Europe%%2FBerlin&past_days=0&forecast_days=3&wind_speed_unit=kn",
+        "&hourly=temperature_2m,precipitation_probability,cloud_cover,weather_code"
+        "&timezone=Europe%%2FBerlin&past_days=0&forecast_days=7&wind_speed_unit=kn",
         meteo_lat, meteo_lon);
 
     meteo_debug_body[0]  = '\0';
@@ -287,17 +317,38 @@ void meteo_weer_ophalen() {
     if (daily_start >= 0) {
         String daily = body.substring(daily_start);
         meteo_temp_max = json_array_nth(daily, "temperature_2m_max", 0);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 7; i++) {
             meteo_dag_temp_max[i] = json_array_nth(daily, "temperature_2m_max", i);
             meteo_dag_temp_min[i] = json_array_nth(daily, "temperature_2m_min", i);
             meteo_dag_wind[i]     = json_array_nth(daily, "wind_speed_10m_max", i) / 1.944f;
             meteo_dag_wind_dir[i] = (int)json_array_nth(daily, "wind_direction_10m_dominant", i);
             meteo_dag_code[i]     = (int)json_array_nth(daily, "weather_code", i);
         }
-        String sr = json_array_str_nth(daily, "sunrise", 0);
-        String ss = json_array_str_nth(daily, "sunset",  0);
-        if (sr.length() >= 16) meteo_zonsopgang    = iso_naar_epoch(sr);
-        if (ss.length() >= 16) meteo_zonsondergang = iso_naar_epoch(ss);
+        for (int i = 0; i < 7; i++) {
+            String sr = json_array_str_nth(daily, "sunrise", i);
+            String ss = json_array_str_nth(daily, "sunset",  i);
+            if (sr.length() >= 16) meteo_dag_zonsopgang[i]    = iso_naar_epoch(sr);
+            if (ss.length() >= 16) meteo_dag_zonsondergang[i] = iso_naar_epoch(ss);
+        }
+        meteo_zonsopgang    = meteo_dag_zonsopgang[0];
+        meteo_zonsondergang = meteo_dag_zonsondergang[0];
+    }
+
+    // Hourly blok
+    int hourly_start = body.indexOf("\"hourly\":");
+    if (hourly_start >= 0) {
+        String hourly = body.substring(hourly_start);
+        static float _buf[168];
+        int n;
+        n = json_array_all(hourly, "temperature_2m", _buf, 168);
+        for (int i = 0; i < n; i++) meteo_uur_temp[i] = _buf[i];
+        n = json_array_all(hourly, "precipitation_probability", _buf, 168);
+        for (int i = 0; i < n; i++) meteo_uur_neerslag_kans[i] = (uint8_t)constrain((int)_buf[i], 0, 100);
+        n = json_array_all(hourly, "cloud_cover", _buf, 168);
+        for (int i = 0; i < n; i++) meteo_uur_cloud[i] = (uint8_t)constrain((int)_buf[i], 0, 100);
+        n = json_array_all(hourly, "weather_code", _buf, 168);
+        for (int i = 0; i < n; i++) meteo_uur_wcode[i] = (uint8_t)constrain((int)_buf[i], 0, 99);
+        meteo_uur_geladen = true;
     }
 
     meteo_geladen = true;
@@ -383,7 +434,7 @@ void meteo_getij_berekenen() {
             float hw_t = fmodf(hw_uur_dag + off, 24.0f);
             time_t hw_unix = ds + (time_t)(hw_t * 3600.0f);
             if (hw_unix > now - 7200L) {  // inclusief entries tot 2 uur geleden
-                GetijExtreme& e = getij_ext[getij_ext_cnt++];
+                GetijHarmExt& e = getij_ext[getij_ext_cnt++];
                 e.tijd       = hw_unix;
                 e.hoogte     = HW_h;
                 e.hoog_water = true;
@@ -391,7 +442,7 @@ void meteo_getij_berekenen() {
             float lw_t = fmodf(hw_t + 6.208f, 24.0f);
             time_t lw_unix = ds + (time_t)(lw_t * 3600.0f);
             if (lw_unix > now - 7200L && getij_ext_cnt < GETIJ_N) {  // inclusief entries tot 2 uur geleden
-                GetijExtreme& e = getij_ext[getij_ext_cnt++];
+                GetijHarmExt& e = getij_ext[getij_ext_cnt++];
                 e.tijd       = lw_unix;
                 e.hoogte     = LW_h;
                 e.hoog_water = false;
@@ -403,7 +454,7 @@ void meteo_getij_berekenen() {
     for (int i = 0; i < getij_ext_cnt - 1; i++) {
         for (int j = 0; j < getij_ext_cnt - i - 1; j++) {
             if (getij_ext[j].tijd > getij_ext[j+1].tijd) {
-                GetijExtreme tmp = getij_ext[j];
+                GetijHarmExt tmp = getij_ext[j];
                 getij_ext[j]    = getij_ext[j+1];
                 getij_ext[j+1]  = tmp;
             }

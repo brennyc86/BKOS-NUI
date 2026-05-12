@@ -14,9 +14,9 @@
 // ------------------------------------------------------------
 
 static String _getij_iso8601(time_t t) {
-    struct tm* ti = localtime(&t);
+    struct tm* ti = gmtime(&t);
     char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S.000+02:00", ti);
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S.000+00:00", ti);
     return String(buf);
 }
 
@@ -87,15 +87,25 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, time_t van, time_t
 }
 
 static time_t _getij_parseer_tijdstip(const char* iso) {
-    struct tm tm = {};
-    // Formaat: 2026-01-01T12:00:00.000+01:00
-    sscanf(iso, "%d-%d-%dT%d:%d:%d",
-        &tm.tm_year, &tm.tm_mon, &tm.tm_mday,
-        &tm.tm_hour, &tm.tm_min, &tm.tm_sec);
-    tm.tm_year -= 1900;
-    tm.tm_mon  -= 1;
-    tm.tm_isdst = -1;
-    return mktime(&tm);
+    // Formaat: "2026-05-12T04:09:00.000+01:00"
+    // Berekent UTC Unix epoch zonder mktime/tz-afhankelijkheid
+    int jaar=0, mon=0, dag=0, uur=0, min=0, sec=0, tz_h=0, tz_m=0;
+    char sign = '+';
+    sscanf(iso, "%d-%d-%dT%d:%d:%d.%*3d%c%d:%d",
+        &jaar, &mon, &dag, &uur, &min, &sec, &sign, &tz_h, &tz_m);
+
+    static const int mnd_dag[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    long days = (jaar - 1970) * 365L;
+    for (int y = 1970; y < jaar; y++)
+        if (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)) days++;
+    for (int m = 0; m < mon - 1; m++) {
+        days += mnd_dag[m];
+        if (m == 1 && (jaar % 4 == 0 && (jaar % 100 != 0 || jaar % 400 == 0))) days++;
+    }
+    days += dag - 1;
+    long utc_s = days * 86400L + uur * 3600L + min * 60L + sec;
+    int tz_off = (tz_h * 3600 + tz_m * 60) * (sign == '+' ? 1 : -1);
+    return (time_t)(utc_s - tz_off);
 }
 
 // ------------------------------------------------------------
@@ -168,34 +178,18 @@ bool getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, in
     int lat_offset = doc["lat_offset"] | loc.lat_offset_cm;
     JsonArray arr  = doc["metingen"].as<JsonArray>();
 
-    float w_vorige_vorige = 0;
-    float w_vorige        = 0;
-    String t_vorige       = "";
-    bool eerste           = true;
-
+    // GETETBRKD2 geeft al alleen extremen terug — geen piek-detectie nodig.
+    // Positieve waterstand = boven NAP = HW; negatief = onder NAP = LW.
     for (JsonObject item : arr) {
+        if (*aantal >= max_aantal) break;
         float  w = item["w"].as<float>();
         String t = item["t"].as<String>();
-
-        if (!eerste) {
-            bool is_hw = (w_vorige > w_vorige_vorige && w_vorige > w);
-            bool is_lw = (w_vorige < w_vorige_vorige && w_vorige < w);
-
-            if ((is_hw || is_lw) && *aantal < max_aantal) {
-                time_t ts = _getij_parseer_tijdstip(t_vorige.c_str());
-                extremen[*aantal].tijdstip           = ts;
-                extremen[*aantal].waterstand_nap_cm  = w_vorige;
-                extremen[*aantal].waterstand_lat_cm  = w_vorige - (float)lat_offset;
-                extremen[*aantal].is_hoogwater        = is_hw;
-                (*aantal)++;
-            }
-        } else {
-            eerste = false;
-        }
-
-        w_vorige_vorige = w_vorige;
-        w_vorige        = w;
-        t_vorige        = t;
+        if (w == 0.0f && t.length() < 10) continue;  // lege entry overslaan
+        extremen[*aantal].tijdstip          = _getij_parseer_tijdstip(t.c_str());
+        extremen[*aantal].waterstand_nap_cm = w;
+        extremen[*aantal].waterstand_lat_cm = w - (float)lat_offset;
+        extremen[*aantal].is_hoogwater      = (w > 0);
+        (*aantal)++;
     }
 
     return true;

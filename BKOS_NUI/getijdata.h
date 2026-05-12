@@ -103,12 +103,14 @@ static const int GETIJ_AANTAL_LOCATIES = sizeof(GETIJ_LOCATIES) / sizeof(GETIJ_L
 // Initialiseer LittleFS — aanroepen in setup()
 bool getijdata_init();
 
-// Haal data op voor alle locaties en sla op in LittleFS
-// Aanroepen na WiFi verbinding en NTP synchronisatie
-bool getijdata_update();
+// Haal data op voor ALLE locaties en sla op in het bestandssysteem.
+// eerst_idx: dit station wordt eerst opgehaald (direct zichtbaar in UI).
+// Bestaand bestand per station wordt vervangen zodra nieuwe data beschikbaar is.
+// Bij een mislukte fetch blijft het bestaande bestand intact (fallback).
+bool getijdata_update_alle(int eerst_idx);
 
-// Controleer of data voor een specifieke locatie verouderd is en update indien nodig
-// Aanroepen in loop() — doet niets als data nog vers genoeg is
+// Controleer of het opgegeven station verouderd is en ververs indien nodig.
+// Aanroepen in de periodieke netwerktaak — doet niets als data vers genoeg is.
 void getijdata_check_update(int locatie_index);
 
 // Lees opgeslagen extremen voor een locatie op index (0 t/m 11)

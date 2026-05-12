@@ -108,55 +108,76 @@ static time_t _getij_parseer_tijdstip(const char* iso) {
     return (time_t)(utc_s - tz_off);
 }
 
+// Per-station tijdstip van laatste succesvolle update (module-niveau)
+static time_t _laatste_update[12] = {};
+
 // ------------------------------------------------------------
 // Publieke functies
 // ------------------------------------------------------------
 
 bool getijdata_init() {
-    // SPIFFS/LittleFS wordt al geïnitialiseerd door hw_io.ino via SPIFFS_BEGIN()
-    // Controleer of het bestandssysteem beschikbaar is
     if (!SPIFFS_BEGIN()) {
         // begin() geeft false als al gemount — dat is OK
     }
     return true;
 }
 
-bool getijdata_update() {
+// Haal alle stations op, geselecteerde station eerst.
+// Vervangt bestaand bestand per station zodra nieuwe data beschikbaar is.
+// Bij een mislukte fetch blijft het bestaande bestand intact.
+bool getijdata_update_alle(int eerst_idx) {
     time_t nu = time(nullptr);
     if (nu < 1000000) {
         Serial.println("[Getij] Tijd niet gesynchroniseerd, update overgeslagen");
         return false;
     }
+    if (eerst_idx < 0 || eerst_idx >= GETIJ_AANTAL_LOCATIES) eerst_idx = 0;
 
     time_t van = nu - (GETIJ_WEKEN_TERUG * 7 * 24 * 3600);
-    time_t tot = nu + (GETIJ_MAANDEN_VOORUIT * 30 * 24 * 3600);
+    time_t tot = nu + (6 * 7 * 24 * 3600);  // 6 weken vooruit
 
-    Serial.printf("[Getij] Update gestart voor %d locaties\n", GETIJ_AANTAL_LOCATIES);
+    Serial.printf("[Getij] Volledig update gestart (eerst: %s)\n",
+        GETIJ_LOCATIES[eerst_idx].naam);
 
     bool alles_ok = true;
+
+    // Geselecteerd station eerst — snel zichtbaar in de UI
+    if (_getij_haal_op_en_sla_op(GETIJ_LOCATIES[eerst_idx], van, tot)) {
+        _laatste_update[eerst_idx] = nu;
+    } else {
+        alles_ok = false;
+    }
+    delay(500);
+
+    // Daarna alle overige stations
     for (int i = 0; i < GETIJ_AANTAL_LOCATIES; i++) {
-        bool ok = _getij_haal_op_en_sla_op(GETIJ_LOCATIES[i], van, tot);
-        if (!ok) alles_ok = false;
-        delay(500); // Kort pauze tussen API calls
+        if (i == eerst_idx) continue;
+        if (_getij_haal_op_en_sla_op(GETIJ_LOCATIES[i], van, tot)) {
+            _laatste_update[i] = nu;
+        } else {
+            alles_ok = false;
+        }
+        delay(500);
     }
 
-    Serial.println("[Getij] Update klaar");
+    Serial.printf("[Getij] Volledig update klaar (%s)\n", alles_ok ? "OK" : "deels mislukt");
     return alles_ok;
 }
 
+// Controleer of het geselecteerde station verouderd is en ververs indien nodig.
+// Mislukte stations (laatste_update == 0) worden ook opgepikt.
 void getijdata_check_update(int locatie_index) {
     if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return;
     time_t nu = time(nullptr);
-    if (nu < 1000000) return;  // NTP nog niet gesync
+    if (nu < 1000000) return;
 
-    static time_t laatste_update[12] = {};
-    if (nu - laatste_update[locatie_index] > (time_t)(GETIJ_CACHE_UREN * 3600)) {
-        Serial.printf("[Getij] Station %s: data verouderd, update starten...\n",
+    if (nu - _laatste_update[locatie_index] > (time_t)(GETIJ_CACHE_UREN * 3600)) {
+        Serial.printf("[Getij] Station %s: data verouderd, ophalen...\n",
             GETIJ_LOCATIES[locatie_index].naam);
-        if (_getij_haal_op_en_sla_op(GETIJ_LOCATIES[locatie_index],
-                nu - (GETIJ_WEKEN_TERUG * 7 * 24 * 3600),
-                nu + (6 * 7 * 24 * 3600))) {
-            laatste_update[locatie_index] = nu;
+        time_t van = nu - (GETIJ_WEKEN_TERUG * 7 * 24 * 3600);
+        time_t tot = nu + (6 * 7 * 24 * 3600);
+        if (_getij_haal_op_en_sla_op(GETIJ_LOCATIES[locatie_index], van, tot)) {
+            _laatste_update[locatie_index] = nu;
         }
     }
 }

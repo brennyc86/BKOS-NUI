@@ -3,9 +3,9 @@
 #include "app_state.h"
 #include "meteo.h"
 
-#define NAV_ITEMS 6
-static const char* nav_labels[NAV_ITEMS] = {"PANEEL", "IO", "METEO", "APPS", "CONFIG", "INFO"};
-static const int   nav_scherm[NAV_ITEMS] = {SCREEN_MAIN, SCREEN_IO, SCREEN_METEO, SCREEN_APPS, SCREEN_CONFIG, SCREEN_INFO};
+#define NAV_ITEMS 7
+static const char* nav_labels[NAV_ITEMS] = {"PANEEL", "IO", "METEO", "APPS", "CONFIG", "INFO", "VICTRON"};
+static const int   nav_scherm[NAV_ITEMS] = {SCREEN_MAIN, SCREEN_IO, SCREEN_METEO, SCREEN_APPS, SCREEN_CONFIG, SCREEN_INFO, SCREEN_VICTRON};
 
 // Status bar klok positie
 #if SCREEN_SMALL

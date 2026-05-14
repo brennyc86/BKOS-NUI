@@ -2,6 +2,8 @@
 #include "meteo.h"
 #include "nav_bar.h"
 #include "screen_info.h"
+#include "victron_ble.h"
+#include "data_store.h"
 
 // ─── Icoon types ────────────────────────────────
 #define I_HAVEN      0
@@ -449,13 +451,54 @@ static void interieur_status_teken() {
 
     const char* txt;
     uint16_t kleur;
-    if      (wit_aan)  { txt = "INT: WIT AAN";  kleur = C_WHITE; }
-    else if (rood_aan) { txt = "INT: ROOD AAN"; kleur = C_LIGHT_ON_RED; }
-    else               { txt = "INT: UIT";       kleur = C_TEXT_DIM; }
+    if      (wit_aan)  { txt = "INT: WIT";  kleur = C_WHITE; }
+    else if (rood_aan) { txt = "INT: ROOD"; kleur = C_LIGHT_ON_RED; }
+    else               { txt = "INT: UIT";  kleur = C_TEXT_DIM; }
     tft.setTextSize(1);
     tft.setTextColor(kleur);
     tft.setCursor(x + 68, cy - 3);
     tft.print(txt);
+
+    // Victron mini-widget (rechterhelft, alleen indien geconfigureerd)
+#if !PLATFORM_PICO
+    if (victron_apparaten_cnt > 0) {
+        int vx = x + 156;
+        tft.drawFastVLine(vx - 4, y + 4, h - 8, C_SURFACE2);
+
+        char k[VICTRON_SLEUTEL_LEN];
+        victron_sleutel(0, "batt_v",   k); float batt_v  = data_lees_f(k, -1.0f);
+        victron_sleutel(0, "solar_w",  k); int   solar_w = data_lees_i(k, -1);
+        victron_sleutel(0, "yield_wh", k); float yield   = data_lees_f(k, -1.0f);
+        long oud = data_leeftijd(k);
+        bool vers = (oud >= 0 && oud < 60);
+        uint16_t vk = vers ? C_TEXT : C_TEXT_DIM;
+
+        // Labels (klein)
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(vx, y + 4);    tft.print("ACCU");
+        tft.setCursor(vx + 72, y + 4); tft.print("ZON");
+        tft.setCursor(vx + 140, y + 4); tft.print("DAG");
+
+        // Waarden
+        tft.setTextColor(vk);
+        char buf[14];
+        if (batt_v >= 0) snprintf(buf, 14, "%.1fV", batt_v);
+        else             snprintf(buf, 14, "--.-V");
+        tft.setCursor(vx, y + 16); tft.print(buf);
+
+        if (solar_w >= 0) snprintf(buf, 14, "%dW", solar_w);
+        else              snprintf(buf, 14, "--W");
+        tft.setCursor(vx + 72, y + 16); tft.print(buf);
+
+        if (yield >= 0 && vers) {
+            if (yield >= 1000.0f) snprintf(buf, 14, "%.1fkWh", yield/1000.0f);
+            else                  snprintf(buf, 14, "%.0fWh", yield);
+        } else {
+            snprintf(buf, 14, "--Wh");
+        }
+        tft.setCursor(vx + 140, y + 16); tft.print(buf);
+    }
+#endif
 }
 
 // ─── AUTO verlichting overlay menu ──────────────────────────────────

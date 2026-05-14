@@ -14,6 +14,7 @@
 #define SCREEN_APPS       8  // app beheer + winkel
 #define SCREEN_LUA_APP    9  // standalone Lua app (lua_forceer_app bepaalt welke)
 #define SCREEN_CALIBRATIE 10 // touch kalibratie (alleen XPT2046 resistief)
+#define SCREEN_VICTRON    11 // Victron BLE monitor
 
 // Vaarmodi
 #define MODE_HAVEN   0

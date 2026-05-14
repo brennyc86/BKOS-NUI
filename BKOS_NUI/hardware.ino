@@ -8,12 +8,15 @@
 #include "screen_info.h"
 #include "screen_apps.h"
 #include "screen_calibratie.h"
+#include "screen_victron.h"
 #include "meteo.h"
 #include "nav_bar.h"
 #include "data_store.h"
 #include "app_manager.h"
 #include "lua_runtime.h"
 #include "fout_log.h"
+#include "provider.h"
+#include "victron_ble.h"
 
 static bool          vorige_touch        = false;
 static bool          touch_verwerkt      = false;
@@ -57,6 +60,7 @@ void hw_setup() {
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
     ota_setup();        // init OTA (snel)
     fout_log_setup();   // laad foutrapportage token uit Preferences
+    victron_setup();        // laad geconfigureerde Victron apparaten, start evt. BLE scan
     io_boot();              // BKOSS check + UART IO discovery
     io_verlichting_update(); // verlichting instellen op basis van opgestart modus
     app_setup();            // app-manifesten laden + Lua runtime initialiseren
@@ -97,6 +101,7 @@ void hw_loop() {
     io_loop();
     ntp_loop();
     ota_loop();
+    provider_loop();
 
     // Scherm (her)bouwen
     if (scherm_bouwen) {
@@ -140,6 +145,7 @@ void hw_loop() {
                 case SCREEN_IO_CFG:  screen_io_cfg_teken(); break;
                 case SCREEN_APPS:       screen_apps_teken();        break;
                 case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
+                case SCREEN_VICTRON:    screen_victron_teken();     break;
                 case SCREEN_LUA_APP: // forceer verlopen — terug naar apps
                     lua_forceer_app = -1;
                     actief_scherm   = SCREEN_APPS;
@@ -212,6 +218,7 @@ void hw_loop() {
                         case SCREEN_IO_CFG:     screen_io_cfg_run(ts_x, ts_y, true);     break;
                         case SCREEN_APPS:       screen_apps_run(ts_x, ts_y, true);       break;
                         case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
+                        case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
                     }
                 }
             }
@@ -235,6 +242,7 @@ void hw_loop() {
                 case SCREEN_IO:         screen_io_run(0, 0, false);         break;
                 case SCREEN_OTA:        screen_ota_run(0, 0, false);        break;
                 case SCREEN_CALIBRATIE: screen_calibratie_run(0, 0, false); break;
+                case SCREEN_VICTRON:    screen_victron_run(0, 0, false);    break;
                 default: break;
             }
         }

@@ -100,6 +100,10 @@ screen_info.h/.ino  ← device informatie scherm
 screen_wifi.h/.ino  ← WiFi configuratie scherm
 
 meteo.h/.ino        ← weer + getij module: locatie (ip-api.com), Open-Meteo API, harmonische getijberekening
+
+provider.h/.ino     ← lichtgewicht achtergrond-scheduler (alleen actief als tft_actief)
+victron_ble.h/.ino  ← passieve Victron BLE scan + AES-128-CTR decryptie + Preferences opslag
+screen_victron.h/.ino ← Victron scherm: DATA tab + CONFIG tab (discovery + hex-toetsenbord)
 ```
 
 ### Scherm-dispatch patroon
@@ -154,6 +158,13 @@ Recente taken:
 | 115 | Sessie 18 | lua_app_laden stub signatuur fix (int,bool); lua_linit_bkos.c compileert leeg zonder Lua; library.properties vereist voor LuaBKOS |
 | 116 | Sessie 19 | Pico Compileer-fixes: FreeRTOS stubs, WiFi API guards, LittleFS.begin(), SPI constructor, hardware pins (ILI9341+XPT2046) |
 | 117 | Sessie 19 | Pico UI: compact nav bar (< 3 items >) + portret hoofdscherm 240×320 (boot links, controls rechts) |
+| 118 | Sessie 20 | getijdata_update_alle(eerst_idx): bij opstarten alle 12 stations ophalen, geselecteerde eerste |
+| 119 | Sessie 20 | IO_INTERVAL 50→100ms, cycle delay 30→60ms voor stabiliteit |
+| 120 | Sessie 20 | provider.h/.ino: lichtgewicht achtergrond-scheduler (tft_actief check) |
+| 121 | Sessie 20 | victron_ble.h/.ino: passieve BLE scan + AES-128-CTR, MPPT bit-parser, Preferences opslag |
+| 122 | Sessie 20 | screen_victron.h/.ino: DATA tab (apparaat kaarten) + CONFIG tab (discovery + hex-toetsenbord advertising key) |
+| 123 | Sessie 20 | Nav bar 6→7 items (VICTRON toegevoegd, SCREEN_VICTRON=11) |
+| 124 | Sessie 20 | Hoofdscherm: Victron mini-widget (accu V, zonne-W, dagopbrengst) in INT-STATUS balk |
 
 ---
 

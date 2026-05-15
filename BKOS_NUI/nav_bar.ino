@@ -197,7 +197,7 @@ void nav_bar_teken() {
 }
 
 int nav_bar_klik(int x, int y) {
-    if (y < NAV_Y || y >= TFT_H) return -1;
+    if (y < NAV_Y - 8 || y >= TFT_H) return -1;  // 8px marge voor touch-afwijking
 #if SCREEN_SMALL
     if (x < PICO_NAV_ARROW_W) {
         // Linker pijl: scroll links

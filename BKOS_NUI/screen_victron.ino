@@ -583,6 +583,15 @@ static bool _kv_run(int x, int y) {
                 }
 
                 if (cfg >= 0) {
+                    // Wis verouderde data uit vorige (foute) sleutel
+                    {
+                        const char* velden[] = {"batt_v","solar_w","yield_wh","staat"};
+                        char dk[VICTRON_SLEUTEL_LEN];
+                        for (int v = 0; v < 4; v++) {
+                            victron_sleutel(cfg, velden[v], dk);
+                            data_verwijder(dk);
+                        }
+                    }
                     // Zet sleutel bytes
                     for (int i = 0; i < 16; i++) {
                         char hi = _kv_buf[i*2];
@@ -615,6 +624,7 @@ static bool _kv_run(int x, int y) {
 
 // ─── Publieke functies ────────────────────────────────────────────────────────
 void screen_victron_teken() {
+    _kv_open = false;  // altijd resetten bij (her)openen van het scherm
     tft.fillScreen(C_BG);
     sb_scherm_teken("VICTRON", C_CYAN);
     _tabs_teken();

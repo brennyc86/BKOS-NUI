@@ -164,11 +164,15 @@ static void _data_kaart_teken(int idx, int y) {
         tft.print(tbuf);
     }
 
-    // Sleutel ontbreekt melding
+    // Sleutel ontbreekt of decryptie fout
     if (!a.heeft_sleutel) {
         tft.setTextColor(C_AMBER);
         tft.setCursor(lx + 14, cy + 18);
         tft.print("! Sleutel niet ingesteld");
+    } else if (batt_v > 60.0f) {
+        tft.setTextColor(C_RED_BRIGHT);
+        tft.setCursor(lx + 14, cy + 18);
+        tft.print("! Sleutel fout? Zie Serial");
     }
 }
 
@@ -402,7 +406,7 @@ static void _cfg_paneel_teken() {
     tft.drawRoundRect(cx, cy, 120, 30, 6, victron_scan_actief ? C_GREEN : C_CYAN);
     tft.setTextColor(victron_scan_actief ? C_GREEN : C_CYAN);
     tft.setCursor(cx + 8, cy + 11);
-    tft.print(victron_scan_actief ? "SCAN AAN" : "SCAN AAN");
+    tft.print(victron_scan_actief ? "SCAN AAN" : "SCAN STARTEN");
 }
 
 static void _cfg_tab_teken() {
@@ -636,6 +640,9 @@ void screen_victron_run(int x, int y, bool aanraking) {
         }
         return;
     }
+
+    // Nav bar wordt afgehandeld door hardware.ino vóór deze functie
+    if (y >= NAV_Y) return;
 
     // Hex-toetsenbord overlay heeft voorrang
     if (_kv_open) {

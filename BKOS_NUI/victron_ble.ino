@@ -167,11 +167,15 @@ class _VicCallback : public BLEAdvertisedDeviceCallbacks {
             uint8_t plain[32];
             if (_decrypt(victron_apparaten[idx].sleutel, nonce0, nonce1,
                          enc, plain, enc_len)) {
+                Serial.printf("[Victron] MAC=%s type=0x%02X nonce=%02X%02X plain:", mac, rec_type, nonce0, nonce1);
+                for (int _i = 0; _i < min(enc_len, 8); _i++) Serial.printf(" %02X", plain[_i]);
+                Serial.println();
                 switch (rec_type) {
                     case VREC_SOLAR_CHARGER:
                         _parse_solar(idx, plain, enc_len);
                         break;
                     default:
+                        Serial.printf("[Victron] onbekend record type 0x%02X — niet geparsed\n", rec_type);
                         break;
                 }
             }

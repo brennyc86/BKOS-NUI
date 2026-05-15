@@ -506,6 +506,13 @@ static void _kv_overlay_teken() {
     tft.print("OK");
 }
 
+static uint8_t _hex_digit(char c) {
+    if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+    if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+    if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+    return 0;
+}
+
 // Verwerk tik op hex-toetsenbord
 // Geeft true als toetsenbord actie gevraagd hertekening
 static bool _kv_run(int x, int y) {
@@ -576,13 +583,8 @@ static bool _kv_run(int x, int y) {
                     for (int i = 0; i < 16; i++) {
                         char hi = _kv_buf[i*2];
                         char lo = _kv_buf[i*2+1];
-                        auto hd = [](char c) -> uint8_t {
-                            if (c >= '0' && c <= '9') return c - '0';
-                            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-                            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-                            return 0;
-                        };
-                        victron_apparaten[cfg].sleutel[i] = (hd(hi) << 4) | hd(lo);
+                        victron_apparaten[cfg].sleutel[i] =
+                            (uint8_t)((_hex_digit(hi) << 4) | _hex_digit(lo));
                     }
                     victron_apparaten[cfg].heeft_sleutel = true;
                     victron_apparaat_opslaan(cfg);

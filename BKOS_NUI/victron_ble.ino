@@ -11,10 +11,12 @@
 
 #if !PLATFORM_PICO
 
+#include <string>
 #include <BLEDevice.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 #include <mbedtls/aes.h>
+#include <freertos/semphr.h>
 #include <Preferences.h>
 
 VictronApparaat victron_apparaten[VICTRON_MAX_APPARATEN];

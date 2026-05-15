@@ -42,6 +42,7 @@ static int   _sel_idx      = -1;   // geselecteerde apparaat in CONFIG
 static bool  _sel_ontdekt  = false;
 static bool  _kv_open      = false;
 static char  _kv_buf[33]   = "";   // 32 hex tekens + NUL
+static int   _detail_idx   = -1;   // DATA tab detail overlay (-1 = gesloten)
 
 // ─── Tab-balk ────────────────────────────────────────────────────────────────
 static void _tabs_teken() {
@@ -635,9 +636,148 @@ static bool _kv_run(int x, int y) {
     return false;
 }
 
+// ─── Detail overlay (DATA tab: tik op kaart voor alle ruwe info) ─────────────
+static void _detail_overlay_teken(int idx) {
+    const VictronApparaat& a = victron_apparaten[idx];
+
+    char k[VICTRON_SLEUTEL_LEN];
+    victron_sleutel(idx, "batt_v",   k); float batt_v   = data_lees_f(k, -1.0f);
+    victron_sleutel(idx, "solar_w",  k); int   solar_w  = data_lees_i(k, -1);
+    victron_sleutel(idx, "yield_wh", k); float yield_wh = data_lees_f(k, -1.0f);
+    victron_sleutel(idx, "staat",    k); int   staat     = data_lees_i(k, -1);
+    long leeftijd = data_leeftijd(k);
+
+    int ox = 8, oy = SB_H + 2;
+    int ow = TFT_W - 16, oh = NAV_Y - SB_H - 4;
+
+    tft.fillRoundRect(ox, oy, ow, oh, 8, RGB565(8, 18, 32));
+    tft.drawRoundRect(ox, oy, ow, oh, 8, C_CYAN);
+
+    // Titelbalk
+    tft.fillRect(ox + 1, oy + 1, ow - 2, 28, C_SURFACE3);
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    tft.setCursor(ox + 12, oy + 8);
+    tft.print(a.naam[0] ? a.naam : a.mac);
+
+    // Sluitknop
+    tft.fillRect(ox + ow - 36, oy + 1, 35, 27, C_RED_BRIGHT);
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    tft.setCursor(ox + ow - 24, oy + 8);
+    tft.print("X");
+
+    int lx = ox + 14, vx = ox + 200;
+    int ly = oy + 36;
+    const int ls = 17;
+    char buf[80];
+
+    // Apparaat info
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(lx, ly); tft.print("APPARAAT"); ly += ls;
+
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("mac:");
+    tft.setTextColor(C_TEXT);     tft.setCursor(vx, ly); tft.print(a.mac); ly += ls;
+
+    snprintf(buf, 80, "%s  (type 0x%02X)", victron_type_naam(a.type), a.type);
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("type:");
+    tft.setTextColor(C_TEXT);     tft.setCursor(vx, ly); tft.print(buf); ly += ls;
+
+    if (a.heeft_sleutel) {
+        char h[33];
+        for (int i = 0; i < 16; i++) snprintf(h + i*2, 3, "%02X", a.sleutel[i]);
+        h[32] = '\0';
+        tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("sleutel:");
+        tft.setTextColor(C_GREEN);    tft.setCursor(vx, ly); tft.print(h); ly += ls;
+    } else {
+        tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("sleutel:");
+        tft.setTextColor(C_AMBER);    tft.setCursor(vx, ly); tft.print("niet ingesteld"); ly += ls;
+    }
+
+    ly += 6;
+
+    // Meetwaarden
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly);
+    tft.print("MEETWAARDEN  (vergelijk met Victron Connect app)"); ly += ls;
+
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("accu V:");
+    if (batt_v >= 0) {
+        int rv = (int)(batt_v * 100.0f + 0.5f);
+        snprintf(buf, 80, "%.2f V    [raw V*100 = %d]", batt_v, rv);
+        tft.setTextColor(batt_v > 60.0f ? C_RED_BRIGHT : C_GREEN);
+    } else {
+        snprintf(buf, 80, "geen data");
+        tft.setTextColor(C_TEXT_DIM);
+    }
+    tft.setCursor(vx, ly); tft.print(buf); ly += ls;
+
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("pv W:");
+    if (solar_w >= 0) {
+        snprintf(buf, 80, "%d W", solar_w);
+        tft.setTextColor(C_TEXT);
+    } else {
+        snprintf(buf, 80, "geen data");
+        tft.setTextColor(C_TEXT_DIM);
+    }
+    tft.setCursor(vx, ly); tft.print(buf); ly += ls;
+
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("dag Wh:");
+    if (yield_wh >= 0) {
+        int ry = (int)(yield_wh / 10.0f + 0.5f);
+        if (yield_wh >= 1000.0f)
+            snprintf(buf, 80, "%.2f kWh    [raw Wh/10 = %d]", yield_wh/1000.0f, ry);
+        else
+            snprintf(buf, 80, "%.0f Wh    [raw Wh/10 = %d]", yield_wh, ry);
+        tft.setTextColor(C_TEXT);
+    } else {
+        snprintf(buf, 80, "geen data");
+        tft.setTextColor(C_TEXT_DIM);
+    }
+    tft.setCursor(vx, ly); tft.print(buf); ly += ls;
+
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("staat:");
+    if (staat >= 0) {
+        snprintf(buf, 80, "%d = %s", staat, victron_staat_naam(staat));
+        tft.setTextColor(C_CYAN);
+    } else {
+        snprintf(buf, 80, "geen data");
+        tft.setTextColor(C_TEXT_DIM);
+    }
+    tft.setCursor(vx, ly); tft.print(buf); ly += ls;
+
+    tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("leeftijd:");
+    if (leeftijd >= 0) {
+        if (leeftijd < 60)        snprintf(buf, 80, "%lds", leeftijd);
+        else if (leeftijd < 3600) snprintf(buf, 80, "%ldm", leeftijd / 60);
+        else                       snprintf(buf, 80, ">1u");
+        tft.setTextColor(leeftijd < 60 ? C_GREEN : C_AMBER);
+    } else {
+        snprintf(buf, 80, "geen data ontvangen");
+        tft.setTextColor(C_TEXT_DIM);
+    }
+    tft.setCursor(vx, ly); tft.print(buf); ly += ls;
+
+    // BLE signaalsterkte uit ontdekte lijst
+    for (int i = 0; i < victron_ontdekt_cnt; i++) {
+        if (strcmp(victron_ontdekt[i].mac, a.mac) == 0) {
+            tft.setTextColor(C_TEXT_DIM); tft.setCursor(lx, ly); tft.print("BLE rssi:");
+            snprintf(buf, 80, "%d dBm", (int)victron_ontdekt[i].rssi);
+            tft.setTextColor(C_TEXT);    tft.setCursor(vx, ly); tft.print(buf); ly += ls;
+            break;
+        }
+    }
+
+    ly += 4;
+    tft.setTextColor(RGB565(40, 70, 100)); tft.setCursor(lx, ly);
+    tft.print("Als accu V erg afwijkt van Victron app \x10 sleutel fout (herstel via CONFIG)");
+
+    tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(ox + (ow - 24 * 6) / 2, oy + oh - 14);
+    tft.print("tik ergens om te sluiten");
+}
+
 // ─── Publieke functies ────────────────────────────────────────────────────────
 void screen_victron_teken() {
-    _kv_open = false;  // altijd resetten bij (her)openen van het scherm
+    _kv_open    = false;
+    _detail_idx = -1;
     tft.fillScreen(C_BG);
     sb_scherm_teken("VICTRON", C_CYAN);
     _tabs_teken();
@@ -659,6 +799,7 @@ void screen_victron_run(int x, int y, bool aanraking) {
             if (millis() - _upd_ms >= 5000UL) {
                 _upd_ms = millis();
                 _data_tab_teken();
+                if (_detail_idx >= 0) _detail_overlay_teken(_detail_idx);
             }
         }
         return;
@@ -669,6 +810,13 @@ void screen_victron_run(int x, int y, bool aanraking) {
     if (nav >= 0 && nav != actief_scherm) {
         actief_scherm = nav;
         scherm_bouwen = true;
+        return;
+    }
+
+    // Detail overlay: elke tik sluit hem
+    if (_detail_idx >= 0) {
+        _detail_idx = -1;
+        _data_tab_teken();
         return;
     }
 
@@ -705,7 +853,17 @@ void screen_victron_run(int x, int y, bool aanraking) {
     // Buiten content: nav bar
     if (y < VIC_PANEL_Y) return;
 
-    if (victron_tab == VICTRON_TAB_DATA) return;
+    if (victron_tab == VICTRON_TAB_DATA) {
+        // Tik op een apparaatkaart → detail overlay
+        if (victron_apparaten_cnt > 0 && y >= VIC_PANEL_Y) {
+            int i = (y - VIC_PANEL_Y - 4) / DATA_CARD_H;
+            if (i >= 0 && i < victron_apparaten_cnt) {
+                _detail_idx = i;
+                _detail_overlay_teken(i);
+            }
+        }
+        return;
+    }
 
     // CONFIG tab
     if (x < VIC_LIST_W) {

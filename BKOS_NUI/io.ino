@@ -85,7 +85,9 @@ void io_detect() {
 
     while (Serial.available()) Serial.read();
     Serial.print("IOD\n");
-    // ATtiny leest "IOD" en gaat in cmd_io(ID) modus
+    Serial.flush();        // wacht tot commando volledig verstuurd
+    delay(10);             // geef ATtiny tijd om commando te verwerken
+    while (Serial.available()) Serial.read();  // verwijder eventuele echo
 
     for (int m = 0; m < MAX_MODULES; m++) {
         // Stuur 8 bits, lees per bit direct de ID-pin respons terug
@@ -160,7 +162,9 @@ void io_cyclus() {
 
     while (Serial.available()) Serial.read();
     Serial.print("IO\n");
-    // ATtiny leest "IO" en gaat in cmd_io(MISO) modus
+    Serial.flush();        // wacht tot commando volledig verstuurd
+    delay(5);              // geef ATtiny tijd om commando te verwerken
+    while (Serial.available()) Serial.read();  // verwijder eventuele echo
 
     // Per kanaal: stuur output bit (omgekeerde volgorde, shift-register),
     // ATtiny stuurt direct de bijbehorende input bit terug
@@ -197,7 +201,9 @@ void io_cyclus() {
 
 void io_loop() {
     static unsigned long detectie_gecheckt = 0;
-    if (io_aparaten_cnt == 0 && millis() - detectie_gecheckt >= IO_DETECTIE_INT) {
+    // Altijd herdetecteren (ook als er al modules zijn) zodat weggevallen modules
+    // automatisch terugkeren — bijv. na tijdelijke stroomproblemen of BLE-interferentie bij boot
+    if (millis() - detectie_gecheckt >= IO_DETECTIE_INT) {
         detectie_gecheckt = millis();
         io_detect();
     }

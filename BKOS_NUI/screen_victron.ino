@@ -153,10 +153,23 @@ static void _data_kaart_teken(int idx, int y) {
         tft.print("Dag: geen data");
     }
 
+    // Ruwe waarden voor diagnose — alleen tonen als sleutel ingesteld
+    // (y+66 zodat geen overlap met waarschuwing op y+56)
+    if (a.heeft_sleutel) {
+        char rbuf[40];
+        int bv_raw = (batt_v >= 0)   ? (int)(batt_v * 100.0f + 0.5f) : -1;
+        int yw_raw = (yield_wh >= 0) ? (int)(yield_wh / 10.0f + 0.5f) : -1;
+        snprintf(rbuf, 40, "raw V\xF7""100=%d W=%d Wh\xF7""10=%d",
+                 bv_raw, solar_w, yw_raw);
+        tft.setTextSize(1); tft.setTextColor(RGB565(50, 70, 90));
+        tft.setCursor(DATA_CARD_X + 12, y + 66);
+        tft.print(rbuf);
+    }
+
     // Gezien-tijdstempel
     if (leeftijd >= 0) {
         char tbuf[20];
-        if (leeftijd < 60)       snprintf(tbuf, 20, "%lds geleden", leeftijd);
+        if (leeftijd < 60)        snprintf(tbuf, 20, "%lds geleden", leeftijd);
         else if (leeftijd < 3600) snprintf(tbuf, 20, "%ldm geleden", leeftijd/60);
         else                      snprintf(tbuf, 20, ">1u geleden");
         tft.setTextColor(vers ? C_TEXT_DIM : RGB565(60,70,90));
@@ -651,8 +664,13 @@ void screen_victron_run(int x, int y, bool aanraking) {
         return;
     }
 
-    // Nav bar wordt afgehandeld door hardware.ino vóór deze functie
-    if (y >= NAV_Y) return;
+    // Nav bar: zelfde patroon als alle andere schermen
+    int nav = nav_bar_klik(x, y);
+    if (nav >= 0 && nav != actief_scherm) {
+        actief_scherm = nav;
+        scherm_bouwen = true;
+        return;
+    }
 
     // Hex-toetsenbord overlay heeft voorrang
     if (_kv_open) {

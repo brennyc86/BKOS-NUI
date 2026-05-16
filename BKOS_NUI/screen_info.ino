@@ -170,28 +170,40 @@ static void info_velden_teken() {
         }
     } else {
         // SYSTEEM tab
-        systeem_rij(fy, "BKOS-NUI versie", BKOS_NUI_VERSIE,  C_CYAN,      0); fy += VELD_H;
+        #define MOD_RIJ_H 32
+
+        systeem_rij(fy, "BKOS-NUI versie", BKOS_NUI_VERSIE, C_CYAN, 0); fy += VELD_H;
 
         char bkoss_buf[32];
         if (bkoss_actief) {
             snprintf(bkoss_buf, sizeof(bkoss_buf), "%s  OK", bkoss_versie);
-            systeem_rij(fy, "BKOSS module",   bkoss_buf,        C_GREEN,     1);
+            systeem_rij(fy, "BKOSS module", bkoss_buf, C_GREEN, 1);
         } else {
-            systeem_rij(fy, "BKOSS module",   "niet gevonden",  C_RED_BRIGHT,1);
+            systeem_rij(fy, "BKOSS module", "niet gevonden", C_RED_BRIGHT, 1);
         }
         fy += VELD_H;
 
-        char mod_buf[16];
-        snprintf(mod_buf, sizeof(mod_buf), "%d", io_aparaten_cnt);
-        systeem_rij(fy, "IO modules",     mod_buf,            C_TEXT,      2); fy += VELD_H;
+        char io_buf[32];
+        snprintf(io_buf, sizeof(io_buf), "%d mod / %d kanalen", io_aparaten_cnt, io_kanalen_cnt);
+        systeem_rij(fy, "IO", io_buf, C_TEXT, 2); fy += VELD_H;
 
-        char kan_buf[16];
-        snprintf(kan_buf, sizeof(kan_buf), "%d", io_kanalen_cnt);
-        systeem_rij(fy, "IO kanalen",     kan_buf,            C_TEXT,      3); fy += VELD_H;
+        // Compact per-module rijen (max 4 passen in beschikbare ruimte)
+        int mod_max = min(io_aparaten_cnt, 4);
+        for (int m = 0; m < mod_max; m++) {
+            tft.fillRect(10, fy, TFT_W - 20, MOD_RIJ_H - 1, (m % 2 == 0) ? C_BG : C_SURFACE);
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            char mlabel[16]; snprintf(mlabel, sizeof(mlabel), "  mod %d", m + 1);
+            tft.setCursor(28, fy + MOD_RIJ_H / 2 - 4); tft.print(mlabel);
+            int ch = (io_aparaten[m] == MODULE_LOGICA16 || io_aparaten[m] == MODULE_SCHAKEL16) ? 16 : 8;
+            char mval[24]; snprintf(mval, sizeof(mval), "%s  (%d kn)", io_module_naam(io_aparaten[m]), ch);
+            tft.setTextColor(C_CYAN);
+            tft.setCursor(VELD_LABEL_W + 18, fy + MOD_RIJ_H / 2 - 4); tft.print(mval);
+            fy += MOD_RIJ_H;
+        }
 
         systeem_rij(fy, "WiFi",
             wifi_verbonden ? "verbonden" : "niet verbonden",
-            wifi_verbonden ? C_GREEN : C_AMBER, 4);
+            wifi_verbonden ? C_GREEN : C_AMBER, 3 + mod_max);
     }
 }
 
@@ -268,11 +280,17 @@ static void pico_info_velden_teken() {
             pico_systeem_rij(1, y, "BKOSS", "niet gevonden", C_RED_BRIGHT);
         }
         y += PICO_INFO_VELD_H;
-        snprintf(buf, sizeof(buf), "%d", io_aparaten_cnt);
-        pico_systeem_rij(2, y, "IO mod", buf, C_TEXT); y += PICO_INFO_VELD_H;
-        snprintf(buf, sizeof(buf), "%d", io_kanalen_cnt);
-        pico_systeem_rij(3, y, "IO kan", buf, C_TEXT); y += PICO_INFO_VELD_H;
-        pico_systeem_rij(4, y, "WiFi",
+        snprintf(buf, sizeof(buf), "%d mod / %d kn", io_aparaten_cnt, io_kanalen_cnt);
+        pico_systeem_rij(2, y, "IO", buf, C_TEXT); y += PICO_INFO_VELD_H;
+        // Per-module rijen (max 3 op klein scherm)
+        int pico_mod_max = min(io_aparaten_cnt, 3);
+        for (int m = 0; m < pico_mod_max; m++) {
+            int ch = (io_aparaten[m] == MODULE_LOGICA16 || io_aparaten[m] == MODULE_SCHAKEL16) ? 16 : 8;
+            snprintf(buf, sizeof(buf), "%s(%d)", io_module_naam(io_aparaten[m]), ch);
+            char mlbl[8]; snprintf(mlbl, sizeof(mlbl), " m%d", m + 1);
+            pico_systeem_rij(3 + m, y, mlbl, buf, C_CYAN); y += PICO_INFO_VELD_H;
+        }
+        pico_systeem_rij(3 + pico_mod_max, y, "WiFi",
             wifi_verbonden ? "verbonden" : "geen verbinding",
             wifi_verbonden ? C_GREEN : C_AMBER);
     }

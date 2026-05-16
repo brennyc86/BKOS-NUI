@@ -110,7 +110,6 @@ void io_detect() {
 
         tmp_aparaten[tmp_aparaten_cnt++] = id;
         tmp_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
-        delay(5); // Kleine pauze: ATtiny tijd geven voor volgende module
     }
 
     Serial.print('\n');
@@ -430,6 +429,19 @@ int io_zichtbaar() {
             ? max(io_kanalen_cnt, io_kanalen_cfg)
             : io_kanalen_cnt;
     return min(n, MAX_IO_KANALEN);
+}
+
+const char* io_module_naam(byte id) {
+    switch (id) {
+        case MODULE_LOGICA8:   return "LOGICA8";
+        case MODULE_LOGICA16:  return "LOGICA16";
+        case MODULE_HUB8:      return "HUB8";
+        case MODULE_HUB_AN:    return "HUB-AN";
+        case MODULE_HUB_UART:  return "HUB-UART";
+        case MODULE_SCHAKEL8:  return "SCHAKEL8";
+        case MODULE_SCHAKEL16: return "SCHAKEL16";
+        default:               return "onbekend";
+    }
 }
 
 void io_actie_uitvoeren(uint8_t actie, uint8_t param) {

@@ -405,6 +405,11 @@ void nav_bar_teken() {
             tft.fillRect(bx + 1, y + 1, NB_KW - 2, NAV_H - 2, C_SURFACE2);
             tft.drawFastHLine(bx + 4, y,     NB_KW - 8, C_CYAN);
             tft.drawFastHLine(bx + 4, y + 1, NB_KW - 8, C_CYAN);
+        } else {
+            tft.drawFastHLine(bx + 1, y + 1,           NB_KW - 2, C_SURFACE3);
+            tft.drawFastVLine(bx + 1, y + 1,           NAV_H - 2, C_SURFACE3);
+            tft.drawFastHLine(bx + 1, y + NAV_H - 2,   NB_KW - 2, C_NAVBAR);
+            tft.drawFastVLine(bx + NB_KW - 2, y + 1,   NAV_H - 2, C_NAVBAR);
         }
 
         // Naam gecentreerd, afgekapt als te lang

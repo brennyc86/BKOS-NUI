@@ -26,9 +26,13 @@ extern bool bkoss_actief;
 #define MODULE_EINDE     255
 
 // Timing
-#define IO_INTERVAL      100   // ms tussen IO cycli (was 50, verhoogd voor stabiliteit)
-#define IO_TIMEOUT       5000  // ms timeout per actie
-#define IO_DETECTIE_INT  30000 // ms herdetectie interval
+#define IO_TIMEOUT           5000  // ms timeout per actie
+#define IO_MIN_INTERVAL       100  // ms minimum tussentijd tussen twee cycli
+#define IO_HEARTBEAT_AAN_STD   30  // seconden heartbeat als scherm aan is
+#define IO_HEARTBEAT_UIT_STD  120  // seconden heartbeat als scherm uit is
+
+extern uint16_t io_heartbeat_aan;  // seconden, instelbaar
+extern uint16_t io_heartbeat_uit;  // seconden, instelbaar
 
 // Kanaal namen conventies
 #define NAAM_PREFIX_LICHT   "**L_"    // extern licht

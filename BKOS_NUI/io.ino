@@ -1,6 +1,7 @@
 #include "io.h"
 #include "app_state.h"
 #include "meteo.h"
+#include "hw_scherm.h"
 
 byte licht_cfg_idx = 0;
 
@@ -169,6 +170,9 @@ void io_cyclus() {
     return;
 #endif
 
+    // Gewijzigd-vlaggen wissen zodat io_loop weet dat outputs verstuurd zijn
+    for (int i = 0; i < n; i++) io_gewijzigd[i] = false;
+
     while (Serial.available()) Serial.read();
     Serial.print("IO\n");
     Serial.flush();
@@ -214,21 +218,29 @@ void io_cyclus() {
 }
 
 void io_loop() {
-    static unsigned long detectie_gecheckt = 0;
-    if (millis() - detectie_gecheckt >= IO_DETECTIE_INT) {
-        detectie_gecheckt = millis();
-        io_detect();
-        // Direct een cyclus sturen zodat outputs onmiddellijk hersteld worden na IOD-modus
-        if (io_kanalen_cnt > 0) io_cyclus();
+    unsigned long nu = millis();
+
+    // Stuur cyclus als outputs gewijzigd zijn (minimum tussentijd) of bij hartslag
+    bool gewijzigd = false;
+    int n = min(io_kanalen_cnt, MAX_IO_KANALEN);
+    for (int i = 0; i < n; i++) {
+        if (io_gewijzigd[i]) { gewijzigd = true; break; }
     }
 
-    if (millis() - io_gecheckt >= IO_INTERVAL) {
+    unsigned long hartslag_ms = tft_actief
+        ? (unsigned long)io_heartbeat_aan * 1000UL
+        : (unsigned long)io_heartbeat_uit * 1000UL;
+
+    bool minimum_ok    = (nu - io_gecheckt >= IO_MIN_INTERVAL);
+    bool tijd_verlopen = (nu - io_gecheckt >= hartslag_ms);
+
+    if ((gewijzigd && minimum_ok) || tijd_verlopen) {
         io_cyclus();
     }
 
     static unsigned long zekering_gecheckt = 0;
-    if (millis() - zekering_gecheckt >= 5000) {
-        zekering_gecheckt = millis();
+    if (nu - zekering_gecheckt >= 5000) {
+        zekering_gecheckt = nu;
         io_zekering_check();
     }
 }

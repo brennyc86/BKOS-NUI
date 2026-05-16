@@ -1045,12 +1045,29 @@ static void cfg_instellingen_teken() {
     tft.setCursor(98, zy + 4 + (32 - 16) / 2);
     tft.print(ontg ? (strlen(zeilnummer) > 0 ? zeilnummer : "(tik om in te stellen)") : "***");
 
-    // IO Configuratie + Touch Kalibreren (grijs: capacitief scherm)
+    // IO Configuratie + IO Hartslag timing
     int iy = zy + 44;
-    ui_knop(10,  iy + 4, 488, 38, "IO CONFIGURATIE  >",
+    ui_knop(10, iy + 4, 488, 38, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
-    ui_knop(502, iy + 4, TFT_W - 512, 38, "TOUCH KALIBREREN  >",
-            C_SURFACE, C_DARK_GRAY);
+    {
+        uint16_t ibg = ontg ? C_SURFACE2 : C_SURFACE;
+        tft.fillRoundRect(502, iy + 4, TFT_W - 512, 38, 6, ibg);
+        tft.drawRoundRect(502, iy + 4, TFT_W - 512, 38, 6, C_SURFACE3);
+        int my = iy + 4 + (38 - 8) / 2;
+        char abuf[8]; snprintf(abuf, 8, "%ds", io_heartbeat_aan);
+        char ubuf[8]; snprintf(ubuf, 8, "%ds", io_heartbeat_uit);
+        tft.setTextSize(1);
+        tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
+        tft.setCursor(510, my); tft.print("AAN:");
+        tft.setTextColor(ontg ? C_CYAN : C_DARK_GRAY);
+        tft.setCursor(538, my); tft.print(abuf);
+        if (ontg) { ui_knop(566, iy + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(592, iy + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
+        tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
+        tft.setCursor(626, my); tft.print("UIT:");
+        tft.setTextColor(ontg ? C_CYAN : C_DARK_GRAY);
+        tft.setCursor(655, my); tft.print(ubuf);
+        if (ontg) { ui_knop(684, iy + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, iy + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
+    }
 
     // Firmware updaten
     int uy = iy + 46;
@@ -1172,12 +1189,17 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // IO Configuratie + Touch Kalibreren (grijs op dit scherm)
+    // IO Configuratie + IO Hartslag timing
     if (y >= iy && y < iy + 46) {
-        if (x >= 502) return;  // kalibreer-knop grijs: geen actie op capacitief scherm
-        if (!ontg) { pin_vereist_tonen(); return; }
-        actief_scherm = SCREEN_IO_CFG;
-        scherm_bouwen = true;
+        if (x < 502) {
+            if (!ontg) { pin_vereist_tonen(); return; }
+            actief_scherm = SCREEN_IO_CFG; scherm_bouwen = true; return;
+        }
+        if (!ontg) return;
+        if      (x >= 566 && x < 592) { io_heartbeat_aan = max(10, (int)io_heartbeat_aan - 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
+        else if (x >= 592 && x < 618) { io_heartbeat_aan = min(600, (int)io_heartbeat_aan + 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
+        else if (x >= 684 && x < 710) { io_heartbeat_uit = max(30, (int)io_heartbeat_uit - 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
+        else if (x >= 710 && x < 736) { io_heartbeat_uit = min(600, (int)io_heartbeat_uit + 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
         return;
     }
 

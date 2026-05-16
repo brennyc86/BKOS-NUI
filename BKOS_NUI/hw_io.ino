@@ -15,6 +15,9 @@ bool  io_actief        = false;
 bool  io_runned        = false;
 unsigned long io_gecheckt = 0;
 
+uint16_t io_heartbeat_aan = IO_HEARTBEAT_AAN_STD;
+uint16_t io_heartbeat_uit = IO_HEARTBEAT_UIT_STD;
+
 uint8_t io_richting[MAX_IO_KANALEN];
 uint8_t io_alert[MAX_IO_KANALEN];
 uint8_t io_actie_aan[MAX_IO_KANALEN];
@@ -95,10 +98,9 @@ void hw_io_cfg_laden() {
         String lijn = f.readStringUntil('\n');
         lijn.trim();
         if (lijn.length() == 0) continue;
-        if (lijn.startsWith("cfg:")) {
-            io_kanalen_cfg = lijn.substring(4).toInt();
-            continue;
-        }
+        if (lijn.startsWith("cfg:"))    { io_kanalen_cfg  = lijn.substring(4).toInt(); continue; }
+        if (lijn.startsWith("hb_aan:")) { io_heartbeat_aan = (uint16_t)constrain(lijn.substring(7).toInt(), 10, 600); continue; }
+        if (lijn.startsWith("hb_uit:")) { io_heartbeat_uit = (uint16_t)constrain(lijn.substring(7).toInt(), 30, 600); continue; }
         // formaat: idx:richting:alert:actie_aan:actie_uit:param
         int v[6] = {0};
         int vi = 0, pos = 0;
@@ -124,6 +126,8 @@ void hw_io_cfg_opslaan() {
     File f = SPIFFS.open(IO_CFG_BESTAND, "w");
     if (!f) return;
     if (io_kanalen_cfg > 0) f.printf("cfg:%d\n", io_kanalen_cfg);
+    f.printf("hb_aan:%d\n", io_heartbeat_aan);
+    f.printf("hb_uit:%d\n", io_heartbeat_uit);
     for (int i = 0; i < MAX_IO_KANALEN; i++) {
         if (io_richting[i] || io_alert[i] || io_actie_aan[i] || io_actie_uit[i]) {
             f.printf("%d:%d:%d:%d:%d:%d\n",

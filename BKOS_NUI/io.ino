@@ -218,8 +218,8 @@ void io_loop() {
     if (millis() - detectie_gecheckt >= IO_DETECTIE_INT) {
         detectie_gecheckt = millis();
         io_detect();
-        // Meteen een cyclus sturen zodat outputs hersteld worden na de IOD-sessie
-        if (io_kanalen_cnt > 0) io_gecheckt = 0;
+        // Direct een cyclus sturen zodat outputs onmiddellijk hersteld worden na IOD-modus
+        if (io_kanalen_cnt > 0) io_cyclus();
     }
 
     if (millis() - io_gecheckt >= IO_INTERVAL) {

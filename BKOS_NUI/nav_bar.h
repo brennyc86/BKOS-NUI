@@ -12,12 +12,12 @@
 #endif
 
 // ─── Navigatiebalk midden-sectie (800px) ──────────────────────────────────────
-// Vaste vierkante knoppen links: PANEEL, METEO (elk NB_SQ breed)
+// Vaste vierkante knoppen links: PANEEL, IO, METEO (elk NB_SQ breed)
 // Vaste vierkante knoppen rechts: APPSTORE, CONFIG, INFO (elk NB_SQ breed)
 // Midden: scrollbare app-knoppen (NB_KW breed, naam uitgeschreven)
 #define NB_SQ    NAV_H               // vierkante knopbreedte = hoogte (42px)
-#define NB_MX    (2 * NB_SQ)         // midden zone start-x (84px)
-#define NB_MW    (TFT_W - 5 * NB_SQ) // midden zone breedte (590px)
+#define NB_MX    (3 * NB_SQ)         // midden zone start-x (126px)
+#define NB_MW    (TFT_W - 6 * NB_SQ) // midden zone breedte (548px)
 #define NB_R1X   (TFT_W - 3 * NB_SQ) // APPSTORE x (674px)
 #define NB_R2X   (TFT_W - 2 * NB_SQ) // CONFIG   x (716px)
 #define NB_R3X   (TFT_W -     NB_SQ) // INFO     x (758px)

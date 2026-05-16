@@ -28,7 +28,6 @@ void nav_midden_bouwen() {
     };
 
     // Ingebouwde schermen die standaard in het midden staan
-    _voeg("IO",      SCREEN_IO);
     _voeg("VICTRON", SCREEN_VICTRON);
 
     // Geïnstalleerde apps met in_balk == true
@@ -160,6 +159,18 @@ static void _ic_zon(int cx, int cy, uint16_t c, int r = 6) {
 }
 
 // ─── Iconen voor vaste knoppen ────────────────────────────────────────────────
+
+static void _nav_icon_io(int cx, int cy, uint16_t c) {
+    // Chip/IC-symbool: rechthoek met 3 pinnen aan elke zijde
+    int bw = 12, bh = 14;
+    int bx = cx - bw / 2, by = cy - bh / 2;
+    tft.drawRect(bx, by, bw, bh, c);
+    for (int i = 0; i < 3; i++) {
+        int py = by + 2 + i * 4;
+        tft.drawFastHLine(bx - 4, py, 4, c);
+        tft.drawFastHLine(bx + bw, py, 4, c);
+    }
+}
 
 static void _nav_icon_paneel(int cx, int cy, uint16_t c) {
     // 2×2 raster van vierkantjes
@@ -303,13 +314,19 @@ void nav_bar_teken() {
 
     int cy = y + NAV_H / 2;
 
-    // Helper: teken één vierkante systeemknop
+    // Helper: teken één vierkante systeemknop met bevel effect
     auto _sys_knop = [&](int x, int scherm_id) -> bool {
         bool act = (actief_scherm == scherm_id);
+        tft.fillRect(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, act ? C_SURFACE2 : C_SURFACE);
         if (act) {
-            tft.fillRect(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE2);
             tft.drawFastHLine(x + 4, y,     NB_SQ - 8, C_CYAN);
             tft.drawFastHLine(x + 4, y + 1, NB_SQ - 8, C_CYAN);
+        } else {
+            // Bevel: licht randje boven/links, donker randje onder/rechts
+            tft.drawFastHLine(x + 1, y + 1,           NB_SQ - 2, C_SURFACE3);
+            tft.drawFastVLine(x + 1, y + 1,           NAV_H - 2, C_SURFACE3);
+            tft.drawFastHLine(x + 1, y + NAV_H - 2,   NB_SQ - 2, C_NAVBAR);
+            tft.drawFastVLine(x + NB_SQ - 2, y + 1,   NAV_H - 2, C_NAVBAR);
         }
         return act;
     };
@@ -321,10 +338,17 @@ void nav_bar_teken() {
         tft.drawFastVLine(NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
 
-    // ── METEO (naast PANEEL) ────────────────────────────────────────────────
+    // ── IO (tweede links) ───────────────────────────────────────────────────
     {
-        _sys_knop(NB_SQ, SCREEN_METEO);
-        _nav_icon_meteo(NB_SQ + NB_SQ / 2, cy);
+        bool act = _sys_knop(NB_SQ, SCREEN_IO);
+        _nav_icon_io(NB_SQ + NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
+        tft.drawFastVLine(2 * NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
+    }
+
+    // ── METEO (derde links) ─────────────────────────────────────────────────
+    {
+        _sys_knop(2 * NB_SQ, SCREEN_METEO);
+        _nav_icon_meteo(2 * NB_SQ + NB_SQ / 2, cy);
         tft.drawFastVLine(NB_MX - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
 
@@ -442,9 +466,10 @@ int nav_bar_klik(int x, int y) {
     return -1;
 
 #else
-    // ── Links: PANEEL ────────────────────────────────────────────────────────
-    if (x < NB_SQ)                return SCREEN_MAIN;
-    if (x < NB_MX)                return SCREEN_METEO;
+    // ── Links: PANEEL, IO, METEO ─────────────────────────────────────────────
+    if (x < NB_SQ)          return SCREEN_MAIN;
+    if (x < 2 * NB_SQ)      return SCREEN_IO;
+    if (x < NB_MX)          return SCREEN_METEO;
 
     // ── Rechts ──────────────────────────────────────────────────────────────
     if (x >= NB_R3X)              return SCREEN_INFO;

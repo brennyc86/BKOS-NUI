@@ -67,12 +67,11 @@ void io_boot() {
 }
 
 void io_detect() {
-    io_aparaten_cnt = 0;
-    io_kanalen_cnt  = 0;
-
 #if SCREEN_SMALL
     // Pico: directe GPIO — parallel klok zet modules in detectiemodus,
     // daarna 8 klokpulsen per module om het ID via HC_ID uit te lezen.
+    io_aparaten_cnt = 0;
+    io_kanalen_cnt  = 0;
     _pck_puls();
     for (int m = 0; m < MAX_MODULES; m++) {
         byte id = _lees_id_byte();
@@ -83,14 +82,19 @@ void io_detect() {
     return;
 #endif
 
+    // Werk in tijdelijke buffers zodat de globale staat geldig blijft
+    // terwijl de ATtiny in IOD-modus is (outputs zouden anders wegvallen).
+    byte tmp_aparaten[MAX_MODULES];
+    int  tmp_aparaten_cnt = 0;
+    int  tmp_kanalen_cnt  = 0;
+
     while (Serial.available()) Serial.read();
     Serial.print("IOD\n");
-    Serial.flush();        // wacht tot commando volledig verstuurd
-    delay(10);             // geef ATtiny tijd om commando te verwerken
-    while (Serial.available()) Serial.read();  // verwijder eventuele echo
+    Serial.flush();
+    delay(10);
+    while (Serial.available()) Serial.read();
 
     for (int m = 0; m < MAX_MODULES; m++) {
-        // Stuur 8 bits, lees per bit direct de ID-pin respons terug
         byte id = 0;
         bool ok = true;
         for (int bit = 0; bit < 8; bit++) {
@@ -103,13 +107,18 @@ void io_detect() {
         }
         if (!ok || id == 0 || id == 255) break;
 
-        io_aparaten[io_aparaten_cnt++] = id;
-        io_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
+        tmp_aparaten[tmp_aparaten_cnt++] = id;
+        tmp_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
     }
 
-    Serial.print('\n');   // sluit IOD commando af
+    Serial.print('\n');
     delay(100);
     while (Serial.available()) Serial.read();
+
+    // Schrijf pas na voltooide detectie — geen tussentijdse n=0 toestand
+    memcpy(io_aparaten, tmp_aparaten, tmp_aparaten_cnt);
+    io_aparaten_cnt = tmp_aparaten_cnt;
+    io_kanalen_cnt  = tmp_kanalen_cnt;
 }
 
 void io_cyclus() {
@@ -162,18 +171,23 @@ void io_cyclus() {
 
     while (Serial.available()) Serial.read();
     Serial.print("IO\n");
-    Serial.flush();        // wacht tot commando volledig verstuurd
-    delay(5);              // geef ATtiny tijd om commando te verwerken
-    while (Serial.available()) Serial.read();  // verwijder eventuele echo
+    Serial.flush();
+    delay(10);
+    while (Serial.available()) Serial.read();
 
-    // Per kanaal: stuur output bit (omgekeerde volgorde, shift-register),
-    // ATtiny stuurt direct de bijbehorende input bit terug
+    // Stuur ALLE outputs in één keer (omgekeerde volgorde voor shift registers).
+    // De ATtiny verwerkt pas per volledige module (8 bits) en stuurt dan de inputs
+    // terug — bit-voor-bit interleaven geeft een 1-positie verschuiving.
     for (int i = 0; i < n; i++) {
-        byte out = io_output[n - 1 - i];   // omgekeerd voor shift registers
+        byte out = io_output[n - 1 - i];
         Serial.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
+    }
+    Serial.flush();
 
+    // Lees ALLE inputs nadat de ATtiny alle outputs heeft verwerkt
+    for (int i = 0; i < n; i++) {
         unsigned long t = millis();
-        while (!Serial.available() && millis() - t < 50) yield();
+        while (!Serial.available() && millis() - t < 200) yield();
 
         char c = '0';
         if (Serial.available()) c = Serial.read();
@@ -190,7 +204,7 @@ void io_cyclus() {
         }
     }
 
-    Serial.print('\n');   // sluit IO commando af
+    Serial.print('\n');
     delay(60);
     while (Serial.available()) Serial.read();
 
@@ -201,11 +215,11 @@ void io_cyclus() {
 
 void io_loop() {
     static unsigned long detectie_gecheckt = 0;
-    // Altijd herdetecteren (ook als er al modules zijn) zodat weggevallen modules
-    // automatisch terugkeren — bijv. na tijdelijke stroomproblemen of BLE-interferentie bij boot
     if (millis() - detectie_gecheckt >= IO_DETECTIE_INT) {
         detectie_gecheckt = millis();
         io_detect();
+        // Meteen een cyclus sturen zodat outputs hersteld worden na de IOD-sessie
+        if (io_kanalen_cnt > 0) io_gecheckt = 0;
     }
 
     if (millis() - io_gecheckt >= IO_INTERVAL) {

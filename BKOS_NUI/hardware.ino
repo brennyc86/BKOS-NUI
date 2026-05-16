@@ -9,6 +9,8 @@
 #include "screen_apps.h"
 #include "screen_calibratie.h"
 #include "screen_victron.h"
+#include "screen_netwerk.h"
+#include "bkos_net.h"
 #include "meteo.h"
 #include "nav_bar.h"
 #include "data_store.h"
@@ -85,6 +87,7 @@ void hw_setup() {
 
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
+    net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
 
     delay(1000);     // splash tonen
 
@@ -101,6 +104,7 @@ void hw_loop() {
     io_loop();
     ntp_loop();
     ota_loop();
+    net_loop();
     provider_loop();
 
     // Scherm (her)bouwen
@@ -146,6 +150,7 @@ void hw_loop() {
                 case SCREEN_APPS:       screen_apps_teken();        break;
                 case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                 case SCREEN_VICTRON:    screen_victron_teken();     break;
+                case SCREEN_NETWERK:    screen_netwerk_teken();     break;
                 case SCREEN_LUA_APP: // forceer verlopen — terug naar apps
                     lua_forceer_app = -1;
                     actief_scherm   = SCREEN_APPS;
@@ -219,6 +224,7 @@ void hw_loop() {
                         case SCREEN_APPS:       screen_apps_run(ts_x, ts_y, true);       break;
                         case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                         case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
+                        case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
                     }
                 }
             }

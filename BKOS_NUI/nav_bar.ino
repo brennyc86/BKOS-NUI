@@ -29,6 +29,7 @@ void nav_midden_bouwen() {
 
     // Ingebouwde schermen die standaard in het midden staan
     _voeg("VICTRON", SCREEN_VICTRON);
+    _voeg("NETWERK", SCREEN_NETWERK);
 
     // Geïnstalleerde apps met in_balk == true
     for (int i = 0; i < apps_cnt; i++) {

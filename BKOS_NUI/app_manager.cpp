@@ -55,6 +55,7 @@ static void _json_naar_manifest(JsonObject obj, AppManifest& m) {
     m.api_versie = obj["api_versie"] | 1;
     m.grootte_kb = obj["grootte_kb"] | 0;
     m.actief     = obj["actief"]     | true;
+    m.in_balk    = obj["in_balk"]    | false;
 }
 
 static void _manifest_naar_json(AppManifest& m, JsonObject obj) {
@@ -70,6 +71,7 @@ static void _manifest_naar_json(AppManifest& m, JsonObject obj) {
     obj["api_versie"]  = m.api_versie;
     obj["grootte_kb"]  = m.grootte_kb;
     obj["actief"]      = m.actief;
+    obj["in_balk"]     = m.in_balk;
 }
 
 // ─── Index opslaan/laden ──────────────────────────────────────────────────────

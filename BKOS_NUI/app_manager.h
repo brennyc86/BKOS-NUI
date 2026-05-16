@@ -32,6 +32,7 @@ struct AppManifest {
     int   api_versie;
     int   grootte_kb;     // geschatte installatiegrootte in KB
     bool  actief;
+    bool  in_balk;        // tonen in navigatiebalk
 };
 
 extern AppManifest apps[APP_MAX];

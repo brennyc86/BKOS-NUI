@@ -101,9 +101,16 @@ void io_detect() {
         for (int bit = 0; bit < 8; bit++) {
             Serial.print('0');
             unsigned long t = millis();
-            while (!Serial.available() && millis() - t < 400) yield();
-            if (!Serial.available()) { ok = false; break; }
-            char c = Serial.read();
+            char c = 0;
+            // Sla niet-bit karakters over (protocol separators, \r, statusbytes)
+            while (millis() - t < 400) {
+                if (Serial.available()) {
+                    char ch = Serial.read();
+                    if (ch == '0' || ch == '1') { c = ch; break; }
+                }
+                yield();
+            }
+            if (c == 0) { ok = false; break; }
             if (c == '1') id |= (1 << bit);
         }
         if (!ok || id == 0 || id == 255) break;

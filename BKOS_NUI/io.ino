@@ -101,7 +101,7 @@ void io_detect() {
         for (int bit = 0; bit < 8; bit++) {
             Serial.print('0');
             unsigned long t = millis();
-            while (!Serial.available() && millis() - t < 150) yield();
+            while (!Serial.available() && millis() - t < 400) yield();
             if (!Serial.available()) { ok = false; break; }
             char c = Serial.read();
             if (c == '1') id |= (1 << bit);
@@ -110,6 +110,7 @@ void io_detect() {
 
         tmp_aparaten[tmp_aparaten_cnt++] = id;
         tmp_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
+        delay(5); // Kleine pauze: ATtiny tijd geven voor volgende module
     }
 
     Serial.print('\n');
@@ -126,7 +127,7 @@ void io_cyclus() {
     if (io_actief) return;
     io_actief = true;
 
-    int n = min(io_kanalen_cnt, MAX_IO_KANALEN);
+    int n = io_zichtbaar();   // Respecteert io_kanalen_cfg override
     if (n == 0) { io_actief = false; return; }
 
 #if SCREEN_SMALL
@@ -220,9 +221,13 @@ void io_cyclus() {
 void io_loop() {
     unsigned long nu = millis();
 
+    // Bevestigingscyclus: 2 seconden na een schakelwijziging
+    static bool          bevestig_actief = false;
+    static unsigned long bevestig_start  = 0;
+
     // Stuur cyclus als outputs gewijzigd zijn (minimum tussentijd) of bij hartslag
     bool gewijzigd = false;
-    int n = min(io_kanalen_cnt, MAX_IO_KANALEN);
+    int n = io_zichtbaar();   // Gebruikt io_kanalen_cfg override indien ingesteld
     for (int i = 0; i < n; i++) {
         if (io_gewijzigd[i]) { gewijzigd = true; break; }
     }
@@ -235,6 +240,16 @@ void io_loop() {
     bool tijd_verlopen = (nu - io_gecheckt >= hartslag_ms);
 
     if ((gewijzigd && minimum_ok) || tijd_verlopen) {
+        bool was_wijziging = (gewijzigd && !tijd_verlopen);
+        io_cyclus();
+        if (was_wijziging) {
+            bevestig_actief = true;
+            bevestig_start  = nu;
+        }
+    }
+
+    if (bevestig_actief && (nu - bevestig_start >= 2000UL)) {
+        bevestig_actief = false;
         io_cyclus();
     }
 

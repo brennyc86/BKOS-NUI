@@ -98,21 +98,18 @@ void io_detect() {
     for (int m = 0; m < MAX_MODULES; m++) {
         byte id = 0;
         bool ok = true;
+        // Stuur alle 8 klokpulsen in één burst, lees daarna de 8 reacties
+        Serial.print("00000000");
+        Serial.flush();
+        unsigned long t = millis();
         for (int bit = 0; bit < 8; bit++) {
-            Serial.print('0');
-            unsigned long t = millis();
-            char c = 0;
-            // Sla niet-bit karakters over (protocol separators, \r, statusbytes)
-            while (millis() - t < 400) {
-                if (Serial.available()) {
-                    char ch = Serial.read();
-                    if (ch == '0' || ch == '1') { c = ch; break; }
-                }
-                yield();
-            }
-            if (c == 0) { ok = false; break; }
+            while (!Serial.available() && millis() - t < 400) yield();
+            if (!Serial.available()) { ok = false; break; }
+            char c = Serial.read();
             if (c == '1') id |= (1 << bit);
         }
+        // Spoel resterende bufferbytes weg (bijv. module-overgang karakter)
+        while (Serial.available()) { Serial.read(); yield(); }
         if (!ok || id == 0 || id == 255) break;
 
         tmp_aparaten[tmp_aparaten_cnt++] = id;

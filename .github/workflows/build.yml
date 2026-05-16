@@ -167,7 +167,7 @@ jobs:
           arduino-cli lib install "GFX Library for Arduino@1.3.7"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
-          arduino-cli lib install "Preferences" || true
+          # Preferences is ingebouwd in arduino-pico 5.x — niet extern installeren
 
       - name: Compile Pico W firmware
         run: |

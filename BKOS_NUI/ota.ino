@@ -159,7 +159,9 @@ void ota_git_check() {
     }
     if (!wifi_verbonden) return;
     HTTPClient http;
+#if PLATFORM_ESP32
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+#endif
     http.begin(OTA_GITHUB_VERSIE_URL);
     int code = http.GET();
     if (code == HTTP_CODE_OK) {

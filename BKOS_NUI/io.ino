@@ -2,6 +2,7 @@
 #include "app_state.h"
 #include "meteo.h"
 #include "hw_scherm.h"
+#include "bkos_net.h"
 
 byte licht_cfg_idx = 0;
 
@@ -222,6 +223,9 @@ void io_cyclus() {
 }
 
 void io_loop() {
+    // Op slave/extra: IO wordt via netwerk beheerd door de master
+    if (net_modus != NET_STANDALONE && net_modus != NET_MASTER && net_gepaard) return;
+
     unsigned long nu = millis();
 
     // Bevestigingscyclus: 2 seconden na een schakelwijziging

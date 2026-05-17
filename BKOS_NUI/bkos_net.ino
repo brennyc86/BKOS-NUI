@@ -1,6 +1,7 @@
 #include "bkos_net.h"
 #include "platform_fs.h"
 #include "screen_info.h"  // info_boot_naam()
+#include "io.h"           // io_zichtbaar, io_naam_is, io_apparaat_toggle
 
 #if PLATFORM_ESP32
 #include <esp_now.h>
@@ -26,6 +27,7 @@ bool     net_klaar        = false;
 #if PLATFORM_ESP32
 static unsigned long _last_hb       = 0;
 static unsigned long _last_pair_req = 0;
+static unsigned long _last_io_sync  = 0;
 static bool          _espnow_ok     = false;
 
 // Ontvangstbuffer (vanuit ESP-NOW callback, WiFi-taak context)
@@ -291,9 +293,133 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
     case NET_MSG_HB_ACK:
         if (idx >= 0) net_peers[idx].actief = true;
         break;
+
+    case NET_MSG_IO_STATE: {
+        if (net_modus == NET_MASTER) break;  // master ontvangt geen IO staat
+        uint8_t cnt = pkt.data[0];
+        if (cnt > MAX_IO_KANALEN) cnt = MAX_IO_KANALEN;
+        io_kanalen_cnt = (int)cnt;
+        for (int i = 0; i < cnt; i++) io_output[i]   = pkt.data[1 + i];
+        for (int i = 0; i < cnt; i++) io_input[i]    = pkt.data[1 + cnt + i] != 0;
+        for (int i = 0; i < cnt; i++) io_richting[i] = pkt.data[1 + 2*cnt + i];
+        io_runned    = true;  // trigger schermupdate in screen_io
+        scherm_bouwen = true;
+        break;
+    }
+
+    case NET_MSG_IO_NAMEN: {
+        if (net_modus == NET_MASTER) break;
+        uint8_t offset = pkt.data[0];
+        uint8_t chunk  = pkt.data[1];
+        for (int j = 0; j < chunk; j++) {
+            int k = offset + j;
+            if (k >= MAX_IO_KANALEN) break;
+            memcpy(io_namen[k], &pkt.data[2 + j * IO_NAAM_LEN], IO_NAAM_LEN);
+            io_namen[k][IO_NAAM_LEN - 1] = '\0';
+        }
+        break;
+    }
+
+    case NET_MSG_IO_TOGGLE: {
+        if (net_modus != NET_MASTER) break;  // alleen master verwerkt toggle verzoeken
+        uint8_t kanaal = pkt.data[0];
+        int n = io_zichtbaar();
+        if (kanaal >= (uint8_t)n || kanaal >= MAX_IO_KANALEN) break;
+        bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
+        io_output[kanaal]   = aan ? IO_UIT : IO_AAN;
+        io_gewijzigd[kanaal] = true;
+        break;
+    }
     }
 }
 #endif  // PLATFORM_ESP32 (_verwerk)
+
+// ─── IO synchronisatie ────────────────────────────────────────────────────────
+// Maximaal aantal kanalen per IO_STATE pakket: 1 + 3*cnt ≤ 220 → cnt ≤ 73, gebruik 72
+#define NET_IO_MAX_PER_PKT 72
+// Namen per IO_NAMEN pakket: (220-2) / IO_NAAM_LEN = 18
+#define NET_IO_NAMEN_PER_PKT 18
+
+void net_io_sturen() {
+#if PLATFORM_ESP32
+    if (net_modus != NET_MASTER || !_espnow_ok) return;
+    bool heeft_slave = false;
+    for (int i = 0; i < net_peers_cnt; i++)
+        if (net_peers[i].bevestigd) { heeft_slave = true; break; }
+    if (!heeft_slave) return;
+
+    int cnt = io_zichtbaar();
+    if (cnt <= 0) return;
+    if (cnt > NET_IO_MAX_PER_PKT) cnt = NET_IO_MAX_PER_PKT;
+    uint8_t ucnt = (uint8_t)cnt;
+
+    // IO_STATE: output + input + richting per kanaal
+    NetPaket pkt = {};
+    pkt.versie = NET_PROTOCOL_VERSIE;
+    pkt.type   = NET_MSG_IO_STATE;
+    pkt.modus  = NET_MASTER;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    pkt.data[0] = ucnt;
+    for (int i = 0; i < ucnt; i++) pkt.data[1 + i]          = io_output[i];
+    for (int i = 0; i < ucnt; i++) pkt.data[1 + ucnt + i]   = io_input[i] ? 1 : 0;
+    for (int i = 0; i < ucnt; i++) pkt.data[1 + 2*ucnt + i] = io_richting[i];
+    int state_len = 1 + 3 * ucnt;
+    for (int i = 0; i < net_peers_cnt; i++)
+        if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, pkt, state_len);
+
+    // IO_NAMEN: 18 kanalen per pakket (namen veranderen zelden, maar stuur altijd mee)
+    int offset = 0;
+    while (offset < ucnt) {
+        int chunk = min(NET_IO_NAMEN_PER_PKT, (int)ucnt - offset);
+        NetPaket np = {};
+        np.versie = NET_PROTOCOL_VERSIE;
+        np.type   = NET_MSG_IO_NAMEN;
+        np.modus  = NET_MASTER;
+        strncpy(np.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+        np.data[0] = (uint8_t)offset;
+        np.data[1] = (uint8_t)chunk;
+        for (int j = 0; j < chunk; j++)
+            memcpy(&np.data[2 + j * IO_NAAM_LEN], io_namen[offset + j], IO_NAAM_LEN);
+        int nlen = 2 + chunk * IO_NAAM_LEN;
+        for (int i = 0; i < net_peers_cnt; i++)
+            if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, np, nlen);
+        offset += chunk;
+    }
+#endif
+}
+
+void net_io_kanaal_toggle(int kanaal) {
+    if (kanaal < 0 || kanaal >= MAX_IO_KANALEN) return;
+    // Optimistische lokale update (directe visuele feedback)
+    bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
+    io_output[kanaal] = aan ? IO_UIT : IO_AAN;
+#if PLATFORM_ESP32
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+        io_gewijzigd[kanaal] = true;  // echte hardware update via io_cyclus
+    } else if (_espnow_ok && net_gepaard) {
+        NetPaket pkt = {};
+        pkt.versie = NET_PROTOCOL_VERSIE;
+        pkt.type   = NET_MSG_IO_TOGGLE;
+        pkt.modus  = net_modus;
+        strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+        pkt.data[0] = (uint8_t)kanaal;
+        _stuur(net_master_mac, pkt, 1);
+    }
+#else
+    io_gewijzigd[kanaal] = true;
+#endif
+}
+
+void net_io_apparaat_toggle(const char* prefix) {
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+        io_apparaat_toggle(prefix);
+        return;
+    }
+    // Op slave: toggle elk kanaal dat overeenkomt met prefix
+    int n = io_zichtbaar();
+    for (int i = 0; i < n && i < MAX_IO_KANALEN; i++)
+        if (io_naam_is(i, prefix)) net_io_kanaal_toggle(i);
+}
 
 // ─── Setup / loop ─────────────────────────────────────────────────────────────
 void net_setup() {
@@ -365,6 +491,12 @@ void net_loop() {
         for (int i = 0; i < net_peers_cnt; i++)
             if (net_peers[i].actief && nu - net_peers[i].laast_gezien > NET_TIMEOUT_MS)
                 net_peers[i].actief = false;
+    }
+
+    // Master: IO staat sturen naar gepairde slaves (elke 500ms)
+    if (net_modus == NET_MASTER && nu - _last_io_sync >= 500UL) {
+        _last_io_sync = nu;
+        net_io_sturen();
     }
 
     // Slave/extra/headless: herverbinden als niet gepaard

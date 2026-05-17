@@ -1,5 +1,6 @@
 #include "screen_io.h"
 #include "nav_bar.h"
+#include "bkos_net.h"
 
 int io_pagina = 0;
 
@@ -221,9 +222,7 @@ void screen_io_run(int x, int y, bool aanraking) {
         int n_vis  = io_zichtbaar();
         if (kanaal >= 0 && kanaal < n_vis && kanaal < MAX_IO_KANALEN) {
             if (io_richting[kanaal] != IO_RICHTING_IN) {
-                bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
-                io_output[kanaal] = aan ? IO_UIT : IO_AAN;
-                io_gewijzigd[kanaal] = true;
+                net_io_kanaal_toggle(kanaal);
                 pico_io_rij_teken(kanaal, CONTENT_Y + rij * PICO_IO_RIJ_H);
             }
         }
@@ -281,9 +280,7 @@ void screen_io_run(int x, int y, bool aanraking) {
         int n_vis  = io_zichtbaar();
         if (kanaal >= 0 && kanaal < n_vis && kanaal < MAX_IO_KANALEN) {
             if (io_richting[kanaal] != IO_RICHTING_IN) {
-                bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
-                io_output[kanaal] = aan ? IO_UIT : IO_AAN;
-                io_gewijzigd[kanaal] = true;
+                net_io_kanaal_toggle(kanaal);
                 io_rij_teken(kanaal, CONTENT_Y + rij * IO_RIJ_H);
                 prev_io_output[rij] = io_output[kanaal];
             }

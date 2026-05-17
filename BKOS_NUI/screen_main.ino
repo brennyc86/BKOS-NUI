@@ -3,6 +3,7 @@
 #include "nav_bar.h"
 #include "screen_info.h"
 #include "victron_ble.h"
+#include "bkos_net.h"
 #include "data_store.h"
 
 // ─── Icoon types ────────────────────────────────
@@ -884,7 +885,7 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
         for (int i = 0; i < 4; i++) {
             int bx = PICO_DKNOP_X(i);
             if (x >= bx && x < bx + PICO_DKNOP_W) {
-                io_apparaat_toggle(ap_prefix[i]);
+                net_io_apparaat_toggle(ap_prefix[i]);
                 dev_lokaal[i] = !dev_lokaal[i];
                 gewijzigd = true;
             }
@@ -1159,7 +1160,7 @@ void screen_main_run(int x, int y, bool aanraking) {
     for (int i = 0; i < 5; i++) {
         if (x >= ap[i].x && x < ap[i].x + DKNOP_W &&
             y >= ap[i].y && y < ap[i].y + DKNOP_H) {
-            io_apparaat_toggle(ap[i].prefix);
+            net_io_apparaat_toggle(ap[i].prefix);
             dev_lokaal[i] = !dev_lokaal[i];  // lokale staat bijhouden (toggle)
             gewijzigd = true;
         }

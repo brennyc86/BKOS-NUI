@@ -19,17 +19,19 @@ int      net_pair_pending = -1;
 String   net_status       = "Niet actief";
 bool     net_klaar        = false;
 
+#define NET_BESTAND      "/net_config.csv"
+#define NET_PEERS_BESTAND "/net_peers.csv"
+
+#if PLATFORM_ESP32
 static unsigned long _last_hb       = 0;
 static unsigned long _last_pair_req = 0;
 static bool          _espnow_ok     = false;
-
-#define NET_BESTAND      "/net_config.csv"
-#define NET_PEERS_BESTAND "/net_peers.csv"
 
 // Ontvangstbuffer (vanuit ESP-NOW callback, WiFi-taak context)
 static volatile bool  _rx_vlag = false;
 static uint8_t        _rx_mac[6];
 static NetPaket       _rx_buf;
+#endif
 
 // ─── Hulpfuncties ─────────────────────────────────────────────────────────────
 String net_mac_str(const uint8_t* mac) {
@@ -63,6 +65,7 @@ void net_get_eigen_mac(uint8_t* mac) {
 #endif
 }
 
+#if PLATFORM_ESP32
 static bool _mac_gelijk(const uint8_t* a, const uint8_t* b) {
     return memcmp(a, b, 6) == 0;
 }
@@ -72,6 +75,7 @@ static int _zoek_peer(const uint8_t* mac) {
         if (_mac_gelijk(net_peers[i].mac, mac)) return i;
     return -1;
 }
+#endif
 
 static void _mac_van_str(const char* str, uint8_t* mac) {
     unsigned int v[6] = {0};

@@ -41,15 +41,16 @@ static void _snw_tabs_teken() {
 }
 
 // ─── MODUS tab ────────────────────────────────────────────────────────────────
-static const struct { uint8_t m; const char* naam; const char* beschr; uint16_t kleur; } _modi[5] = {
-    { NET_STANDALONE, "STANDALONE",  "Geen netwerk, lokale bediening",         C_TEXT      },
-    { NET_MASTER,     "MASTER",      "Hoofd module — beheert netwerk en IO",   C_CYAN      },
-    { NET_SLAVE,      "SLAVE",       "Extra module met scherm en IO modules",  C_GREEN     },
-    { NET_EXTRA,      "EXTRA SCHERM","Alleen scherm, geen IO modules",         C_AMBER     },
-    { NET_HEADLESS,   "HEADLESS",    "Geen scherm, automatisch pairen",        C_TEXT_DIM  },
-};
+struct _ModiItem { uint8_t m; const char* naam; const char* beschr; uint16_t kleur; };
 
 static void _snw_modus_tab_teken() {
+    const _ModiItem _modi[5] = {
+        { NET_STANDALONE, "STANDALONE",  "Geen netwerk, lokale bediening",         C_TEXT      },
+        { NET_MASTER,     "MASTER",      "Hoofd module — beheert netwerk en IO",   C_CYAN      },
+        { NET_SLAVE,      "SLAVE",       "Extra module met scherm en IO modules",  C_GREEN     },
+        { NET_EXTRA,      "EXTRA SCHERM","Alleen scherm, geen IO modules",         C_AMBER     },
+        { NET_HEADLESS,   "HEADLESS",    "Geen scherm, automatisch pairen",        C_TEXT_DIM  },
+    };
     int fy = SNW_VELD_Y;
     for (int i = 0; i < 5; i++) {
         bool sel = (net_modus == _modi[i].m);
@@ -206,10 +207,10 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
     if (snw_tab == 0) {
         int fy = SNW_VELD_Y;
 
-        // Selecteer modus via rijklik
+        // Selecteer modus via rijklik (volgorde = NET_STANDALONE..NET_HEADLESS = 0..4)
         int rij = (y - fy) / SNW_MODUS_H;
         if (rij >= 0 && rij < 5) {
-            net_modus = _modi[rij].m;
+            net_modus = (uint8_t)rij;
             snw_opgeslagen_modus = 0xFF;  // reset banner
             scherm_bouwen = true;
             return;

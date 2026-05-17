@@ -318,7 +318,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         for (int i = 0; i < cnt; i++) io_richting[i] = pkt.data[1 + 2*cnt + i];
         if (gewijzigd) {
             io_runned = true;
-            if (actief_scherm == SCHERM_MAIN) scherm_bouwen = true;
+            if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
         }
         break;
     }

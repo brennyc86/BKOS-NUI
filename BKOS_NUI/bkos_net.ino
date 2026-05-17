@@ -232,6 +232,7 @@ void net_pair_weigeren(int idx) {
 }
 
 // ─── Bericht verwerking ───────────────────────────────────────────────────────
+#if PLATFORM_ESP32
 static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
     if (pkt.versie != NET_PROTOCOL_VERSIE) return;
 
@@ -276,17 +277,13 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         break;
 
     case NET_MSG_HEARTBEAT:
-        if (idx >= 0) {
-#if PLATFORM_ESP32
-            if (_espnow_ok) {
-                NetPaket ack = {};
-                ack.versie = NET_PROTOCOL_VERSIE;
-                ack.type   = NET_MSG_HB_ACK;
-                ack.modus  = net_modus;
-                strncpy(ack.naam, net_eigen_naam, NET_NAAM_LEN - 1);
-                _stuur(mac, ack, 0);
-            }
-#endif
+        if (idx >= 0 && _espnow_ok) {
+            NetPaket ack = {};
+            ack.versie = NET_PROTOCOL_VERSIE;
+            ack.type   = NET_MSG_HB_ACK;
+            ack.modus  = net_modus;
+            strncpy(ack.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+            _stuur(mac, ack, 0);
         }
         break;
 
@@ -295,6 +292,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         break;
     }
 }
+#endif  // PLATFORM_ESP32 (_verwerk)
 
 // ─── Setup / loop ─────────────────────────────────────────────────────────────
 void net_setup() {

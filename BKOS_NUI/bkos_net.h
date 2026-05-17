@@ -18,6 +18,7 @@
 #define NET_MSG_IO_TOGGLE   0x20  // slave → master: kanaal toggle verzoek
 #define NET_MSG_IO_STATE    0x22  // master → slaves: IO staat (output/input/richting)
 #define NET_MSG_IO_NAMEN    0x23  // master → slaves: kanaalnamen chunk
+#define NET_MSG_APP_STATE   0x30  // slave → master: vaarmodus + verlichting instelling
 
 // ─── Constanten ───────────────────────────────────────────────────────────────
 #define NET_MAX_PEERS       8
@@ -72,6 +73,8 @@ bool        net_master_bekend();
 void        net_get_eigen_mac(uint8_t* mac);
 
 // IO synchronisatie
-void        net_io_sturen();                        // master → slaves: IO staat + namen
+void        net_io_sturen();                        // master → slaves: IO staat (snel, 500ms)
+void        net_io_namen_sturen();                  // master → slaves: kanaalnamen (traag, 5s)
 void        net_io_kanaal_toggle(int kanaal);       // toggle + verstuur naar master indien slave
 void        net_io_apparaat_toggle(const char* prefix); // prefix-toggle, netwerk-bewust
+void        net_app_staat_sturen();                 // slave → master: vaarmodus + verlichting

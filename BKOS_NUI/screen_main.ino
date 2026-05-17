@@ -865,6 +865,7 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
                 licht_cfg_idx = 0;
             }
             io_verlichting_update();
+            net_app_staat_sturen();
             gewijzigd = true;
         }
     }
@@ -876,6 +877,7 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
         else if (licht_instelling == LICHT_AAN)  licht_instelling = LICHT_AUTO;
         else                                      licht_instelling = LICHT_UIT;
         io_verlichting_update();
+        net_app_staat_sturen();
         gewijzigd = true;
     }
 
@@ -1122,12 +1124,13 @@ void screen_main_run(int x, int y, bool aanraking) {
         if (x >= modi[i].x && x < modi[i].x + MKNOP_W &&
             y >= modi[i].y && y < modi[i].y + MKNOP_H) {
             if (vaar_modus == modi[i].modus) {
-                licht_cfg_idx++;  // zelfde modus: volgende lichconfiguratie
+                licht_cfg_idx++;
             } else {
                 vaar_modus = modi[i].modus;
-                licht_cfg_idx = 0;  // nieuwe modus: standaard configuratie
+                licht_cfg_idx = 0;
             }
             io_verlichting_update();
+            net_app_staat_sturen();  // slave stuurt nieuwe staat naar master
             gewijzigd = true;
         }
     }
@@ -1144,6 +1147,7 @@ void screen_main_run(int x, int y, bool aanraking) {
             if (licht_instelling != lkn[i].inst) {
                 licht_instelling = lkn[i].inst;
                 io_verlichting_update();
+                net_app_staat_sturen();  // slave stuurt nieuwe staat naar master
                 gewijzigd = true;
             }
         }

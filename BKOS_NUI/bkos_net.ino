@@ -25,15 +25,18 @@ bool     net_klaar        = false;
 #define NET_PEERS_BESTAND "/net_peers.csv"
 
 #if PLATFORM_ESP32
-static unsigned long _last_hb       = 0;
-static unsigned long _last_pair_req = 0;
-static unsigned long _last_io_sync  = 0;
-static bool          _espnow_ok     = false;
+static unsigned long _last_hb        = 0;
+static unsigned long _last_pair_req  = 0;
+static unsigned long _last_io_sync   = 0;
+static unsigned long _last_io_namen  = 0;
+static bool          _espnow_ok      = false;
 
-// Ontvangstbuffer (vanuit ESP-NOW callback, WiFi-taak context)
-static volatile bool  _rx_vlag = false;
-static uint8_t        _rx_mac[6];
-static NetPaket       _rx_buf;
+// SPSC ontvangst-queue (callback = Core 0, net_loop = Core 1)
+#define NET_RX_Q 8
+static volatile uint8_t _rx_head = 0;  // consumer schrijft
+static volatile uint8_t _rx_tail = 0;  // producer schrijft
+static uint8_t          _rx_q_mac[NET_RX_Q][6];
+static NetPaket         _rx_q_buf[NET_RX_Q];
 #endif
 
 // ─── Hulpfuncties ─────────────────────────────────────────────────────────────
@@ -170,10 +173,13 @@ static void _stuur(const uint8_t* mac, const NetPaket& pkt, int data_len = 0) {
 }
 
 static void _net_ontvangen_cb(const uint8_t* mac, const uint8_t* data, int len) {
-    if (len < 3 || len > (int)sizeof(NetPaket) || _rx_vlag) return;
-    memcpy(_rx_mac, mac, 6);
-    memcpy(&_rx_buf, data, min(len, (int)sizeof(NetPaket)));
-    _rx_vlag = true;
+    if (len < 3 || len > (int)sizeof(NetPaket)) return;
+    uint8_t tail = _rx_tail;
+    uint8_t next = (tail + 1) % NET_RX_Q;
+    if (next == _rx_head) return;  // queue vol, pakket weggooien
+    memcpy(_rx_q_mac[tail], mac, 6);
+    memcpy(&_rx_q_buf[tail], data, min(len, (int)sizeof(NetPaket)));
+    _rx_tail = next;  // publiceer NADAT data geschreven is
 }
 
 #endif  // PLATFORM_ESP32
@@ -213,6 +219,7 @@ void net_pair_bevestigen(int idx) {
     }
     net_opslaan();
     net_status = String("Gepaard: ") + net_peers[idx].naam;
+    net_io_namen_sturen();  // stuur namen direct naar nieuw gepairde slave
     scherm_bouwen = true;
 }
 
@@ -326,8 +333,17 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         int n = io_zichtbaar();
         if (kanaal >= (uint8_t)n || kanaal >= MAX_IO_KANALEN) break;
         bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
-        io_output[kanaal]   = aan ? IO_UIT : IO_AAN;
+        io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
         io_gewijzigd[kanaal] = true;
+        break;
+    }
+
+    case NET_MSG_APP_STATE: {
+        if (net_modus != NET_MASTER) break;
+        vaar_modus       = (byte)pkt.data[0];
+        licht_instelling = (byte)pkt.data[1];
+        licht_cfg_idx    = (byte)pkt.data[2];
+        io_verlichting_update();  // past io_output[] aan en markeert gewijzigd
         break;
     }
     }
@@ -340,20 +356,15 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 // Namen per IO_NAMEN pakket: (220-2) / IO_NAAM_LEN = 18
 #define NET_IO_NAMEN_PER_PKT 18
 
+// IO_STATE (output + input + richting) — snel, elke 500ms
 void net_io_sturen() {
 #if PLATFORM_ESP32
     if (net_modus != NET_MASTER || !_espnow_ok) return;
-    bool heeft_slave = false;
-    for (int i = 0; i < net_peers_cnt; i++)
-        if (net_peers[i].bevestigd) { heeft_slave = true; break; }
-    if (!heeft_slave) return;
-
     int cnt = io_zichtbaar();
     if (cnt <= 0) return;
     if (cnt > NET_IO_MAX_PER_PKT) cnt = NET_IO_MAX_PER_PKT;
     uint8_t ucnt = (uint8_t)cnt;
 
-    // IO_STATE: output + input + richting per kanaal
     NetPaket pkt = {};
     pkt.versie = NET_PROTOCOL_VERSIE;
     pkt.type   = NET_MSG_IO_STATE;
@@ -366,8 +377,18 @@ void net_io_sturen() {
     int state_len = 1 + 3 * ucnt;
     for (int i = 0; i < net_peers_cnt; i++)
         if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, pkt, state_len);
+#endif
+}
 
-    // IO_NAMEN: 18 kanalen per pakket (namen veranderen zelden, maar stuur altijd mee)
+// IO_NAMEN — traag (elke 5s) of direct na pairing
+void net_io_namen_sturen() {
+#if PLATFORM_ESP32
+    if (net_modus != NET_MASTER || !_espnow_ok) return;
+    int cnt = io_zichtbaar();
+    if (cnt <= 0) return;
+    if (cnt > NET_IO_MAX_PER_PKT) cnt = NET_IO_MAX_PER_PKT;
+    uint8_t ucnt = (uint8_t)cnt;
+
     int offset = 0;
     while (offset < ucnt) {
         int chunk = min(NET_IO_NAMEN_PER_PKT, (int)ucnt - offset);
@@ -407,6 +428,22 @@ void net_io_kanaal_toggle(int kanaal) {
     }
 #else
     io_gewijzigd[kanaal] = true;
+#endif
+}
+
+void net_app_staat_sturen() {
+#if PLATFORM_ESP32
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) return;
+    if (!_espnow_ok || !net_gepaard) return;
+    NetPaket pkt = {};
+    pkt.versie  = NET_PROTOCOL_VERSIE;
+    pkt.type    = NET_MSG_APP_STATE;
+    pkt.modus   = net_modus;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    pkt.data[0] = (uint8_t)vaar_modus;
+    pkt.data[1] = (uint8_t)licht_instelling;
+    pkt.data[2] = (uint8_t)licht_cfg_idx;
+    _stuur(net_master_mac, pkt, 3);
 #endif
 }
 
@@ -469,10 +506,11 @@ void net_loop() {
         }
     }
 
-    // Verwerk ontvangen berichten
-    if (_rx_vlag) {
-        _rx_vlag = false;
-        _verwerk(_rx_mac, _rx_buf);
+    // Verwerk alle ontvangen berichten uit de queue
+    while (_rx_head != _rx_tail) {
+        uint8_t h = _rx_head;
+        _verwerk(_rx_q_mac[h], _rx_q_buf[h]);
+        _rx_head = (h + 1) % NET_RX_Q;
     }
 
     unsigned long nu = millis();
@@ -493,10 +531,16 @@ void net_loop() {
                 net_peers[i].actief = false;
     }
 
-    // Master: IO staat sturen naar gepairde slaves (elke 500ms)
-    if (net_modus == NET_MASTER && nu - _last_io_sync >= 500UL) {
-        _last_io_sync = nu;
-        net_io_sturen();
+    // Master: IO staat sturen (elke 500ms) en namen (elke 5s)
+    if (net_modus == NET_MASTER) {
+        if (nu - _last_io_sync >= 500UL) {
+            _last_io_sync = nu;
+            net_io_sturen();
+        }
+        if (nu - _last_io_namen >= 5000UL) {
+            _last_io_namen = nu;
+            net_io_namen_sturen();
+        }
     }
 
     // Slave/extra/headless: herverbinden als niet gepaard

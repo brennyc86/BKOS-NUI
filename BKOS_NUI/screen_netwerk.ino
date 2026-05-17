@@ -126,7 +126,8 @@ static void _snw_apparaten_tab_teken() {
 
     // Knoppen onderaan
     int knop_y = max(fy + 6, NAV_Y - 50);
-    ui_knop(12, knop_y, 110, 36, "SCAN", C_CYAN, C_BG);
+    const char* scan_label = (net_modus == NET_MASTER) ? "VERVERS" : "SCAN";
+    ui_knop(12, knop_y, 110, 36, scan_label, C_CYAN, C_BG);
     if (net_peers_cnt > 6) {
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         char buf[24]; snprintf(buf, sizeof(buf), "+%d meer (v.2)", net_peers_cnt-6);
@@ -248,10 +249,10 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
             }
         }
 
-        // SCAN knop
+        // SCAN knop: master wacht passief op verzoeken; slave/extra stuurt broadcast
         int knop_y = max(rij_start_y + zichtbaar * SNW_PEER_H + 6, NAV_Y - 50);
         if (y >= knop_y && y < knop_y + 36 && x < 130) {
-            net_pair_sturen();
+            if (net_modus != NET_MASTER) net_pair_sturen();
             scherm_bouwen = true;
         }
         return;

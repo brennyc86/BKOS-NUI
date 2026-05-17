@@ -5,6 +5,7 @@
 #if PLATFORM_ESP32
 #include <esp_now.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #endif
 
 // ─── Variabelen ───────────────────────────────────────────────────────────────
@@ -309,11 +310,20 @@ void net_loop() {
     if (net_modus == NET_STANDALONE) return;
 
 #if PLATFORM_ESP32
+    // Herstel als WiFi radio ondertussen uitgeschakeld werd
+    if (_espnow_ok && WiFi.getMode() == WIFI_OFF) {
+        esp_now_deinit();
+        _espnow_ok = false;
+    }
+
     // Lazy ESP-NOW initialisatie (wacht tot WiFi radio actief is)
     if (!_espnow_ok) {
         WiFi.mode(WIFI_STA);
         if (esp_now_init() != ESP_OK) return;  // probeer volgende loop
         esp_now_register_recv_cb(_net_ontvangen_cb);
+        // Zet vaste channel als geen WiFi verbinding (beide apparaten op ch.1)
+        if (WiFi.status() != WL_CONNECTED)
+            esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
         static const uint8_t broadcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
         _peer_registreren(broadcast);
         for (int i = 0; i < net_peers_cnt; i++) _peer_registreren(net_peers[i].mac);
@@ -327,8 +337,9 @@ void net_loop() {
         } else if (net_master_bekend()) {
             net_pair_sturen();   // herverbinden met bekende master
         } else {
-            net_status = "Niet gepaard";
-            if (net_modus == NET_HEADLESS) net_pair_sturen();
+            // Alle niet-master modi sturen direct een pair-verzoek
+            net_status = "Pairing verzoek verstuurd...";
+            net_pair_sturen();
         }
     }
 

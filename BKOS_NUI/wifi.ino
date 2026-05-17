@@ -5,6 +5,7 @@
 #include "app_state.h"
 #include "meteo.h"
 #include "getijdata.h"
+#include "bkos_net.h"
 
 bool wifi_aangesloten     = false;
 volatile bool wifi_ota_modus = false;
@@ -41,9 +42,17 @@ static void _wifi_verbinden_intern() {
 // ─── WiFi verbreken (energiebesparing) ───────────────────────────────────
 static void _wifi_verbreken_intern() {
     if (wifi_ota_modus) return;   // OTA modus: verbonden houden
-    WiFi.disconnect(true);
+    // Als ESP-NOW actief is: radio aan houden, alleen de associatie verbreken
 #if PLATFORM_ESP32
+    if (net_modus != NET_STANDALONE) {
+        WiFi.disconnect(false);   // ontkoppelen maar radio blijft aan
+        wifi_verbonden = false;
+        return;
+    }
+    WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+#else
+    WiFi.disconnect(true);
 #endif
     wifi_verbonden = false;
 }

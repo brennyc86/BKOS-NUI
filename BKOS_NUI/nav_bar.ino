@@ -27,10 +27,6 @@ void nav_midden_bouwen() {
         nav_midden_cnt++;
     };
 
-    // Ingebouwde schermen die standaard in het midden staan
-    _voeg("VICTRON", SCREEN_VICTRON);
-    _voeg("NETWERK", SCREEN_NETWERK);
-
     // Geïnstalleerde apps met in_balk == true
     for (int i = 0; i < apps_cnt; i++) {
         if (apps[i].actief && apps[i].in_balk)
@@ -208,6 +204,30 @@ static void _nav_icon_info(int cx, int cy, uint16_t c) {
     tft.fillRect(cx - 1, cy - 1, 3, 8, c);   // stam van 'i'
 }
 
+static void _nav_icon_solar(int cx, int cy, uint16_t c) {
+    // Zonnepaneel: 3×2 raster + kleine zon rechtsboven
+    int pw = 20, ph = 12;
+    int px = cx - pw / 2, py = cy - ph / 2 + 3;
+    tft.drawRect(px, py, pw, ph, c);
+    tft.drawFastVLine(px + pw / 3,   py, ph, c);
+    tft.drawFastVLine(px + 2*pw/3,   py, ph, c);
+    tft.drawFastHLine(px, py + ph/2, pw,     c);
+    _ic_zon(cx + 7, cy - ph / 2, c, 4);
+}
+
+static void _nav_icon_netwerk(int cx, int cy, uint16_t c) {
+    // Drie nodes in driehoek, verbonden met lijnen
+    int x1 = cx - 9, y1 = cy - 7;
+    int x2 = cx + 9, y2 = cy - 7;
+    int x3 = cx,     y3 = cy + 8;
+    tft.drawLine(x1, y1, x2, y2, c);
+    tft.drawLine(x1, y1, x3, y3, c);
+    tft.drawLine(x2, y2, x3, y3, c);
+    tft.fillCircle(x1, y1, 3, c);
+    tft.fillCircle(x2, y2, 3, c);
+    tft.fillCircle(x3, y3, 3, c);
+}
+
 // ─── Weer-icoon voor METEO knop ───────────────────────────────────────────────
 
 static void _ic_regen(int cx, int cy) {
@@ -350,6 +370,13 @@ void nav_bar_teken() {
     {
         _sys_knop(2 * NB_SQ, SCREEN_METEO);
         _nav_icon_meteo(2 * NB_SQ + NB_SQ / 2, cy);
+        tft.drawFastVLine(3 * NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
+    }
+
+    // ── VICTRON (vierde links) ──────────────────────────────────────────────
+    {
+        bool act = _sys_knop(3 * NB_SQ, SCREEN_VICTRON);
+        _nav_icon_solar(3 * NB_SQ + NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
         tft.drawFastVLine(NB_MX - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
 
@@ -433,11 +460,16 @@ void nav_bar_teken() {
             tft.drawFastVLine(bx + NB_KW - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
 
-    // ── Rechter vaste knoppen: APPSTORE | CONFIG | INFO ─────────────────────
+    // ── Rechter vaste knoppen: NETWERK | APPSTORE | CONFIG | INFO ───────────
+    tft.drawFastVLine(NB_R0X - 1, y + 4, NAV_H - 8, C_SURFACE2);
     tft.drawFastVLine(NB_R1X - 1, y + 4, NAV_H - 8, C_SURFACE2);
     tft.drawFastVLine(NB_R2X - 1, y + 4, NAV_H - 8, C_SURFACE2);
     tft.drawFastVLine(NB_R3X - 1, y + 4, NAV_H - 8, C_SURFACE2);
 
+    {
+        bool act = _sys_knop(NB_R0X, SCREEN_NETWERK);
+        _nav_icon_netwerk(NB_R0X + NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
+    }
     {
         bool act = _sys_knop(NB_R1X, SCREEN_APPS);
         _nav_icon_store(NB_R1X + NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
@@ -472,15 +504,17 @@ int nav_bar_klik(int x, int y) {
     return -1;
 
 #else
-    // ── Links: PANEEL, IO, METEO ─────────────────────────────────────────────
+    // ── Links: PANEEL, IO, METEO, VICTRON ────────────────────────────────────
     if (x < NB_SQ)          return SCREEN_MAIN;
     if (x < 2 * NB_SQ)      return SCREEN_IO;
-    if (x < NB_MX)          return SCREEN_METEO;
+    if (x < 3 * NB_SQ)      return SCREEN_METEO;
+    if (x < NB_MX)          return SCREEN_VICTRON;
 
     // ── Rechts ──────────────────────────────────────────────────────────────
-    if (x >= NB_R3X)              return SCREEN_INFO;
-    if (x >= NB_R2X)              return SCREEN_CONFIG;
-    if (x >= NB_R1X)              return SCREEN_APPS;
+    if (x >= NB_R3X)         return SCREEN_INFO;
+    if (x >= NB_R2X)         return SCREEN_CONFIG;
+    if (x >= NB_R1X)         return SCREEN_APPS;
+    if (x >= NB_R0X)         return SCREEN_NETWERK;
 
     // ── Midden ──────────────────────────────────────────────────────────────
     bool toon_pijlen = (nav_midden_cnt > NB_MAX_V);

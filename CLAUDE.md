@@ -54,11 +54,19 @@ Wanneer Brendan valideert → officiële release:
 - `HTTPClient` (onderdeel van ESP32 core)
 - `Preferences` (onderdeel van ESP32 core)
 
-### OTA via GitHub
-Firmware binary en versiebestand staan in de repo zelf:
-- Versie: `BKOS_NUI/versie.txt` — formaat: `5.N250426` (major.type+datum)
-- Firmware: `BKOS_NUI/firmware.bin`
-- OTA controle elke 5 minuten via `OTA_GITHUB_VERSIE_URL` en `OTA_GITHUB_FIRMWARE_URL` (gedefinieerd in `ota.h`)
+### OTA via GitHub — twee kanalen
+- **Beta kanaal** (tussenversies, X.Y.YYMMDD.I): `firmware/versie_*.txt` + `firmware/bkos_*.bin`
+- **Stabiel kanaal** (officiële releases, X.Y.Z): `firmware/versie_stable_*.txt` + git-tag URL `v{versie}/firmware/bkos_*.bin`
+- **Release-index**: `firmware/releases.json` — lijst van alle stabiele releases met tag-URL's per platform
+- Auto-detectie: 2 punten in versienummer = stabiel, 3 punten = beta → toggle in OTA scherm
+- OTA controle elke 5 minuten via kanaal dat overeenkomt met `ota_beta_kanal`
+
+**Werkwijze nieuwe stabiele release (bijv. 0.1.2):**
+1. Versie naar `0.1.2` in `ota.h` + `versie.txt` → push → wacht op CI
+2. Na CI: `git pull && git tag v0.1.2 && git push --tags`
+3. `firmware/versie_stable_*.txt` updaten naar `0.1.2`
+4. Entry toevoegen aan `firmware/releases.json` met URL `https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_*.bin`
+5. Push → apparaten pikken stabiele update op via CONTROLEREN
 
 **Werkwijze voor release:**
 1. Code compileren in Arduino IDE → `firmware.bin` exporteren
@@ -165,6 +173,9 @@ Recente taken:
 | 122 | Sessie 20 | screen_victron.h/.ino: DATA tab (apparaat kaarten) + CONFIG tab (discovery + hex-toetsenbord advertising key) |
 | 123 | Sessie 20 | Nav bar 6→7 items (VICTRON toegevoegd, SCREEN_VICTRON=11) |
 | 124 | Sessie 20 | Hoofdscherm: Victron mini-widget (accu V, zonne-W, dagopbrengst) in INT-STATUS balk |
+| 125 | Sessie 21 | Compileer-fix bkos_net.ino: _verwerk binnen #if PLATFORM_ESP32, bkos_net.h in hardware.h |
+| 126 | Sessie 21 | Nav bar: VICTRON → 4e links (zonnepaneel icoon), NETWERK → 4e rechts (nodes icoon), 4+4 vaste knoppen |
+| 127 | Sessie 21 | OTA v0.1.1 officiële release: stabiel kanaal (versie_stable_*.txt + releases.json), BETA toggle, VORIGE VERSIES overlay |
 
 ---
 

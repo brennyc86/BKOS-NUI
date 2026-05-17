@@ -302,15 +302,24 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         break;
 
     case NET_MSG_IO_STATE: {
-        if (net_modus == NET_MASTER) break;  // master ontvangt geen IO staat
+        if (net_modus == NET_MASTER) break;
         uint8_t cnt = pkt.data[0];
         if (cnt > MAX_IO_KANALEN) cnt = MAX_IO_KANALEN;
+        bool gewijzigd = ((int)cnt != io_kanalen_cnt);
         io_kanalen_cnt = (int)cnt;
-        for (int i = 0; i < cnt; i++) io_output[i]   = pkt.data[1 + i];
-        for (int i = 0; i < cnt; i++) io_input[i]    = pkt.data[1 + cnt + i] != 0;
+        for (int i = 0; i < cnt; i++) {
+            uint8_t ny = pkt.data[1 + i];
+            if (io_output[i] != ny) { io_output[i] = ny; gewijzigd = true; }
+        }
+        for (int i = 0; i < cnt; i++) {
+            bool ny = (pkt.data[1 + cnt + i] != 0);
+            if (io_input[i] != ny) { io_input[i] = ny; gewijzigd = true; }
+        }
         for (int i = 0; i < cnt; i++) io_richting[i] = pkt.data[1 + 2*cnt + i];
-        io_runned    = true;  // trigger schermupdate in screen_io
-        scherm_bouwen = true;
+        if (gewijzigd) {
+            io_runned = true;
+            if (actief_scherm == SCHERM_MAIN) scherm_bouwen = true;
+        }
         break;
     }
 
@@ -328,13 +337,15 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
     }
 
     case NET_MSG_IO_TOGGLE: {
-        if (net_modus != NET_MASTER) break;  // alleen master verwerkt toggle verzoeken
+        if (net_modus != NET_MASTER) break;
         uint8_t kanaal = pkt.data[0];
         int n = io_zichtbaar();
         if (kanaal >= (uint8_t)n || kanaal >= MAX_IO_KANALEN) break;
         bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
         io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
         io_gewijzigd[kanaal] = true;
+        io_cyclus();       // direct naar ATtiny sturen, niet wachten op io_loop timer
+        net_io_sturen();   // bevestigde staat direct terug naar slave sturen
         break;
     }
 
@@ -343,7 +354,9 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         vaar_modus       = (byte)pkt.data[0];
         licht_instelling = (byte)pkt.data[1];
         licht_cfg_idx    = (byte)pkt.data[2];
-        io_verlichting_update();  // past io_output[] aan en markeert gewijzigd
+        io_verlichting_update();
+        io_cyclus();
+        net_io_sturen();
         break;
     }
     }

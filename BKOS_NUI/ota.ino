@@ -3,9 +3,13 @@
 #include "ui_colors.h"
 
 bool   ota_wifi_actief   = false;
+bool   ota_beta_kanal    = false;  // ingesteld in ota_setup() op basis van versieformaat
 // ota_push_actief en updaten gedeclareerd in app_state.ino
 String ota_versie_github = "";
 String ota_status_tekst  = "Niet gecontroleerd";
+
+OtaReleaseItem ota_releases[OTA_RELEASES_MAX];
+int            ota_releases_cnt = 0;
 
 static unsigned long ota_last_git_check = 0;
 #define OTA_GIT_INTERVAL  300000UL  // 5 minuten
@@ -16,7 +20,10 @@ static bool ota_gestart      = false;
 static bool ota_callbacks_ok = false;
 
 void ota_setup() {
-    // Standaard uitgeschakeld; activeer via scherm_ota
+    // Auto-detecteer kanaal: stabiel = 2 punten (X.Y.Z), beta = 3 punten (X.Y.YYMMDD.I)
+    int punten = 0;
+    for (const char* p = BKOS_NUI_VERSIE; *p; p++) if (*p == '.') punten++;
+    ota_beta_kanal = (punten == 3);
 }
 
 void ota_loop() {
@@ -149,20 +156,23 @@ void ota_push_inschakelen(bool aan) {
 #endif
 }
 
-void ota_git_check() {
-    // Zorg voor WiFi verbinding (via achtergrond taak of direct)
+static void _ota_wacht_wifi() {
     if (!wifi_verbonden) {
         wifi_verbind_aanvragen();
-        // Wacht even op verbinding
         unsigned long t = millis();
         while (!wifi_verbonden && millis() - t < 10000) delay(200);
     }
+}
+
+void ota_git_check() {
+    _ota_wacht_wifi();
     if (!wifi_verbonden) return;
+    const char* url = ota_beta_kanal ? OTA_GITHUB_VERSIE_URL : OTA_GITHUB_STABLE_VERSIE_URL;
     HTTPClient http;
 #if PLATFORM_ESP32
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 #endif
-    http.begin(OTA_GITHUB_VERSIE_URL);
+    http.begin(url);
     int code = http.GET();
     if (code == HTTP_CODE_OK) {
         ota_versie_github = http.getString();
@@ -179,16 +189,72 @@ void ota_git_check() {
 }
 
 void ota_git_update() {
-    // Zorg voor WiFi verbinding (via achtergrond taak of direct)
-    if (!wifi_verbonden) {
-        wifi_verbind_aanvragen();
-        // Wacht even op verbinding
-        unsigned long t = millis();
-        while (!wifi_verbonden && millis() - t < 10000) delay(200);
-    }
+    _ota_wacht_wifi();
     if (!wifi_verbonden) return;
     ota_status_tekst = "Downloaden...";
-    ota_download_toepassen(String(OTA_GITHUB_FIRMWARE_URL));
+    if (ota_beta_kanal) {
+        ota_download_toepassen(String(OTA_GITHUB_FIRMWARE_URL));
+    } else {
+        // Stabiel: download van git-tag URL (v0.1.1/firmware/bkos_*.bin)
+        String url = String(OTA_GITHUB_BASE_URL) + "v" + ota_versie_github + "/firmware/" + OTA_GITHUB_FIRMWARE_BESTAND;
+        ota_download_toepassen(url);
+    }
+}
+
+static void _extract_json_veld(const String& json, int van, int tot,
+                                const char* sleutel, char* uit, int max_len) {
+    uit[0] = '\0';
+    char zoek[32];
+    snprintf(zoek, sizeof(zoek), "\"%s\":\"", sleutel);
+    int k = json.indexOf(zoek, van);
+    if (k < 0 || k >= tot) return;
+    int vs = k + strlen(zoek);
+    int ve = json.indexOf('"', vs);
+    if (ve < 0 || ve > tot) return;
+    int n = min(ve - vs, max_len - 1);
+    for (int i = 0; i < n; i++) uit[i] = json[vs + i];
+    uit[n] = '\0';
+}
+
+void ota_laad_releases() {
+    ota_releases_cnt = 0;
+#if PLATFORM_ESP32
+    _ota_wacht_wifi();
+    if (!wifi_verbonden) return;
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.begin(OTA_GITHUB_RELEASES_URL);
+    int code = http.GET();
+    if (code != HTTP_CODE_OK) { http.end(); return; }
+    String json = http.getString();
+    http.end();
+
+    int pos = 0;
+    while (ota_releases_cnt < OTA_RELEASES_MAX) {
+        int vi = json.indexOf("\"versie\":\"", pos);
+        if (vi < 0) break;
+        int start = json.lastIndexOf('{', vi);
+        if (start < 0) { pos = vi + 10; continue; }
+        int eind = json.indexOf('}', vi);
+        if (eind < 0) break;
+        _extract_json_veld(json, start, eind, "versie",
+                           ota_releases[ota_releases_cnt].versie, 16);
+        _extract_json_veld(json, start, eind, "datum",
+                           ota_releases[ota_releases_cnt].datum, 12);
+#if PLATFORM_PICO
+        _extract_json_veld(json, start, eind, "url_pico",
+                           ota_releases[ota_releases_cnt].url, 128);
+#elif PLATFORM_WROOM
+        _extract_json_veld(json, start, eind, "url_wroom",
+                           ota_releases[ota_releases_cnt].url, 128);
+#else
+        _extract_json_veld(json, start, eind, "url_s3",
+                           ota_releases[ota_releases_cnt].url, 128);
+#endif
+        if (ota_releases[ota_releases_cnt].versie[0] != '\0') ota_releases_cnt++;
+        pos = eind + 1;
+    }
+#endif
 }
 
 bool ota_download_toepassen(String url) {

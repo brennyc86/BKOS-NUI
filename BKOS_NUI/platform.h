@@ -59,28 +59,25 @@
   #define HC_ID    4    // GP4  — module ID data ingang
 
 #elif PLATFORM_WROOM
-  // ILI9341 SPI display, 240×320 portret — ESP32 WROOM32
+  // CYD (ESP32-2432S028R): ILI9341 SPI 240×320 portret
   #define TFT_W     240
   #define TFT_H     320
-  #define TFT_BL    19   // GPIO19 — backlight PWM
-  #define TFT_CS     0   // GPIO0  — display chip select
-  #define TFT_DC    23   // GPIO23 — data/command
-  #define TFT_RST   17   // GPIO17 — reset
-  #define TFT_SCK   14   // GPIO14 — SPI SCK
+  #define TFT_BL    21   // GPIO21 — backlight PWM
+  #define TFT_CS    15   // GPIO15 — display chip select
+  #define TFT_DC     2   // GPIO2  — data/command
+  #define TFT_RST   -1   // niet aangesloten
+  #define TFT_SCK   14   // GPIO14 — SPI SCK (HSPI)
   #define TFT_MOSI  13   // GPIO13 — SPI MOSI
   #define TFT_MISO  12   // GPIO12 — SPI MISO
 
-  // XPT2046 resistieve touch (gedeelde SPI bus met display)
+  // XPT2046 resistieve touch (gedeelde HSPI bus met display)
   #define WROOM_TOUCH_XPT2046
-  #define WROOM_TS_CS   22   // GPIO22 — touch chip select
-  #define WROOM_TS_IRQ  21   // GPIO21 — touch interrupt
+  #define WROOM_TS_CS   33   // GPIO33 — touch chip select
+  #define WROOM_TS_IRQ  36   // GPIO36 — touch interrupt
 
-  // IO shift register bus (zelfde HC165/HC595 protocol als Pico)
-  #define HC_IN    34   // GPIO34 — HC165 data in (input-only pin)
-  #define HC_SCK   25   // GPIO25 — seriële klok
-  #define HC_PCK   26   // GPIO26 — parallelle klok (load)
-  #define HC_UIT   27   // GPIO27 — HC595 data uitgang
-  #define HC_ID    35   // GPIO35 — module ID (input-only pin)
+  // UART2 naar ATtiny3217 (net als ESP32-S3)
+  #define IO_UART_RX  22   // GPIO22 — ATtiny TX → CYD RX
+  #define IO_UART_TX  27   // GPIO27 — CYD TX → ATtiny RX
 
 #else
   // Arduino_ESP32RGBPanel 800×480 liggend
@@ -89,6 +86,15 @@
   #define TFT_BL   2     // GPIO2 — backlight
   // RGB panel pinnen: zie hw_scherm.ino
   // GT911 touch pinnen: zie hw_touch.h
+#endif
+
+// ─── IO seriële poort ─────────────────────────────────────────────────────────
+#if PLATFORM_WROOM
+  #define IO_SERIAL          Serial2
+  #define IO_SERIAL_BEGIN()  Serial2.begin(IO_BAUD, SERIAL_8N1, IO_UART_RX, IO_UART_TX)
+#elif !PLATFORM_PICO
+  #define IO_SERIAL          Serial
+  #define IO_SERIAL_BEGIN()  Serial.begin(IO_BAUD)
 #endif
 
 // ─── Geheugen allocatie ───────────────────────────────────────────────────────

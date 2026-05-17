@@ -6,7 +6,7 @@
 byte licht_cfg_idx = 0;
 
 // ─── Pico GPIO helpers ────────────────────────────────────────────────────
-#if SCREEN_SMALL
+#if PLATFORM_PICO
 
 static void _pck_puls() {
     digitalWrite(HC_PCK, LOW);  delayMicroseconds(100);
@@ -25,24 +25,24 @@ static byte _lees_id_byte() {
     return id;
 }
 
-#endif // SCREEN_SMALL
+#endif // PLATFORM_PICO
 
 void io_bkoss_check() {
-#if SCREEN_SMALL
+#if PLATFORM_PICO
     bkoss_actief = false;  // geen ATtiny op Pico
     return;
 #endif
     bkoss_actief = false;
     memset(bkoss_versie, 0, BKOSS_VERSIE_LEN);
 
-    while (Serial.available()) Serial.read();
-    Serial.print("?\n");   // BKOSS antwoordt: "BKOS Serial 3217 V 0.4\r\n"
+    while (IO_SERIAL.available()) IO_SERIAL.read();
+    IO_SERIAL.print("?\n");   // BKOSS antwoordt: "BKOS Serial 3217 V 0.4\r\n"
 
     String resp = "";
     unsigned long t = millis();
     while (millis() - t < 500) {
-        while (Serial.available()) {
-            char c = Serial.read();
+        while (IO_SERIAL.available()) {
+            char c = IO_SERIAL.read();
             if (c == '\n') {
                 resp.trim();
                 if (resp.startsWith("BKOS Serial ")) {
@@ -60,15 +60,15 @@ void io_bkoss_check() {
 }
 
 void io_boot() {
-#if !SCREEN_SMALL
-    Serial.flush();
+#if !PLATFORM_PICO
+    IO_SERIAL.flush();
     io_bkoss_check();
 #endif
     io_detect();
 }
 
 void io_detect() {
-#if SCREEN_SMALL
+#if PLATFORM_PICO
     // Pico: directe GPIO — parallel klok zet modules in detectiemodus,
     // daarna 8 klokpulsen per module om het ID via HC_ID uit te lezen.
     io_aparaten_cnt = 0;
@@ -89,36 +89,36 @@ void io_detect() {
     int  tmp_aparaten_cnt = 0;
     int  tmp_kanalen_cnt  = 0;
 
-    while (Serial.available()) Serial.read();
-    Serial.print("IOD\n");
-    Serial.flush();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
+    IO_SERIAL.print("IOD\n");
+    IO_SERIAL.flush();
     delay(10);
-    while (Serial.available()) Serial.read();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
 
     for (int m = 0; m < MAX_MODULES; m++) {
         byte id = 0;
         bool ok = true;
         // Stuur alle 8 klokpulsen in één burst, lees daarna de 8 reacties
-        Serial.print("00000000");
-        Serial.flush();
+        IO_SERIAL.print("00000000");
+        IO_SERIAL.flush();
         unsigned long t = millis();
         for (int bit = 0; bit < 8; bit++) {
-            while (!Serial.available() && millis() - t < 400) yield();
-            if (!Serial.available()) { ok = false; break; }
-            char c = Serial.read();
+            while (!IO_SERIAL.available() && millis() - t < 400) yield();
+            if (!IO_SERIAL.available()) { ok = false; break; }
+            char c = IO_SERIAL.read();
             if (c == '1') id |= (1 << bit);
         }
         // Spoel resterende bufferbytes weg (bijv. module-overgang karakter)
-        while (Serial.available()) { Serial.read(); yield(); }
+        while (IO_SERIAL.available()) { IO_SERIAL.read(); yield(); }
         if (!ok || id == 0 || id == 255) break;
 
         tmp_aparaten[tmp_aparaten_cnt++] = id;
         tmp_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
     }
 
-    Serial.print('\n');
+    IO_SERIAL.print('\n');
     delay(100);
-    while (Serial.available()) Serial.read();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
 
     // Schrijf pas na voltooide detectie — geen tussentijdse n=0 toestand
     memcpy(io_aparaten, tmp_aparaten, tmp_aparaten_cnt);
@@ -133,7 +133,7 @@ void io_cyclus() {
     int n = io_zichtbaar();   // Respecteert io_kanalen_cfg override
     if (n == 0) { io_actief = false; return; }
 
-#if SCREEN_SMALL
+#if PLATFORM_PICO
     // Pico: directe GPIO shift register cyclus
     // Parallelle klok laadt huidige uitgangswaarden
     _pck_puls();
@@ -177,28 +177,28 @@ void io_cyclus() {
     // Gewijzigd-vlaggen wissen zodat io_loop weet dat outputs verstuurd zijn
     for (int i = 0; i < n; i++) io_gewijzigd[i] = false;
 
-    while (Serial.available()) Serial.read();
-    Serial.print("IO\n");
-    Serial.flush();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
+    IO_SERIAL.print("IO\n");
+    IO_SERIAL.flush();
     delay(10);
-    while (Serial.available()) Serial.read();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
 
     // Stuur ALLE outputs in één keer (omgekeerde volgorde voor shift registers).
     // De ATtiny verwerkt pas per volledige module (8 bits) en stuurt dan de inputs
     // terug — bit-voor-bit interleaven geeft een 1-positie verschuiving.
     for (int i = 0; i < n; i++) {
         byte out = io_output[n - 1 - i];
-        Serial.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
+        IO_SERIAL.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
     }
-    Serial.flush();
+    IO_SERIAL.flush();
 
     // Lees ALLE inputs nadat de ATtiny alle outputs heeft verwerkt
     for (int i = 0; i < n; i++) {
         unsigned long t = millis();
-        while (!Serial.available() && millis() - t < 200) yield();
+        while (!IO_SERIAL.available() && millis() - t < 200) yield();
 
         char c = '0';
-        if (Serial.available()) c = Serial.read();
+        if (IO_SERIAL.available()) c = IO_SERIAL.read();
 
         bool nieuw = (c == '1');
         if (nieuw != io_input[i]) {
@@ -212,9 +212,9 @@ void io_cyclus() {
         }
     }
 
-    Serial.print('\n');
+    IO_SERIAL.print('\n');
     delay(60);
-    while (Serial.available()) Serial.read();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
 
     io_runned = true;
     io_actief = false;

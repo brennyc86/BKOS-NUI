@@ -301,7 +301,9 @@ void io_loop() {
         unsigned long nu = millis();
         if (nu - zekering_gecheckt >= 5000) {
             zekering_gecheckt = nu;
-            io_zekering_check();
+            // Alleen op master/standalone: slave heeft geen echte IO-hardware
+            if (net_modus == NET_MASTER || net_modus == NET_STANDALONE)
+                io_zekering_check();
         }
     }
 #else
@@ -473,9 +475,17 @@ void io_verlichting_update() {
         if (io_naam_is(i, "**IL_rood")) io_output[i] = int_rood ? IO_AAN : IO_UIT;
     }
 
-    // Markeer alle uitgangen gewijzigd zodat de achtergrondtaak direct een cyclus uitvoert
+    // Alleen op master/standalone: markeer gewijzigd zodat achtergrondtaak loopt.
+    // Op gepairde slave regelt de master de hardware; io_output[] is hier enkel een display-kopie.
+#if PLATFORM_ESP32
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE || !net_gepaard) {
+        for (int i = 0; i < n; i++) io_gewijzigd[i] = true;
+        io_direct_aanvraag = true;
+    }
+#else
     for (int i = 0; i < n; i++) io_gewijzigd[i] = true;
     io_direct_aanvraag = true;
+#endif
 }
 
 void io_zekering_check() {

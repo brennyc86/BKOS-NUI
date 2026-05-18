@@ -28,8 +28,8 @@ bool     net_klaar        = false;
 static unsigned long _last_hb        = 0;
 static unsigned long _last_pair_req  = 0;
 static unsigned long _last_io_sync   = 0;
-static unsigned long _last_io_namen  = 0;
 static bool          _espnow_ok      = false;
+static bool          _io_sync_reset  = false;  // forceer volgende net_io_sturen() ongeacht snapshot
 
 // SPSC ontvangst-queue (callback = Core 0, net_loop = Core 1)
 #define NET_RX_Q 8
@@ -219,7 +219,10 @@ void net_pair_bevestigen(int idx) {
     }
     net_opslaan();
     net_status = String("Gepaard: ") + net_peers[idx].naam;
-    net_io_namen_sturen();  // stuur namen direct naar nieuw gepairde slave
+    net_io_namen_sturen();   // stuur kanaalnamen direct
+    _io_sync_reset = true;   // forceer volledige IO_STATE (snapshot overslaan)
+    net_io_sturen();         // stuur huidige IO staat
+    net_app_staat_sturen();  // stuur huidige vaarmodus + verlichting
     scherm_bouwen = true;
 }
 
@@ -377,12 +380,21 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
     }
 
     case NET_MSG_APP_STATE: {
-        if (net_modus != NET_MASTER) break;
-        vaar_modus       = (byte)pkt.data[0];
-        licht_instelling = (byte)pkt.data[1];
-        licht_cfg_idx    = (byte)pkt.data[2];
-        io_verlichting_update();
-        io_direct_aanvraag = true;
+        if (pkt.modus == NET_MASTER && net_modus != NET_MASTER) {
+            // Van master → slave: werk display-staat bij en herteken scherm
+            vaar_modus       = (byte)pkt.data[0];
+            licht_instelling = (byte)pkt.data[1];
+            licht_cfg_idx    = (byte)pkt.data[2];
+            if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
+        } else if (pkt.modus != NET_MASTER && net_modus == NET_MASTER) {
+            // Van slave → master: verwerk en stuur terug naar alle slaves
+            vaar_modus       = (byte)pkt.data[0];
+            licht_instelling = (byte)pkt.data[1];
+            licht_cfg_idx    = (byte)pkt.data[2];
+            io_verlichting_update();
+            io_direct_aanvraag = true;
+            net_app_staat_sturen();  // broadcast naar alle slaves
+        }
         break;
     }
     }
@@ -395,15 +407,42 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 // Namen per IO_NAMEN pakket: (220-2) / IO_NAAM_LEN = 18
 #define NET_IO_NAMEN_PER_PKT 18
 
-// IO_STATE (output + input + richting) — snel, elke 500ms
+// IO_STATE — alleen sturen bij wijziging of na 30s (betrouwbaarheid).
+// Intern snapshot voorkomt onnodige pakketten wanneer niets veranderd is.
 void net_io_sturen() {
 #if PLATFORM_ESP32
     if (net_modus != NET_MASTER || !_espnow_ok) return;
     int cnt = io_zichtbaar();
-    if (cnt <= 0) return;
     if (cnt > NET_IO_MAX_PER_PKT) cnt = NET_IO_MAX_PER_PKT;
-    uint8_t ucnt = (uint8_t)cnt;
 
+    // Snapshot vergelijking — sla over als niets veranderd en timer niet verlopen
+    static uint8_t _snap_output[NET_IO_MAX_PER_PKT];
+    static uint8_t _snap_input [NET_IO_MAX_PER_PKT];
+    static int     _snap_cnt = -1;
+
+    bool gewijzigd = (_io_sync_reset || _snap_cnt != cnt);
+    if (!gewijzigd) {
+        for (int i = 0; i < cnt; i++) {
+            uint8_t in_nu = io_input[i] ? 1 : 0;
+            if (_snap_output[i] != io_output[i] || _snap_input[i] != in_nu) {
+                gewijzigd = true; break;
+            }
+        }
+    }
+    unsigned long nu = millis();
+    bool tijd_verlopen = (nu - _last_io_sync >= 30000UL);
+    if (!gewijzigd && !tijd_verlopen) return;
+
+    _io_sync_reset = false;
+    _last_io_sync  = nu;
+    _snap_cnt = cnt;
+    for (int i = 0; i < cnt; i++) {
+        _snap_output[i] = io_output[i];
+        _snap_input [i] = io_input[i] ? 1 : 0;
+    }
+
+    if (cnt <= 0) return;
+    uint8_t ucnt = (uint8_t)cnt;
     NetPaket pkt = {};
     pkt.versie = NET_PROTOCOL_VERSIE;
     pkt.type   = NET_MSG_IO_STATE;
@@ -590,10 +629,11 @@ void net_io_apparaat_zet(const char* prefix, uint8_t staat) {
 #endif
 }
 
+// Bidirectioneel: slave → master (gebruiker wijzigt iets op slave),
+//                 master → alle slaves (master wil slaves in sync houden).
 void net_app_staat_sturen() {
 #if PLATFORM_ESP32
-    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) return;
-    if (!_espnow_ok || !net_gepaard) return;
+    if (!_espnow_ok) return;
     NetPaket pkt = {};
     pkt.versie  = NET_PROTOCOL_VERSIE;
     pkt.type    = NET_MSG_APP_STATE;
@@ -602,7 +642,12 @@ void net_app_staat_sturen() {
     pkt.data[0] = (uint8_t)vaar_modus;
     pkt.data[1] = (uint8_t)licht_instelling;
     pkt.data[2] = (uint8_t)licht_cfg_idx;
-    _stuur(net_master_mac, pkt, 3);
+    if (net_modus == NET_MASTER) {
+        for (int i = 0; i < net_peers_cnt; i++)
+            if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, pkt, 3);
+    } else if (net_gepaard) {
+        _stuur(net_master_mac, pkt, 3);
+    }
 #endif
 }
 
@@ -692,16 +737,11 @@ void net_loop() {
                 net_peers[i].actief = false;
     }
 
-    // Master: IO staat sturen (elke 500ms) en namen (elke 5s)
+    // Master: IO_STATE bij wijziging (via achtergrondtaak) of 30s betrouwbaarheids-fallback.
+    // IO_NAMEN alleen direct na pairing (net_pair_bevestigen).
+    // De snapshot in net_io_sturen() bepaalt of er echt iets verstuurd wordt.
     if (net_modus == NET_MASTER) {
-        if (nu - _last_io_sync >= 500UL) {
-            _last_io_sync = nu;
-            net_io_sturen();
-        }
-        if (nu - _last_io_namen >= 5000UL) {
-            _last_io_namen = nu;
-            net_io_namen_sturen();
-        }
+        net_io_sturen();  // no-op als niets veranderd en <30s geleden verstuurd
     }
 
     // Slave/extra/headless: herverbinden als niet gepaard

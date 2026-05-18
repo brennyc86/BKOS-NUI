@@ -339,12 +339,40 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
     case NET_MSG_IO_TOGGLE: {
         if (net_modus != NET_MASTER) break;
         uint8_t kanaal = pkt.data[0];
+        uint8_t staat  = pkt.data[1];   // IO_AAN / IO_UIT / 0xFF=toggle
         int n = io_zichtbaar();
         if (kanaal >= (uint8_t)n || kanaal >= MAX_IO_KANALEN) break;
-        bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
-        io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
+        if (staat == NET_IO_TOGGLE) {
+            bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
+            io_output[kanaal] = aan ? IO_UIT : IO_AAN;
+        } else {
+            io_output[kanaal] = staat;
+        }
         io_gewijzigd[kanaal] = true;
-        io_direct_aanvraag   = true;  // io_taak (Core 0) stuurt direct naar ATtiny + bevestigt
+        io_direct_aanvraag   = true;
+        break;
+    }
+
+    case NET_MSG_IO_NAAM: {
+        if (net_modus != NET_MASTER) break;
+        uint8_t     staat      = pkt.data[0];
+        uint8_t     match_type = pkt.data[1];  // 0=exact, 1=prefix
+        const char* naam       = (const char*)&pkt.data[2];
+        int n = io_zichtbaar();
+        for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
+            bool match = (match_type == 1)
+                ? io_naam_is(k, naam)
+                : (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0);
+            if (!match) continue;
+            if (staat == NET_IO_TOGGLE) {
+                bool aan = (io_output[k] == IO_AAN || io_output[k] == IO_INV_AAN);
+                io_output[k] = aan ? IO_UIT : IO_AAN;
+            } else {
+                io_output[k] = staat;
+            }
+            io_gewijzigd[k] = true;
+        }
+        io_direct_aanvraag = true;
         break;
     }
 
@@ -420,6 +448,51 @@ void net_io_namen_sturen() {
 #endif
 }
 
+// ─── Interne helper: stuur IO-staat (index) naar master ──────────────────────
+#if PLATFORM_ESP32
+static void _stuur_io_toggle(int kanaal, uint8_t staat) {
+    if (!_espnow_ok || !net_gepaard) return;
+    NetPaket pkt = {};
+    pkt.versie  = NET_PROTOCOL_VERSIE;
+    pkt.type    = NET_MSG_IO_TOGGLE;
+    pkt.modus   = net_modus;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    pkt.data[0] = (uint8_t)kanaal;
+    pkt.data[1] = staat;
+    _stuur(net_master_mac, pkt, 2);
+}
+
+static void _stuur_io_naam(const char* naam, uint8_t staat, uint8_t match_type) {
+    if (!_espnow_ok || !net_gepaard) return;
+    NetPaket pkt = {};
+    pkt.versie  = NET_PROTOCOL_VERSIE;
+    pkt.type    = NET_MSG_IO_NAAM;
+    pkt.modus   = net_modus;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    pkt.data[0] = staat;
+    pkt.data[1] = match_type;
+    strncpy((char*)&pkt.data[2], naam, IO_NAAM_LEN - 1);
+    _stuur(net_master_mac, pkt, 2 + IO_NAAM_LEN);
+}
+#endif
+
+// ─── Kanaalbediening op index ─────────────────────────────────────────────────
+void net_io_kanaal_zet(int kanaal, uint8_t staat) {
+    if (kanaal < 0 || kanaal >= MAX_IO_KANALEN) return;
+#if PLATFORM_ESP32
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+        io_output[kanaal]    = staat;
+        io_gewijzigd[kanaal] = true;
+        io_direct_aanvraag   = true;
+    } else {
+        _stuur_io_toggle(kanaal, staat);
+    }
+#else
+    io_output[kanaal]    = staat;
+    io_gewijzigd[kanaal] = true;
+#endif
+}
+
 void net_io_kanaal_toggle(int kanaal) {
     if (kanaal < 0 || kanaal >= MAX_IO_KANALEN) return;
 #if PLATFORM_ESP32
@@ -427,22 +500,93 @@ void net_io_kanaal_toggle(int kanaal) {
         bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
         io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
         io_gewijzigd[kanaal] = true;
-        io_direct_aanvraag   = true;  // io_taak wekt direct op
-    } else if (_espnow_ok && net_gepaard) {
-        // Slave/extra: stuur verzoek naar master — geen lokale update (race-conditie)
-        // Bevestiging komt via IO_STATE (~80ms), dan pas scherm bijwerken
-        NetPaket pkt = {};
-        pkt.versie = NET_PROTOCOL_VERSIE;
-        pkt.type   = NET_MSG_IO_TOGGLE;
-        pkt.modus  = net_modus;
-        strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
-        pkt.data[0] = (uint8_t)kanaal;
-        _stuur(net_master_mac, pkt, 1);
+        io_direct_aanvraag   = true;
+    } else {
+        _stuur_io_toggle(kanaal, NET_IO_TOGGLE);
     }
 #else
     bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
     io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
     io_gewijzigd[kanaal] = true;
+#endif
+}
+
+// ─── Kanaalbediening op naam ──────────────────────────────────────────────────
+void net_io_naam_zet(const char* naam, uint8_t staat) {
+#if PLATFORM_ESP32
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+        int n = io_zichtbaar();
+        for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
+            if (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0) {
+                io_output[k]    = staat;
+                io_gewijzigd[k] = true;
+            }
+        }
+        io_direct_aanvraag = true;
+    } else {
+        _stuur_io_naam(naam, staat, 0);  // exact match
+    }
+#else
+    int n = io_zichtbaar();
+    for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
+        if (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0) {
+            io_output[k]    = staat;
+            io_gewijzigd[k] = true;
+        }
+    }
+#endif
+}
+
+void net_io_naam_toggle(const char* naam) {
+#if PLATFORM_ESP32
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+        int n = io_zichtbaar();
+        for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
+            if (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0) {
+                bool aan = (io_output[k] == IO_AAN || io_output[k] == IO_INV_AAN);
+                io_output[k]    = aan ? IO_UIT : IO_AAN;
+                io_gewijzigd[k] = true;
+            }
+        }
+        io_direct_aanvraag = true;
+    } else {
+        _stuur_io_naam(naam, NET_IO_TOGGLE, 0);
+    }
+#else
+    int n = io_zichtbaar();
+    for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
+        if (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0) {
+            bool aan = (io_output[k] == IO_AAN || io_output[k] == IO_INV_AAN);
+            io_output[k]    = aan ? IO_UIT : IO_AAN;
+            io_gewijzigd[k] = true;
+        }
+    }
+#endif
+}
+
+// ─── Kanaalbediening op prefix (apparaat-groep) ───────────────────────────────
+void net_io_apparaat_zet(const char* prefix, uint8_t staat) {
+#if PLATFORM_ESP32
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+        int n = io_zichtbaar();
+        for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
+            if (io_naam_is(k, prefix)) {
+                io_output[k]    = staat;
+                io_gewijzigd[k] = true;
+            }
+        }
+        io_direct_aanvraag = true;
+    } else {
+        _stuur_io_naam(prefix, staat, 1);  // prefix match
+    }
+#else
+    int n = io_zichtbaar();
+    for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
+        if (io_naam_is(k, prefix)) {
+            io_output[k]    = staat;
+            io_gewijzigd[k] = true;
+        }
+    }
 #endif
 }
 
@@ -463,15 +607,16 @@ void net_app_staat_sturen() {
 }
 
 void net_io_apparaat_toggle(const char* prefix) {
+#if PLATFORM_ESP32
     if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
         io_apparaat_toggle(prefix);
-        io_direct_aanvraag = true;  // io_taak voert direct uit
-        return;
+        io_direct_aanvraag = true;
+    } else {
+        _stuur_io_naam(prefix, NET_IO_TOGGLE, 1);  // prefix match, toggle
     }
-    // Op slave: toggle elk kanaal dat overeenkomt met prefix
-    int n = io_zichtbaar();
-    for (int i = 0; i < n && i < MAX_IO_KANALEN; i++)
-        if (io_naam_is(i, prefix)) net_io_kanaal_toggle(i);
+#else
+    io_apparaat_toggle(prefix);
+#endif
 }
 
 // ─── Setup / loop ─────────────────────────────────────────────────────────────

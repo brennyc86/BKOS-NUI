@@ -15,10 +15,14 @@
 #define NET_MSG_PAIR_REJ    0x03  // master → slave: geweigerd
 #define NET_MSG_HEARTBEAT   0x10  // master → gepairde apparaten: leef-signaal
 #define NET_MSG_HB_ACK      0x11  // slave → master: ontvangen
-#define NET_MSG_IO_TOGGLE   0x20  // slave → master: kanaal toggle verzoek
+#define NET_MSG_IO_TOGGLE   0x20  // slave → master: kanaal op index, data[0]=kanaal data[1]=staat(IO_AAN/IO_UIT/0xFF=toggle)
+#define NET_MSG_IO_NAAM     0x24  // slave → master: kanaal op naam/prefix, data[0]=staat data[1]=match(0=exact/1=prefix) data[2..]=naam
 #define NET_MSG_IO_STATE    0x22  // master → slaves: IO staat (output/input/richting)
 #define NET_MSG_IO_NAMEN    0x23  // master → slaves: kanaalnamen chunk
 #define NET_MSG_APP_STATE   0x30  // slave → master: vaarmodus + verlichting instelling
+
+// Speciale staat-waarde voor toggle (gebruik samen met NET_MSG_IO_TOGGLE / NET_MSG_IO_NAAM)
+#define NET_IO_TOGGLE       0xFF
 
 // ─── Constanten ───────────────────────────────────────────────────────────────
 #define NET_MAX_PEERS       8
@@ -75,6 +79,14 @@ void        net_get_eigen_mac(uint8_t* mac);
 // IO synchronisatie
 void        net_io_sturen();                        // master → slaves: IO staat (snel, 500ms)
 void        net_io_namen_sturen();                  // master → slaves: kanaalnamen (traag, 5s)
-void        net_io_kanaal_toggle(int kanaal);       // toggle + verstuur naar master indien slave
-void        net_io_apparaat_toggle(const char* prefix); // prefix-toggle, netwerk-bewust
+
+// Kanaal-bediening (werkt op master lokaal, op slave via ESP-NOW naar master)
+void        net_io_kanaal_toggle(int kanaal);                     // toggle op kanaalnummer
+void        net_io_kanaal_zet(int kanaal, uint8_t staat);         // staat = IO_AAN of IO_UIT
+void        net_io_naam_toggle(const char* naam);                 // toggle op exacte kanaalnaam
+void        net_io_naam_zet(const char* naam, uint8_t staat);     // zet op exacte kanaalnaam
+void        net_io_apparaat_toggle(const char* prefix);           // toggle alle kanalen met prefix
+void        net_io_apparaat_zet(const char* prefix, uint8_t staat); // zet alle kanalen met prefix
+
+// App-staat (vaarmodus, verlichting, enz.)
 void        net_app_staat_sturen();                 // slave → master: vaarmodus + verlichting

@@ -24,8 +24,25 @@
 #define NET_MSG_INFO_UPDATE 0x32  // slave → master: gewijzigde info velden
 #define NET_MSG_PEER_INFO   0x33  // slave → master: lokale IO telling
 
+// App-gerelateerde berichten
+#define NET_MSG_APP_LIST    0x40  // master → slaves: geïnst. app IDs + namen
+#define NET_MSG_APP_DATA    0x41  // bidirectioneel: Lua app bericht (sleutel + waarde)
+
 // Speciale staat-waarde voor toggle (gebruik samen met NET_MSG_IO_TOGGLE / NET_MSG_IO_NAAM)
 #define NET_IO_TOGGLE       0xFF
+
+// ─── Lua app-bericht wachtrij ─────────────────────────────────────────────────
+#define LUA_NET_Q_SIZE   4
+#define LUA_NET_ID_LEN   24   // matches APP_ID_LEN
+#define LUA_NET_KEY_LEN  32
+#define LUA_NET_VAL_LEN  164  // 24+32+164 = 220 = sizeof(NetPaket.data)
+struct LuaNetMsg {
+    char id [LUA_NET_ID_LEN];
+    char key[LUA_NET_KEY_LEN];
+    char val[LUA_NET_VAL_LEN];
+};
+extern LuaNetMsg lua_net_q[LUA_NET_Q_SIZE];
+extern uint8_t   lua_net_q_cnt;
 
 // ─── Constanten ───────────────────────────────────────────────────────────────
 #define NET_MAX_PEERS       8
@@ -100,3 +117,7 @@ void        net_app_staat_sturen();                 // slave → master: vaarmod
 void net_data_broadcast(uint8_t type, const uint8_t* data, int len);
 void net_data_naar_master(uint8_t type, const uint8_t* data, int len);
 void net_peer_info_sturen();  // slave → master: rapporteer lokale IO telling
+
+// App netwerk-communicatie
+void net_app_data_sturen(const char* app_id, const char* key, const char* val);
+void net_app_lijst_sturen();  // master → slaves: geïnst. app IDs + namen

@@ -74,3 +74,11 @@ enum AppInstallatieStatus {
 extern volatile AppInstallatieStatus app_ins_status;
 extern char app_ins_bericht[80];
 void app_installeer_start(int winkel_idx);  // start FreeRTOS taak
+
+// Master-app tracking: welke app-IDs heeft de master (geldig op slave/extra)
+#define APP_MASTER_MAX 8
+extern char app_master_ids[APP_MASTER_MAX][APP_ID_LEN];
+extern char app_master_namen[APP_MASTER_MAX][APP_NAAM_LEN];
+extern int  app_master_cnt;
+bool app_op_master(const char* id);
+void app_master_lijst_verwerken(const uint8_t* data, int len);

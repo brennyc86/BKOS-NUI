@@ -1,5 +1,6 @@
 #include "screen_apps.h"
 #include "lua_runtime.h"
+#include "bkos_net.h"
 
 // ─── Layout (2-panel zij-aan-zij) ─────────────────────────────────────────────
 #define APPS_HDR_H    32                           // hoogte deelscherm-header
@@ -103,27 +104,65 @@ static int _apps_rijen_zichtbaar() {
     return min(APPS_RIJEN_N, (APPS_LIST_H - 36) / APPS_RIJ_H);
 }
 
+// Compacte rij voor apps die alleen op master staan (grijs, geen knoppen)
+static void _apps_master_rij(int y, int master_idx, int visueel_idx) {
+    bool even = (visueel_idx % 2 == 0);
+    tft.fillRect(0, y, APPS_PNL_W - 1, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
+    tft.drawFastHLine(0, y + APPS_RIJ_H - 1, APPS_PNL_W - 1, C_SURFACE2);
+
+    tft.setTextSize(2);
+    tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(8, y + 6);
+    tft.print(app_master_namen[master_idx]);
+
+    tft.setTextSize(1);
+    tft.setTextColor(C_DARK_GRAY);
+    tft.setCursor(8, y + 28);
+    tft.print("op master  \x7E  niet lokaal");  // ~ als scheidingsteken
+}
+
 static void _apps_geinstalleerd_teken() {
     tft.fillRect(0, APPS_LIST_Y, APPS_PNL_W - 1, APPS_LIST_H, C_BG);
 
-    if (apps_cnt == 0) {
+    // Hoeveel lokale apps passen vóór de SCHERMEN knop en eventuele master-sectie
+    bool toon_master = (net_modus != NET_STANDALONE && net_modus != NET_MASTER
+                        && app_master_cnt > 0);
+    // Houd ruimte vrij voor master-sectie (header 18px + rijen) en SCHERMEN knop (34px)
+    int master_rijen = toon_master ? min(app_master_cnt, 3) : 0;
+    int master_hoogte = toon_master ? (18 + master_rijen * APPS_RIJ_H) : 0;
+    int ky = APPS_LIST_Y + APPS_LIST_H - 34;
+    int beschikbaar = ky - master_hoogte - APPS_LIST_Y;
+    int max_lokaal = beschikbaar / APPS_RIJ_H;
+
+    if (apps_cnt == 0 && !toon_master) {
         int mid = APPS_LIST_Y + APPS_LIST_H / 2;
         ui_tekst_midden(0, mid - 14, APPS_PNL_W, "Geen apps", C_TEXT_DIM, 1);
         ui_tekst_midden(0, mid + 2,  APPS_PNL_W, "Gebruik APP STORE", C_TEXT_DIM, 1);
     } else {
-        int max_scroll = max(0, apps_cnt - _apps_rijen_zichtbaar());
+        int max_scroll = max(0, apps_cnt - max_lokaal);
         if (apps_scroll > max_scroll) apps_scroll = max_scroll;
-
-        int rijen = _apps_rijen_zichtbaar();
-        for (int i = 0; i < rijen; i++) {
+        for (int i = 0; i < max_lokaal; i++) {
             int idx = apps_scroll + i;
             if (idx >= apps_cnt) break;
             _apps_rij_links(APPS_LIST_Y + i * APPS_RIJ_H, idx, i);
         }
     }
 
+    // ── Master-apps sectie (alleen op slave/extra) ────────────────────────────
+    if (toon_master) {
+        int sec_y = ky - master_hoogte;
+        tft.fillRect(0, sec_y - 2, APPS_PNL_W - 1, 2, C_SURFACE2);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(8, sec_y + 5); tft.print("OP MASTER");
+        int ry = sec_y + 18;
+        for (int i = 0; i < master_rijen; i++) {
+            if (app_op_master(app_master_ids[i]) && app_vindt(app_master_ids[i]) >= 0) continue;
+            _apps_master_rij(ry, i, i);
+            ry += APPS_RIJ_H;
+        }
+    }
+
     // SCHERMEN BEHEREN knop (altijd onderaan links)
-    int ky = APPS_LIST_Y + APPS_LIST_H - 34;
     tft.fillRect(0, ky - 2, APPS_PNL_W - 1, 2, C_SURFACE2);
     ui_knop(8, ky, APPS_PNL_W - 16, 28, "SCHERMEN BEHEREN", C_SURFACE2, C_TEXT_DIM);
 }

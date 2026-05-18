@@ -6,6 +6,7 @@
 #include "ui_colors.h"
 #include "ota.h"
 #include "platform_fs.h"
+#include "bkos_net.h"
 
 bool  lua_fout_actief   = false;
 char  lua_fout_tekst[LUA_FOUT_LEN] = "";
@@ -382,6 +383,29 @@ static int l_log(lua_State* ls) {
     return 0;
 }
 
+// ─── bkos.net ────────────────────────────────────────────────────────────────
+static int l_net_modus(lua_State* ls) {
+    const char* m;
+    switch (net_modus) {
+        case NET_MASTER:   m = "master";    break;
+        case NET_SLAVE:    m = "slave";     break;
+        case NET_EXTRA:    m = "extra";     break;
+        case NET_HEADLESS: m = "headless";  break;
+        default:           m = "standalone"; break;
+    }
+    lua_pushstring(ls, m);
+    return 1;
+}
+
+static int l_net_sturen(lua_State* ls) {
+    if (!L || lua_app_huidig < 0 || lua_app_huidig >= apps_cnt) return 0;
+    const char* key = luaL_checkstring(ls, 1);
+    const char* val = luaL_tostring(ls, 2);
+    if (!val) val = "";
+    net_app_data_sturen(apps[lua_app_huidig].id, key, val);
+    return 0;
+}
+
 // ─── bkos tabel opbouwen ─────────────────────────────────────────────────────
 static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);  // bkos
@@ -472,6 +496,13 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_millis);  lua_setfield(ls, -2, "millis");
     lua_pushcfunction(ls, l_log);     lua_setfield(ls, -2, "log");
     lua_setfield(ls, -2, "sys");
+
+    // net tabel
+    lua_newtable(ls);
+    lua_pushcfunction(ls, l_net_modus);  lua_setfield(ls, -2, "modus");
+    lua_pushcfunction(ls, l_net_sturen); lua_setfield(ls, -2, "sturen");
+    lua_pushnil(ls);                     lua_setfield(ls, -2, "ontvangen");  // callback placeholder
+    lua_setfield(ls, -2, "net");
 
     lua_setglobal(ls, "bkos");
 }
@@ -600,6 +631,33 @@ void lua_app_teken(int app_idx) {
 
 void lua_app_run(int app_idx, int x, int y, bool aanraking) {
     if (lua_fout_actief || !L) return;
+
+    // Drain wachtende net-berichten voor deze app
+    if (lua_net_q_cnt > 0 && app_idx >= 0 && app_idx < apps_cnt) {
+        const char* huidig_id = apps[app_idx].id;
+        for (uint8_t i = 0; i < lua_net_q_cnt; i++) {
+            if (strcmp(lua_net_q[i].id, huidig_id) != 0) continue;
+            lua_getglobal(L, "bkos");
+            lua_getfield(L, -1, "net");
+            lua_remove(L, -2);
+            lua_getfield(L, -1, "ontvangen");
+            lua_remove(L, -2);
+            if (lua_isfunction(L, -1)) {
+                lua_pushstring(L, lua_net_q[i].key);
+                lua_pushstring(L, lua_net_q[i].val);
+                if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
+                    const char* err = lua_tostring(L, -1);
+                    strncpy(lua_fout_tekst, err ? err : "net callback error", LUA_FOUT_LEN - 1);
+                    lua_fout_actief = true;
+                    lua_pop(L, 1);
+                }
+            } else {
+                lua_pop(L, 1);
+            }
+        }
+        lua_net_q_cnt = 0;
+    }
+
     if (aanraking) {
         int app_x = (lua_sx > 0.01f) ? (int)((x - lua_x_offset) / lua_sx) : x;
         int app_y = (lua_sy > 0.01f) ? (int)((y - lua_y_offset) / lua_sy) : y;
@@ -629,7 +687,7 @@ void lua_app_teken(int)                                   {
     tft.setCursor(20, TFT_H / 2 + 4);
     tft.println("installed");
 }
-void lua_app_run(int, int, int, bool)                     { }
+void lua_app_run(int, int, int, bool)                     { lua_net_q_cnt = 0; }
 void lua_app_sluiten()                                    { }
 
 #endif  // LUA_BESCHIKBAAR

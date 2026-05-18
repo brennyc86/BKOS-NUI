@@ -26,6 +26,10 @@ AppManifest winkel[WINKEL_MAX];
 int         winkel_cnt    = 0;
 bool        winkel_geladen = false;
 
+char app_master_ids  [APP_MASTER_MAX][APP_ID_LEN]   = {};
+char app_master_namen[APP_MASTER_MAX][APP_NAAM_LEN] = {};
+int  app_master_cnt  = 0;
+
 // ─── Bestandspaden ───────────────────────────────────────────────────────────
 static String _manifest_pad(const char* id) {
     // "_m.json" i.p.v. "_manifest.json" — SPIFFS max 31 tekens (excl. /)
@@ -161,19 +165,47 @@ void app_verwijder(int idx) {
 }
 
 // ─── Winkel: laden vanuit GitHub ─────────────────────────────────────────────
+bool app_op_master(const char* id) {
+    for (int i = 0; i < app_master_cnt; i++)
+        if (strcmp(app_master_ids[i], id) == 0) return true;
+    return false;
+}
+
+// Verwerk NET_MSG_APP_LIST pakket van master
+// Formaat: data[0]=count, data[1..] = count × (APP_ID_LEN + APP_NAAM_LEN) bytes
+void app_master_lijst_verwerken(const uint8_t* data, int len) {
+    if (len < 1) return;
+    int cnt = min((int)data[0], APP_MASTER_MAX);
+    // Stride: 24 (LUA_NET_ID_LEN) + 32 (APP_NAAM_LEN) — zelfde als in net_app_lijst_sturen
+    const int ID_LEN  = 24;  // LUA_NET_ID_LEN
+    const int NM_LEN  = 32;  // APP_NAAM_LEN
+    int stride = ID_LEN + NM_LEN;
+    app_master_cnt = 0;
+    for (int i = 0; i < cnt; i++) {
+        int off = 1 + i * stride;
+        if (off + stride > len) break;
+        strncpy(app_master_ids  [app_master_cnt], (const char*)&data[off],          APP_ID_LEN   - 1);
+        strncpy(app_master_namen[app_master_cnt], (const char*)&data[off + ID_LEN], APP_NAAM_LEN - 1);
+        app_master_ids  [app_master_cnt][APP_ID_LEN   - 1] = '\0';
+        app_master_namen[app_master_cnt][APP_NAAM_LEN - 1] = '\0';
+        app_master_cnt++;
+    }
+}
+
 void app_winkel_laden() {
     winkel_cnt    = 0;
     winkel_geladen = false;
 
+    // Zet ota_modus VOOR verbinding aanvragen, anders slaat netwerk_taak de verbinding over
+    wifi_ota_modus = true;
     if (WiFi.status() != WL_CONNECTED) {
         wifi_verbind_aanvragen();
         unsigned long t = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - t < 10000)
             vTaskDelay(100 / portTICK_PERIOD_MS);
     }
-    if (WiFi.status() != WL_CONNECTED) return;
+    if (WiFi.status() != WL_CONNECTED) { wifi_ota_modus = false; return; }
     wifi_verbonden = true;
-    wifi_ota_modus = true;
 
     WiFiClientSecure sc;
     sc.setInsecure();

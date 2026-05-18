@@ -59,7 +59,9 @@ extern char   io_namen[][IO_NAAM_LEN];
 // OTA
 extern bool   ota_wifi_actief;
 extern bool   updaten;
-extern bool   ota_auto_update;  // automatisch updaten als nieuwe versie beschikbaar is
+extern bool   ota_auto_update;       // automatisch updaten als nieuwe versie beschikbaar is
+extern int    ota_check_interval_min; // check-interval in minuten (5/10/15/30/45/60/120/1440)
+extern int    ota_check_tijd_uur;     // uur voor dagelijkse check (0–23)
 
 // Klok
 extern String klok_tijd;

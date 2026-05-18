@@ -86,11 +86,17 @@ static void pico_screen_ota_teken_impl() {
 #define OTA_RX       476
 #define OTA_RW       (TFT_W - OTA_RX - 10)
 
-#define OTA_RTOG_Y   (CONTENT_Y + 10)   // Beta toggle
+#define OTA_RTOG_Y   (CONTENT_Y + 10)                // Beta toggle
 #define OTA_RTOG_H   44
-#define OTA_RVGV_Y   (OTA_RTOG_Y + OTA_RTOG_H + 6)  // Vorige versies knop
-#define OTA_RVGV_H   44
-#define OTA_RINFO_Y  (OTA_RVGV_Y + OTA_RVGV_H + 8)  // Info panel
+#define OTA_RAUTO_Y  (OTA_RTOG_Y + OTA_RTOG_H + 4)  // Auto-update toggle
+#define OTA_RAUTO_H  44
+#define OTA_RINT_Y   (OTA_RAUTO_Y + OTA_RAUTO_H + 4) // Check-interval kiezer
+#define OTA_RINT_H   36
+#define OTA_RTIME_Y  (OTA_RINT_Y + OTA_RINT_H + 2)   // Dagelijkse check tijd
+#define OTA_RTIME_H  28
+#define OTA_RVGV_Y   (OTA_RTIME_Y + OTA_RTIME_H + 4) // Vorige versies knop
+#define OTA_RVGV_H   40
+#define OTA_RINFO_Y  (OTA_RVGV_Y + OTA_RVGV_H + 6)  // Info panel
 
 // ─── State ───────────────────────────────────────────────────────────────────
 static bool ota_verwijder_bevestig = false;
@@ -124,6 +130,81 @@ static void _ota_beta_toggle_teken() {
     tft.setTextSize(2); tft.setTextColor(fg);
     tft.setCursor(OTA_RX + 36, OTA_RTOG_Y + (OTA_RTOG_H - 16) / 2);
     tft.print(beta ? "BETA AAN" : "BETA UIT");
+}
+
+static void _ota_auto_toggle_teken() {
+    bool au = ota_auto_update;
+    uint16_t bg = au ? RGB565(0, 18, 8) : C_SURFACE;
+    uint16_t fg = au ? C_GREEN          : C_TEXT_DIM;
+    tft.fillRoundRect(OTA_RX, OTA_RAUTO_Y, OTA_RW, OTA_RAUTO_H, 6, bg);
+    tft.drawRoundRect(OTA_RX, OTA_RAUTO_Y, OTA_RW, OTA_RAUTO_H, 6, fg);
+    int cs = 16, cbx = OTA_RX + 12, cby = OTA_RAUTO_Y + (OTA_RAUTO_H - cs) / 2;
+    tft.drawRect(cbx, cby, cs, cs, fg);
+    if (au) {
+        tft.drawLine(cbx+2, cby+8, cbx+5, cby+12, fg);
+        tft.drawLine(cbx+5, cby+12, cbx+13, cby+3, fg);
+        tft.drawLine(cbx+3, cby+8, cbx+6, cby+12, fg);
+        tft.drawLine(cbx+6, cby+12, cbx+14, cby+3, fg);
+    }
+    tft.setTextSize(2); tft.setTextColor(fg);
+    tft.setCursor(OTA_RX + 36, OTA_RAUTO_Y + (OTA_RAUTO_H - 16) / 2);
+    tft.print(au ? "AUTO UPDATE AAN" : "AUTO UPDATE UIT");
+}
+
+static void _ota_interval_teken() {
+    static const int ivals[] = {5, 10, 15, 30, 45, 60, 120, 1440};
+    static const int icnt    = 8;
+    bool actief = ota_auto_update;
+    uint16_t fg = actief ? C_TEXT : C_TEXT_DIM;
+    tft.fillRoundRect(OTA_RX, OTA_RINT_Y, OTA_RW, OTA_RINT_H, 6, C_SURFACE);
+    tft.drawRoundRect(OTA_RX, OTA_RINT_Y, OTA_RW, OTA_RINT_H, 6, actief ? C_SURFACE2 : C_SURFACE);
+    int ly = OTA_RINT_Y + (OTA_RINT_H - 8) / 2;
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(OTA_RX + 8, ly); tft.print("CHECK:");
+    int aw = 22, arr_l = OTA_RX + OTA_RW - 50, arr_r = OTA_RX + OTA_RW - 26;
+    if (actief) {
+        tft.fillRoundRect(arr_l, OTA_RINT_Y + 4, aw, OTA_RINT_H - 8, 4, C_SURFACE2);
+        tft.fillRoundRect(arr_r, OTA_RINT_Y + 4, aw, OTA_RINT_H - 8, 4, C_SURFACE2);
+        tft.setTextColor(C_CYAN);
+        tft.setCursor(arr_l + 6, ly); tft.print("<");
+        tft.setCursor(arr_r + 7, ly); tft.print(">");
+    }
+    int idx = 3;
+    for (int i = 0; i < icnt; i++) if (ivals[i] == ota_check_interval_min) { idx = i; break; }
+    char buf[16];
+    int val = ivals[idx];
+    if      (val == 1440) strncpy(buf, "DAGELIJKS", sizeof(buf));
+    else if (val == 120)  strncpy(buf, "2 UUR",     sizeof(buf));
+    else if (val == 60)   strncpy(buf, "1 UUR",     sizeof(buf));
+    else                  snprintf(buf, sizeof(buf), "%d MIN", val);
+    tft.setTextColor(fg);
+    int tw = strlen(buf) * 6;
+    int cx = OTA_RX + 58 + (arr_l - OTA_RX - 58 - tw) / 2;
+    tft.setCursor(cx, ly); tft.print(buf);
+}
+
+static void _ota_time_teken() {
+    bool dagelijks = (ota_check_interval_min == 1440);
+    bool actief    = dagelijks && ota_auto_update;
+    uint16_t fg    = actief ? C_TEXT : C_DARK_GRAY;
+    tft.fillRoundRect(OTA_RX, OTA_RTIME_Y, OTA_RW, OTA_RTIME_H, 4, C_SURFACE);
+    tft.drawRoundRect(OTA_RX, OTA_RTIME_Y, OTA_RW, OTA_RTIME_H, 4, actief ? C_SURFACE2 : C_SURFACE);
+    int ly = OTA_RTIME_Y + (OTA_RTIME_H - 8) / 2;
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(OTA_RX + 8, ly); tft.print("OM:");
+    int aw = 20, arr_l = OTA_RX + OTA_RW - 46, arr_r = OTA_RX + OTA_RW - 24;
+    if (actief) {
+        tft.fillRoundRect(arr_l, OTA_RTIME_Y + 3, aw, OTA_RTIME_H - 6, 4, C_SURFACE2);
+        tft.fillRoundRect(arr_r, OTA_RTIME_Y + 3, aw, OTA_RTIME_H - 6, 4, C_SURFACE2);
+        tft.setTextColor(C_CYAN);
+        tft.setCursor(arr_l + 5, ly); tft.print("<");
+        tft.setCursor(arr_r + 6, ly); tft.print(">");
+    }
+    char tbuf[8]; snprintf(tbuf, sizeof(tbuf), "%02d:00", ota_check_tijd_uur);
+    tft.setTextColor(fg);
+    int tw = strlen(tbuf) * 6;
+    int cx = OTA_RX + 34 + (arr_l - OTA_RX - 34 - tw) / 2;
+    tft.setCursor(cx, ly); tft.print(tbuf);
 }
 
 static void _ota_info_rechts_teken() {
@@ -312,8 +393,11 @@ void screen_ota_teken() {
                   "Overschrijf met blanco firmware — apparaat herstart",
                   C_SURFACE, C_RED_BRIGHT, C_RED_BRIGHT, false);
 
-    // ── Rechts: beta toggle + vorige versies + info ──────────────────────────
+    // ── Rechts: beta toggle + auto-update + interval + vorige versies + info ─
     _ota_beta_toggle_teken();
+    _ota_auto_toggle_teken();
+    _ota_interval_teken();
+    _ota_time_teken();
     ui_knop(OTA_RX, OTA_RVGV_Y, OTA_RW, OTA_RVGV_H, "VORIGE VERSIES", C_SURFACE, C_TEXT_DIM);
     _ota_info_rechts_teken();
 
@@ -464,22 +548,60 @@ void screen_ota_run(int x, int y, bool aanraking) {
             ota_beta_kanal = !ota_beta_kanal;
             ota_versie_github = "";
             ota_status_tekst  = ota_beta_kanal ? "Kanaal: Beta" : "Kanaal: Stabiel";
+            state_save();
             _ota_beta_toggle_teken();
             _ota_info_rechts_teken();
-            // Herlaad UPDATE knop (nu geen versie meer bekend)
             ui_knop_groot(OTA_LX, OTA_BTN_Y2, OTA_LW, OTA_BTN_H,
                           "UPDATE STARTEN", "Controleer eerst de versie",
                           C_SURFACE, C_GRAY, C_GREEN, false);
+            return;
+        }
+        // Auto-update toggle
+        if (y >= OTA_RAUTO_Y && y < OTA_RAUTO_Y + OTA_RAUTO_H) {
+            ota_auto_update = !ota_auto_update;
+            state_save();
+            _ota_auto_toggle_teken();
+            _ota_interval_teken();
+            _ota_time_teken();
+            return;
+        }
+        // Check-interval kiezer (< en > pijlen)
+        if (y >= OTA_RINT_Y && y < OTA_RINT_Y + OTA_RINT_H && ota_auto_update) {
+            static const int _iv[] = {5, 10, 15, 30, 45, 60, 120, 1440};
+            static const int _ic   = 8;
+            int idx = 3;
+            for (int i = 0; i < _ic; i++) if (_iv[i] == ota_check_interval_min) { idx = i; break; }
+            int aw = 22, arr_l = OTA_RX + OTA_RW - 50, arr_r = OTA_RX + OTA_RW - 26;
+            if (x >= arr_l && x < arr_l + aw) {
+                ota_check_interval_min = _iv[(idx + _ic - 1) % _ic];
+                state_save(); _ota_interval_teken(); _ota_time_teken();
+            } else if (x >= arr_r && x < arr_r + aw) {
+                ota_check_interval_min = _iv[(idx + 1) % _ic];
+                state_save(); _ota_interval_teken(); _ota_time_teken();
+            }
+            return;
+        }
+        // Dagelijkse check: uur instellen (< en > pijlen)
+        if (y >= OTA_RTIME_Y && y < OTA_RTIME_Y + OTA_RTIME_H &&
+            ota_auto_update && ota_check_interval_min == 1440) {
+            int aw = 20, arr_l = OTA_RX + OTA_RW - 46, arr_r = OTA_RX + OTA_RW - 24;
+            if (x >= arr_l && x < arr_l + aw) {
+                ota_check_tijd_uur = (ota_check_tijd_uur + 23) % 24;
+                state_save(); _ota_time_teken();
+            } else if (x >= arr_r && x < arr_r + aw) {
+                ota_check_tijd_uur = (ota_check_tijd_uur + 1) % 24;
+                state_save(); _ota_time_teken();
+            }
             return;
         }
         // Vorige versies
         if (y >= OTA_RVGV_Y && y < OTA_RVGV_Y + OTA_RVGV_H) {
             ota_vorige_tonen   = true;
             ota_vorige_geladen = false;
-            screen_ota_teken();          // toont "Laden..."
+            screen_ota_teken();
             ota_laad_releases();
             ota_vorige_geladen = true;
-            _ota_vorige_overlay_teken(); // toont echte lijst
+            _ota_vorige_overlay_teken();
             nav_bar_teken();
             return;
         }

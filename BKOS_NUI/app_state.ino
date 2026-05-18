@@ -10,9 +10,11 @@ int   actief_scherm    = SCREEN_MAIN;
 bool  scherm_bouwen    = true;
 byte  vaar_modus       = MODE_HAVEN;
 byte  licht_instelling = LICHT_UIT;
-bool  ota_push_actief  = false;
-bool  updaten          = false;
-bool  ota_auto_update  = false;
+bool  ota_push_actief       = false;
+bool  updaten               = false;
+bool  ota_auto_update       = false;
+int   ota_check_interval_min = 30;  // standaard 30 minuten
+int   ota_check_tijd_uur     = 3;   // standaard 03:00 voor dagelijkse check
 String klok_tijd       = "--:--";
 volatile bool  wifi_verbonden   = false;
 bool  dev_lokaal[5]    = {false, false, false, false, false};
@@ -43,6 +45,8 @@ void state_save() {
     f.printf("onthlicht=%d\n",(int)onthoud_licht_modus);
     f.printf("ota_auto=%d\n", (int)ota_auto_update);
     f.printf("ota_beta=%d\n", (int)ota_beta_kanal);
+    f.printf("ota_int=%d\n",  ota_check_interval_min);
+    f.printf("ota_tijd=%d\n", ota_check_tijd_uur);
     f.close();
 }
 
@@ -88,6 +92,8 @@ void state_load() {
         if (key == "onthlicht") onthoud_licht_modus   = (val.toInt() != 0);
         if (key == "ota_auto")  ota_auto_update        = (val.toInt() != 0);
         if (key == "ota_beta")  { ota_beta_kanal = (val.toInt() != 0); ota_beta_kanal_geladen = true; }
+        if (key == "ota_int")   ota_check_interval_min = val.toInt();
+        if (key == "ota_tijd")  ota_check_tijd_uur     = val.toInt();
     }
     f.close();
 

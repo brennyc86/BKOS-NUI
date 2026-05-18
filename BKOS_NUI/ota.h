@@ -2,7 +2,7 @@
 #include "platform.h"
 #include "wifi.h"
 
-#define BKOS_NUI_VERSIE     "0.1.260518.6"
+#define BKOS_NUI_VERSIE     "0.1.260518.7"
 
 // ─── Beta kanaal (tussenversies) ──────────────────────────────────────────────
 #if PLATFORM_PICO
@@ -44,6 +44,8 @@ extern bool   ota_beta_kanal_geladen; // true als waarde uit config is geladen (
 extern bool   updaten;
 extern String ota_versie_github;
 extern String ota_status_tekst;
+extern int    ota_check_interval_min; // check-interval in minuten (5/10/15/30/45/60/120/1440)
+extern int    ota_check_tijd_uur;     // uur voor dagelijkse check (0–23)
 
 void ota_setup();
 void ota_loop();

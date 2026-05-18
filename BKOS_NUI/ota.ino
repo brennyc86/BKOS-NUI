@@ -13,7 +13,6 @@ OtaReleaseItem ota_releases[OTA_RELEASES_MAX];
 int            ota_releases_cnt = 0;
 
 static unsigned long ota_last_git_check = 0;
-#define OTA_GIT_INTERVAL  300000UL  // 5 minuten
 
 // ota_gestart: ArduinoOTA.begin() al aangeroepen voor deze WiFi-sessie
 // ota_callbacks_ok: ArduinoOTA.onStart/onEnd/... al ingesteld
@@ -85,15 +84,51 @@ void ota_loop() {
         ota_callbacks_ok = false;
     }
 #endif
-    if (millis() - ota_last_git_check > OTA_GIT_INTERVAL) {
-        ota_last_git_check = millis();
-        if (wifi_verbonden && strlen(OTA_GITHUB_VERSIE_URL) > 5) {
+    // Configureerbaar check-interval met WiFi-pending retry
+    static bool _check_gepland    = false;
+    static bool _was_verbonden    = false;
+    static int  _dag_uur_gevuurd  = -1;
+
+    bool wifi_nu      = wifi_verbonden;
+    bool wifi_net_aan = (wifi_nu && !_was_verbonden);
+    _was_verbonden    = wifi_nu;
+    unsigned long nu  = millis();
+
+    // Voer geplande check direct uit zodra WiFi beschikbaar wordt
+    if (_check_gepland && wifi_net_aan && ota_auto_update && strlen(OTA_GITHUB_VERSIE_URL) > 5) {
+        _check_gepland     = false;
+        ota_last_git_check = nu;
+        ota_git_check();
+        if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+            ota_git_update();
+    }
+
+    // Bepaal of het tijd is voor de periodieke check
+    bool tijd_voor_check = false;
+    if (ota_check_interval_min == 1440) {
+        // Dagelijks op ingesteld uur (gebruik klok_tijd "HH:MM")
+        if (klok_tijd.length() >= 2) {
+            int uur = (klok_tijd[0] - '0') * 10 + (klok_tijd[1] - '0');
+            if (uur == ota_check_tijd_uur && _dag_uur_gevuurd != uur)
+                { _dag_uur_gevuurd = uur; tijd_voor_check = true; }
+            if (uur != ota_check_tijd_uur && _dag_uur_gevuurd == ota_check_tijd_uur)
+                _dag_uur_gevuurd = -1;  // reset voor volgende dag
+        }
+    } else {
+        unsigned long interval_ms = (unsigned long)ota_check_interval_min * 60000UL;
+        if (nu - ota_last_git_check > interval_ms)
+            tijd_voor_check = true;
+    }
+
+    if (tijd_voor_check && ota_auto_update && strlen(OTA_GITHUB_VERSIE_URL) > 5) {
+        ota_last_git_check = nu;
+        if (!wifi_verbonden) {
+            _check_gepland = true;   // herhaal zodra WiFi beschikbaar is
+        } else {
+            _check_gepland = false;
             ota_git_check();
-            if (ota_auto_update &&
-                ota_versie_github.length() > 0 &&
-                ota_versie_github != BKOS_NUI_VERSIE) {
+            if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
                 ota_git_update();
-            }
         }
     }
 }

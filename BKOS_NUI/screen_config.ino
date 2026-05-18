@@ -3,6 +3,7 @@
 #include "meteo.h"
 #include "fout_log.h"
 #include "platform_fs.h"
+#include "ota.h"
 
 // ─── PIN code helpers ────────────────────────────────────────────────────
 static void pin_lezen(char* buf, int len) {
@@ -1069,9 +1070,24 @@ static void cfg_instellingen_teken() {
         if (ontg) { ui_knop(684, iy + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, iy + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
     }
 
-    // Firmware updaten
+    // Firmware: auto-update toggle (links, altijd vrij) + handmatig updaten (rechts, PIN)
     int uy = iy + 46;
-    ui_knop(10, uy + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
+    {
+        bool au  = ota_auto_update;
+        bool bet = ota_beta_kanal;
+        uint16_t au_bg = au ? RGB565(0, 18, 8) : C_SURFACE2;
+        uint16_t au_fg = au ? C_GREEN          : C_TEXT_DIM;
+        tft.fillRoundRect(10, uy + 4, 388, 38, 6, au_bg);
+        tft.drawRoundRect(10, uy + 4, 388, 38, 6, au_fg);
+        tft.setTextSize(1); tft.setTextColor(au_fg);
+        char aulbl[36];
+        if (au) snprintf(aulbl, 36, "AUTO UPDATE AAN  [%s]", bet ? "BETA" : "STABIEL");
+        else    strncpy(aulbl, "AUTO UPDATE  UIT", 36);
+        int tw = strlen(aulbl) * 6;
+        tft.setCursor(10 + (388 - tw) / 2, uy + 4 + (38 - 8) / 2);
+        tft.print(aulbl);
+    }
+    ui_knop(406, uy + 4, TFT_W - 416, 38, "UPDATEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 
     // Pincode wijzigen + (als foutrap ON en ontgrendeld) Token instellen
@@ -1203,11 +1219,17 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // Firmware updaten — PIN vereist
+    // Firmware rij: links = auto-update toggle (vrij); rechts = handmatig updaten (PIN)
     if (y >= uy && y < uy + 46) {
-        if (!ontg) { pin_vereist_tonen(); return; }
-        actief_scherm = SCREEN_OTA;
-        scherm_bouwen = true;
+        if (x < 406) {
+            ota_auto_update = !ota_auto_update;
+            state_save();
+            cfg_instellingen_teken();
+        } else {
+            if (!ontg) { pin_vereist_tonen(); return; }
+            actief_scherm = SCREEN_OTA;
+            scherm_bouwen = true;
+        }
         return;
     }
 

@@ -2,7 +2,7 @@
 #include "platform.h"
 #include "wifi.h"
 
-#define BKOS_NUI_VERSIE     "0.1.260518.4"
+#define BKOS_NUI_VERSIE     "0.1.260518.5"
 
 // ─── Beta kanaal (tussenversies) ──────────────────────────────────────────────
 #if PLATFORM_PICO
@@ -39,7 +39,8 @@ extern int            ota_releases_cnt;
 // ─── State ────────────────────────────────────────────────────────────────────
 extern bool   ota_wifi_actief;
 extern bool   ota_push_actief;
-extern bool   ota_beta_kanal;   // true = tussenversies; false = alleen stabiele releases
+extern bool   ota_beta_kanal;        // true = tussenversies; false = alleen stabiele releases
+extern bool   ota_beta_kanal_geladen; // true als waarde uit config is geladen (niet auto-detected)
 extern bool   updaten;
 extern String ota_versie_github;
 extern String ota_status_tekst;

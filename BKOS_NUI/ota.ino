@@ -2,9 +2,10 @@
 #include "hw_scherm.h"
 #include "ui_colors.h"
 
-bool   ota_wifi_actief   = false;
-bool   ota_beta_kanal    = false;  // ingesteld in ota_setup() op basis van versieformaat
-// ota_push_actief en updaten gedeclareerd in app_state.ino
+bool   ota_wifi_actief        = false;
+bool   ota_beta_kanal         = false;
+bool   ota_beta_kanal_geladen = false;  // true als ota_beta uit config geladen is
+// ota_push_actief, updaten, ota_auto_update gedeclareerd in app_state.ino
 String ota_versie_github = "";
 String ota_status_tekst  = "Niet gecontroleerd";
 
@@ -20,10 +21,14 @@ static bool ota_gestart      = false;
 static bool ota_callbacks_ok = false;
 
 void ota_setup() {
-    // Auto-detecteer kanaal: stabiel = 2 punten (X.Y.Z), beta = 3 punten (X.Y.YYMMDD.I)
-    int punten = 0;
-    for (const char* p = BKOS_NUI_VERSIE; *p; p++) if (*p == '.') punten++;
-    ota_beta_kanal = (punten == 3);
+    // Auto-detecteer kanaal alleen bij eerste opstart (geen opgeslagen voorkeur).
+    // state_load() loopt vóór ota_setup(); als het "ota_beta" sleutel vond, is
+    // ota_beta_kanal_geladen = true en respecteren we die keuze.
+    if (!ota_beta_kanal_geladen) {
+        int punten = 0;
+        for (const char* p = BKOS_NUI_VERSIE; *p; p++) if (*p == '.') punten++;
+        ota_beta_kanal = (punten == 3);
+    }
 }
 
 void ota_loop() {
@@ -84,6 +89,11 @@ void ota_loop() {
         ota_last_git_check = millis();
         if (wifi_verbonden && strlen(OTA_GITHUB_VERSIE_URL) > 5) {
             ota_git_check();
+            if (ota_auto_update &&
+                ota_versie_github.length() > 0 &&
+                ota_versie_github != BKOS_NUI_VERSIE) {
+                ota_git_update();
+            }
         }
     }
 }

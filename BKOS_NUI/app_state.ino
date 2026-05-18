@@ -2,12 +2,17 @@
 #include "hw_io.h"
 #include "platform_fs.h"
 
+// Forward declarations voor OTA state (gedeclareerd in ota.ino)
+extern bool ota_beta_kanal;
+extern bool ota_beta_kanal_geladen;
+
 int   actief_scherm    = SCREEN_MAIN;
 bool  scherm_bouwen    = true;
 byte  vaar_modus       = MODE_HAVEN;
 byte  licht_instelling = LICHT_UIT;
 bool  ota_push_actief  = false;
 bool  updaten          = false;
+bool  ota_auto_update  = false;
 String klok_tijd       = "--:--";
 volatile bool  wifi_verbonden   = false;
 bool  dev_lokaal[5]    = {false, false, false, false, false};
@@ -36,6 +41,8 @@ void state_save() {
     f.printf("navoff=%d\n",   licht_nav_offset_min);
     f.printf("intoff=%d\n",   licht_int_offset_min);
     f.printf("onthlicht=%d\n",(int)onthoud_licht_modus);
+    f.printf("ota_auto=%d\n", (int)ota_auto_update);
+    f.printf("ota_beta=%d\n", (int)ota_beta_kanal);
     f.close();
 }
 
@@ -79,6 +86,8 @@ void state_load() {
         if (key == "navoff")    licht_nav_offset_min  = val.toInt();
         if (key == "intoff")    licht_int_offset_min  = val.toInt();
         if (key == "onthlicht") onthoud_licht_modus   = (val.toInt() != 0);
+        if (key == "ota_auto")  ota_auto_update        = (val.toInt() != 0);
+        if (key == "ota_beta")  { ota_beta_kanal = (val.toInt() != 0); ota_beta_kanal_geladen = true; }
     }
     f.close();
 

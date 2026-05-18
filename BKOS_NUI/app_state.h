@@ -59,6 +59,7 @@ extern char   io_namen[][IO_NAAM_LEN];
 // OTA
 extern bool   ota_wifi_actief;
 extern bool   updaten;
+extern bool   ota_auto_update;  // automatisch updaten als nieuwe versie beschikbaar is
 
 // Klok
 extern String klok_tijd;

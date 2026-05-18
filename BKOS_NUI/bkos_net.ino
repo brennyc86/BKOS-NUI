@@ -266,9 +266,10 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         }
         net_peers[idx].modus = pkt.modus;
         strncpy(net_peers[idx].naam, pkt.naam, NET_NAAM_LEN - 1);
-        if (pkt.modus == NET_HEADLESS) {
-            net_pair_bevestigen(idx);  // headless: automatisch pairen
-        } else if (!net_peers[idx].bevestigd) {
+        if (net_peers[idx].bevestigd || pkt.modus == NET_HEADLESS) {
+            // Al gepaard of headless: stuur PAIR_ACK direct + hersynch IO/staat
+            net_pair_bevestigen(idx);
+        } else {
             net_pair_pending = idx;
             scherm_bouwen    = true;
         }
@@ -306,6 +307,9 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 
     case NET_MSG_IO_STATE: {
         if (net_modus == NET_MASTER) break;
+        // IO_STATE ontvangen = master herkent ons nog; stel gepaard in
+        if (!net_gepaard && net_master_bekend() && _mac_gelijk(mac, net_master_mac))
+            net_gepaard = true;
         uint8_t cnt = pkt.data[0];
         if (cnt > MAX_IO_KANALEN) cnt = MAX_IO_KANALEN;
         bool gewijzigd = ((int)cnt != io_kanalen_cnt);
@@ -704,9 +708,11 @@ void net_loop() {
             net_gepaard = true;
             net_status  = "Master actief";
         } else if (net_master_bekend()) {
+            // Veronderstel nog gepaard zodat slave direct kan sturen;
+            // PAIR_ACK herbevestigt dit na de PAIR_REQ handshake
+            net_gepaard = true;
             net_pair_sturen();   // herverbinden met bekende master
         } else {
-            // Alle niet-master modi sturen direct een pair-verzoek
             net_status = "Pairing verzoek verstuurd...";
             net_pair_sturen();
         }

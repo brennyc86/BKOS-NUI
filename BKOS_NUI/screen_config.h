@@ -46,3 +46,5 @@ void screen_config_toetsenbord_teken();
 bool screen_config_toetsenbord_run(int x, int y);
 void pin_vereist_tonen();
 bool pin_overlay_run(int x, int y);
+void pin_lezen_pub(char* buf, int len);    // public wrapper
+void pin_schrijven_pub(const char* pin);   // public wrapper

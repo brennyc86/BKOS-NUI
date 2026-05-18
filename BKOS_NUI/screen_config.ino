@@ -3,6 +3,7 @@
 #include "meteo.h"
 #include "fout_log.h"
 #include "platform_fs.h"
+#include "bkos_net.h"    // net_eigen_naam, NET_NAAM_LEN, net_opslaan()
 
 // ─── PIN code helpers ────────────────────────────────────────────────────
 static void pin_lezen(char* buf, int len) {
@@ -22,12 +23,16 @@ static void pin_schrijven(const char* pin) {
     f.close();
 }
 
+void pin_lezen_pub(char* buf, int len)  { pin_lezen(buf, len); }
+void pin_schrijven_pub(const char* pin) { pin_schrijven(pin); }
+
 // ─── State ──────────────────────────────────────────────────────────────
 byte cfg_tab                    = 0;
 int  cfg_scroll                 = 0;
 int  cfg_geselecteerd           = -1;
 bool cfg_toetsenbord_actief     = false;
 bool cfg_bewerk_zeilnr          = false;
+static bool cfg_bewerk_apparaatnaam = false;
 char cfg_invoer[CFG_INVOER_LEN] = "";
 bool kb_hoofdletters            = true;
 bool kb_sym                     = false;
@@ -1045,8 +1050,21 @@ static void cfg_instellingen_teken() {
     tft.setCursor(98, zy + 4 + (32 - 16) / 2);
     tft.print(ontg ? (strlen(zeilnummer) > 0 ? zeilnummer : "(tik om in te stellen)") : "***");
 
+    // Apparaat naam (ruimtenaam, achter PIN)
+    int ay = zy + 44;
+    tft.fillRoundRect(8, ay, TFT_W - 16, 40, 6, C_SURFACE);
+    tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
+    tft.setCursor(18, ay + (40 - 8) / 2); tft.print("NAAM MODULE");
+    tft.fillRoundRect(130, ay + 4, 300, 32, 5, ontg ? C_SURFACE2 : C_SURFACE);
+    tft.drawRoundRect(130, ay + 4, 300, 32, 5, C_SURFACE3);
+    tft.setTextSize(2);
+    bool heeft_naam = (strlen(net_eigen_naam) > 0 && strcmp(net_eigen_naam, "BKOS-NUI") != 0);
+    tft.setTextColor(ontg ? (heeft_naam ? C_TEXT : C_TEXT_DIM) : C_DARK_GRAY);
+    tft.setCursor(138, ay + 4 + (32 - 16) / 2);
+    tft.print(ontg ? (heeft_naam ? net_eigen_naam : "(tik om naam in te stellen)") : "***");
+
     // IO Configuratie + IO Hartslag timing
-    int iy = zy + 44;
+    int iy = ay + 44;
     ui_knop(10, iy + 4, 488, 38, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
     {
@@ -1120,7 +1138,8 @@ static void cfg_instellingen_run(int x, int y) {
     int sy    = wow_y + 38 + 4;
     int by    = sy + 62;
     int zy    = by + 44;
-    int iy    = zy + 44;
+    int ay    = zy + 44;
+    int iy    = ay + 44;
     int uy    = iy + 46;
     int py    = uy + 46;
 
@@ -1184,6 +1203,24 @@ static void cfg_instellingen_run(int x, int y) {
         cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
         strncpy(cfg_kb_label, "Zeilnr:", 24);
         cfg_kb_numeriek = false;
+        cfg_toetsenbord_actief = true;
+        screen_config_toetsenbord_teken();
+        return;
+    }
+
+    // Apparaat naam — PIN vereist
+    if (y >= ay && y < ay + 44 && x >= 130 && x < 130 + 300) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        cfg_bewerk_apparaatnaam = true;
+        strncpy(cfg_invoer, net_eigen_naam, CFG_INVOER_LEN - 1);
+        if (strcmp(cfg_invoer, "BKOS-NUI") == 0) cfg_invoer[0] = '\0';
+        cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+        strncpy(cfg_kb_label, "Module naam:", 24);
+        cfg_kb_numeriek = false;
+        cfg_geselecteerd = -1;
+        cfg_kb_info_mode = false;
+        cfg_kb_opgeslagen = false;
+        kb_sym = false;
         cfg_toetsenbord_actief = true;
         screen_config_toetsenbord_teken();
         return;
@@ -1601,6 +1638,11 @@ bool screen_config_toetsenbord_run(int x, int y) {
                 zeilnummer[ZEILNR_LEN - 1] = '\0';
                 state_save();
                 cfg_bewerk_zeilnr = false;
+            } else if (cfg_bewerk_apparaatnaam) {
+                strncpy(net_eigen_naam, cfg_invoer, NET_NAAM_LEN - 1);
+                net_eigen_naam[NET_NAAM_LEN - 1] = '\0';
+                net_opslaan();
+                cfg_bewerk_apparaatnaam = false;
             } else if (cfg_geselecteerd >= 0 && cfg_geselecteerd < MAX_IO_KANALEN) {
                 strncpy(io_namen[cfg_geselecteerd], cfg_invoer, IO_NAAM_LEN - 1);
                 io_namen[cfg_geselecteerd][IO_NAAM_LEN - 1] = '\0';
@@ -1627,14 +1669,15 @@ bool screen_config_toetsenbord_run(int x, int y) {
                 scherm_bouwen          = true;
                 return true;
             }
-            cfg_bewerk_zeilnr      = false;
-            cfg_toetsenbord_actief = false;
-            cfg_kb_info_mode       = false;
-            cfg_kb_opgeslagen      = false;
-            cfg_kb_numeriek        = false;
-            cfg_kb_wachtwoord      = false;
-            cfg_kb_foutlog_token   = false;
-            kb_sym                 = false;
+            cfg_bewerk_zeilnr       = false;
+            cfg_bewerk_apparaatnaam = false;
+            cfg_toetsenbord_actief  = false;
+            cfg_kb_info_mode        = false;
+            cfg_kb_opgeslagen       = false;
+            cfg_kb_numeriek         = false;
+            cfg_kb_wachtwoord       = false;
+            cfg_kb_foutlog_token    = false;
+            kb_sym                  = false;
             return true;
         }
     }

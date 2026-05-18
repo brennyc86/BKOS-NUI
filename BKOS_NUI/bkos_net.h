@@ -20,6 +20,9 @@
 #define NET_MSG_IO_STATE    0x22  // master → slaves: IO staat (output/input/richting)
 #define NET_MSG_IO_NAMEN    0x23  // master → slaves: kanaalnamen chunk
 #define NET_MSG_APP_STATE   0x30  // slave → master: vaarmodus + verlichting instelling
+#define NET_MSG_INFO_SYNC   0x31  // master → slaves: info velden + PIN
+#define NET_MSG_INFO_UPDATE 0x32  // slave → master: gewijzigde info velden
+#define NET_MSG_PEER_INFO   0x33  // slave → master: lokale IO telling
 
 // Speciale staat-waarde voor toggle (gebruik samen met NET_MSG_IO_TOGGLE / NET_MSG_IO_NAAM)
 #define NET_IO_TOGGLE       0xFF
@@ -40,6 +43,8 @@ struct NetPeer {
     bool     bevestigd;      // pairing bevestigd door master
     bool     actief;         // recent heartbeat ontvangen
     uint32_t laast_gezien;
+    uint8_t  io_modules;    // gerapporteerd door peer (0 = onbekend)
+    uint8_t  io_kanalen;
 };
 
 // ESP-NOW pakket (max 250 bytes)
@@ -90,3 +95,8 @@ void        net_io_apparaat_zet(const char* prefix, uint8_t staat); // zet alle 
 
 // App-staat (vaarmodus, verlichting, enz.)
 void        net_app_staat_sturen();                 // slave → master: vaarmodus + verlichting
+
+// Info synchronisatie
+void net_data_broadcast(uint8_t type, const uint8_t* data, int len);
+void net_data_naar_master(uint8_t type, const uint8_t* data, int len);
+void net_peer_info_sturen();  // slave → master: rapporteer lokale IO telling

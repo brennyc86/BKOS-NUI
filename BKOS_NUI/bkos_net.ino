@@ -1,7 +1,8 @@
 #include "bkos_net.h"
 #include "platform_fs.h"
-#include "screen_info.h"  // info_boot_naam()
+#include "screen_info.h"  // info_boot_naam(), info_sync_verwerken(), net_info_sync_sturen()
 #include "io.h"           // io_zichtbaar, io_naam_is, io_apparaat_toggle
+#include "hw_io.h"        // io_aparaten_cnt, io_kanalen_cnt
 
 #if PLATFORM_ESP32
 #include <esp_now.h>
@@ -223,6 +224,7 @@ void net_pair_bevestigen(int idx) {
     _io_sync_reset = true;   // forceer volledige IO_STATE (snapshot overslaan)
     net_io_sturen();         // stuur huidige IO staat
     net_app_staat_sturen();  // stuur huidige vaarmodus + verlichting
+    net_info_sync_sturen();  // stuur boot/eigenaar info + PIN
     scherm_bouwen = true;
 }
 
@@ -282,6 +284,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         net_pair_wacht = false;
         net_status     = String("Gepaard met: ") + pkt.naam;
         net_opslaan();
+        net_peer_info_sturen();  // rapporteer lokale IO aan master
         break;
 
     case NET_MSG_PAIR_REJ:
@@ -401,6 +404,25 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         }
         break;
     }
+
+    case NET_MSG_INFO_SYNC:
+        if (net_modus == NET_MASTER) break;
+        info_sync_verwerken(pkt.data[0], pkt.data);
+        break;
+
+    case NET_MSG_INFO_UPDATE:
+        if (net_modus != NET_MASTER) break;
+        if (idx < 0 || !net_peers[idx].bevestigd) break;
+        info_update_verwerken(pkt.data[0], pkt.data);
+        net_info_sync_sturen();  // herbroadcast bijgewerkte info
+        if (actief_scherm == SCREEN_INFO) scherm_bouwen = true;
+        break;
+
+    case NET_MSG_PEER_INFO:
+        if (net_modus != NET_MASTER || idx < 0) break;
+        net_peers[idx].io_modules = pkt.data[0];
+        net_peers[idx].io_kanalen = pkt.data[1];
+        break;
     }
 }
 #endif  // PLATFORM_ESP32 (_verwerk)
@@ -665,6 +687,42 @@ void net_io_apparaat_toggle(const char* prefix) {
     }
 #else
     io_apparaat_toggle(prefix);
+#endif
+}
+
+// ─── Info sync verzend-functies ───────────────────────────────────────────────
+void net_data_broadcast(uint8_t type, const uint8_t* data, int len) {
+#if PLATFORM_ESP32
+    if (!_espnow_ok || net_modus != NET_MASTER) return;
+    NetPaket pkt = {};
+    pkt.versie = NET_PROTOCOL_VERSIE;
+    pkt.type   = type;
+    pkt.modus  = NET_MASTER;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    if (len > 0) memcpy(pkt.data, data, min(len, (int)sizeof(pkt.data)));
+    for (int i = 0; i < net_peers_cnt; i++)
+        if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, pkt, len);
+#endif
+}
+
+void net_data_naar_master(uint8_t type, const uint8_t* data, int len) {
+#if PLATFORM_ESP32
+    if (!_espnow_ok || !net_gepaard) return;
+    NetPaket pkt = {};
+    pkt.versie = NET_PROTOCOL_VERSIE;
+    pkt.type   = type;
+    pkt.modus  = net_modus;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    if (len > 0) memcpy(pkt.data, data, min(len, (int)sizeof(pkt.data)));
+    _stuur(net_master_mac, pkt, len);
+#endif
+}
+
+void net_peer_info_sturen() {
+#if PLATFORM_ESP32
+    if (!_espnow_ok || !net_gepaard || net_modus == NET_MASTER) return;
+    uint8_t buf[2] = {(uint8_t)min(io_aparaten_cnt, 255), (uint8_t)min(io_kanalen_cnt, 255)};
+    net_data_naar_master(NET_MSG_PEER_INFO, buf, 2);
 #endif
 }
 

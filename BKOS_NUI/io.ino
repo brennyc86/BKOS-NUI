@@ -296,15 +296,15 @@ void io_loop() {
         io_runned          = true;
         if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
     }
-    static unsigned long zekering_gecheckt = 0;
-    unsigned long nu = millis();
-    if (nu - zekering_gecheckt >= 5000) {
-        zekering_gecheckt = nu;
-        io_zekering_check();
+    {
+        static unsigned long zekering_gecheckt = 0;
+        unsigned long nu = millis();
+        if (nu - zekering_gecheckt >= 5000) {
+            zekering_gecheckt = nu;
+            io_zekering_check();
+        }
     }
-    return;
-#endif
-
+#else
     // Pico: io_cyclus() is snel (GPIO, geen UART) — gewoon in de main loop
     if (net_modus != NET_STANDALONE && net_modus != NET_MASTER && net_gepaard) return;
 
@@ -340,11 +340,14 @@ void io_loop() {
         io_cyclus();
     }
 
-    static unsigned long zekering_gecheckt = 0;
-    if (nu - zekering_gecheckt >= 5000) {
-        zekering_gecheckt = nu;
-        io_zekering_check();
+    {
+        static unsigned long zekering_gecheckt = 0;
+        if (nu - zekering_gecheckt >= 5000) {
+            zekering_gecheckt = nu;
+            io_zekering_check();
+        }
     }
+#endif
 }
 
 bool io_naam_is(int kanaal, const char* prefix) {

@@ -250,7 +250,7 @@ static void _io_achtergrond_taak(void*) {
             bool minimum_ok    = (nu - io_gecheckt >= IO_MIN_INTERVAL);
             bool tijd_verlopen = (nu - io_gecheckt >= hartslag_ms);
 
-            if ((aanvraag && minimum_ok) || (gewijzigd && minimum_ok) || tijd_verlopen) {
+            if (aanvraag || (gewijzigd && minimum_ok) || tijd_verlopen) {
                 if (aanvraag) io_direct_aanvraag = false;
                 bool was_wijziging = ((aanvraag || gewijzigd) && !tijd_verlopen);
                 io_cyclus();
@@ -472,6 +472,10 @@ void io_verlichting_update() {
         if (io_naam_is(i, "**IL_wit"))  io_output[i] = int_rood ? IO_UIT : IO_AAN;
         if (io_naam_is(i, "**IL_rood")) io_output[i] = int_rood ? IO_AAN : IO_UIT;
     }
+
+    // Markeer alle uitgangen gewijzigd zodat de achtergrondtaak direct een cyclus uitvoert
+    for (int i = 0; i < n; i++) io_gewijzigd[i] = true;
+    io_direct_aanvraag = true;
 }
 
 void io_zekering_check() {

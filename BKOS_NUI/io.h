@@ -3,7 +3,12 @@
 
 extern byte licht_cfg_idx;
 
+// Cross-core signalering (Core 0 = io_taak, Core 1 = UI loop)
+extern volatile bool io_direct_aanvraag;  // Core 1 → Core 0: voer io_cyclus direct uit
+extern volatile bool io_staat_gewijzigd;  // Core 0 → Core 1: IO uitkomst beschikbaar
+
 void io_boot();
+void io_setup_taak();
 void io_bkoss_check();
 void io_detect();
 void io_cyclus();

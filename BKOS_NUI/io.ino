@@ -6,6 +6,9 @@
 
 byte licht_cfg_idx = 0;
 
+volatile bool io_direct_aanvraag = false;
+volatile bool io_staat_gewijzigd = false;
+
 // ─── Pico GPIO helpers ────────────────────────────────────────────────────
 #if PLATFORM_PICO
 
@@ -222,19 +225,96 @@ void io_cyclus() {
     io_gecheckt = millis();
 }
 
+// ─── FreeRTOS IO-taak (alleen ESP32, Core 0) ─────────────────────────────────
+// io_cyclus() blokkeert ~70ms (UART naar ATtiny). Door dit op Core 0 te draaien
+// blijft Core 1 (UI loop) altijd responsief.
+#if PLATFORM_ESP32
+static void _io_achtergrond_taak(void*) {
+    static bool          bevestig_actief = false;
+    static unsigned long bevestig_start  = 0;
+
+    for (;;) {
+        if (net_modus == NET_STANDALONE || net_modus == NET_MASTER || !net_gepaard) {
+            unsigned long nu = millis();
+
+            bool aanvraag  = io_direct_aanvraag;
+            bool gewijzigd = false;
+            int  n         = io_zichtbaar();
+            for (int i = 0; i < n; i++) {
+                if (io_gewijzigd[i]) { gewijzigd = true; break; }
+            }
+
+            unsigned long hartslag_ms = tft_actief
+                ? (unsigned long)io_heartbeat_aan * 1000UL
+                : (unsigned long)io_heartbeat_uit * 1000UL;
+            bool minimum_ok    = (nu - io_gecheckt >= IO_MIN_INTERVAL);
+            bool tijd_verlopen = (nu - io_gecheckt >= hartslag_ms);
+
+            if ((aanvraag && minimum_ok) || (gewijzigd && minimum_ok) || tijd_verlopen) {
+                if (aanvraag) io_direct_aanvraag = false;
+                bool was_wijziging = ((aanvraag || gewijzigd) && !tijd_verlopen);
+                io_cyclus();
+                io_staat_gewijzigd = true;
+                if (net_modus == NET_MASTER) net_io_sturen();
+                if (was_wijziging) {
+                    bevestig_actief = true;
+                    bevestig_start  = nu;
+                }
+            }
+            if (bevestig_actief && (nu - bevestig_start >= 2000UL)) {
+                bevestig_actief = false;
+                io_cyclus();
+                io_staat_gewijzigd = true;
+                if (net_modus == NET_MASTER) net_io_sturen();
+            }
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+#endif
+
+void io_setup_taak() {
+#if PLATFORM_ESP32
+    xTaskCreatePinnedToCore(
+        _io_achtergrond_taak,
+        "io_taak",
+        4096,
+        nullptr,
+        2,       // hogere prioriteit dan loopTask (1) zodat het niet uitgehongerd raakt
+        nullptr,
+        0        // Core 0 — zelfde core als WiFi/ESP-NOW
+    );
+#endif
+}
+
 void io_loop() {
-    // Op slave/extra: IO wordt via netwerk beheerd door de master
+#if PLATFORM_ESP32
+    // IO cyclus loopt in _io_achtergrond_taak op Core 0.
+    // Hier alleen schermnotificatie verwerken vanuit Core 1.
+    if (io_staat_gewijzigd) {
+        io_staat_gewijzigd = false;
+        io_runned          = true;
+        if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
+    }
+    static unsigned long zekering_gecheckt = 0;
+    unsigned long nu = millis();
+    if (nu - zekering_gecheckt >= 5000) {
+        zekering_gecheckt = nu;
+        io_zekering_check();
+    }
+    return;
+#endif
+
+    // Pico: io_cyclus() is snel (GPIO, geen UART) — gewoon in de main loop
     if (net_modus != NET_STANDALONE && net_modus != NET_MASTER && net_gepaard) return;
 
     unsigned long nu = millis();
 
-    // Bevestigingscyclus: 2 seconden na een schakelwijziging
     static bool          bevestig_actief = false;
     static unsigned long bevestig_start  = 0;
 
-    // Stuur cyclus als outputs gewijzigd zijn (minimum tussentijd) of bij hartslag
     bool gewijzigd = false;
-    int n = io_zichtbaar();   // Gebruikt io_kanalen_cfg override indien ingesteld
+    int n = io_zichtbaar();
     for (int i = 0; i < n; i++) {
         if (io_gewijzigd[i]) { gewijzigd = true; break; }
     }

@@ -88,6 +88,7 @@ void hw_setup() {
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
+    io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
 
     delay(1000);     // splash tonen
 

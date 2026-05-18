@@ -344,8 +344,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
         io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
         io_gewijzigd[kanaal] = true;
-        io_cyclus();       // direct naar ATtiny sturen, niet wachten op io_loop timer
-        net_io_sturen();   // bevestigde staat direct terug naar slave sturen
+        io_direct_aanvraag   = true;  // io_taak (Core 0) stuurt direct naar ATtiny + bevestigt
         break;
     }
 
@@ -355,8 +354,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         licht_instelling = (byte)pkt.data[1];
         licht_cfg_idx    = (byte)pkt.data[2];
         io_verlichting_update();
-        io_cyclus();
-        net_io_sturen();
+        io_direct_aanvraag = true;
         break;
     }
     }
@@ -424,13 +422,15 @@ void net_io_namen_sturen() {
 
 void net_io_kanaal_toggle(int kanaal) {
     if (kanaal < 0 || kanaal >= MAX_IO_KANALEN) return;
-    // Optimistische lokale update (directe visuele feedback)
-    bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
-    io_output[kanaal] = aan ? IO_UIT : IO_AAN;
 #if PLATFORM_ESP32
     if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
-        io_gewijzigd[kanaal] = true;  // echte hardware update via io_cyclus
+        bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
+        io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
+        io_gewijzigd[kanaal] = true;
+        io_direct_aanvraag   = true;  // io_taak wekt direct op
     } else if (_espnow_ok && net_gepaard) {
+        // Slave/extra: stuur verzoek naar master — geen lokale update (race-conditie)
+        // Bevestiging komt via IO_STATE (~80ms), dan pas scherm bijwerken
         NetPaket pkt = {};
         pkt.versie = NET_PROTOCOL_VERSIE;
         pkt.type   = NET_MSG_IO_TOGGLE;
@@ -440,6 +440,8 @@ void net_io_kanaal_toggle(int kanaal) {
         _stuur(net_master_mac, pkt, 1);
     }
 #else
+    bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
+    io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
     io_gewijzigd[kanaal] = true;
 #endif
 }
@@ -463,6 +465,7 @@ void net_app_staat_sturen() {
 void net_io_apparaat_toggle(const char* prefix) {
     if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
         io_apparaat_toggle(prefix);
+        io_direct_aanvraag = true;  // io_taak voert direct uit
         return;
     }
     // Op slave: toggle elk kanaal dat overeenkomt met prefix

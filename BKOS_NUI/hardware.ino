@@ -38,6 +38,18 @@ static bool          lang_druk_verwerkt  = false;
 void hw_setup() {
     tft_setup();
     ts_setup();
+#if PLATFORM_CYD40H || PLATFORM_CYD40V
+    // TIJDELIJK: touch test modus — zwart scherm, witte punten bij aanraking
+    tft.fillScreen(0x0000);
+    tft.setTextColor(0xFFFF);
+    tft.setTextSize(2);
+    tft.setCursor(10, 10);
+    tft.print("TOUCH TEST");
+    tft.setTextSize(1);
+    tft.setCursor(10, 35);
+    tft.print("Raak het scherm aan — witte punt = touch gedetecteerd");
+    return;
+#endif
     hw_io_setup();
     state_load();
     palette_toepassen(kleurenschema);
@@ -97,6 +109,12 @@ void hw_setup() {
 }
 
 void hw_loop() {
+#if PLATFORM_CYD40H || PLATFORM_CYD40V
+    // TIJDELIJK: touch test modus
+    ts_touched();
+    if (actieve_touch) tft.fillCircle(ts_x, ts_y, 5, 0xFFFF);
+    return;
+#endif
     // Touch en scherm-wake altijd EERST lezen — vóór blokkerende IO/WiFi calls
     // zodat een korte tap op het donkere scherm nooit gemist wordt
     bool aanraking = ts_touched();

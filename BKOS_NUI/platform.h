@@ -82,15 +82,15 @@
   #define TFT_W     240
   #define TFT_H     320
   #define TFT_BL    19   // GPIO19 — backlight PWM
-  #define TFT_CS    15   // GPIO15 — display chip select
-  #define TFT_DC     2   // GPIO2  — data/command
+  #define TFT_CS     0   // GPIO0  — display chip select (zie BKOS4 hw_scherm.h)
+  #define TFT_DC    23   // GPIO23 — data/command       (zie BKOS4 hw_scherm.h)
   #define TFT_RST   -1   // niet aangesloten
   #define TFT_SCK   14   // GPIO14 — HSPI SCK
   #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
   #define TFT_MISO  12   // GPIO12 — HSPI MISO
 
-  #define WROOM_TS_CS   33   // GPIO33 — touch chip select
-  #define WROOM_TS_IRQ  36   // GPIO36 — touch interrupt (VP, input-only; board heeft pullup)
+  #define WROOM_TS_CS   22   // GPIO22 — touch chip select   (zie BKOS4 hw_touch.h)
+  #define WROOM_TS_IRQ  21   // GPIO21 — touch interrupt     (zie BKOS4 hw_touch.h)
 
   #define IO_UART_RX  22   // GPIO22 — ATtiny TX → WROOM RX
   #define IO_UART_TX  27   // GPIO27 — WROOM TX → ATtiny RX

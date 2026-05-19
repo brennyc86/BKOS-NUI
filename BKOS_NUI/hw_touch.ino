@@ -129,7 +129,7 @@ bool ts_touched() {
     return false;
 
 #elif PLATFORM_CYD28
-    // Display staat op setRotation(2) → touch-assen gespiegeld
+    // Touch-panel is 180° ten opzichte van display → gespiegelde assen
     bool aangeraakt = ts.tirqTouched() && ts.touched();
     if (aangeraakt) {
         TS_Point p = ts.getPoint();

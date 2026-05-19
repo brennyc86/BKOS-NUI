@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BKOS-NUI Installer</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+  <style>
+    :root {
+      --bg:        #0c1a26;
+      --surface:   #152535;
+      --surface2:  #1e3347;
+      --surface3:  #243d55;
+      --cyan:      #00d4ff;
+      --text:      #cce4f0;
+      --text-dim:  #7a99b0;
+      --green:     #00e676;
+      --amber:     #ffab40;
+      --red:       #ef5350;
+      --border:    #2a4560;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header {
+      text-align: center;
+      padding: 24px 0 32px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 36px;
+    }
+    header h1 { font-size: 1.9rem; color: var(--cyan); letter-spacing: 3px; }
+    header p  { color: var(--text-dim); margin-top: 8px; font-size: 0.95rem; }
+
+    .wrap { max-width: 780px; margin: 0 auto; }
+
+    /* ── Step blocks ── */
+    .step {
+      margin-bottom: 32px;
+    }
+    .step-title {
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    /* ── Platform cards ── */
+    .platforms {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 520px) { .platforms { grid-template-columns: repeat(2,1fr); } }
+
+    .card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 12px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      user-select: none;
+    }
+    .card:hover { border-color: var(--cyan); }
+    .card.selected { border-color: var(--cyan); background: var(--surface2); }
+    .card .cname { font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; }
+    .card .cdesc { font-size: 0.73rem; color: var(--text-dim); line-height: 1.45; }
+    .card .ctag  {
+      display: inline-block; margin-top: 7px;
+      font-size: 0.65rem; letter-spacing: .5px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 1px 6px; color: var(--cyan);
+    }
+    .card.selected .ctag { background: rgba(0,212,255,.15); }
+
+    /* ── Channel buttons ── */
+    .channel-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .ch-btn {
+      background: var(--surface); border: 2px solid var(--border);
+      border-radius: 6px; padding: 10px 20px;
+      color: var(--text-dim); cursor: pointer; font-size: 0.9rem;
+      transition: all .15s;
+    }
+    .ch-btn.selected { border-color: var(--cyan); color: var(--cyan); background: var(--surface2); }
+
+    /* ── Stable picker ── */
+    #stable-picker { display: none; margin-top: 14px; }
+    #stable-picker.on { display: block; }
+    #stable-picker label { font-size: 0.8rem; color: var(--text-dim); display: block; margin-bottom: 7px; }
+    #stable-select {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text);
+      padding: 8px 12px; font-size: 0.9rem; cursor: pointer; min-width: 220px;
+    }
+
+    /* ── Version badge ── */
+    #versie-box {
+      display: none; margin-top: 14px;
+      padding: 12px 16px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    #versie-box.on { display: block; }
+    #versie-box .vl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+    #versie-num { font-size: 1.05rem; font-weight: 700; color: var(--cyan); margin: 3px 0 4px; }
+    #versie-nota { font-size: 0.75rem; color: var(--text-dim); }
+
+    /* ── Flash area ── */
+    .flash-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 24px 20px; text-align: center;
+    }
+
+    /* ESP Web Tools overrides */
+    esp-web-install-button::part(button) { display: none; }
+
+    #flash-btn {
+      background: var(--cyan); color: #001a26;
+      border: none; border-radius: 6px;
+      padding: 14px 36px; font-size: 1rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 1px; transition: opacity .15s;
+    }
+    #flash-btn:hover:not(:disabled) { opacity: .85; }
+    #flash-btn:disabled {
+      background: var(--surface2); color: var(--text-dim); cursor: not-allowed;
+    }
+    .flash-note {
+      margin-top: 10px; font-size: 0.75rem; color: var(--text-dim); line-height: 1.5;
+    }
+
+    /* ── Pico section ── */
+    #pico-zone { display: none; }
+    .pico-step {
+      background: var(--surface2); border-left: 3px solid var(--cyan);
+      padding: 10px 14px; border-radius: 0 6px 6px 0;
+      margin: 8px 0; font-size: 0.85rem; text-align: left;
+    }
+    .pico-step strong { color: var(--cyan); }
+    #download-btn {
+      display: inline-block; margin-top: 14px;
+      background: var(--surface2); color: var(--cyan);
+      border: 2px solid var(--cyan); border-radius: 6px;
+      padding: 12px 28px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    }
+    #download-btn[disabled] { opacity: .4; pointer-events: none; }
+
+    /* ── Status line ── */
+    #status { margin-top: 16px; font-size: 0.85rem; color: var(--text-dim); min-height: 20px; }
+    #status.err  { color: var(--red); }
+    #status.ok   { color: var(--green); }
+    #status.warn { color: var(--amber); }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center; color: var(--text-dim); font-size: 0.73rem;
+      margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>⚓ BKOS-NUI</h1>
+  <p>Boordcomputer firmware installer</p>
+</header>
+
+<div class="wrap">
+
+  <!-- Stap 1: hardware -->
+  <div class="step">
+    <div class="step-title">Stap 1 — Kies hardware</div>
+    <div class="platforms">
+      <div class="card" data-id="esp32s3" onclick="kiesPlatform(this)">
+        <div class="cname">ESP32-S3 (7")</div>
+        <div class="cdesc">800×480 RGB panel, GT911 capacitief touch, PSRAM</div>
+        <span class="ctag">ESP32-S3</span>
+      </div>
+      <div class="card" data-id="wroom" onclick="kiesPlatform(this)">
+        <div class="cname">WROOM IO-board</div>
+        <div class="cdesc">2.8" ILI9341, XPT2046, ATtiny3217 IO-bus, aangepaste hardware</div>
+        <span class="ctag">ESP32-WROOM</span>
+      </div>
+      <div class="card" data-id="cyd28" onclick="kiesPlatform(this)">
+        <div class="cname">CYD 2.8"</div>
+        <div class="cdesc">ESP32-2432S028R, 240×320 ILI9341, XPT2046 resistief</div>
+        <span class="ctag">ESP32-CYD</span>
+      </div>
+      <div class="card" data-id="cyd40h" onclick="kiesPlatform(this)">
+        <div class="cname">CYD 4" liggend</div>
+        <div class="cdesc">480×320 ST7796 landscape, XPT2046, aparte VSPI</div>
+        <span class="ctag">ESP32-CYD40H</span>
+      </div>
+      <div class="card" data-id="cyd40v" onclick="kiesPlatform(this)">
+        <div class="cname">CYD 4" staand</div>
+        <div class="cdesc">320×480 ST7796 portrait, XPT2046, aparte VSPI</div>
+        <span class="ctag">ESP32-CYD40V</span>
+      </div>
+      <div class="card" data-id="pico" onclick="kiesPlatform(this)">
+        <div class="cname">Pi Pico W</div>
+        <div class="cdesc">2.8" ILI9341, XPT2046 resistief, RP2040</div>
+        <span class="ctag">RP2040</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stap 2: versie -->
+  <div class="step">
+    <div class="step-title">Stap 2 — Kies versie</div>
+    <div class="channel-row">
+      <button class="ch-btn selected" id="ch-beta"   onclick="kiesKanaal('beta')">Laatste beta</button>
+      <button class="ch-btn"          id="ch-stable" onclick="kiesKanaal('stable')">Stabiele release</button>
+    </div>
+
+    <div id="stable-picker">
+      <label>Kies versie:</label>
+      <select id="stable-select" onchange="update()">
+        <option value="">Laden…</option>
+      </select>
+    </div>
+
+    <div id="versie-box">
+      <div class="vl">Geselecteerde versie</div>
+      <div id="versie-num">—</div>
+      <div id="versie-nota"></div>
+    </div>
+  </div>
+
+  <!-- Stap 3: installeer -->
+  <div class="step">
+    <div class="step-title">Stap 3 — Installeer firmware</div>
+    <div class="flash-box">
+
+      <!-- ESP32 flash zone -->
+      <div id="esp-zone">
+        <esp-web-install-button id="esp-btn" manifest="">
+          <button slot="activate" id="flash-btn" disabled onclick="doFlash()">
+            ▶ Verbind en installeer
+          </button>
+          <span slot="unsupported">
+            <span style="color:var(--amber)">⚠ Gebruik Chrome of Edge voor USB-installatie</span>
+          </span>
+        </esp-web-install-button>
+        <p class="flash-note">
+          Vereist Chrome of Edge. Sluit het apparaat aan via USB, klik op de knop en kies de juiste seriële poort.<br>
+          <strong>Let op:</strong> De bootloader moet al aanwezig zijn. Alle BKOS-hardware wordt met bootloader geleverd.
+          Voor een gloednieuwe chip: gebruik eenmalig Arduino IDE voor de eerste flash.
+        </p>
+      </div>
+
+      <!-- Pico zone -->
+      <div id="pico-zone">
+        <div class="pico-step"><strong>1.</strong> Houd de <strong>BOOTSEL</strong>-knop ingedrukt op de Pico W</div>
+        <div class="pico-step"><strong>2.</strong> Sluit de Pico W aan via USB — er verschijnt een schijf genaamd <strong>RPI-RP2</strong></div>
+        <div class="pico-step"><strong>3.</strong> Sleep het gedownloade <strong>.uf2</strong> bestand naar de schijf</div>
+        <div class="pico-step"><strong>4.</strong> De Pico herstart automatisch met BKOS-NUI</div>
+        <a id="download-btn" href="#" download disabled>⬇ Download firmware (.uf2)</a>
+      </div>
+
+      <div id="status">Selecteer hardware en versie om te beginnen</div>
+    </div>
+  </div>
+
+</div><!-- .wrap -->
+
+<footer>
+  <a href="https://github.com/brennyc86/BKOS-NUI" target="_blank">brennyc86/BKOS-NUI</a>
+  &nbsp;·&nbsp;
+  Vragen of problemen? Open een
+  <a href="https://github.com/brennyc86/BKOS-NUI/issues" target="_blank">GitHub issue</a>
+</footer>
+
+<script>
+const RAW   = 'https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main';
+
+const PLAT = {
+  esp32s3: { label:'ESP32-S3 (7")',    chip:'ESP32-S3', bin:'bkos_esp32s3_8048s070.bin', vkey:'esp32s3', skey:'url_s3'    },
+  wroom:   { label:'WROOM IO-board',   chip:'ESP32',    bin:'bkos_esp32wroom2432.bin',   vkey:'wroom',   skey:'url_wroom' },
+  cyd28:   { label:'CYD 2.8"',         chip:'ESP32',    bin:'bkos_esp32cyd28.bin',        vkey:'cyd28',   skey:'url_cyd28' },
+  cyd40h:  { label:'CYD 4" liggend',   chip:'ESP32',    bin:'bkos_esp32cyd40h.bin',       vkey:'cyd40h',  skey:'url_cyd40h'},
+  cyd40v:  { label:'CYD 4" staand',    chip:'ESP32',    bin:'bkos_esp32cyd40v.bin',       vkey:'cyd40v',  skey:'url_cyd40v'},
+  pico:    { label:'Pi Pico W',        chip:'RP2040',   bin:'bkos_pico1w2432.uf2',        vkey:'pico',    skey:'url_pico', pico:true },
+};
+
+let platform = null;
+let kanaal   = 'beta';
+let releases = null;
+let flashUrl = null;
+let flashVer = null;
+let prevManifestUrl = null;
+
+function kiesPlatform(el) {
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  platform = el.dataset.id;
+  update();
+}
+
+function kiesKanaal(k) {
+  kanaal = k;
+  document.getElementById('ch-beta').classList.toggle('selected',   k==='beta');
+  document.getElementById('ch-stable').classList.toggle('selected', k==='stable');
+  update();
+}
+
+async function update() {
+  const st       = document.getElementById('status');
+  const vBox     = document.getElementById('versie-box');
+  const sPicker  = document.getElementById('stable-picker');
+  const espZone  = document.getElementById('esp-zone');
+  const picoZone = document.getElementById('pico-zone');
+  const flashBtn = document.getElementById('flash-btn');
+  const dlBtn    = document.getElementById('download-btn');
+
+  flashUrl = null; flashVer = null;
+  vBox.classList.remove('on');
+  flashBtn.disabled = true;
+  dlBtn.removeAttribute('href'); dlBtn.setAttribute('disabled','');
+
+  if (!platform) {
+    st.textContent = 'Selecteer hardware (stap 1)';
+    st.className = '';
+    return;
+  }
+
+  const p = PLAT[platform];
+  espZone.style.display  = p.pico ? 'none' : 'block';
+  picoZone.style.display = p.pico ? 'block' : 'none';
+
+  sPicker.classList.toggle('on', kanaal === 'stable');
+
+  st.textContent = 'Versie laden…';
+  st.className = '';
+
+  try {
+    if (kanaal === 'beta') {
+      const r = await fetch(`${RAW}/firmware/versie_${p.vkey}.txt`);
+      if (!r.ok) throw new Error(`versie_${p.vkey}.txt niet gevonden (HTTP ${r.status})`);
+      const ver = (await r.text()).trim();
+      flashVer = ver;
+      flashUrl = `${RAW}/firmware/${p.bin}`;
+      toonVersie(ver, 'Laatste beta-build — kan tussenversies bevatten');
+
+    } else {
+      // Stabiel kanaal
+      if (!releases) {
+        const r = await fetch(`${RAW}/firmware/releases.json`);
+        if (!r.ok) throw new Error('releases.json niet gevonden');
+        releases = (await r.json()).releases || [];
+      }
+      const beschikbaar = releases.filter(rel => rel[p.skey]);
+      const sel = document.getElementById('stable-select');
+
+      if (beschikbaar.length === 0) {
+        sel.innerHTML = '<option>Geen stabiele release voor dit platform</option>';
+        st.textContent = `Nog geen stabiele versie beschikbaar voor ${p.label}`;
+        st.className = 'warn';
+        return;
+      }
+
+      // Populate dropdown (preserve selection if still valid)
+      const prev = sel.value;
+      sel.innerHTML = beschikbaar
+        .map(rel => `<option value="${rel.versie}">${rel.versie} — ${rel.datum}</option>`)
+        .join('');
+      if (beschikbaar.find(r => r.versie === prev)) sel.value = prev;
+
+      const keuze = beschikbaar.find(r => r.versie === sel.value);
+      if (!keuze) { st.textContent = 'Kies een versie'; st.className=''; return; }
+
+      flashVer = keuze.versie;
+      flashUrl = keuze[p.skey];
+      toonVersie(`${keuze.versie}  (${keuze.datum})`, 'Officiële stabiele release');
+    }
+
+    // Klaar
+    if (p.pico) {
+      dlBtn.href = flashUrl;
+      dlBtn.download = `bkos_pico1w2432_${flashVer}.uf2`;
+      dlBtn.textContent = `⬇ Download BKOS-NUI ${flashVer} (.uf2)`;
+      dlBtn.removeAttribute('disabled');
+      setStatus('Klaar — volg de stappen hieronder om te installeren', 'ok');
+    } else {
+      berekenManifest(p.chip, flashVer, flashUrl);
+      flashBtn.disabled = false;
+      setStatus('Klaar — klik op de knop om te installeren via USB', 'ok');
+    }
+
+  } catch(e) {
+    setStatus('Fout: ' + e.message, 'err');
+  }
+}
+
+function toonVersie(num, nota) {
+  document.getElementById('versie-num').textContent  = num;
+  document.getElementById('versie-nota').textContent = nota;
+  document.getElementById('versie-box').classList.add('on');
+}
+
+function setStatus(msg, cls='') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = cls;
+}
+
+function berekenManifest(chip, ver, url) {
+  if (prevManifestUrl) URL.revokeObjectURL(prevManifestUrl);
+  const family = chip === 'ESP32-S3' ? 'ESP32-S3' : 'ESP32';
+  const manifest = {
+    name: 'BKOS-NUI',
+    version: ver,
+    new_install_prompt_erase: false,
+    builds: [{ chipFamily: family, parts: [{ path: url, offset: 65536 }] }]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  prevManifestUrl = URL.createObjectURL(blob);
+
+  const btn = document.getElementById('esp-btn');
+  btn.setAttribute('manifest', prevManifestUrl);
+  // Also set the property for the web component
+  btn.manifest = prevManifestUrl;
+}
+
+function doFlash() {
+  // The esp-web-install-button handles this via its activate slot button click
+  // This function exists so the flash button can trigger it manually
+  document.getElementById('esp-btn').click();
+}
+</script>
+
+</body>
+</html>

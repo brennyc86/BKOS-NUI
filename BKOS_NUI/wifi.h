@@ -6,8 +6,8 @@
   #include <WiFiManager.h>
   #include <ArduinoOTA.h>
   #include <Update.h>
+  #include <HTTPClient.h>
 #endif
-#include <HTTPClient.h>
 #include <time.h>
 
 #define WIFI_CONFIG_FILE "/bkos_nui.json"

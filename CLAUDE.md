@@ -62,19 +62,27 @@ Wanneer Brendan valideert → officiële release:
 - OTA controle elke 5 minuten via kanaal dat overeenkomt met `ota_beta_kanal`
 
 **Werkwijze nieuwe stabiele release (bijv. 0.1.2):**
-1. Versie naar `0.1.2` in `ota.h` + `versie.txt` → push → wacht op CI
+1. Versie naar `0.1.2` in `ota.h` + `versie.txt` → push → wacht op CI (alle 6 platforms)
 2. Na CI: `git pull && git tag v0.1.2 && git push --tags`
-3. `firmware/versie_stable_*.txt` updaten naar `0.1.2`
-4. Entry toevoegen aan `firmware/releases.json` met URL `https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_*.bin`
-5. Push → apparaten pikken stabiele update op via CONTROLEREN
+3. `firmware/versie_stable_*.txt` updaten naar `0.1.2` voor ALLE platforms die gecompileerd zijn:
+   - `versie_stable_esp32s3.txt`, `versie_stable_wroom.txt`, `versie_stable_cyd28.txt`
+   - `versie_stable_cyd40h.txt`, `versie_stable_cyd40v.txt`, `versie_stable_pico.txt`
+4. Entry toevoegen aan `firmware/releases.json` met alle platform-URLs:
+   ```json
+   {"versie":"0.1.2","datum":"YYYY-MM-DD",
+    "url_s3":    "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32s3_8048s070.bin",
+    "url_wroom": "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32wroom2432.bin",
+    "url_cyd28": "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32cyd28.bin",
+    "url_cyd40h":"https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32cyd40h.bin",
+    "url_cyd40v":"https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32cyd40v.bin",
+    "url_pico":  "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_pico1w2432.uf2"}
+   ```
+   Laat `url_*` leeg (`""`) voor platforms die niet in deze release zijn opgenomen.
+5. Push → apparaten pikken stabiele update op via CONTROLEREN; installer toont nieuwe versie automatisch
 
-**Werkwijze voor release:**
-1. Code compileren in Arduino IDE → `firmware.bin` exporteren
-2. `versie.txt` updaten met nieuwe versienummer
-3. Beide bestanden committen en pushen naar `main`
-4. Device pikt update automatisch op via screen_ota of achtergrond check
+**De installer (`installer/index.html`) hoeft niet apart bijgewerkt te worden** — hij leest `versie_*.txt` en `releases.json` dynamisch van GitHub. De installer is altijd actueel zodra de bovenstaande bestanden zijn bijgewerkt.
 
-**Stabiele releases** worden getagd met `git tag vX.Y` zodat gebruikers altijd kunnen terugkeren naar een goedgekeurde versie. Claude-versies krijgen prefix `N` (bv. `5.N250426`), Brendan-versies geen prefix.
+**Stabiele releases** worden getagd met `git tag vX.Y.Z` zodat gebruikers altijd kunnen terugkeren naar een goedgekeurde versie.
 
 ---
 

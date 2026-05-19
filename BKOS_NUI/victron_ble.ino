@@ -9,7 +9,7 @@
 #include "platform.h"
 #include "data_store.h"
 
-#if !PLATFORM_PICO && !PLATFORM_WROOM
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
 
 #include <string>
 #include <BLEDevice.h>
@@ -289,7 +289,7 @@ void victron_setup() {
 
 #else
 
-// --- Pico / WROOM stubs (geen BLE op dit platform) ---
+// --- Pico / WROOM / CYD stubs (geen BLE op dit platform) ---
 VictronApparaat victron_apparaten[VICTRON_MAX_APPARATEN];
 int             victron_apparaten_cnt = 0;
 VictronOntdekt  victron_ontdekt[VICTRON_MAX_ONTDEKT];
@@ -307,4 +307,4 @@ void victron_sleutel(int idx, const char* v, char* buf) {
     snprintf(buf, VICTRON_SLEUTEL_LEN, "victron.%d.%s", idx, v);
 }
 
-#endif // !PLATFORM_PICO && !PLATFORM_WROOM
+#endif // PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD

@@ -56,8 +56,10 @@ void tft_setup() {
     tft_p->begin();
 #if PLATFORM_CYD40H
     tft_p->setRotation(1);  // 480×320 liggend
+#elif PLATFORM_CYD28
+    tft_p->setRotation(2);  // portret 180° (connector-oriëntatie CYD28 board)
 #else
-    tft_p->setRotation(0);  // portret (240×320 of 320×480)
+    tft_p->setRotation(0);
 #endif
     tft_helderheid_zet(tft_helderheid);
 }

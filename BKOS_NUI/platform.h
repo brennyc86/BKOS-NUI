@@ -136,7 +136,7 @@
   #define CYD40_TS_MOSI  32   // GPIO32
   #define CYD40_TS_MISO  39   // GPIO39 (SVP, input-only — alleen MISO)
   #define CYD40_TS_CS    33   // GPIO33 — touch chip select
-  // Geen IRQ pin (GPIO36 SVP problematisch)
+  #define CYD40_TS_IRQ   36   // GPIO36 (VP, input-only) — XPT2046 heeft interne pull-up
 
 #else
   // ESP32-S3 800×480 RGB liggend

@@ -51,7 +51,7 @@ void ts_kalibratie_opslaan() {
   static SPIClass cyd28_vspi(VSPI);
   XPT2046_Touchscreen ts(CYD28_TS_CS, CYD28_TS_IRQ);   // aparte VSPI met IRQ
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-  XPT2046_Touchscreen ts(CYD40_TS_CS);          // aparte VSPI, geen IRQ
+  XPT2046_Touchscreen ts(CYD40_TS_CS, CYD40_TS_IRQ);  // aparte VSPI met IRQ
   static SPIClass cyd_vspi(VSPI);
 #endif
 
@@ -113,8 +113,7 @@ bool ts_touched() {
     actieve_touch = false;
     return false;
 
-#elif PLATFORM_WROOM || PLATFORM_CYD28
-    // IRQ beschikbaar (WROOM: externe pullup; CYD28: GPIO36 input-only)
+#elif PLATFORM_WROOM
     bool aangeraakt = ts.tirqTouched() && ts.touched();
     if (aangeraakt) {
         TS_Point p = ts.getPoint();
@@ -129,9 +128,25 @@ bool ts_touched() {
     actieve_touch = false;
     return false;
 
+#elif PLATFORM_CYD28
+    // Display staat op setRotation(2) → touch-assen gespiegeld
+    bool aangeraakt = ts.tirqTouched() && ts.touched();
+    if (aangeraakt) {
+        TS_Point p = ts.getPoint();
+        ts_raw_px = p.x;
+        ts_raw_py = p.y;
+        ts_x = map(ts_raw_py, ts_cal_py_max, ts_cal_py_min, 0, TFT_W);
+        ts_y = map(ts_raw_px, ts_cal_px_lo,  ts_cal_px_hi,  0, TFT_H);
+        scherm_touched = millis();
+        actieve_touch  = true;
+        return true;
+    }
+    actieve_touch = false;
+    return false;
+
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-    // CYD40: polling zonder IRQ
-    bool aangeraakt = ts.touched();
+    // CYD40: IRQ op GPIO36 (XPT2046 heeft interne pull-up)
+    bool aangeraakt = ts.tirqTouched() && ts.touched();
     if (aangeraakt) {
         TS_Point p = ts.getPoint();
         ts_raw_px = p.x;

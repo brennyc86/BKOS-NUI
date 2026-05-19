@@ -600,17 +600,16 @@ async function picoFlash() {
 
   // Stap 2: 1200-baud reset via WebSerial (activeert bootloader zonder BOOTSEL)
   picoLog('🔌 Verbinden via USB — kies de seriële poort van de Pico…');
-  let resetGelukt = false;
   try {
     const port = await navigator.serial.requestPort();
+    // Open op 1200 baud: arduino-pico herkent dit als bootloader-activatie
     await port.open({ baudRate: 1200 });
-    await new Promise(r => setTimeout(r, 400));
-    if (port.readable) { const r = port.readable.getReader(); r.cancel(); r.releaseLock(); }
+    await new Promise(r => setTimeout(r, 500));
+    // Sluit zonder reader/writer aan te raken — streams zijn niet vergrendeld
     await port.close();
-    resetGelukt = true;
-    picoLog('✓ Bootloader geactiveerd — RPI-RP2 verschijnt nu als schijf', 'ok');
-    picoLog('⏳ Wachten op schijf…');
-    await new Promise(r => setTimeout(r, 2500));
+    picoLog('✓ Bootloader geactiveerd — RPI-RP2 schijf verschijnt zo…', 'ok');
+    picoLog('⏳ Wachten op schijf (3 seconden)…');
+    await new Promise(r => setTimeout(r, 3000));
   } catch(e) {
     if (e.name === 'AbortError') {
       picoLog('Geannuleerd.', 'warn');
@@ -619,8 +618,8 @@ async function picoFlash() {
       prog.classList.remove('on');
       return;
     }
-    picoLog('⚠ Serieel verbinding mislukt — als de Pico al in bootloadermodus staat, ga je verder.', 'warn');
-    picoLog('⏳ Wachten…');
+    // Poort niet beschikbaar of al in bootloadermodus → gewoon doorgaan
+    picoLog('⚠ Geen seriële verbinding — als de Pico al in bootloadermodus staat (RPI-RP2 zichtbaar), ga je gewoon door.', 'warn');
     await new Promise(r => setTimeout(r, 1000));
   }
 

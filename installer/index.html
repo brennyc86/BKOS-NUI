@@ -352,39 +352,41 @@
 </footer>
 
 <script>
-const RAW = 'https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main';
+const RAW        = 'https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main';
+const RAW_BLANCO = 'https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main';
 
 // Per platform: nui = reguliere firmware, blanco = leveringsbasis
+// blanco.raw verwijst naar de BKOS-blanco repo; vkey is de bestandsnaam-sleutel daar
 const PLAT = {
   esp32s3: {
     label: 'ESP32-S3 (7")', chip: 'ESP32-S3',
-    nui:    { bin: 'bkos_esp32s3_8048s070.bin',    vkey: 'esp32s3',       skey: 'url_s3'          },
-    blanco: { bin: 'bkos_blanco_esp32s3.bin',       vkey: 'blanco_esp32s3', skey: 'url_blanco_s3'  },
+    nui:    { raw: RAW,        bin: 'bkos_esp32s3_8048s070.bin', vkey: 'esp32s3', skey: 'url_s3'          },
+    blanco: { raw: RAW_BLANCO, bin: 'bkos_blanco_esp32s3.bin',   vkey: 'esp32s3', skey: 'url_blanco_s3'   },
   },
   wroom: {
     label: 'WROOM IO-board', chip: 'ESP32',
-    nui:    { bin: 'bkos_esp32wroom2432.bin',       vkey: 'wroom',         skey: 'url_wroom'       },
-    blanco: { bin: 'bkos_blanco_wroom.bin',         vkey: 'blanco_wroom',  skey: 'url_blanco_wroom'},
+    nui:    { raw: RAW,        bin: 'bkos_esp32wroom2432.bin',    vkey: 'wroom',   skey: 'url_wroom'       },
+    blanco: { raw: RAW_BLANCO, bin: 'bkos_blanco_wroom.bin',      vkey: 'wroom',   skey: 'url_blanco_wroom'},
   },
   cyd28: {
     label: 'CYD 2.8"', chip: 'ESP32',
-    nui:    { bin: 'bkos_esp32cyd28.bin',           vkey: 'cyd28',         skey: 'url_cyd28'       },
-    blanco: { bin: 'bkos_blanco_cyd28.bin',         vkey: 'blanco_cyd28',  skey: 'url_blanco_cyd28'},
+    nui:    { raw: RAW,        bin: 'bkos_esp32cyd28.bin',        vkey: 'cyd28',   skey: 'url_cyd28'       },
+    blanco: { raw: RAW_BLANCO, bin: 'bkos_blanco_cyd28.bin',      vkey: 'cyd28',   skey: 'url_blanco_cyd28'},
   },
   cyd40h: {
     label: 'CYD 4" liggend', chip: 'ESP32',
-    nui:    { bin: 'bkos_esp32cyd40h.bin',          vkey: 'cyd40h',        skey: 'url_cyd40h'      },
-    blanco: { bin: 'bkos_blanco_cyd40h.bin',        vkey: 'blanco_cyd40h', skey: 'url_blanco_cyd40h'},
+    nui:    { raw: RAW,        bin: 'bkos_esp32cyd40h.bin',       vkey: 'cyd40h',  skey: 'url_cyd40h'       },
+    blanco: { raw: RAW_BLANCO, bin: 'bkos_blanco_cyd40h.bin',     vkey: 'cyd40h',  skey: 'url_blanco_cyd40h'},
   },
   cyd40v: {
     label: 'CYD 4" staand', chip: 'ESP32',
-    nui:    { bin: 'bkos_esp32cyd40v.bin',          vkey: 'cyd40v',        skey: 'url_cyd40v'      },
-    blanco: { bin: 'bkos_blanco_cyd40v.bin',        vkey: 'blanco_cyd40v', skey: 'url_blanco_cyd40v'},
+    nui:    { raw: RAW,        bin: 'bkos_esp32cyd40v.bin',       vkey: 'cyd40v',  skey: 'url_cyd40v'       },
+    blanco: { raw: RAW_BLANCO, bin: 'bkos_blanco_cyd40v.bin',     vkey: 'cyd40v',  skey: 'url_blanco_cyd40v'},
   },
   pico: {
     label: 'Pi Pico W', chip: 'RP2040', pico: true,
-    nui:    { bin: 'bkos_pico1w2432.uf2',           vkey: 'pico',          skey: 'url_pico'        },
-    blanco: { bin: 'bkos_blanco_pico.uf2',          vkey: 'blanco_pico',   skey: 'url_blanco_pico' },
+    nui:    { raw: RAW,        bin: 'bkos_pico1w2432.uf2',        vkey: 'pico',    skey: 'url_pico'         },
+    blanco: { raw: RAW_BLANCO, bin: 'bkos_blanco_pico.uf2',       vkey: 'pico',    skey: 'url_blanco_pico'  },
   },
 };
 
@@ -453,7 +455,7 @@ async function update() {
 
   try {
     if (kanaal === 'beta') {
-      const r = await fetch(`${RAW}/firmware/versie_${fv.vkey}.txt`);
+      const r = await fetch(`${fv.raw}/firmware/versie_${fv.vkey}.txt`);
       if (!r.ok) throw new Error(`versie_${fv.vkey}.txt niet gevonden (HTTP ${r.status})`);
       const ver = (await r.text()).trim();
 
@@ -464,7 +466,7 @@ async function update() {
       }
 
       flashVer = ver;
-      flashUrl = `${RAW}/firmware/${fv.bin}`;
+      flashUrl = `${fv.raw}/firmware/${fv.bin}`;
       const label = firmware === 'blanco' ? 'BKOS Blanco leveringsbasis' : 'Laatste build — kan tussenversies bevatten';
       toonVersie(ver, label);
 

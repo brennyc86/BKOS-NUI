@@ -4,6 +4,7 @@
 #include "io.h"           // io_zichtbaar, io_naam_is, io_apparaat_toggle
 #include "hw_io.h"        // io_aparaten_cnt, io_kanalen_cnt
 #include "app_manager.h"  // apps[], apps_cnt, app_master_lijst_verwerken
+#include "wifi.h"         // ntp_vanaf_net()
 
 #if PLATFORM_ESP32
 #include <esp_now.h>
@@ -25,6 +26,7 @@ bool     net_pair_wacht   = false;
 int      net_pair_pending = -1;
 String   net_status       = "Niet actief";
 bool     net_klaar        = false;
+bool     net_staat_gesync = false;
 
 #define NET_BESTAND      "/net_config.csv"
 #define NET_PEERS_BESTAND "/net_peers.csv"
@@ -231,6 +233,8 @@ void net_pair_bevestigen(int idx) {
     net_app_staat_sturen();  // stuur huidige vaarmodus + verlichting
     net_info_sync_sturen();  // stuur boot/eigenaar info + PIN
     net_app_lijst_sturen();  // stuur geïnstalleerde app-lijst
+    net_staat_aanvragen(idx); // verzoek slave-staat (herstel na herstart)
+    net_tijd_sturen();        // stuur eigen tijd als slave geen NTP heeft
 #endif
     scherm_bouwen = true;
 }
@@ -251,6 +255,34 @@ void net_pair_weigeren(int idx) {
     for (int i = 0; i < net_peers_cnt; i++)
         if (!net_peers[i].bevestigd) { net_pair_pending = i; break; }
     scherm_bouwen = true;
+}
+
+void net_staat_aanvragen(int peer_idx) {
+#if PLATFORM_ESP32
+    if (!_espnow_ok || peer_idx < 0 || peer_idx >= net_peers_cnt) return;
+    NetPaket pkt = {};
+    pkt.versie = NET_PROTOCOL_VERSIE;
+    pkt.type   = NET_MSG_STATE_REQ;
+    pkt.modus  = NET_MASTER;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    _stuur(net_peers[peer_idx].mac, pkt, 0);
+#endif
+}
+
+void net_tijd_sturen() {
+#if PLATFORM_ESP32
+    if (!_espnow_ok || net_modus == NET_STANDALONE) return;
+    time_t nu = time(nullptr);
+    if (nu < 1700000000UL) return;  // geen geldige NTP-tijd
+    NetPaket pkt = {};
+    pkt.versie = NET_PROTOCOL_VERSIE;
+    pkt.type   = NET_MSG_TIJD;
+    pkt.modus  = net_modus;
+    strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    memcpy(pkt.data, &nu, sizeof(time_t));
+    static const uint8_t broadcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+    _stuur(broadcast, pkt, sizeof(time_t));
+#endif
 }
 
 // ─── Bericht verwerking ───────────────────────────────────────────────────────
@@ -457,6 +489,23 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         }
         break;
     }
+
+    case NET_MSG_TIJD: {
+        // Tijdstip ontvangen van een peer — accepteren als eigen klok niet gesynchroniseerd is
+        if (sizeof(time_t) <= sizeof(pkt.data)) {
+            time_t epoch;
+            memcpy(&epoch, pkt.data, sizeof(time_t));
+            ntp_vanaf_net(epoch);
+        }
+        break;
+    }
+
+    case NET_MSG_STATE_REQ: {
+        // Master vraagt naar onze huidige vaarmodus en verlichting
+        if (net_modus != NET_MASTER) net_app_staat_sturen();
+        break;
+    }
+
     }
 }
 #endif  // PLATFORM_ESP32 (_verwerk)

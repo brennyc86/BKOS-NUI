@@ -1065,8 +1065,13 @@ static void cfg_instellingen_teken() {
     tft.setCursor(138, ay + 4 + (32 - 16) / 2);
     tft.print(ontg ? (heeft_naam ? net_eigen_naam : "(tik om naam in te stellen)") : "***");
 
-    // IO Configuratie + IO Hartslag timing
+    // IO Configuratie [+ Touch Kalibreren voor XPT2046, IO Hartslag voor S3]
     int iy = ay + 44;
+#if PLATFORM_XPT2046
+    ui_knop(10, iy + 4, UI_SCX(488), 38, "IO CONFIGURATIE  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    ui_knop(UI_SCX(500), iy + 4, TFT_W - UI_SCX(504), 38, "TOUCH KAL.  >", C_SURFACE, C_CYAN);
+#else
     ui_knop(10, iy + 4, 488, 38, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
     {
@@ -1088,6 +1093,7 @@ static void cfg_instellingen_teken() {
         tft.setCursor(655, my); tft.print(ubuf);
         if (ontg) { ui_knop(684, iy + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, iy + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
     }
+#endif
 
     // Firmware updaten (PIN vereist → OTA scherm)
     int uy = iy + 46;
@@ -1228,8 +1234,15 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // IO Configuratie + IO Hartslag timing
+    // IO Configuratie + [Touch Kalibreren / IO Hartslag timing]
     if (y >= iy && y < iy + 46) {
+#if PLATFORM_XPT2046
+        if (x >= UI_SCX(500)) {
+            actief_scherm = SCREEN_CALIBRATIE; scherm_bouwen = true; return;
+        }
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_IO_CFG; scherm_bouwen = true;
+#else
         if (x < 502) {
             if (!ontg) { pin_vereist_tonen(); return; }
             actief_scherm = SCREEN_IO_CFG; scherm_bouwen = true; return;
@@ -1239,6 +1252,7 @@ static void cfg_instellingen_run(int x, int y) {
         else if (x >= 592 && x < 618) { io_heartbeat_aan = min(600, (int)io_heartbeat_aan + 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
         else if (x >= 684 && x < 710) { io_heartbeat_uit = max(30, (int)io_heartbeat_uit - 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
         else if (x >= 710 && x < 736) { io_heartbeat_uit = min(600, (int)io_heartbeat_uit + 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
+#endif
         return;
     }
 

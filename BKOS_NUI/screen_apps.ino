@@ -139,6 +139,9 @@ static void _apps_geinstalleerd_teken() {
         int mid = APPS_LIST_Y + APPS_LIST_H / 2;
         ui_tekst_midden(0, mid - 14, APPS_PNL_W, "Geen apps", C_TEXT_DIM, 1);
         ui_tekst_midden(0, mid + 2,  APPS_PNL_W, "Gebruik APP STORE", C_TEXT_DIM, 1);
+#if !LUA_BESCHIKBAAR
+        ui_tekst_midden(0, mid + 18, APPS_PNL_W, "(OTA vereist voor Lua)", C_AMBER, 1);
+#endif
     } else {
         int max_scroll = max(0, apps_cnt - max_lokaal);
         if (apps_scroll > max_scroll) apps_scroll = max_scroll;
@@ -645,9 +648,14 @@ void screen_apps_run(int x, int y, bool aanraking) {
             if (x >= APPS_PNL_W - 170 && x <= APPS_PNL_W - 118 &&
                 y >= rij_y + 15 && y <= rij_y + 41) {
                 if (apps[idx].actief) {
+#if LUA_BESCHIKBAAR
                     lua_forceer_app = idx;
                     actief_scherm   = SCREEN_LUA_APP;
                     scherm_bouwen   = true;
+#else
+                    strncpy(apps_status, "Lua niet beschikbaar \x2014 installeer via OTA", sizeof(apps_status) - 1);
+                    scherm_bouwen = true;
+#endif
                 }
                 return;
             }

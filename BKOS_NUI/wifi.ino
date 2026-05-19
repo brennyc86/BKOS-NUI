@@ -211,6 +211,29 @@ void ntp_loop() {
         char buf[8];
         snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
         klok_tijd  = String(buf);
-        ntp_gesync = true;
+        if (!ntp_gesync) {
+            ntp_gesync = true;
+            // Pas gesynchroniseerd — broadcast tijd naar netwerk peers
+            if (net_modus != NET_STANDALONE) net_tijd_sturen();
+        }
     }
+}
+
+void ntp_vanaf_net(time_t epoch) {
+#if PLATFORM_ESP32
+    if (ntp_gesync) return;              // al gesynchroniseerd via NTP
+    if (epoch < 1700000000UL) return;   // ongeldige/te oude waarde
+    // Tijdzone instellen zodat getLocalTime correct converteert
+    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+    tzset();
+    struct timeval tv = { (long)epoch, 0 };
+    settimeofday(&tv, nullptr);
+    ntp_gesync = true;
+    struct tm t;
+    if (getLocalTime(&t, 0)) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
+        klok_tijd = String(buf);
+    }
+#endif
 }

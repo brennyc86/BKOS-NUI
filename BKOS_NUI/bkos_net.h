@@ -28,6 +28,10 @@
 #define NET_MSG_APP_LIST    0x40  // master → slaves: geïnst. app IDs + namen
 #define NET_MSG_APP_DATA    0x41  // bidirectioneel: Lua app bericht (sleutel + waarde)
 
+// Tijdsynchronisatie en staat-verzoek
+#define NET_MSG_TIJD        0x50  // broadcast: epoch tijd (time_t, 4 bytes in data[0..3])
+#define NET_MSG_STATE_REQ   0x51  // master → slave: verzoek om huidige app-staat
+
 // Speciale staat-waarde voor toggle (gebruik samen met NET_MSG_IO_TOGGLE / NET_MSG_IO_NAAM)
 #define NET_IO_TOGGLE       0xFF
 
@@ -84,6 +88,7 @@ extern bool     net_pair_wacht;
 extern int      net_pair_pending;  // peer-idx met openstaand pairing-verzoek (-1 = geen)
 extern String   net_status;
 extern bool     net_klaar;
+extern bool     net_staat_gesync;   // master: true zodra staat gesynchroniseerd van een slave
 
 // ─── Functies ─────────────────────────────────────────────────────────────────
 void        net_setup();
@@ -112,6 +117,10 @@ void        net_io_apparaat_zet(const char* prefix, uint8_t staat); // zet alle 
 
 // App-staat (vaarmodus, verlichting, enz.)
 void        net_app_staat_sturen();                 // slave → master: vaarmodus + verlichting
+void        net_staat_aanvragen(int peer_idx);      // master → slave: verzoek om huidige staat
+
+// Tijdsynchronisatie
+void        net_tijd_sturen();                      // broadcast eigen NTP-tijd naar alle peers
 
 // Info synchronisatie
 void net_data_broadcast(uint8_t type, const uint8_t* data, int len);

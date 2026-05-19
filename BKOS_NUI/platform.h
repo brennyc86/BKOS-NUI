@@ -5,30 +5,53 @@
 // Ondersteunde targets:
 //   PLATFORM_ESP32  — ESP32-S3, 800×480 RGB panel, PSRAM, GT911 touch
 //   PLATFORM_PICO   — RP2040/RP2350 (Pico W), 240×320 SPI display, XPT2046
-//   PLATFORM_WROOM  — ESP32 WROOM32, 240×320 SPI display, XPT2046
+//   PLATFORM_WROOM  — ESP32 WROOM32, custom IO board, 240×320 ILI9341 + ATtiny3217
+//   PLATFORM_CYD28  — ESP32-2432S028R ("CYD"), 240×320 ILI9341, XPT2046
+//   PLATFORM_CYD40H — ESP32 4" CYD, 480×320 ST7796 liggend, XPT2046 (aparte VSPI)
+//   PLATFORM_CYD40V — ESP32 4" CYD, 320×480 ST7796 staand,  XPT2046 (aparte VSPI)
 //
-// PLATFORM_WROOM moet worden doorgegeven via compiler flag: -DPLATFORM_WROOM=1
-// SCREEN_SMALL is true voor Pico en WROOM (240×320 ILI9341 scherm)
+// Compiler flags: -DPLATFORM_WROOM=1 / -DPLATFORM_CYD28=1 /
+//                 -DPLATFORM_CYD40H=1 / -DPLATFORM_CYD40V=1
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Platform detectie ────────────────────────────────────────────────────────
+// ─── Platform defaults ────────────────────────────────────────────────────────
 #ifndef PLATFORM_WROOM
-  #define PLATFORM_WROOM 0
+  #define PLATFORM_WROOM  0
+#endif
+#ifndef PLATFORM_CYD28
+  #define PLATFORM_CYD28  0
+#endif
+#ifndef PLATFORM_CYD40H
+  #define PLATFORM_CYD40H 0
+#endif
+#ifndef PLATFORM_CYD40V
+  #define PLATFORM_CYD40V 0
 #endif
 
+// ─── RP2040/RP2350 auto-detectie ─────────────────────────────────────────────
 #if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_RP2350)
-  #define PLATFORM_PICO  1
-  #define PLATFORM_ESP32 0
+  #define PLATFORM_PICO   1
+  #define PLATFORM_ESP32  0
   #undef  PLATFORM_WROOM
-  #define PLATFORM_WROOM 0
+  #define PLATFORM_WROOM  0
+  #undef  PLATFORM_CYD28
+  #define PLATFORM_CYD28  0
+  #undef  PLATFORM_CYD40H
+  #define PLATFORM_CYD40H 0
+  #undef  PLATFORM_CYD40V
+  #define PLATFORM_CYD40V 0
 #else
-  #define PLATFORM_PICO  0
-  #define PLATFORM_ESP32 1
-  // PLATFORM_WROOM blijft zoals doorgegeven via compiler flag
+  #define PLATFORM_PICO   0
+  #define PLATFORM_ESP32  1
+  // WROOM/CYD flags blijven zoals doorgegeven via compiler flag
 #endif
 
-// ─── SCREEN_SMALL: 240×320 ILI9341 scherm (Pico of WROOM) ───────────────────
-#define SCREEN_SMALL (PLATFORM_PICO || PLATFORM_WROOM)
+// ─── Convenience macros ───────────────────────────────────────────────────────
+#define PLATFORM_CYD     (PLATFORM_CYD28 || PLATFORM_CYD40H || PLATFORM_CYD40V)
+#define PLATFORM_XPT2046 (PLATFORM_PICO  || PLATFORM_WROOM  || PLATFORM_CYD)
+
+// ─── SCREEN_SMALL: compacte 240×320 / 320×480 portret UI ─────────────────────
+#define SCREEN_SMALL (PLATFORM_PICO || PLATFORM_WROOM || PLATFORM_CYD28 || PLATFORM_CYD40V)
 
 // ─── Scherm en pinnen ─────────────────────────────────────────────────────────
 #if PLATFORM_PICO
@@ -41,46 +64,77 @@
   #define TFT_RST   14    // GP14 — reset
   #define TFT_SCK   18    // GP18 — SPI0 clock
   #define TFT_MOSI  19    // GP19 — SPI0 MOSI
-  #define TFT_MISO  16    // GP16 — SPI0 MISO (nodig voor XPT2046 touch)
+  #define TFT_MISO  16    // GP16 — SPI0 MISO (nodig voor XPT2046)
 
-  // XPT2046 resistieve touch (gedeelde SPI bus met display)
-  #define PICO_TOUCH_XPT2046
   #define PICO_TS_CS   13    // GP13 — touch chip select
   #define PICO_TS_IRQ  11    // GP11 — touch interrupt
 
-  // SD kaart (gedeelde SPI bus: SCK=18, MISO=16, MOSI=19)
   #define PICO_SD_CS   12    // GP12 — SD chip select
 
-  // IO shift register bus (BKOS4 protocol, direct GPIO)
-  #define HC_IN    0    // GP0  — seriële data ingang (HC165 → Pico)
+  #define HC_IN    0    // GP0  — HC165 data ingang
   #define HC_SCK   1    // GP1  — seriële klok
-  #define HC_PCK   2    // GP2  — parallelle klok (load)
-  #define HC_UIT   3    // GP3  — seriële data uitgang (Pico → HC595)
-  #define HC_ID    4    // GP4  — module ID data ingang
+  #define HC_PCK   2    // GP2  — parallelle klok
+  #define HC_UIT   3    // GP3  — HC595 data uitgang
+  #define HC_ID    4    // GP4  — module ID data
 
 #elif PLATFORM_WROOM
-  // CYD (ESP32-2432S028R): ILI9341 SPI 240×320 portret
+  // Custom WROOM IO board: ILI9341 240×320 portret + ATtiny3217 IO via UART2
   #define TFT_W     240
   #define TFT_H     320
   #define TFT_BL    21   // GPIO21 — backlight PWM
   #define TFT_CS    15   // GPIO15 — display chip select
   #define TFT_DC     2   // GPIO2  — data/command
   #define TFT_RST   -1   // niet aangesloten
-  #define TFT_SCK   14   // GPIO14 — SPI SCK (HSPI)
-  #define TFT_MOSI  13   // GPIO13 — SPI MOSI
-  #define TFT_MISO  12   // GPIO12 — SPI MISO
+  #define TFT_SCK   14   // GPIO14 — HSPI SCK
+  #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
+  #define TFT_MISO  12   // GPIO12 — HSPI MISO
 
-  // XPT2046 resistieve touch (gedeelde HSPI bus met display)
-  #define WROOM_TOUCH_XPT2046
   #define WROOM_TS_CS   33   // GPIO33 — touch chip select
-  #define WROOM_TS_IRQ  36   // GPIO36 — touch interrupt
+  // GPIO36 (SVP input-only) niet als IRQ gebruiken — zie hw_touch.ino
 
-  // UART2 naar ATtiny3217 (net als ESP32-S3)
-  #define IO_UART_RX  22   // GPIO22 — ATtiny TX → CYD RX
-  #define IO_UART_TX  27   // GPIO27 — CYD TX → ATtiny RX
+  #define IO_UART_RX  22   // GPIO22 — ATtiny TX → WROOM RX
+  #define IO_UART_TX  27   // GPIO27 — WROOM TX → ATtiny RX
+
+#elif PLATFORM_CYD28
+  // ESP32-2432S028R: ILI9341 240×320 portret, HSPI gedeeld met XPT2046
+  #define TFT_W     240
+  #define TFT_H     320
+  #define TFT_BL    21   // GPIO21 — backlight PWM
+  #define TFT_CS    15   // GPIO15 — display chip select
+  #define TFT_DC     2   // GPIO2  — data/command
+  #define TFT_RST   -1   // niet aangesloten
+  #define TFT_SCK   14   // GPIO14 — HSPI SCK
+  #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
+  #define TFT_MISO  12   // GPIO12 — HSPI MISO
+
+  #define CYD28_TS_CS   33   // GPIO33 — touch chip select (geen IRQ: GPIO36 SVP)
+
+#elif PLATFORM_CYD40H || PLATFORM_CYD40V
+  // 4" CYD (ESP32-32E): ST7796, display HSPI + aparte VSPI voor XPT2046
+  #if PLATFORM_CYD40H
+    #define TFT_W   480    // liggend 480×320
+    #define TFT_H   320
+  #else
+    #define TFT_W   320    // staand 320×480
+    #define TFT_H   480
+  #endif
+  #define TFT_BL    27   // GPIO27 — backlight (anders dan CYD28/WROOM)
+  #define TFT_CS    15   // GPIO15 — display chip select
+  #define TFT_DC     2   // GPIO2  — data/command
+  #define TFT_RST   -1   // niet aangesloten
+  #define TFT_SCK   14   // GPIO14 — HSPI SCK
+  #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
+  #define TFT_MISO  12   // GPIO12 — HSPI MISO
+
+  // Aparte VSPI bus voor XPT2046 touch
+  #define CYD40_TS_SCK   25   // GPIO25
+  #define CYD40_TS_MOSI  32   // GPIO32
+  #define CYD40_TS_MISO  39   // GPIO39 (SVP, input-only — alleen MISO)
+  #define CYD40_TS_CS    33   // GPIO33 — touch chip select
+  // Geen IRQ pin (GPIO36 SVP problematisch)
 
 #else
-  // Arduino_ESP32RGBPanel 800×480 liggend
+  // ESP32-S3 800×480 RGB liggend
   #define TFT_W    800
   #define TFT_H    480
   #define TFT_BL   2     // GPIO2 — backlight
@@ -93,19 +147,19 @@
   #define IO_SERIAL          Serial2
   #define IO_SERIAL_BEGIN()  Serial2.begin(IO_BAUD, SERIAL_8N1, IO_UART_RX, IO_UART_TX)
 #elif !PLATFORM_PICO
+  // ESP32-S3 en CYD: Serial (S3=USB/JTAG; CYD=USB, geen IO bus aangesloten)
   #define IO_SERIAL          Serial
   #define IO_SERIAL_BEGIN()  Serial.begin(IO_BAUD)
 #endif
 
 // ─── Geheugen allocatie ───────────────────────────────────────────────────────
-#if PLATFORM_ESP32 && !PLATFORM_WROOM
-  // ESP32-S3 met PSRAM
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+  // Alleen ESP32-S3 heeft PSRAM
   #include <esp_heap_caps.h>
   #define PLATFORM_MALLOC(n)    heap_caps_malloc((n), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
   #define PLATFORM_REALLOC(p,n) heap_caps_realloc((p), (n), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
   #define PLATFORM_FREE(p)      heap_caps_free(p)
 #else
-  // Pico en WROOM: gewoon malloc (geen PSRAM)
   #define PLATFORM_MALLOC(n)    malloc(n)
   #define PLATFORM_REALLOC(p,n) realloc((p), (n))
   #define PLATFORM_FREE(p)      free(p)
@@ -127,7 +181,7 @@
 
 // ─── FreeRTOS taak aanmaken ───────────────────────────────────────────────────
 // ESP32: xTaskCreatePinnedToCore op core 0
-// Pico:  taken worden NIET gestart (no-op) — alles draait op de hoofd-thread
+// Pico:  no-op — alles draait op de hoofd-thread
 #if PLATFORM_PICO
   #define PLATFORM_TASK_CREATE(fn, naam, stack, param, prio, handle) ((void)0)
 #else
@@ -135,13 +189,7 @@
       xTaskCreatePinnedToCore((fn), (naam), (stack), (param), (prio), (handle), 0)
 #endif
 
-// ─── FreeRTOS types voor RP2040 ──────────────────────────────────────────────
-// Pico W gebruikt FreeRTOS intern voor WiFi (CYW43), maar exposeert het NIET
-// naar user code. FreeRTOS.h direct includen veroorzaakt een linker-fout omdat
-// de library dan verwacht wordt maar niet meegecombineerd wordt.
-// Oplossing: compatibele forward-declaraties + macro-stubs zodat code die
-// vTaskDelay/TaskHandle_t gebruikt gewoon compileert en delay() aanroept.
-// INC_FREERTOS_H: als FreeRTOS.h elders al geïncludeerd is, gebruik die types.
+// ─── FreeRTOS stubs voor RP2040 ──────────────────────────────────────────────
 #if PLATFORM_PICO && !defined(INC_FREERTOS_H)
   struct tskTaskControlBlock;
   typedef struct tskTaskControlBlock* TaskHandle_t;

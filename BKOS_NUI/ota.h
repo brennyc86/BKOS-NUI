@@ -2,7 +2,7 @@
 #include "platform.h"
 #include "wifi.h"
 
-#define BKOS_NUI_VERSIE     "0.1.260518.10"
+#define BKOS_NUI_VERSIE     "0.1.260518.11"
 
 // ─── Beta kanaal (tussenversies) ──────────────────────────────────────────────
 #if PLATFORM_PICO
@@ -15,6 +15,21 @@
   #define OTA_GITHUB_FIRMWARE_URL        "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/bkos_esp32wroom2432.bin"
   #define OTA_GITHUB_STABLE_VERSIE_URL   "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_stable_wroom.txt"
   #define OTA_GITHUB_FIRMWARE_BESTAND    "bkos_esp32wroom2432.bin"
+#elif PLATFORM_CYD28
+  #define OTA_GITHUB_VERSIE_URL          "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_cyd28.txt"
+  #define OTA_GITHUB_FIRMWARE_URL        "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/bkos_esp32cyd28.bin"
+  #define OTA_GITHUB_STABLE_VERSIE_URL   "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_stable_cyd28.txt"
+  #define OTA_GITHUB_FIRMWARE_BESTAND    "bkos_esp32cyd28.bin"
+#elif PLATFORM_CYD40H
+  #define OTA_GITHUB_VERSIE_URL          "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_cyd40h.txt"
+  #define OTA_GITHUB_FIRMWARE_URL        "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/bkos_esp32cyd40h.bin"
+  #define OTA_GITHUB_STABLE_VERSIE_URL   "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_stable_cyd40h.txt"
+  #define OTA_GITHUB_FIRMWARE_BESTAND    "bkos_esp32cyd40h.bin"
+#elif PLATFORM_CYD40V
+  #define OTA_GITHUB_VERSIE_URL          "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_cyd40v.txt"
+  #define OTA_GITHUB_FIRMWARE_URL        "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/bkos_esp32cyd40v.bin"
+  #define OTA_GITHUB_STABLE_VERSIE_URL   "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_stable_cyd40v.txt"
+  #define OTA_GITHUB_FIRMWARE_BESTAND    "bkos_esp32cyd40v.bin"
 #else
   #define OTA_GITHUB_VERSIE_URL          "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/versie_esp32s3.txt"
   #define OTA_GITHUB_FIRMWARE_URL        "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/bkos_esp32s3_8048s070.bin"

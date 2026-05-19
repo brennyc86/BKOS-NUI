@@ -141,9 +141,156 @@ jobs:
           git diff --staged --quiet || git commit -m "ci: WROOM firmware $VERSION"
           git push
 
-  build_pico:
+  build_cyd28:
     runs-on: ubuntu-latest
     needs: build_wroom
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Install ESP32 platform (core 2.x)
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls \
+            https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@2.0.17
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "GFX Library for Arduino@1.3.7"
+          arduino-cli lib install "WiFiManager@2.0.17"
+          arduino-cli lib install "XPT2046_Touchscreen"
+          arduino-cli lib install "ArduinoJson"
+
+      - name: Compile CYD28 firmware
+        run: |
+          arduino-cli compile \
+            --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashFreq=80,FlashMode=dio" \
+            --build-property "compiler.cpp.extra_flags=-DPLATFORM_CYD28=1" \
+            --output-dir build_cyd28/ \
+            BKOS_NUI/
+
+      - name: Commit CYD28 firmware
+        run: |
+          git config user.name  "GitHub Actions"
+          git config user.email "actions@github.com"
+          git pull --rebase
+          mkdir -p firmware
+          cp build_cyd28/BKOS_NUI.ino.bin firmware/bkos_esp32cyd28.bin
+          VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
+          echo "$VERSION" > firmware/versie_cyd28.txt
+          git add firmware/bkos_esp32cyd28.bin firmware/versie_cyd28.txt
+          git diff --staged --quiet || git commit -m "ci: CYD28 firmware $VERSION"
+          git push
+
+  build_cyd40h:
+    runs-on: ubuntu-latest
+    needs: build_cyd28
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Install ESP32 platform (core 2.x)
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls \
+            https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@2.0.17
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "GFX Library for Arduino@1.3.7"
+          arduino-cli lib install "WiFiManager@2.0.17"
+          arduino-cli lib install "XPT2046_Touchscreen"
+          arduino-cli lib install "ArduinoJson"
+
+      - name: Compile CYD40H firmware
+        run: |
+          arduino-cli compile \
+            --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashFreq=80,FlashMode=dio" \
+            --build-property "compiler.cpp.extra_flags=-DPLATFORM_CYD40H=1" \
+            --output-dir build_cyd40h/ \
+            BKOS_NUI/
+
+      - name: Commit CYD40H firmware
+        run: |
+          git config user.name  "GitHub Actions"
+          git config user.email "actions@github.com"
+          git pull --rebase
+          mkdir -p firmware
+          cp build_cyd40h/BKOS_NUI.ino.bin firmware/bkos_esp32cyd40h.bin
+          VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
+          echo "$VERSION" > firmware/versie_cyd40h.txt
+          git add firmware/bkos_esp32cyd40h.bin firmware/versie_cyd40h.txt
+          git diff --staged --quiet || git commit -m "ci: CYD40H firmware $VERSION"
+          git push
+
+  build_cyd40v:
+    runs-on: ubuntu-latest
+    needs: build_cyd40h
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Install ESP32 platform (core 2.x)
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls \
+            https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@2.0.17
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "GFX Library for Arduino@1.3.7"
+          arduino-cli lib install "WiFiManager@2.0.17"
+          arduino-cli lib install "XPT2046_Touchscreen"
+          arduino-cli lib install "ArduinoJson"
+
+      - name: Compile CYD40V firmware
+        run: |
+          arduino-cli compile \
+            --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashFreq=80,FlashMode=dio" \
+            --build-property "compiler.cpp.extra_flags=-DPLATFORM_CYD40V=1" \
+            --output-dir build_cyd40v/ \
+            BKOS_NUI/
+
+      - name: Commit CYD40V firmware
+        run: |
+          git config user.name  "GitHub Actions"
+          git config user.email "actions@github.com"
+          git pull --rebase
+          mkdir -p firmware
+          cp build_cyd40v/BKOS_NUI.ino.bin firmware/bkos_esp32cyd40v.bin
+          VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
+          echo "$VERSION" > firmware/versie_cyd40v.txt
+          git add firmware/bkos_esp32cyd40v.bin firmware/versie_cyd40v.txt
+          git diff --staged --quiet || git commit -m "ci: CYD40V firmware $VERSION"
+          git push
+
+  build_pico:
+    runs-on: ubuntu-latest
+    needs: build_cyd40v
 
     steps:
       - name: Checkout

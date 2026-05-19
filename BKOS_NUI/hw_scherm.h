@@ -26,3 +26,8 @@ void tft_schermvullen(uint16_t kleur);
 
 extern byte bkos_logo_200_75[];
 void tft_logo(int32_t x, int32_t y, int schaal, uint16_t kleur);
+
+#if PLATFORM_WROOM || PLATFORM_CYD
+#include <SPI.h>
+extern SPIClass cyd_hspi;   // HSPI gedeeld tussen display en touch (WROOM/CYD28) of alleen display (CYD40)
+#endif

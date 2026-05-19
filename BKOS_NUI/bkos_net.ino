@@ -224,12 +224,14 @@ void net_pair_bevestigen(int idx) {
     }
     net_opslaan();
     net_status = String("Gepaard: ") + net_peers[idx].naam;
+#if PLATFORM_ESP32
     net_io_namen_sturen();   // stuur kanaalnamen direct
     _io_sync_reset = true;   // forceer volledige IO_STATE (snapshot overslaan)
     net_io_sturen();         // stuur huidige IO staat
     net_app_staat_sturen();  // stuur huidige vaarmodus + verlichting
     net_info_sync_sturen();  // stuur boot/eigenaar info + PIN
     net_app_lijst_sturen();  // stuur geïnstalleerde app-lijst
+#endif
     scherm_bouwen = true;
 }
 

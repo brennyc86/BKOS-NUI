@@ -35,7 +35,7 @@ void io_bkoss_check() {
 #if PLATFORM_PICO
     bkoss_actief = false;  // geen ATtiny op Pico
     return;
-#endif
+#else
     bkoss_actief = false;
     memset(bkoss_versie, 0, BKOSS_VERSIE_LEN);
 
@@ -61,6 +61,7 @@ void io_bkoss_check() {
         yield();
     }
     // Timeout — BKOSS reageert niet
+#endif
 }
 
 void io_boot() {
@@ -85,8 +86,7 @@ void io_detect() {
         io_kanalen_cnt += (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
     }
     return;
-#endif
-
+#else
     // Werk in tijdelijke buffers zodat de globale staat geldig blijft
     // terwijl de ATtiny in IOD-modus is (outputs zouden anders wegvallen).
     byte tmp_aparaten[MAX_MODULES];
@@ -128,6 +128,7 @@ void io_detect() {
     memcpy(io_aparaten, tmp_aparaten, tmp_aparaten_cnt);
     io_aparaten_cnt = tmp_aparaten_cnt;
     io_kanalen_cnt  = tmp_kanalen_cnt;
+#endif
 }
 
 void io_cyclus() {
@@ -176,8 +177,7 @@ void io_cyclus() {
     io_actief    = false;
     io_gecheckt  = millis();
     return;
-#endif
-
+#else
     // Gewijzigd-vlaggen wissen zodat io_loop weet dat outputs verstuurd zijn
     for (int i = 0; i < n; i++) io_gewijzigd[i] = false;
 
@@ -223,6 +223,7 @@ void io_cyclus() {
     io_runned = true;
     io_actief = false;
     io_gecheckt = millis();
+#endif
 }
 
 // ─── FreeRTOS IO-taak (alleen ESP32, Core 0) ─────────────────────────────────

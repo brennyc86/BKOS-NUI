@@ -35,6 +35,11 @@ void ts_kalibratie_opslaan() {
 }
 #endif
 
+// ─── Gedeelde HSPI bus voor WROOM / CYD28 ────────────────────────────────────
+#if (PLATFORM_WROOM || PLATFORM_CYD28) && PLATFORM_ESP32
+  SPIClass shared_hspi(HSPI);
+#endif
+
 // ─── XPT2046 / GT911 object ───────────────────────────────────────────────────
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
   TAMC_GT911 ts(TS_SDA, TS_SCK, -1, TS_RST, 490, 480);
@@ -60,8 +65,8 @@ void ts_setup() {
     ts_kalibratie_laden();
 
 #elif PLATFORM_WROOM || PLATFORM_CYD28
-    // SPI al geïnitialiseerd door tft_setup(); gedeelde bus met display
-    ts.begin(SPI);
+    // shared_hspi al geïnitialiseerd door tft_setup() via Arduino_HWSPI::begin()
+    ts.begin(shared_hspi);
     ts_kalibratie_laden();
 
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V

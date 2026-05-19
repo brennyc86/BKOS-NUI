@@ -1,4 +1,5 @@
 #include "hw_scherm.h"
+#include "hw_touch.h"
 #include "ui_colors.h"
 
 Arduino_GFX *tft_p = nullptr;  // aangemaakt in tft_setup()
@@ -26,9 +27,9 @@ void tft_setup() {
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
 #elif PLATFORM_WROOM || PLATFORM_CYD28
-    // ILI9341: SPI-bus remappen naar HSPI-pinnen (14/12/13), gedeeld met XPT2046 touch
-    SPI.begin(TFT_SCK, TFT_MISO, TFT_MOSI);
-    Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
+    // ILI9341 via HSPI (native pins: SCK=14, MISO=12, MOSI=13)
+    // shared_hspi wordt hier geïnitialiseerd via Arduino_HWSPI::begin()
+    Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS, TFT_SCK, TFT_MOSI, TFT_MISO, &shared_hspi);
     tft_p = new Arduino_ILI9341(bus, TFT_RST, 0, false);
 
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V

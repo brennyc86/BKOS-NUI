@@ -3,13 +3,14 @@
 #include "bkos_net.h"
 
 // ─── Layout (2-panel zij-aan-zij) ─────────────────────────────────────────────
-#define APPS_HDR_H    32                           // hoogte deelscherm-header
+// ─── Layout (geschaald vanuit S3 800×480 referentie) ─────────────────────────
+#define APPS_HDR_H    UI_SCY(32)                   // hoogte deelscherm-header
 #define APPS_HDR_Y    CONTENT_Y                    // direct onder statusbalk
 #define APPS_LIST_Y   (APPS_HDR_Y + APPS_HDR_H)   // inhoud start hier
 #define APPS_LIST_H   (TFT_H - NAV_H - APPS_LIST_Y)
-#define APPS_PNL_W    (TFT_W / 2)                  // 400px per deelscherm
-#define APPS_RIJ_H    58                            // rijhoogte per app
-#define APPS_RIJEN_N  (APPS_LIST_H / APPS_RIJ_H)  // max rijen per deelscherm
+#define APPS_PNL_W    (TFT_W / 2)                  // 400px per deelscherm (schaalt mee)
+#define APPS_RIJ_H    UI_SCY(58)                   // rijhoogte per app
+#define APPS_RIJEN_N  (APPS_LIST_H / APPS_RIJ_H)  // max rijen per deelscherm (auto)
 
 // Scherm-toewijzing modus toont de SCHERMEN overlay over het linker deelscherm
 static bool apps_toewijzing_modus = false;
@@ -35,14 +36,14 @@ static bool apps_voortgang_actief     = false;
 static AppInstallatieStatus apps_voortgang_vorige = APP_INS_IDLE;
 
 // Gedeelde popup layout
-#define POP_W  620
-#define POP_H  280
+#define POP_W  UI_SCX(620)
+#define POP_H  UI_SCY(280)
 #define POP_X  ((TFT_W - POP_W) / 2)
 #define POP_Y  ((TFT_H - NAV_H - POP_H) / 2 + CONTENT_Y)
 
 // Voortgang popup hoogte (kleiner)
-#define VPOP_W  560
-#define VPOP_H  220
+#define VPOP_W  UI_SCX(560)
+#define VPOP_H  UI_SCY(220)
 #define VPOP_X  ((TFT_W - VPOP_W) / 2)
 #define VPOP_Y  ((TFT_H - NAV_H - VPOP_H) / 2 + CONTENT_Y)
 
@@ -168,7 +169,7 @@ static void _apps_geinstalleerd_teken() {
 }
 
 // ─── Scherm-toewijzing overlay (linker deelscherm) ────────────────────────────
-#define INS_RIJ_H    40
+#define INS_RIJ_H    UI_SCY(40)
 static const char* ins_scherm_namen[] = {"Paneel","IO-lijst","Meteo","Configuratie","Info"};
 static const int   ins_scherm_ids[]   = {SCREEN_MAIN, SCREEN_IO, SCREEN_METEO, SCREEN_CONFIG, SCREEN_INFO};
 #define INS_SCHERM_N  5

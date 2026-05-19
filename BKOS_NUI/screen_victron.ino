@@ -9,34 +9,34 @@
 
 int victron_tab = VICTRON_TAB_DATA;
 
-// ─── Tab-layout (zelfde patroon als screen_meteo) ────────────────────────────
+// ─── Tab-layout (geschaald vanuit S3 800×480 referentie) ─────────────────────
 #define VIC_TAB_Y     CONTENT_Y
-#define VIC_TAB_H     38
+#define VIC_TAB_H     UI_SCY(38)
 #define VIC_TAB_CNT   2
 #define VIC_TAB_W     (TFT_W / VIC_TAB_CNT)
 #define VIC_PANEL_Y   (VIC_TAB_Y + VIC_TAB_H + 2)
 #define VIC_PANEL_H   (NAV_Y - VIC_PANEL_Y)
 
 // CONFIG tab panelen
-#define VIC_LIST_W    394
+#define VIC_LIST_W    UI_SCX(394)
 #define VIC_CFG_X     (VIC_LIST_W + 6)
 #define VIC_CFG_W     (TFT_W - VIC_CFG_X - 4)
-#define VIC_ROW_H     48
+#define VIC_ROW_H     UI_SCY(48)
 
-// Hex-toetsenbord overlay
-#define KV_OVL_X   50
-#define KV_OVL_Y   55
-#define KV_OVL_W   700
-#define KV_OVL_H   370
-#define KV_KEY_W   72
-#define KV_KEY_H   44
+// Hex-toetsenbord overlay (geschaald)
+#define KV_OVL_X   UI_SCX(50)
+#define KV_OVL_Y   (CONTENT_Y + UI_SCY(13))   // 55-42=13px onder content start
+#define KV_OVL_W   UI_SCX(700)
+#define KV_OVL_H   (CONTENT_H > 250 ? UI_SCY(370) : CONTENT_H - 10)
+#define KV_KEY_W   UI_SCX(72)
+#define KV_KEY_H   UI_SCY(44)
 #define KV_KEY_GAP  6
-// 8 sleutels per rij: 8*72 + 7*6 = 618px; marge = (700-618)/2 = 41
-#define KV_KEY_X0  (KV_OVL_X + 41)
-#define KV_ROW0_Y  (KV_OVL_Y + 170)
+// 8 sleutels per rij; marge = (KV_OVL_W - 8*KV_KEY_W - 7*KV_KEY_GAP) / 2
+#define KV_KEY_X0  (KV_OVL_X + (KV_OVL_W - 8*KV_KEY_W - 7*KV_KEY_GAP) / 2)
+#define KV_ROW0_Y  (KV_OVL_Y + UI_SCY(170))
 #define KV_ROW1_Y  (KV_ROW0_Y + KV_KEY_H + KV_KEY_GAP)
 #define KV_CTL_Y   (KV_ROW1_Y + KV_KEY_H + KV_KEY_GAP + 6)
-#define KV_INP_Y   (KV_OVL_Y + 106)
+#define KV_INP_Y   (KV_OVL_Y + UI_SCY(106))
 
 static int   _sel_idx      = -1;   // geselecteerde apparaat in CONFIG
 static bool  _sel_ontdekt  = false;
@@ -66,7 +66,7 @@ static void _tabs_teken() {
 }
 
 // ─── DATA tab ────────────────────────────────────────────────────────────────
-#define DATA_CARD_H  80
+#define DATA_CARD_H  UI_SCY(80)
 #define DATA_CARD_X  10
 #define DATA_CARD_W  (TFT_W - 20)
 

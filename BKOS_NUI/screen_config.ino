@@ -61,46 +61,48 @@ static char  pin_invoer[5]          = "";
 static char  pin_nieuw[5]           = "";
 static bool  pin_na_unlock_wijzigen = false;
 
-// PIN overlay layout (gecentreerd)
-#define PIN_OV_X   150
+// PIN overlay layout (gecentreerd, geschaald vanuit S3 800×480 referentie)
+#define PIN_OV_X   UI_SCX(150)
 #define PIN_OV_Y   (CFG_CONT_Y + 15)
-#define PIN_OV_W   500
-#define PIN_OV_H   358
-#define PIN_KW     148
-#define PIN_KH     46
+#define PIN_OV_W   UI_SCX(500)
+#define PIN_OV_H   UI_SCY(358)
+#define PIN_KW     UI_SCX(148)
+#define PIN_KH     UI_SCY(46)
 #define PIN_KGAP   6
 
 // ─── Toetsenbord layout ─────────────────────────────────────────────────
 static const char* kb_rijen[4]     = {"1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM_*@"};
 static const char* kb_sym_rijen[4] = {"!\"#$%&'()*", "+,-./:;<=>", "?@[\\]^_{|}~", ""};
 
-#define KB_X        40
-#define KB_W        (TFT_W - 80)
-#define KB_INV_Y    (CONTENT_Y + 8)
-#define KB_INV_H    40
+// Toetsenbord layout — geschaald vanuit S3 800×480 referentie
+#define KB_X        UI_SCX(40)
+#define KB_W        (TFT_W - UI_SCX(80))
+#define KB_INV_Y    (CONTENT_Y + UI_SCY(8))
+#define KB_INV_H    UI_SCY(40)
+// Chips (snelknoppen) worden weggelaten als scherm te klein is (CYD40H)
+#define KB_CHIP_H   (CONTENT_H > 280 ? UI_SCY(34) : 0)
+#define KB_CHIP_H2  (CONTENT_H > 280 ? UI_SCY(34) : 0)
 #define KB_CHIP_Y   (KB_INV_Y + KB_INV_H + 4)
-#define KB_CHIP_H   34
-#define KB_CHIP_H2  34
-#define KB_KEYS_Y   (KB_CHIP_Y + KB_CHIP_H + KB_CHIP_H2 + 4)
-#define KB_TOETS_H  44
+#define KB_KEYS_Y   (KB_CHIP_Y + KB_CHIP_H + KB_CHIP_H2 + (KB_CHIP_H > 0 ? 4 : 0))
+#define KB_TOETS_H  UI_SCY(44)
 #define KB_BTN_Y    (KB_KEYS_Y + 4 * (KB_TOETS_H + 4) + 4)
-#define KB_BTN_H    40
+#define KB_BTN_H    UI_SCY(40)
 
-// Knop-x posities (relatief aan KB_X)
-#define KB_DEL_X     0
-#define KB_DEL_W    85
-#define KB_CLR_X    93
-#define KB_CLR_W    78
-#define KB_CAPS_X   179
-#define KB_CAPS_W   76
-#define KB_SYM_X    263
-#define KB_SYM_W    72
-#define KB_SPA_X    343
-#define KB_SPA_W   108
-#define KB_OPS_X    459
-#define KB_OPS_W   142
-#define KB_CAN_X    609
-#define KB_CAN_W    82
+// Knop-x posities (relatief aan KB_X, geschaald)
+#define KB_DEL_X    0
+#define KB_DEL_W    UI_SCX(85)
+#define KB_CLR_X    UI_SCX(93)
+#define KB_CLR_W    UI_SCX(78)
+#define KB_CAPS_X   UI_SCX(179)
+#define KB_CAPS_W   UI_SCX(76)
+#define KB_SYM_X    UI_SCX(263)
+#define KB_SYM_W    UI_SCX(72)
+#define KB_SPA_X    UI_SCX(343)
+#define KB_SPA_W    UI_SCX(108)
+#define KB_OPS_X    UI_SCX(459)
+#define KB_OPS_W    UI_SCX(142)
+#define KB_CAN_X    UI_SCX(609)
+#define KB_CAN_W    UI_SCX(82)
 
 static const char* cfg_chips_r1[] = {
     "**L_hek", "**L_navi", "**L_3kl", "**L_anker", "**L_stoom",
@@ -592,22 +594,22 @@ static void pin_overlay_teken() {
     tft.print(titel);
 
     // 4 invoer stippen
-    int slot_w = 52, slot_h = 46, slot_gap = 10;
+    int slot_w = UI_SCX(52), slot_h = UI_SCY(46), slot_gap = UI_SCX(10);
     int slot_total = 4 * slot_w + 3 * slot_gap;
     int sx = PIN_OV_X + (PIN_OV_W - slot_total) / 2;
-    int sy = PIN_OV_Y + 44;
+    int sy = PIN_OV_Y + UI_SCY(44);
     int ingevoerd = strlen(pin_invoer);
     for (int i = 0; i < 4; i++) {
         int ix = sx + i * (slot_w + slot_gap);
         tft.fillRoundRect(ix, sy, slot_w, slot_h, 5, C_SURFACE2);
         tft.drawRoundRect(ix, sy, slot_w, slot_h, 5, (i < ingevoerd) ? C_CYAN : C_SURFACE3);
         if (i < ingevoerd)
-            tft.fillCircle(ix + slot_w / 2, sy + slot_h / 2, 9, C_CYAN);
+            tft.fillCircle(ix + slot_w / 2, sy + slot_h / 2, UI_SCY(9), C_CYAN);
     }
 
     // Numeriek toetsenbord (0-9, geen komma)
     int kx = PIN_OV_X + (PIN_OV_W - (3 * PIN_KW + 2 * PIN_KGAP)) / 2;
-    int ky = PIN_OV_Y + 104;
+    int ky = PIN_OV_Y + UI_SCY(104);
     const char* krows[3] = {"789", "456", "123"};
     for (int r = 0; r < 3; r++) {
         for (int k = 0; k < 3; k++) {
@@ -705,7 +707,7 @@ bool pin_overlay_run(int x, int y) {
     return false;
 #else
     int kx = PIN_OV_X + (PIN_OV_W - (3 * PIN_KW + 2 * PIN_KGAP)) / 2;
-    int ky = PIN_OV_Y + 104;
+    int ky = PIN_OV_Y + UI_SCY(104);
     const char* krows[3] = {"789", "456", "123"};
 
     for (int r = 0; r < 3; r++) {
@@ -1415,7 +1417,7 @@ void screen_config_toetsenbord_teken() {
     }
     tft.print("_");
 
-    if (!cfg_bewerk_zeilnr && !cfg_kb_info_mode && !cfg_kb_numeriek) cfg_chips_teken();
+    if (KB_CHIP_H > 0 && !cfg_bewerk_zeilnr && !cfg_kb_info_mode && !cfg_kb_numeriek) cfg_chips_teken();
 
     // Numeriek toetsenbord (alleen cijfers + komma)
     if (cfg_kb_numeriek) {

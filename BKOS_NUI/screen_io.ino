@@ -104,35 +104,35 @@ static void io_rij_teken(int kanaal, int rij_y) {
 
     // Naam
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
-    tft.setCursor(42, rij_y + (IO_RIJ_H - 16) / 2);
+    tft.setCursor(UI_SCX(42), rij_y + (IO_RIJ_H - 16) / 2);
     tft.print(io_namen[kanaal]);
 
     // Richting badge (alleen INGANG markeren)
     if (is_in) {
-        tft.fillRoundRect(440, rij_y + 8, 62, IO_RIJ_H - 16, 4, C_BLUE);
+        tft.fillRoundRect(UI_SCX(440), rij_y + 8, UI_SCX(62), IO_RIJ_H - 16, 4, C_BLUE);
         tft.setTextSize(1); tft.setTextColor(C_WHITE);
-        tft.setCursor(449, rij_y + (IO_RIJ_H - 8) / 2);
+        tft.setCursor(UI_SCX(440) + 9, rij_y + (IO_RIJ_H - 8) / 2);
         tft.print("INGANG");
     }
 
     // Status indicator
     const uint16_t staat_kleur[] = {C_LIGHT_OFF, C_LIGHT_COOLING, C_LIGHT_PENDING, C_GREEN};
     const char* staat_txt[] = {"UIT", "KOELT", "WACHT", "AAN"};
-    tft.fillRoundRect(512, rij_y + 8, 70, IO_RIJ_H - 16, 4, staat_kleur[staat]);
+    tft.fillRoundRect(UI_SCX(512), rij_y + 8, UI_SCX(70), IO_RIJ_H - 16, 4, staat_kleur[staat]);
     tft.setTextSize(1);
     tft.setTextColor(staat == LSTATE_ECHT_AAN ? C_TEXT_DARK : C_TEXT_DIM);
     int tw = strlen(staat_txt[staat]) * 6;
-    tft.setCursor(512 + (70 - tw) / 2, rij_y + (IO_RIJ_H - 8) / 2);
+    tft.setCursor(UI_SCX(512) + (UI_SCX(70) - tw) / 2, rij_y + (IO_RIJ_H - 8) / 2);
     tft.print(staat_txt[staat]);
 
     // Schakelaar knop (uitgang)
     if (!is_in) {
         bool aan = (output == IO_AAN || output == IO_INV_AAN);
-        tft.fillRoundRect(592, rij_y + 6, 90, IO_RIJ_H - 12, 6, aan ? RGB565(0, 140, 60) : C_SURFACE2);
+        tft.fillRoundRect(UI_SCX(592), rij_y + 6, UI_SCX(90), IO_RIJ_H - 12, 6, aan ? RGB565(0, 140, 60) : C_SURFACE2);
         tft.setTextSize(2); tft.setTextColor(aan ? C_WHITE : C_TEXT_DIM);
         const char* sw_lbl = aan ? "AAN" : "UIT";
         tw = strlen(sw_lbl) * 12;
-        tft.setCursor(592 + (90 - tw) / 2, rij_y + (IO_RIJ_H - 16) / 2);
+        tft.setCursor(UI_SCX(592) + (UI_SCX(90) - tw) / 2, rij_y + (IO_RIJ_H - 16) / 2);
         tft.print(sw_lbl);
     }
 
@@ -150,18 +150,18 @@ static void io_sb_teken() {
     sb_teken_basis();
 
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(86, (SB_H - 16) / 2);
+    tft.setCursor(UI_SCX(86), (SB_H - 16) / 2);
     tft.print("IO OVERZICHT");
 
-    // Paginering: eindigt vóór klok (SB_KLOK_X=732), px+246 < 732 → px < 486
+    // Paginering in statusbalk (geschaald mee met schermresolutie)
     char pag[12]; snprintf(pag, sizeof(pag), "%d/%d", io_pagina + 1, n_pag);
-    int px = TFT_W - 340;   // 460 → button2 eindigt op 460+156+80=696 < 732 ✓
-    ui_knop(px,       4, 80, SB_H - 8, "< VORIG",   voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
+    int px = TFT_W - UI_SCX(340);
+    ui_knop(px,              4, UI_SCX(80), SB_H - 8, "< VORIG",  voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
     tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
     int tw = strlen(pag) * 12;
-    tft.setCursor(px + 86 + (44 - tw) / 2, (SB_H - 16) / 2);
+    tft.setCursor(px + UI_SCX(86) + (UI_SCX(44) - tw) / 2, (SB_H - 16) / 2);
     tft.print(pag);
-    ui_knop(px + 136, 4, 80, SB_H - 8, "VOLG >",  achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
+    ui_knop(px + UI_SCX(136), 4, UI_SCX(80), SB_H - 8, "VOLG >",  achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
 }
 
 void screen_io_teken_rijen() {
@@ -258,13 +258,13 @@ void screen_io_run(int x, int y, bool aanraking) {
     if (y >= 0 && y < SB_H) {
         int n_vis = io_zichtbaar();
         int n_pag = max(1, (n_vis + IO_RIJEN_PER_PAGINA - 1) / IO_RIJEN_PER_PAGINA);
-        int px    = TFT_W - 340;  // zelfde als io_sb_teken
-        if (x >= px && x < px + 80 && io_pagina > 0) {
+        int px    = TFT_W - UI_SCX(340);  // zelfde als io_sb_teken
+        if (x >= px && x < px + UI_SCX(80) && io_pagina > 0) {
             io_pagina--;
             prev_pagina = -1;
             io_sb_teken();
             screen_io_teken_rijen();
-        } else if (x >= px + 136 && x < px + 216 && io_pagina < n_pag - 1) {
+        } else if (x >= px + UI_SCX(136) && x < px + UI_SCX(216) && io_pagina < n_pag - 1) {
             io_pagina++;
             prev_pagina = -1;
             io_sb_teken();
@@ -274,7 +274,7 @@ void screen_io_run(int x, int y, bool aanraking) {
     }
 
     // Schakelaar klik
-    if (y >= CONTENT_Y && y < NAV_Y && x >= 592 && x <= 682) {
+    if (y >= CONTENT_Y && y < NAV_Y && x >= UI_SCX(592) && x <= UI_SCX(592) + UI_SCX(90)) {
         int rij    = (y - CONTENT_Y) / IO_RIJ_H;
         int kanaal = io_pagina * IO_RIJEN_PER_PAGINA + rij;
         int n_vis  = io_zichtbaar();

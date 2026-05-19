@@ -3,8 +3,8 @@
 #include "app_state.h"
 #include "io.h"
 
-#define IO_RIJEN_PER_PAGINA  9   // CONTENT_H(396) / IO_RIJ_H(44) = 9
-#define IO_RIJ_H             44
+#define IO_RIJ_H             UI_SCY(44)                    // 44px @ S3, 29px @ CYD40H
+#define IO_RIJEN_PER_PAGINA  (CONTENT_H / IO_RIJ_H)
 
 extern int io_pagina;
 

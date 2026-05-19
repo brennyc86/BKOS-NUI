@@ -3,7 +3,7 @@
 #include "app_state.h"
 #include "hw_io.h"
 
-#define CFG_RIJ_H          38   // compact 2-kolom layout
+#define CFG_RIJ_H          UI_SCY(38) // rijen schalen mee met schermhoogte
 #define CFG_INVOER_LEN     100  // groot genoeg voor GitHub PAT (~93 chars)
 #define CFG_TAB_H          0    // IO NAMEN tab verwijderd
 #define CFG_TAB_Y          CONTENT_Y
@@ -11,14 +11,14 @@
 
 // Helderheid balk (binnen tab 1 en tab 0)
 #define HLD_Y     (CFG_CONT_Y + 2)
-#define HLD_H     40
+#define HLD_H     UI_SCY(40)
 #define HLD_BTN_W 44
 
 // IO namen tab — 2 kolommen, 7 rijen per kolom
 #define CFG_IO_Y       (CFG_CONT_Y + HLD_H + 6)
-#define CFG_IO_RIJEN_N  7   // rijen per kolom
+#define CFG_IO_RIJEN_N  7   // rijen per kolom (past op S3 én CYD40H na schaling)
 #define CFG_IO_KOLOMMEN 2   // aantal kolommen
-#define CFG_SCROLL_H   38   // hoogte van de scroll-footer strip
+#define CFG_SCROLL_H   UI_SCY(38) // scroll-footer schalen mee
 
 extern int  cfg_scroll;
 extern int  cfg_geselecteerd;

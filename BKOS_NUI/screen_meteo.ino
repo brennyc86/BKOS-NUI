@@ -34,24 +34,24 @@ static const int rws_naar_harm[12] = {
     6, // Delfzijl → Delfzijl
 };
 
-// ─── Getij tabel layout ───────────────────────────────────────────────────
-#define GTJ_HDR_H   26
-#define GTJ_NOW_H   26
-#define GTJ_ROW_H   38
-#define GTJ_ROWS_N  7
-#define GTJ_COLS_N  2
-#define GTJ_TABLE_Y (PANEL_Y + GTJ_HDR_H + GTJ_NOW_H + 4)
-#define GTJ_COL_W   ((TFT_W - 20) / GTJ_COLS_N)
-
-static int getij_scroll = 0;
-
-// ─── Layout ───────────────────────────────────────────────────────────────
+// ─── Layout (geschaald vanuit S3 800×480 referentie) ──────────────────────
 #define TAB_Y       CONTENT_Y
-#define TAB_H       38
+#define TAB_H       UI_SCY(38)
 #define TAB_CNT     3
 #define TAB_W       (TFT_W / TAB_CNT)
 #define PANEL_Y     (TAB_Y + TAB_H + 2)
 #define PANEL_H     (TFT_H - NAV_H - PANEL_Y)
+
+// ─── Getij tabel layout ───────────────────────────────────────────────────
+#define GTJ_HDR_H   UI_SCY(26)
+#define GTJ_NOW_H   UI_SCY(26)
+#define GTJ_ROW_H   UI_SCY(38)
+#define GTJ_COLS_N  2
+#define GTJ_TABLE_Y (PANEL_Y + GTJ_HDR_H + GTJ_NOW_H + 4)
+#define GTJ_COL_W   ((TFT_W - 20) / GTJ_COLS_N)
+#define GTJ_ROWS_N  ((PANEL_H - GTJ_HDR_H - GTJ_NOW_H - 4) / GTJ_ROW_H)
+
+static int getij_scroll = 0;
 
 // ─── Weericons (getekend) ─────────────────────────────────────────────────
 static void weer_zon(int cx, int cy, int r, uint16_t c) {
@@ -697,7 +697,7 @@ static void meteo_getij_teken() {
 
 // ─── LOCATIE TAB ──────────────────────────────────────────────────────────
 #define LOC_WL_Y    (PANEL_Y + 4)
-#define LOC_WL_H    56
+#define LOC_WL_H    UI_SCY(56)
 #define LOC_ST_Y    (LOC_WL_Y + LOC_WL_H + 6)
 
 static void meteo_locatie_teken() {

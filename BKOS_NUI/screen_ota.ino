@@ -73,9 +73,10 @@ static void pico_screen_ota_teken_impl() {
 // ────────────────────────────────────────────────────────────────────────────
 
 // ─── Layout: links = actieknoppen, rechts = beta toggle + info ───────────────
+// OTA linker paneel (actioknoppen)
 #define OTA_LX       20
-#define OTA_LW       445
-#define OTA_BTN_H    50
+#define OTA_LW       (OTA_RX - OTA_LX - 10)  // past automatisch bij OTA_RX aan
+#define OTA_BTN_H    UI_SCY(50)
 #define OTA_BTN_GAP  6
 #define OTA_BTN_Y1   (CONTENT_Y + 10)
 #define OTA_BTN_Y2   (OTA_BTN_Y1 + OTA_BTN_H + OTA_BTN_GAP)
@@ -83,19 +84,20 @@ static void pico_screen_ota_teken_impl() {
 #define OTA_BTN_Y4   (OTA_BTN_Y3 + OTA_BTN_H + OTA_BTN_GAP)
 #define OTA_BTN_Y5   (OTA_BTN_Y4 + OTA_BTN_H + OTA_BTN_GAP)
 
-#define OTA_RX       476
+// OTA rechter paneel (geschaald vanuit S3 800×480 referentie)
+#define OTA_RX       UI_SCX(476)
 #define OTA_RW       (TFT_W - OTA_RX - 10)
 
 #define OTA_RTOG_Y   (CONTENT_Y + 10)                // Beta toggle
-#define OTA_RTOG_H   44
+#define OTA_RTOG_H   UI_SCY(44)
 #define OTA_RAUTO_Y  (OTA_RTOG_Y + OTA_RTOG_H + 4)  // Auto-update toggle
-#define OTA_RAUTO_H  44
+#define OTA_RAUTO_H  UI_SCY(44)
 #define OTA_RINT_Y   (OTA_RAUTO_Y + OTA_RAUTO_H + 4) // Check-interval kiezer
-#define OTA_RINT_H   36
+#define OTA_RINT_H   UI_SCY(36)
 #define OTA_RTIME_Y  (OTA_RINT_Y + OTA_RINT_H + 2)   // Dagelijkse check tijd
-#define OTA_RTIME_H  28
+#define OTA_RTIME_H  UI_SCY(28)
 #define OTA_RVGV_Y   (OTA_RTIME_Y + OTA_RTIME_H + 4) // Vorige versies knop
-#define OTA_RVGV_H   40
+#define OTA_RVGV_H   UI_SCY(40)
 #define OTA_RINFO_Y  (OTA_RVGV_Y + OTA_RVGV_H + 6)  // Info panel
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -128,7 +130,7 @@ static void _ota_beta_toggle_teken() {
     }
 
     tft.setTextSize(2); tft.setTextColor(fg);
-    tft.setCursor(OTA_RX + 36, OTA_RTOG_Y + (OTA_RTOG_H - 16) / 2);
+    tft.setCursor(OTA_RX + UI_SCX(36), OTA_RTOG_Y + (OTA_RTOG_H - 16) / 2);
     tft.print(beta ? "BETA AAN" : "BETA UIT");
 }
 
@@ -147,7 +149,7 @@ static void _ota_auto_toggle_teken() {
         tft.drawLine(cbx+6, cby+12, cbx+14, cby+3, fg);
     }
     tft.setTextSize(2); tft.setTextColor(fg);
-    tft.setCursor(OTA_RX + 36, OTA_RAUTO_Y + (OTA_RAUTO_H - 16) / 2);
+    tft.setCursor(OTA_RX + UI_SCX(36), OTA_RAUTO_Y + (OTA_RAUTO_H - 16) / 2);
     tft.print(au ? "AUTO UPDATE AAN" : "AUTO UPDATE UIT");
 }
 
@@ -243,62 +245,65 @@ static void _ota_vorige_overlay_teken() {
     tft.fillRect(0, CONTENT_Y, TFT_W, NAV_Y - CONTENT_Y, C_BG);
 
     // Header
-    tft.fillRect(0, CONTENT_Y, TFT_W, 40, C_SURFACE);
+    int hdr_h = UI_SCY(40);
+    tft.fillRect(0, CONTENT_Y, TFT_W, hdr_h, C_SURFACE);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(16, CONTENT_Y + 12); tft.print("VORIGE VERSIES");
-    ui_knop(TFT_W - 114, CONTENT_Y + 4, 104, 32, "SLUITEN", C_SURFACE2, C_TEXT_DIM);
-    tft.drawFastHLine(0, CONTENT_Y + 40, TFT_W, C_SURFACE2);
+    tft.setCursor(16, CONTENT_Y + UI_SCY(12)); tft.print("VORIGE VERSIES");
+    ui_knop(TFT_W - UI_SCX(114), CONTENT_Y + 4, UI_SCX(104), hdr_h - 8, "SLUITEN", C_SURFACE2, C_TEXT_DIM);
+    tft.drawFastHLine(0, CONTENT_Y + hdr_h, TFT_W, C_SURFACE2);
 
     if (!ota_vorige_geladen) {
         tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(16, CONTENT_Y + 60); tft.print("Laden...");
+        tft.setCursor(16, CONTENT_Y + UI_SCY(60)); tft.print("Laden...");
         return;
     }
     if (!wifi_verbonden && ota_releases_cnt == 0) {
         tft.setTextSize(1); tft.setTextColor(C_RED_BRIGHT);
-        tft.setCursor(16, CONTENT_Y + 60); tft.print("Geen WiFi verbinding.");
+        tft.setCursor(16, CONTENT_Y + UI_SCY(60)); tft.print("Geen WiFi verbinding.");
         return;
     }
     if (ota_releases_cnt == 0) {
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(16, CONTENT_Y + 60); tft.print("Geen eerdere versies gevonden.");
+        tft.setCursor(16, CONTENT_Y + UI_SCY(60)); tft.print("Geen eerdere versies gevonden.");
         return;
     }
 
     // Kolomkoppen
-    int hy = CONTENT_Y + 44;
-    tft.fillRect(0, hy, TFT_W, 20, C_SURFACE);
+    int hy = CONTENT_Y + hdr_h + 4;
+    int col_h = UI_SCY(20);
+    tft.fillRect(0, hy, TFT_W, col_h, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(16,  hy + 6); tft.print("Versie");
-    tft.setCursor(200, hy + 6); tft.print("Datum");
-    tft.setCursor(400, hy + 6); tft.print("Status");
-    tft.drawFastHLine(0, hy + 20, TFT_W, C_SURFACE2);
-    hy += 20;
+    tft.setCursor(16,          hy + (col_h - 8) / 2); tft.print("Versie");
+    tft.setCursor(UI_SCX(200), hy + (col_h - 8) / 2); tft.print("Datum");
+    tft.setCursor(UI_SCX(400), hy + (col_h - 8) / 2); tft.print("Status");
+    tft.drawFastHLine(0, hy + col_h, TFT_W, C_SURFACE2);
+    hy += col_h;
 
-    int rij_h = 46;
+    int rij_h = UI_SCY(46);
     for (int i = 0; i < ota_releases_cnt && hy < NAV_Y - 10; i++) {
         bool huidig = (strcmp(ota_releases[i].versie, BKOS_NUI_VERSIE) == 0);
         tft.fillRect(0, hy, TFT_W, rij_h, i % 2 == 0 ? C_SURFACE : C_BG);
 
         tft.setTextSize(2);
         tft.setTextColor(huidig ? C_CYAN : C_TEXT);
-        tft.setCursor(16, hy + 14); tft.print(ota_releases[i].versie);
+        tft.setCursor(16, hy + UI_SCY(14)); tft.print(ota_releases[i].versie);
 
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(200, hy + 20); tft.print(ota_releases[i].datum);
+        tft.setCursor(UI_SCX(200), hy + UI_SCY(20)); tft.print(ota_releases[i].datum);
 
         if (huidig) {
             tft.setTextColor(C_CYAN);
-            tft.setCursor(400, hy + 20); tft.print("actief");
+            tft.setCursor(UI_SCX(400), hy + UI_SCY(20)); tft.print("actief");
         } else {
-            ui_knop(TFT_W - 124, hy + 8, 110, 30, "FLASH", C_AMBER, C_BG);
+            ui_knop(TFT_W - UI_SCX(124), hy + UI_SCY(8), UI_SCX(110), UI_SCY(30), "FLASH", C_AMBER, C_BG);
         }
         hy += rij_h;
     }
 }
 
 static void _ota_flash_bevestig_teken() {
-    int ox = 100, oy = CONTENT_Y + 60, ow = TFT_W - 200, oh = 200;
+    int ox = UI_SCX(100), oy = CONTENT_Y + UI_SCY(60);
+    int ow = TFT_W - UI_SCX(200), oh = UI_SCY(200);
     tft.fillRect(0, CONTENT_Y, TFT_W, NAV_Y - CONTENT_Y, RGB565(4, 8, 16));
     tft.fillRoundRect(ox, oy, ow, oh, 10, C_SURFACE);
     tft.drawRoundRect(ox,   oy,   ow,   oh,   10, C_AMBER);
@@ -306,33 +311,35 @@ static void _ota_flash_bevestig_teken() {
     tft.setTextSize(2); tft.setTextColor(C_AMBER);
     char titel[40]; snprintf(titel, sizeof(titel), "VERSIE %s FLASHEN?", ota_flash_versie);
     int tw = strlen(titel) * 12;
-    tft.setCursor(ox + (ow - tw) / 2, oy + 18); tft.print(titel);
+    tft.setCursor(ox + (ow - tw) / 2, oy + UI_SCY(18)); tft.print(titel);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(ox + 16, oy + 54); tft.print("De huidige firmware wordt overschreven.");
-    tft.setCursor(ox + 16, oy + 70); tft.print("Het apparaat herstart automatisch.");
+    tft.setCursor(ox + 16, oy + UI_SCY(54)); tft.print("De huidige firmware wordt overschreven.");
+    tft.setCursor(ox + 16, oy + UI_SCY(70)); tft.print("Het apparaat herstart automatisch.");
     int bw2 = (ow - 48) / 2;
-    int by2 = oy + oh - 58;
-    ui_knop(ox + 16,      by2, bw2, 46, "ANNULEREN", C_SURFACE2,   C_TEXT_DIM);
-    ui_knop(ox + 32 + bw2, by2, bw2, 46, "BEVESTIG",  C_AMBER, C_BG);
+    int by2 = oy + oh - UI_SCY(58);
+    int bh2 = UI_SCY(46);
+    ui_knop(ox + 16,       by2, bw2, bh2, "ANNULEREN", C_SURFACE2, C_TEXT_DIM);
+    ui_knop(ox + 32 + bw2, by2, bw2, bh2, "BEVESTIG",  C_AMBER,    C_BG);
 }
 
 static void ota_verwijder_overlay_teken() {
-    int ox = 40, oy = CONTENT_Y + 50, ow = TFT_W - 80, oh = 210;
+    int ox = UI_SCX(40), oy = CONTENT_Y + UI_SCY(50);
+    int ow = TFT_W - UI_SCX(80), oh = UI_SCY(210);
     tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, RGB565(8, 0, 0));
     tft.fillRoundRect(ox, oy, ow, oh, 10, C_SURFACE);
     tft.drawRoundRect(ox,   oy,   ow,   oh,   10, C_RED_BRIGHT);
     tft.drawRoundRect(ox+1, oy+1, ow-2, oh-2, 10, C_RED_BRIGHT);
     tft.setTextSize(2); tft.setTextColor(C_RED_BRIGHT);
     int tw = strlen("BKOS-NUI VERWIJDEREN?") * 12;
-    tft.setCursor(ox + (ow - tw) / 2, oy + 14); tft.print("BKOS-NUI VERWIJDEREN?");
+    tft.setCursor(ox + (ow - tw) / 2, oy + UI_SCY(14)); tft.print("BKOS-NUI VERWIJDEREN?");
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(ox + 16, oy + 50); tft.print("De huidige firmware wordt gewist en vervangen door");
-    tft.setCursor(ox + 16, oy + 64); tft.print("blanco firmware. Gebruik daarna OTA om te herinstalleren.");
-    tft.setCursor(ox + 16, oy + 80); tft.print("Het apparaat herstart automatisch na het flashen.");
-    int btn_y = oy + oh - 58;
-    int bw = (ow - 48) / 2;
-    ui_knop(ox + 16,      btn_y, bw, 46, "ANNULEREN", C_SURFACE2,   C_TEXT_DIM);
-    ui_knop(ox + 32 + bw, btn_y, bw, 46, "BEVESTIG",  C_RED_BRIGHT, C_WHITE);
+    tft.setCursor(ox + 16, oy + UI_SCY(50)); tft.print("De huidige firmware wordt gewist en vervangen door");
+    tft.setCursor(ox + 16, oy + UI_SCY(64)); tft.print("blanco firmware. Gebruik daarna OTA om te herinstalleren.");
+    tft.setCursor(ox + 16, oy + UI_SCY(80)); tft.print("Het apparaat herstart automatisch na het flashen.");
+    int btn_y = oy + oh - UI_SCY(58);
+    int bh = UI_SCY(46), bw = (ow - 48) / 2;
+    ui_knop(ox + 16,      btn_y, bw, bh, "ANNULEREN", C_SURFACE2,   C_TEXT_DIM);
+    ui_knop(ox + 32 + bw, btn_y, bw, bh, "BEVESTIG",  C_RED_BRIGHT, C_WHITE);
 }
 
 // ─── Hoofdfuncties ────────────────────────────────────────────────────────────
@@ -459,10 +466,12 @@ void screen_ota_run(int x, int y, bool aanraking) {
     // ── VORIGE VERSIES overlay ───────────────────────────────────────────────
     if (ota_vorige_tonen) {
         if (ota_flash_bevestig) {
-            int ox = 100, oy = CONTENT_Y + 60, ow = TFT_W - 200, oh = 200;
+            int ox = UI_SCX(100), oy = CONTENT_Y + UI_SCY(60);
+            int ow = TFT_W - UI_SCX(200), oh = UI_SCY(200);
             int bw2 = (ow - 48) / 2;
-            int by2 = oy + oh - 58;
-            if (y >= by2 && y < by2 + 46) {
+            int by2 = oy + oh - UI_SCY(58);
+            int bh2 = UI_SCY(46);
+            if (y >= by2 && y < by2 + bh2) {
                 if (x >= ox + 16 && x < ox + 16 + bw2) {
                     ota_flash_bevestig = false;
                     _ota_vorige_overlay_teken();
@@ -476,19 +485,21 @@ void screen_ota_run(int x, int y, bool aanraking) {
         }
 
         // SLUITEN
-        if (y >= CONTENT_Y + 4 && y < CONTENT_Y + 36 && x >= TFT_W - 114) {
+        int hdr_h = UI_SCY(40);
+        if (y >= CONTENT_Y + 4 && y < CONTENT_Y + hdr_h && x >= TFT_W - UI_SCX(114)) {
             ota_vorige_tonen = false; screen_ota_teken(); return;
         }
 
-        // Rij klikken: rij start na header(40) + kolom header(20) = +60
-        int rij_start_y = CONTENT_Y + 64;
-        int rij_h = 46;
+        // Rijen: na header + kolomheader
+        int col_h = UI_SCY(20);
+        int rij_start_y = CONTENT_Y + hdr_h + 4 + col_h;
+        int rij_h = UI_SCY(46);
         for (int i = 0; i < ota_releases_cnt; i++) {
             int ry = rij_start_y + i * rij_h;
             if (ry >= NAV_Y - 10) break;
             if (y >= ry && y < ry + rij_h) {
                 bool huidig = (strcmp(ota_releases[i].versie, BKOS_NUI_VERSIE) == 0);
-                if (!huidig && x >= TFT_W - 124) {
+                if (!huidig && x >= TFT_W - UI_SCX(124)) {
                     strncpy(ota_flash_versie, ota_releases[i].versie, 15);
                     strncpy(ota_flash_url,    ota_releases[i].url,    127);
                     ota_flash_bevestig = true;
@@ -502,10 +513,11 @@ void screen_ota_run(int x, int y, bool aanraking) {
 
     // ── Bevestigings-overlay verwijderen ─────────────────────────────────────
     if (ota_verwijder_bevestig) {
-        int ox = 40, oy = CONTENT_Y + 50, ow = TFT_W - 80, oh = 210;
-        int btn_y = oy + oh - 58;
-        int bw = (ow - 48) / 2;
-        if (y >= btn_y && y < btn_y + 46) {
+        int ox = UI_SCX(40), oy = CONTENT_Y + UI_SCY(50);
+        int ow = TFT_W - UI_SCX(80), oh = UI_SCY(210);
+        int btn_y = oy + oh - UI_SCY(58);
+        int bh = UI_SCY(46), bw = (ow - 48) / 2;
+        if (y >= btn_y && y < btn_y + bh) {
             if (x >= ox + 16 && x < ox + 16 + bw) {
                 ota_verwijder_bevestig = false; screen_ota_teken();
             } else if (x >= ox + 32 + bw && x < ox + 32 + bw + bw) {

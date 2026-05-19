@@ -190,7 +190,7 @@ static void meter_naar_ft(const char* val, char* buf, int len) {
 
 // ─── Tab balk ────────────────────────────────────────────────────────
 #define INFO_TAB_Y   CONTENT_Y
-#define INFO_TAB_H   36
+#define INFO_TAB_H   UI_SCY(36)
 #define INFO_TAB_N   3
 #define INFO_TAB_W   (TFT_W / INFO_TAB_N)
 
@@ -215,8 +215,8 @@ static void info_tabs_teken() {
 
 // ─── Velden ──────────────────────────────────────────────────────────
 #define VELD_START_Y  (INFO_TAB_Y + INFO_TAB_H + 4)
-#define VELD_H        50
-#define VELD_LABEL_W  120
+#define VELD_H        UI_SCY(50)
+#define VELD_LABEL_W  UI_SCX(120)
 
 static void info_veld_teken(int idx, int y, const char* label, const char* waarde, bool numeriek) {
     tft.fillRect(10, y, TFT_W - 20, VELD_H - 2, (idx % 2 == 0) ? C_SURFACE : C_BG);
@@ -225,11 +225,11 @@ static void info_veld_teken(int idx, int y, const char* label, const char* waard
 
     if (numeriek && strlen(waarde) > 0) {
         tft.setTextSize(2); tft.setTextColor(C_TEXT);
-        tft.setCursor(VELD_LABEL_W + 18, y + 6);
+        tft.setCursor(VELD_LABEL_W + 18, y + UI_SCY(6));
         tft.print(waarde); tft.print(" m");
         char ftbuf[20]; meter_naar_ft(waarde, ftbuf, sizeof(ftbuf));
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(VELD_LABEL_W + 18, y + 28);
+        tft.setCursor(VELD_LABEL_W + 18, y + UI_SCY(28));
         tft.print(ftbuf);
     } else if (numeriek) {
         tft.setTextSize(2); tft.setTextColor(C_DARK_GRAY);

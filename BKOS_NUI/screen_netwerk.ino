@@ -4,13 +4,13 @@
 
 // ─── Layout constanten ────────────────────────────────────────────────────────
 #define SNW_TAB_Y   CONTENT_Y
-#define SNW_TAB_H   36
+#define SNW_TAB_H   UI_SCY(36)
 #define SNW_TAB_N   3
 #define SNW_TAB_W   (TFT_W / SNW_TAB_N)
 #define SNW_VELD_Y  (SNW_TAB_Y + SNW_TAB_H + 4)
-#define SNW_MODUS_H 60   // rijhoogte in modus-tab
-#define SNW_PEER_H  44   // rijhoogte in apparaten-tab
-#define SNW_INFO_H  48   // rijhoogte in status-tab
+#define SNW_MODUS_H UI_SCY(60)  // rijhoogte in modus-tab
+#define SNW_PEER_H  UI_SCY(44)  // rijhoogte in apparaten-tab
+#define SNW_INFO_H  UI_SCY(48)  // rijhoogte in status-tab
 
 static byte snw_tab = 0;
 

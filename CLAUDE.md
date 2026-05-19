@@ -84,6 +84,39 @@ Wanneer Brendan valideert → officiële release:
 
 **Stabiele releases** worden getagd met `git tag vX.Y.Z` zodat gebruikers altijd kunnen terugkeren naar een goedgekeurde versie.
 
+### BKOS Blanco — leveringsbasis
+
+BKOS Blanco is een schone basisconfiguratie voor het opleveren van nieuwe boordcomputers (geen kanaalnamen, geen bootnaam, geen WiFi-instellingen). De installer toont BKOS Blanco als keuze naast BKOS-NUI.
+
+**Bestandsstructuur:**
+- Beta-versie per platform: `firmware/versie_blanco_{platform}.txt` + `firmware/bkos_blanco_{platform}.bin`
+- Stabiele releases: `firmware/blanco_releases.json`
+
+**Werkwijze nieuwe Blanco-release:**
+1. Bouw de blanco firmware in Arduino IDE → exporteer per platform als `bkos_blanco_{platform}.bin`
+2. Kopieer binaries naar `firmware/` en update de versiebestanden:
+   ```
+   firmware/versie_blanco_esp32s3.txt   ← versienummer
+   firmware/versie_blanco_wroom.txt
+   firmware/versie_blanco_cyd28.txt
+   firmware/versie_blanco_cyd40h.txt
+   firmware/versie_blanco_cyd40v.txt
+   firmware/versie_blanco_pico.txt
+   ```
+3. Voeg entry toe aan `firmware/blanco_releases.json`:
+   ```json
+   {"versie":"1.0","datum":"YYYY-MM-DD",
+    "url_blanco_s3":    "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/vblanco-1.0/firmware/bkos_blanco_esp32s3.bin",
+    "url_blanco_wroom": "...",
+    "url_blanco_cyd28": "...",
+    "url_blanco_cyd40h":"...",
+    "url_blanco_cyd40v":"...",
+    "url_blanco_pico":  "..."}
+   ```
+4. Push → installer toont BKOS Blanco automatisch als beschikbaar
+
+**Zolang de versiebestanden leeg zijn** toont de installer "niet beschikbaar voor dit platform" — dat is de standaardstaat totdat Brendan de blanco firmware aanlevert.
+
 ---
 
 ## Architectuur

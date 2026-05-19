@@ -42,9 +42,7 @@
     .wrap { max-width: 780px; margin: 0 auto; }
 
     /* ── Step blocks ── */
-    .step {
-      margin-bottom: 32px;
-    }
+    .step { margin-bottom: 32px; }
     .step-title {
       font-size: 0.7rem;
       letter-spacing: 2px;
@@ -81,6 +79,36 @@
       border-radius: 4px; padding: 1px 6px; color: var(--cyan);
     }
     .card.selected .ctag { background: rgba(0,212,255,.15); }
+
+    /* ── Firmware type cards ── */
+    .fw-cards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .fw-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 14px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      user-select: none;
+    }
+    .fw-card:hover { border-color: var(--cyan); }
+    .fw-card.selected { border-color: var(--cyan); background: var(--surface2); }
+    .fw-card .fw-name {
+      font-weight: 700; font-size: 0.95rem; margin-bottom: 5px; color: var(--text);
+    }
+    .fw-card.selected .fw-name { color: var(--cyan); }
+    .fw-card .fw-desc { font-size: 0.73rem; color: var(--text-dim); line-height: 1.5; }
+    .fw-card .fw-badge {
+      display: inline-block; margin-top: 8px;
+      font-size: 0.65rem; letter-spacing: .5px;
+      border-radius: 4px; padding: 1px 7px;
+    }
+    .fw-card.nui   .fw-badge { background: rgba(0,212,255,.1); border: 1px solid var(--border); color: var(--cyan); }
+    .fw-card.blanco .fw-badge { background: rgba(255,171,64,.1); border: 1px solid rgba(255,171,64,.4); color: var(--amber); }
 
     /* ── Channel buttons ── */
     .channel-row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -210,11 +238,28 @@
     </div>
   </div>
 
-  <!-- Stap 2: versie -->
+  <!-- Stap 2: firmware type -->
   <div class="step">
-    <div class="step-title">Stap 2 — Kies versie</div>
+    <div class="step-title">Stap 2 — Kies firmware</div>
+    <div class="fw-cards">
+      <div class="fw-card nui selected" data-fw="nui" onclick="kiesFirmware(this)">
+        <div class="fw-name">BKOS-NUI</div>
+        <div class="fw-desc">Volledige boordcomputer firmware met alle functies: IO, meteo, getij, Victron, apps, WiFi, OTA.</div>
+        <span class="fw-badge">Reguliere versie</span>
+      </div>
+      <div class="fw-card blanco" data-fw="blanco" onclick="kiesFirmware(this)">
+        <div class="fw-name">BKOS Blanco</div>
+        <div class="fw-desc">Schone basisconfiguratie — geen kanaalnamen, geen bootnaam, geen WiFi-instellingen. Ideaal voor oplevering van nieuwe boordcomputers.</div>
+        <span class="fw-badge">Leveringsbasis</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stap 3: versie -->
+  <div class="step">
+    <div class="step-title">Stap 3 — Kies versie</div>
     <div class="channel-row">
-      <button class="ch-btn selected" id="ch-beta"   onclick="kiesKanaal('beta')">Laatste beta</button>
+      <button class="ch-btn selected" id="ch-beta"   onclick="kiesKanaal('beta')">Laatste build</button>
       <button class="ch-btn"          id="ch-stable" onclick="kiesKanaal('stable')">Stabiele release</button>
     </div>
 
@@ -232,9 +277,9 @@
     </div>
   </div>
 
-  <!-- Stap 3: installeer -->
+  <!-- Stap 4: installeer -->
   <div class="step">
-    <div class="step-title">Stap 3 — Installeer firmware</div>
+    <div class="step-title">Stap 4 — Installeer firmware</div>
     <div class="flash-box">
 
       <!-- ESP32 flash zone -->
@@ -263,7 +308,7 @@
         <a id="download-btn" href="#" download disabled>⬇ Download firmware (.uf2)</a>
       </div>
 
-      <div id="status">Selecteer hardware en versie om te beginnen</div>
+      <div id="status">Selecteer hardware en firmware om te beginnen</div>
     </div>
   </div>
 
@@ -277,35 +322,71 @@
 </footer>
 
 <script>
-const RAW   = 'https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main';
+const RAW = 'https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main';
 
+// Per platform: nui = reguliere firmware, blanco = leveringsbasis
 const PLAT = {
-  esp32s3: { label:'ESP32-S3 (7")',    chip:'ESP32-S3', bin:'bkos_esp32s3_8048s070.bin', vkey:'esp32s3', skey:'url_s3'    },
-  wroom:   { label:'WROOM IO-board',   chip:'ESP32',    bin:'bkos_esp32wroom2432.bin',   vkey:'wroom',   skey:'url_wroom' },
-  cyd28:   { label:'CYD 2.8"',         chip:'ESP32',    bin:'bkos_esp32cyd28.bin',        vkey:'cyd28',   skey:'url_cyd28' },
-  cyd40h:  { label:'CYD 4" liggend',   chip:'ESP32',    bin:'bkos_esp32cyd40h.bin',       vkey:'cyd40h',  skey:'url_cyd40h'},
-  cyd40v:  { label:'CYD 4" staand',    chip:'ESP32',    bin:'bkos_esp32cyd40v.bin',       vkey:'cyd40v',  skey:'url_cyd40v'},
-  pico:    { label:'Pi Pico W',        chip:'RP2040',   bin:'bkos_pico1w2432.uf2',        vkey:'pico',    skey:'url_pico', pico:true },
+  esp32s3: {
+    label: 'ESP32-S3 (7")', chip: 'ESP32-S3',
+    nui:    { bin: 'bkos_esp32s3_8048s070.bin',    vkey: 'esp32s3',       skey: 'url_s3'          },
+    blanco: { bin: 'bkos_blanco_esp32s3.bin',       vkey: 'blanco_esp32s3', skey: 'url_blanco_s3'  },
+  },
+  wroom: {
+    label: 'WROOM IO-board', chip: 'ESP32',
+    nui:    { bin: 'bkos_esp32wroom2432.bin',       vkey: 'wroom',         skey: 'url_wroom'       },
+    blanco: { bin: 'bkos_blanco_wroom.bin',         vkey: 'blanco_wroom',  skey: 'url_blanco_wroom'},
+  },
+  cyd28: {
+    label: 'CYD 2.8"', chip: 'ESP32',
+    nui:    { bin: 'bkos_esp32cyd28.bin',           vkey: 'cyd28',         skey: 'url_cyd28'       },
+    blanco: { bin: 'bkos_blanco_cyd28.bin',         vkey: 'blanco_cyd28',  skey: 'url_blanco_cyd28'},
+  },
+  cyd40h: {
+    label: 'CYD 4" liggend', chip: 'ESP32',
+    nui:    { bin: 'bkos_esp32cyd40h.bin',          vkey: 'cyd40h',        skey: 'url_cyd40h'      },
+    blanco: { bin: 'bkos_blanco_cyd40h.bin',        vkey: 'blanco_cyd40h', skey: 'url_blanco_cyd40h'},
+  },
+  cyd40v: {
+    label: 'CYD 4" staand', chip: 'ESP32',
+    nui:    { bin: 'bkos_esp32cyd40v.bin',          vkey: 'cyd40v',        skey: 'url_cyd40v'      },
+    blanco: { bin: 'bkos_blanco_cyd40v.bin',        vkey: 'blanco_cyd40v', skey: 'url_blanco_cyd40v'},
+  },
+  pico: {
+    label: 'Pi Pico W', chip: 'RP2040', pico: true,
+    nui:    { bin: 'bkos_pico1w2432.uf2',           vkey: 'pico',          skey: 'url_pico'        },
+    blanco: { bin: 'bkos_blanco_pico.uf2',          vkey: 'blanco_pico',   skey: 'url_blanco_pico' },
+  },
 };
 
-let platform = null;
-let kanaal   = 'beta';
-let releases = null;
-let flashUrl = null;
-let flashVer = null;
+let platform  = null;
+let firmware  = 'nui';   // 'nui' | 'blanco'
+let kanaal    = 'beta';
+let releases  = null;    // cache voor releases.json
+let blancRel  = null;    // cache voor blanco_releases.json
+let flashUrl  = null;
+let flashVer  = null;
 let prevManifestUrl = null;
 
 function kiesPlatform(el) {
   document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
   platform = el.dataset.id;
+  releases = null; blancRel = null;  // reset cache bij platformwissel
+  update();
+}
+
+function kiesFirmware(el) {
+  document.querySelectorAll('.fw-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  firmware = el.dataset.fw;
+  releases = null; blancRel = null;
   update();
 }
 
 function kiesKanaal(k) {
   kanaal = k;
-  document.getElementById('ch-beta').classList.toggle('selected',   k==='beta');
-  document.getElementById('ch-stable').classList.toggle('selected', k==='stable');
+  document.getElementById('ch-beta').classList.toggle('selected',   k === 'beta');
+  document.getElementById('ch-stable').classList.toggle('selected', k === 'stable');
   update();
 }
 
@@ -321,7 +402,7 @@ async function update() {
   flashUrl = null; flashVer = null;
   vBox.classList.remove('on');
   flashBtn.disabled = true;
-  dlBtn.removeAttribute('href'); dlBtn.setAttribute('disabled','');
+  dlBtn.removeAttribute('href'); dlBtn.setAttribute('disabled', '');
 
   if (!platform) {
     st.textContent = 'Selecteer hardware (stap 1)';
@@ -329,8 +410,10 @@ async function update() {
     return;
   }
 
-  const p = PLAT[platform];
-  espZone.style.display  = p.pico ? 'none' : 'block';
+  const p  = PLAT[platform];
+  const fv = p[firmware];   // { bin, vkey, skey }
+
+  espZone.style.display  = p.pico ? 'none'  : 'block';
   picoZone.style.display = p.pico ? 'block' : 'none';
 
   sPicker.classList.toggle('on', kanaal === 'stable');
@@ -340,31 +423,45 @@ async function update() {
 
   try {
     if (kanaal === 'beta') {
-      const r = await fetch(`${RAW}/firmware/versie_${p.vkey}.txt`);
-      if (!r.ok) throw new Error(`versie_${p.vkey}.txt niet gevonden (HTTP ${r.status})`);
+      const r = await fetch(`${RAW}/firmware/versie_${fv.vkey}.txt`);
+      if (!r.ok) throw new Error(`versie_${fv.vkey}.txt niet gevonden (HTTP ${r.status})`);
       const ver = (await r.text()).trim();
-      flashVer = ver;
-      flashUrl = `${RAW}/firmware/${p.bin}`;
-      toonVersie(ver, 'Laatste beta-build — kan tussenversies bevatten');
 
-    } else {
-      // Stabiel kanaal
-      if (!releases) {
-        const r = await fetch(`${RAW}/firmware/releases.json`);
-        if (!r.ok) throw new Error('releases.json niet gevonden');
-        releases = (await r.json()).releases || [];
-      }
-      const beschikbaar = releases.filter(rel => rel[p.skey]);
-      const sel = document.getElementById('stable-select');
-
-      if (beschikbaar.length === 0) {
-        sel.innerHTML = '<option>Geen stabiele release voor dit platform</option>';
-        st.textContent = `Nog geen stabiele versie beschikbaar voor ${p.label}`;
+      if (!ver) {
+        st.textContent = `${firmware === 'blanco' ? 'BKOS Blanco' : 'BKOS-NUI'} is nog niet beschikbaar voor ${p.label}`;
         st.className = 'warn';
         return;
       }
 
-      // Populate dropdown (preserve selection if still valid)
+      flashVer = ver;
+      flashUrl = `${RAW}/firmware/${fv.bin}`;
+      const label = firmware === 'blanco' ? 'BKOS Blanco leveringsbasis' : 'Laatste build — kan tussenversies bevatten';
+      toonVersie(ver, label);
+
+    } else {
+      // Stabiel kanaal
+      const relFile = firmware === 'blanco' ? 'blanco_releases.json' : 'releases.json';
+      let cache = firmware === 'blanco' ? blancRel : releases;
+
+      if (!cache) {
+        const r = await fetch(`${RAW}/firmware/${relFile}`);
+        if (!r.ok) throw new Error(`${relFile} niet gevonden`);
+        const json = await r.json();
+        cache = json.releases || [];
+        if (firmware === 'blanco') blancRel = cache; else releases = cache;
+      }
+
+      const beschikbaar = cache.filter(rel => rel[fv.skey]);
+      const sel = document.getElementById('stable-select');
+
+      if (beschikbaar.length === 0) {
+        sel.innerHTML = '<option>Geen stabiele release beschikbaar</option>';
+        const naam = firmware === 'blanco' ? 'BKOS Blanco' : 'BKOS-NUI';
+        st.textContent = `Nog geen stabiele ${naam}-versie voor ${p.label}`;
+        st.className = 'warn';
+        return;
+      }
+
       const prev = sel.value;
       sel.innerHTML = beschikbaar
         .map(rel => `<option value="${rel.versie}">${rel.versie} — ${rel.datum}</option>`)
@@ -372,18 +469,19 @@ async function update() {
       if (beschikbaar.find(r => r.versie === prev)) sel.value = prev;
 
       const keuze = beschikbaar.find(r => r.versie === sel.value);
-      if (!keuze) { st.textContent = 'Kies een versie'; st.className=''; return; }
+      if (!keuze) { st.textContent = 'Kies een versie'; st.className = ''; return; }
 
       flashVer = keuze.versie;
-      flashUrl = keuze[p.skey];
-      toonVersie(`${keuze.versie}  (${keuze.datum})`, 'Officiële stabiele release');
+      flashUrl = keuze[fv.skey];
+      const label = firmware === 'blanco' ? 'Officiële BKOS Blanco release' : 'Officiële stabiele release';
+      toonVersie(`${keuze.versie}  (${keuze.datum})`, label);
     }
 
     // Klaar
     if (p.pico) {
       dlBtn.href = flashUrl;
-      dlBtn.download = `bkos_pico1w2432_${flashVer}.uf2`;
-      dlBtn.textContent = `⬇ Download BKOS-NUI ${flashVer} (.uf2)`;
+      dlBtn.download = `${fv.bin.replace('.uf2', '')}_${flashVer}.uf2`;
+      dlBtn.textContent = `⬇ Download ${firmware === 'blanco' ? 'BKOS Blanco' : 'BKOS-NUI'} ${flashVer} (.uf2)`;
       dlBtn.removeAttribute('disabled');
       setStatus('Klaar — volg de stappen hieronder om te installeren', 'ok');
     } else {
@@ -403,7 +501,7 @@ function toonVersie(num, nota) {
   document.getElementById('versie-box').classList.add('on');
 }
 
-function setStatus(msg, cls='') {
+function setStatus(msg, cls = '') {
   const el = document.getElementById('status');
   el.textContent = msg;
   el.className = cls;
@@ -423,13 +521,10 @@ function berekenManifest(chip, ver, url) {
 
   const btn = document.getElementById('esp-btn');
   btn.setAttribute('manifest', prevManifestUrl);
-  // Also set the property for the web component
   btn.manifest = prevManifestUrl;
 }
 
 function doFlash() {
-  // The esp-web-install-button handles this via its activate slot button click
-  // This function exists so the flash button can trigger it manually
   document.getElementById('esp-btn').click();
 }
 </script>

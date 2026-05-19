@@ -41,7 +41,7 @@ void ts_kalibratie_opslaan() {
 #elif PLATFORM_PICO
   XPT2046_Touchscreen ts(PICO_TS_CS, PICO_TS_IRQ);
 #elif PLATFORM_WROOM
-  XPT2046_Touchscreen ts(WROOM_TS_CS);          // geen IRQ (GPIO36 SVP)
+  XPT2046_Touchscreen ts(WROOM_TS_CS, WROOM_TS_IRQ);   // board heeft externe pullup op GPIO36
 #elif PLATFORM_CYD28
   XPT2046_Touchscreen ts(CYD28_TS_CS);          // geen IRQ (GPIO36 SVP)
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
@@ -60,8 +60,8 @@ void ts_setup() {
     ts_kalibratie_laden();
 
 #elif PLATFORM_WROOM || PLATFORM_CYD28
-    // HSPI al geïnitialiseerd door tft_setup(); gedeelde bus met display
-    ts.begin(cyd_hspi);
+    // SPI al geïnitialiseerd door tft_setup(); gedeelde bus met display
+    ts.begin(SPI);
     ts_kalibratie_laden();
 
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
@@ -101,8 +101,24 @@ bool ts_touched() {
     actieve_touch = false;
     return false;
 
-#elif PLATFORM_WROOM || PLATFORM_CYD28 || PLATFORM_CYD40H || PLATFORM_CYD40V
-    // Polling zonder IRQ: GPIO36 (SVP) is input-only, geen interne pullup
+#elif PLATFORM_WROOM
+    // WROOM: IRQ op GPIO36 (board heeft externe pullup)
+    bool aangeraakt = ts.tirqTouched() && ts.touched();
+    if (aangeraakt) {
+        TS_Point p = ts.getPoint();
+        ts_raw_px = p.x;
+        ts_raw_py = p.y;
+        ts_x = map(ts_raw_py, ts_cal_py_min, ts_cal_py_max, 0, TFT_W);
+        ts_y = map(ts_raw_px, ts_cal_px_hi,  ts_cal_px_lo,  0, TFT_H);
+        scherm_touched = millis();
+        actieve_touch  = true;
+        return true;
+    }
+    actieve_touch = false;
+    return false;
+
+#elif PLATFORM_CYD28 || PLATFORM_CYD40H || PLATFORM_CYD40V
+    // CYD: polling zonder IRQ (GPIO36 SVP zonder pullup)
     bool aangeraakt = ts.touched();
     if (aangeraakt) {
         TS_Point p = ts.getPoint();

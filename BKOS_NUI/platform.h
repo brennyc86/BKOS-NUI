@@ -90,7 +90,7 @@
   #define TFT_MISO  12   // GPIO12 — HSPI MISO
 
   #define WROOM_TS_CS   33   // GPIO33 — touch chip select
-  // GPIO36 (SVP input-only) niet als IRQ gebruiken — zie hw_touch.ino
+  #define WROOM_TS_IRQ  36   // GPIO36 — touch interrupt (VP, input-only; board heeft pullup)
 
   #define IO_UART_RX  22   // GPIO22 — ATtiny TX → WROOM RX
   #define IO_UART_TX  27   // GPIO27 — WROOM TX → ATtiny RX

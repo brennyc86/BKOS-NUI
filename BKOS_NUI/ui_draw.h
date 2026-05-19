@@ -15,9 +15,20 @@
 #define CONTENT_Y  SB_H
 #define CONTENT_H  (TFT_H - SB_H - NAV_H)
 
-// Bootvlak breedte (linker paneel)
-#define BOOT_PANEL_W  390
-#define CTRL_PANEL_X  400
+// Scale-macros: alle UI-elementen schalen vanuit referentie-resolutie
+// SCREEN_SMALL: referentie CYD28 240×320 → CYD40V 320×480 schaalt automatisch mee
+// Overige: referentie S3 800×480 → CYD40H 480×320 schaalt automatisch mee
+#if SCREEN_SMALL
+  #define UI_SCX(v) ((v) * TFT_W / 240)
+  #define UI_SCY(v) ((v) * TFT_H / 320)
+#else
+  #define UI_SCX(v) ((v) * TFT_W / 800)
+  #define UI_SCY(v) ((v) * TFT_H / 480)
+#endif
+
+// Bootvlak breedte (linker paneel) — schalen vanuit S3 referentie
+#define BOOT_PANEL_W  UI_SCX(390)
+#define CTRL_PANEL_X  UI_SCX(400)
 #define CTRL_PANEL_W  (TFT_W - CTRL_PANEL_X)
 
 // Knop afmetingen

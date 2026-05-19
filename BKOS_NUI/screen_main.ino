@@ -333,11 +333,11 @@ static void modus_knop(int x, int y, int w, int h, const char* naam,
     }
     uint16_t fg = actief ? accent : C_TEXT_DIM;
     int cx = x + w / 2;
-    teken_icoon(icoon, cx, y + 16, fg);
+    teken_icoon(icoon, cx, y + h * 3 / 8, fg);
     tft.setTextSize(2);
     tft.setTextColor(fg);
     int tw = strlen(naam) * 12;
-    tft.setCursor(cx - tw/2, y + 34);
+    tft.setCursor(cx - tw/2, y + h * 6 / 8 - 8);
     tft.print(naam);
 }
 
@@ -426,6 +426,7 @@ static void apparaat_knoppen_teken() {
 
 // ─── Interieur licht status (compact) ───────────────────────────────
 static void interieur_status_teken() {
+    if (INT_STATUS_Y + 30 > NAV_Y) return;  // niet genoeg ruimte (bijv. CYD40H)
     int x = CTRL_PANEL_X + 10;
     int y = INT_STATUS_Y;
     int w = CTRL_PANEL_W - 20;
@@ -508,7 +509,7 @@ static bool licht_auto_menu_open = false;
 #define OVL_X   (CTRL_PANEL_X + 4)
 #define OVL_Y   (LKNOP_Y - 6)
 #define OVL_W   (CTRL_PANEL_W - 8)
-#define OVL_H   200
+#define OVL_H   UI_SCY(200)
 
 static void _ovl_waarde_buf(char* buf, int val) {
     if (val == 0)      snprintf(buf, 12, "bij ZO");
@@ -904,8 +905,8 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
 
 // ─── Hoofdfuncties ──────────────────────────────────────────────────
 // ─── Meteo strip onderaan bootpaneel ────────────────────────────────────
-#define METEO_SH  56                  // strip hoogte
-#define METEO_SY  (BDY + BDH - METEO_SH)   // strip onderin paneel (433-56=377)
+#define METEO_SH  UI_SCY(56)          // strip hoogte (schaalbaar vanuit 480px ref)
+#define METEO_SY  (BDY + BDH - METEO_SH)
 
 static void meteo_strip_teken() {
     int sx = BDX, sy = METEO_SY, sw = BDW, sh = METEO_SH;

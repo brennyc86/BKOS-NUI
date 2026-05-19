@@ -45,7 +45,7 @@ void nav_midden_bouwen();
 #if SCREEN_SMALL
   #define SB_KLOK_X  (TFT_W - 34)
 #else
-  #define SB_KLOK_X  732
+  #define SB_KLOK_X  (TFT_W - UI_SCX(68))  // 68px van rechts (was 800-732=68)
 #endif
 
 void nav_bar_teken();

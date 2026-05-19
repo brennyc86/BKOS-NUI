@@ -153,7 +153,12 @@ bool ts_touched() {
         ts_raw_px = p.x;
         ts_raw_py = p.y;
         ts_x = map(ts_raw_py, ts_cal_py_min, ts_cal_py_max, 0, TFT_W);
+#if PLATFORM_CYD40H
+        // CYD40H: touchpanel Y gespiegeld t.o.v. display (landscape rotatie)
+        ts_y = map(ts_raw_px, ts_cal_px_lo,  ts_cal_px_hi,  0, TFT_H);
+#else
         ts_y = map(ts_raw_px, ts_cal_px_hi,  ts_cal_px_lo,  0, TFT_H);
+#endif
         scherm_touched = millis();
         actieve_touch  = true;
         return true;

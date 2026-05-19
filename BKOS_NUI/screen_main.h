@@ -6,18 +6,21 @@
 // Boot paneel (linker helft)
 #define BDX   5
 #define BDY   (CONTENT_Y + 5)
-#define BDW   (BOOT_PANEL_W - 10)   // 380
-#define BDH   (CONTENT_H - 10)      // 386
+#define BDW   (BOOT_PANEL_W - 10)
+#define BDH   (CONTENT_H - 10)
 
-// Boot tekening schaal: raw x 0..120, y 0..165 → display (schaal 1.75 = *7/4)
-// Geeft 210px breed, ~289px hoog — vrije ruimte rondom boot
-#define BOOT_BX_OFF  90   // BDX + (BDW-210)/2 = 5+85
-#define BOOT_BY_OFF  67   // BDY + top marge 20px
-#define BOOT_BX(x)   (BOOT_BX_OFF + ((x)*7)/4)
-#define BOOT_BY(y)   (BOOT_BY_OFF + ((y)*7)/4)
-#define BOOT_LICHT_R  8   // iets kleiner bij schaal 1.75
+// Boot tekening: schaalfactor afgeleid van paneel-hoogte
+// S3 (BDH≈386): schaal 7/4 → boot 210×289px
+// CYD40H (BDH≈226): schaal 4/3 → boot 160×220px
+#define BOOT_SCALE_N  (BDH > 300 ? 7 : 4)
+#define BOOT_SCALE_D  (BDH > 300 ? 4 : 3)
+#define BOOT_BX_OFF   (BDX + (BDW - 120*BOOT_SCALE_N/BOOT_SCALE_D) / 2)
+#define BOOT_BY_OFF   (BDY + UI_SCY(20))
+#define BOOT_BX(x)    (BOOT_BX_OFF + ((x)*BOOT_SCALE_N)/BOOT_SCALE_D)
+#define BOOT_BY(y)    (BOOT_BY_OFF + ((y)*BOOT_SCALE_N)/BOOT_SCALE_D)
+#define BOOT_LICHT_R  (BOOT_SCALE_N > 5 ? 8 : 5)
 
-// Licht indicator posities (ruwe bootcoördinaten)
+// Licht indicator posities (ruwe bootcoördinaten — schaling via BOOT_BX/BY)
 #define BL_ANKER_RX  67
 #define BL_ANKER_RY   2
 #define BL_STOOM_RX  67
@@ -27,71 +30,72 @@
 #define BL_HEK_RX   113
 #define BL_HEK_RY   142
 
-// Vaarmodus knoppen (rechter paneel, 2x2 grid)
-#define MKNOP_W   186
-#define MKNOP_H    68
-#define MKNOP_GAP   8
+// Vaarmodus knoppen (rechter paneel, 2×2 grid)
+// Breedte: vult CTRL_PANEL_W (schalen mee met TFT_W via UI_SCX)
+#define MKNOP_W   ((CTRL_PANEL_W - 10 - 8) / 2)
+#define MKNOP_H   UI_SCY(68)
+#define MKNOP_GAP UI_SCY(8)
 #define MKNOP_X1  (CTRL_PANEL_X + 10)
-#define MKNOP_X2  (MKNOP_X1 + MKNOP_W + MKNOP_GAP)
+#define MKNOP_X2  (MKNOP_X1 + MKNOP_W + 8)
 #define MKNOP_Y1  (CONTENT_Y + 8)
 #define MKNOP_Y2  (MKNOP_Y1 + MKNOP_H + MKNOP_GAP)
 
-// Verlichting knoppen (3 naast elkaar)
-#define LKNOP_W   122
-#define LKNOP_H    52
+// Verlichting knoppen (3 naast elkaar, vullen CTRL_PANEL_W)
+#define LKNOP_W   ((CTRL_PANEL_W - 11 - 12) / 3)
+#define LKNOP_H   UI_SCY(52)
 #define LKNOP_X1  (CTRL_PANEL_X + 11)
 #define LKNOP_X2  (LKNOP_X1 + LKNOP_W + 6)
 #define LKNOP_X3  (LKNOP_X2 + LKNOP_W + 6)
-#define LKNOP_Y   (MKNOP_Y2 + MKNOP_H + 14)
+#define LKNOP_Y   (MKNOP_Y2 + MKNOP_H + UI_SCY(14))
 
 // Apparaat knoppen (USB/230V/TV/water/deklicht)
-#define DKNOP_W   122
-#define DKNOP_H    52
+#define DKNOP_W   ((CTRL_PANEL_W - 11 - 12) / 3)
+#define DKNOP_H   UI_SCY(52)
 #define DKNOP_X1  (CTRL_PANEL_X + 11)
 #define DKNOP_X2  (DKNOP_X1 + DKNOP_W + 6)
 #define DKNOP_X3  (DKNOP_X2 + DKNOP_W + 6)
-#define DKNOP2_X1 (CTRL_PANEL_X + 75)
+#define DKNOP2_X1 (CTRL_PANEL_X + (CTRL_PANEL_W - 2*DKNOP_W - 6) / 2)
 #define DKNOP2_X2 (DKNOP2_X1 + DKNOP_W + 6)
-#define DKNOP_Y1  (LKNOP_Y + LKNOP_H + 16)
-#define DKNOP_Y2  (DKNOP_Y1 + DKNOP_H + 6)
+#define DKNOP_Y1  (LKNOP_Y + LKNOP_H + UI_SCY(16))
+#define DKNOP_Y2  (DKNOP_Y1 + DKNOP_H + UI_SCY(6))
 
-// Interieur status balk
-#define INT_STATUS_Y  (DKNOP_Y2 + DKNOP_H + 8)
+// Interieur status balk (wordt overgeslagen als er geen ruimte is)
+#define INT_STATUS_Y  (DKNOP_Y2 + DKNOP_H + UI_SCY(8))
 
 #if SCREEN_SMALL
-// ─── Pico portret-layout (240×320) ────────────────────────────────────────
-// Content: CONTENT_Y=24 .. NAV_Y=284, hoogte=260
-// Links 180px: boot   |   Rechts 60px: vaarmodus + licht knoppen
+// ─── Portret compact-layout (schaalbaar: 240×320 t/m 320×480) ─────────────
+// Links 75% breedte: boot   |   Rechts 25%: vaarmodus + licht knoppen
 // Onderaan (volle breedte): 1 rij apparaat knoppen
 
-#define PICO_LEFT_W   180   // linker paneel (boot)
-#define PICO_RIGHT_X  180   // rechter paneel start
-#define PICO_RIGHT_W  60    // rechter paneel breedte
+#define PICO_LEFT_W   ((TFT_W * 3) / 4)
+#define PICO_RIGHT_X  PICO_LEFT_W
+#define PICO_RIGHT_W  (TFT_W - PICO_LEFT_W)
 
-// Boot tekening: 1:1 schaal (raw 0..120 × 0..165), gecentreerd in 180px
-#define PICO_BOOT_BX_OFF  30                       // (180-120)/2
-#define PICO_BOOT_BY_OFF  (CONTENT_Y + 10)
-#define PICO_BOOT_BX(x)   (PICO_BOOT_BX_OFF + (x))
-#define PICO_BOOT_BY(y)   (PICO_BOOT_BY_OFF + (y))
+// Boot tekening: schaalfactor = PICO_LEFT_W / 120 (past exact in linker paneel)
+// 240px → schaal 1 (1:1); 320px → schaal 2 (2:1)
+#define PICO_BOOT_SCALE  (PICO_LEFT_W / 120)
+#define PICO_BOOT_BX_OFF ((PICO_LEFT_W - 120 * PICO_BOOT_SCALE) / 2)
+#define PICO_BOOT_BY_OFF (CONTENT_Y + 10)
+#define PICO_BOOT_BX(x)  (PICO_BOOT_BX_OFF + (x) * PICO_BOOT_SCALE)
+#define PICO_BOOT_BY(y)  (PICO_BOOT_BY_OFF + (y) * PICO_BOOT_SCALE)
 
-// Vaarmodus knoppen: 4 gestapeld in rechter kolom (60px breed)
-#define PICO_MKNOP_X    (PICO_RIGHT_X + 4)            // 184
-#define PICO_MKNOP_W    (PICO_RIGHT_W - 8)             // 52
-#define PICO_MKNOP_H    38
+// Vaarmodus knoppen: 4 gestapeld in rechter kolom
+#define PICO_MKNOP_X    (PICO_RIGHT_X + 4)
+#define PICO_MKNOP_W    (PICO_RIGHT_W - 8)
+#define PICO_MKNOP_H    UI_SCY(38)
 #define PICO_MKNOP_Y(i) (CONTENT_Y + 4 + (i) * (PICO_MKNOP_H + 4))
 
 // Verlichting cycling knop (onder vaarmodus, zelfde breedte)
-#define PICO_LKNOP_X    (PICO_RIGHT_X + 4)            // 184
-#define PICO_LKNOP_W    (PICO_RIGHT_W - 8)             // 52
-#define PICO_LKNOP_H    22
-#define PICO_LKNOP_Y    (PICO_MKNOP_Y(4) + 4)         // 28+168+4 = 200
+#define PICO_LKNOP_X  (PICO_RIGHT_X + 4)
+#define PICO_LKNOP_W  (PICO_RIGHT_W - 8)
+#define PICO_LKNOP_H  UI_SCY(22)
+#define PICO_LKNOP_Y  (PICO_MKNOP_Y(4) + 4)
 
 // Apparaat knoppen: 1 rij volledige breedte, verankerd boven nav bar
-// 4 knoppen × 55px + 5×4px marge = 240px
-#define PICO_DKNOP_W    55
-#define PICO_DKNOP_H    34
-#define PICO_DKNOP_X(i) (4 + (i) * (PICO_DKNOP_W + 4))  // 4, 63, 122, 181
-#define PICO_DKNOP_Y    (NAV_Y - 4 - PICO_DKNOP_H)       // 284-4-34 = 246
+#define PICO_DKNOP_W    ((TFT_W - 20) / 4)
+#define PICO_DKNOP_H    UI_SCY(34)
+#define PICO_DKNOP_X(i) (4 + (i) * (PICO_DKNOP_W + 4))
+#define PICO_DKNOP_Y    (NAV_Y - 4 - PICO_DKNOP_H)
 #endif
 
 void screen_main_teken();

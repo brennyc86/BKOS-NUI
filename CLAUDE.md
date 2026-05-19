@@ -217,6 +217,11 @@ Recente taken:
 | 125 | Sessie 21 | Compileer-fix bkos_net.ino: _verwerk binnen #if PLATFORM_ESP32, bkos_net.h in hardware.h |
 | 126 | Sessie 21 | Nav bar: VICTRON → 4e links (zonnepaneel icoon), NETWERK → 4e rechts (nodes icoon), 4+4 vaste knoppen |
 | 127 | Sessie 21 | OTA v0.1.1 officiële release: stabiel kanaal (versie_stable_*.txt + releases.json), BETA toggle, VORIGE VERSIES overlay |
+| 128 | Sessie 22 | UI scaling (UI_SCX/UI_SCY) uitgebreid naar alle schermen voor CYD40H compatibiliteit |
+| 129 | Sessie 22 | Tijddeling via ESP-NOW: NET_MSG_TIJD broadcast + ntp_vanaf_net() — slave/extra deelt NTP-tijd |
+| 130 | Sessie 22 | Staat-herstel bij herstart: NET_MSG_STATE_REQ — master vraagt vaarmodus/verlichting op bij slave na pairing |
+| 131 | Sessie 22 | Touch kalibratie CYD40H: TOUCH KAL knop toegevoegd aan cfg_instellingen_teken voor PLATFORM_XPT2046 |
+| 132 | Sessie 22 | Lua melding: OPEN-knop toont duidelijke foutmelding als LUA_BESCHIKBAAR=0 (OTA build vereist) |
 
 ---
 

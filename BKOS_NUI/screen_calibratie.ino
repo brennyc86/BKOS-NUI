@@ -11,7 +11,7 @@
 static int              cal_stap     = 0;
 static unsigned long    cal_klaar_ms = 0;
 
-#if defined(PICO_TOUCH_XPT2046) || defined(WROOM_TOUCH_XPT2046)
+#if PLATFORM_XPT2046
 
 static void cal_kruis(int cx, int cy, uint16_t c) {
     tft.drawFastHLine(cx - 14, cy, 29, c);
@@ -40,7 +40,7 @@ void screen_calibratie_teken() {
     cal_stap     = 0;
     cal_klaar_ms = 0;
 
-#if defined(PICO_TOUCH_XPT2046) || defined(WROOM_TOUCH_XPT2046)
+#if PLATFORM_XPT2046
     tft.fillScreen(C_BG);
     cal_instructie("Touch kalibratie", "Tik op het kruis (punt 1)");
     cal_kruis(20, 20, C_GREEN);
@@ -52,7 +52,7 @@ void screen_calibratie_teken() {
 }
 
 void screen_calibratie_run(int x, int y, bool aanraking) {
-#if defined(PICO_TOUCH_XPT2046) || defined(WROOM_TOUCH_XPT2046)
+#if PLATFORM_XPT2046
 
     // Stap 2: klaar — wacht 1.5s en ga terug
     if (cal_stap == 2) {

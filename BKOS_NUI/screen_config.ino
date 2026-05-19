@@ -464,7 +464,7 @@ static void pico_cfg_instellingen_teken() {
     y += 30;
 
     // IO Configuratie + Touch Kalibreren (gedeelde rij)
-#if defined(PICO_TOUCH_XPT2046) || defined(WROOM_TOUCH_XPT2046)
+#if PLATFORM_XPT2046
     ui_knop(4, y, 140, 26, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
     ui_knop(148, y, TFT_W - 152, 26, "TOUCH KAL.  >", C_SURFACE, C_CYAN);
@@ -547,7 +547,7 @@ static void pico_cfg_instellingen_run(int x, int y) {
     y0 += 30;
     // IO Configuratie + Touch Kalibreren
     if (y >= y0 && y < y0 + 26) {
-#if defined(PICO_TOUCH_XPT2046) || defined(WROOM_TOUCH_XPT2046)
+#if PLATFORM_XPT2046
         if (x >= 148) {
             actief_scherm = SCREEN_CALIBRATIE; scherm_bouwen = true; return;
         }

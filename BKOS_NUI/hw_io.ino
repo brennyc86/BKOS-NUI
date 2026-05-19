@@ -28,7 +28,7 @@ uint8_t io_actie_param[MAX_IO_KANALEN];
 #define IO_CFG_BESTAND   "/io_cfg.csv"
 
 void hw_io_setup() {
-#if PLATFORM_PICO
+#if PLATFORM_PICO || PLATFORM_WROOM
     pinMode(HC_PCK, OUTPUT);
     pinMode(HC_SCK, OUTPUT);
     pinMode(HC_IN,  INPUT);

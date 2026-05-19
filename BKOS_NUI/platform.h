@@ -78,25 +78,26 @@
   #define HC_ID    4    // GP4  — module ID data
 
 #elif PLATFORM_WROOM
-  // Custom WROOM IO board: ILI9341 240×320 portret + ATtiny3217 IO via UART2
+  // Custom WROOM IO board: ILI9341 240×320 portret, HC shift-register IO
   #define TFT_W     240
   #define TFT_H     320
   #define TFT_BL    19   // GPIO19 — backlight PWM
-  #define TFT_CS    15   // GPIO15 — display chip select (zie BKOS3 hardware.h: cs_tft=15)
-  #define TFT_DC    23   // GPIO23 — data/command        (zie BKOS3/4 hardware.h: dc=23)
-  #define TFT_RST   16   // GPIO16 — display reset       (zie BKOS3 hardware.h: rst=16)
+  #define TFT_CS     0   // GPIO0  — display CS (BKOS4: cs_tft=0; HC_SCK gebruikt GPIO15)
+  #define TFT_DC    23   // GPIO23 — data/command
+  #define TFT_RST   16   // GPIO16 — display reset
   #define TFT_SCK   14   // GPIO14 — HSPI SCK
   #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
   #define TFT_MISO  12   // GPIO12 — HSPI MISO
 
-  #define WROOM_TS_CS   22   // GPIO22 — touch chip select (zie BKOS3 hardware.h: cs_ts=22)
-  #define WROOM_TS_IRQ  21   // GPIO21 — touch interrupt   (zie BKOS3 hardware.h: irq=21)
+  #define WROOM_TS_CS   22   // GPIO22 — touch chip select
+  #define WROOM_TS_IRQ  21   // GPIO21 — touch interrupt
 
-  // BKOS3 HC-IO pins: hc_pck=18, hc_sck=17, hc_in=35, hc_uit=2, hc_id=34
-  // Op custom board zijn deze pins vervangen door ATtiny3217 UART — exacte toewijzing
-  // afhankelijk van custom PCB-schema; hier een plausibele keuze:
-  #define IO_UART_RX  35   // GPIO35 (input-only) — ATtiny TX → WROOM RX (hc_in)
-  #define IO_UART_TX   2   // GPIO2  — WROOM TX → ATtiny RX (hc_uit)
+  // HC shift-register IO (zelfde als BKOS4 configuratie 3)
+  #define HC_IN    35   // GPIO35 (input-only) — data ingang HC165
+  #define HC_SCK   15   // GPIO15 — seriële klok
+  #define HC_PCK    2   // GPIO2  — parallelle klok / latch
+  #define HC_UIT    4   // GPIO4  — data uitgang HC595
+  #define HC_ID    34   // GPIO34 (input-only) — module ID
 
 #elif PLATFORM_CYD28
   // ESP32-2432S028R: ILI9341 240×320 portret, display HSPI, touch aparte VSPI
@@ -151,10 +152,8 @@
 #endif
 
 // ─── IO seriële poort ─────────────────────────────────────────────────────────
-#if PLATFORM_WROOM
-  #define IO_SERIAL          Serial2
-  #define IO_SERIAL_BEGIN()  Serial2.begin(IO_BAUD, SERIAL_8N1, IO_UART_RX, IO_UART_TX)
-#elif !PLATFORM_PICO
+// WROOM en Pico gebruiken HC shift-registers — geen UART IO bus
+#if !PLATFORM_PICO && !PLATFORM_WROOM
   // ESP32-S3 en CYD: Serial (S3=USB/JTAG; CYD=USB, geen IO bus aangesloten)
   #define IO_SERIAL          Serial
   #define IO_SERIAL_BEGIN()  Serial.begin(IO_BAUD)

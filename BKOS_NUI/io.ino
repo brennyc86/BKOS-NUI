@@ -9,8 +9,8 @@ byte licht_cfg_idx = 0;
 volatile bool io_direct_aanvraag = false;
 volatile bool io_staat_gewijzigd = false;
 
-// ─── Pico GPIO helpers ────────────────────────────────────────────────────
-#if PLATFORM_PICO
+// ─── HC GPIO helpers (Pico + WROOM) ──────────────────────────────────────
+#if PLATFORM_PICO || PLATFORM_WROOM
 
 static void _pck_puls() {
     digitalWrite(HC_PCK, LOW);  delayMicroseconds(100);
@@ -29,11 +29,11 @@ static byte _lees_id_byte() {
     return id;
 }
 
-#endif // PLATFORM_PICO
+#endif // PLATFORM_PICO || PLATFORM_WROOM
 
 void io_bkoss_check() {
-#if PLATFORM_PICO
-    bkoss_actief = false;  // geen ATtiny op Pico
+#if PLATFORM_PICO || PLATFORM_WROOM
+    bkoss_actief = false;  // geen ATtiny: HC shift-register IO
     return;
 #else
     bkoss_actief = false;
@@ -65,16 +65,16 @@ void io_bkoss_check() {
 }
 
 void io_boot() {
-#if !PLATFORM_PICO
+#if !PLATFORM_PICO && !PLATFORM_WROOM
     IO_SERIAL.flush();
-    io_bkoss_check();
 #endif
+    io_bkoss_check();
     io_detect();
 }
 
 void io_detect() {
-#if PLATFORM_PICO
-    // Pico: directe GPIO — parallel klok zet modules in detectiemodus,
+#if PLATFORM_PICO || PLATFORM_WROOM
+    // HC GPIO: parallel klok zet modules in detectiemodus,
     // daarna 8 klokpulsen per module om het ID via HC_ID uit te lezen.
     io_aparaten_cnt = 0;
     io_kanalen_cnt  = 0;
@@ -138,8 +138,8 @@ void io_cyclus() {
     int n = io_zichtbaar();   // Respecteert io_kanalen_cfg override
     if (n == 0) { io_actief = false; return; }
 
-#if PLATFORM_PICO
-    // Pico: directe GPIO shift register cyclus
+#if PLATFORM_PICO || PLATFORM_WROOM
+    // HC shift register cyclus (Pico + WROOM)
     // Parallelle klok laadt huidige uitgangswaarden
     _pck_puls();
 

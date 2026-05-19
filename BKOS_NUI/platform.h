@@ -81,7 +81,7 @@
   // Custom WROOM IO board: ILI9341 240×320 portret + ATtiny3217 IO via UART2
   #define TFT_W     240
   #define TFT_H     320
-  #define TFT_BL    21   // GPIO21 — backlight PWM
+  #define TFT_BL    19   // GPIO19 — backlight PWM
   #define TFT_CS    15   // GPIO15 — display chip select
   #define TFT_DC     2   // GPIO2  — data/command
   #define TFT_RST   -1   // niet aangesloten

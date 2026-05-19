@@ -99,8 +99,12 @@ void ota_loop() {
         _check_gepland     = false;
         ota_last_git_check = nu;
         ota_git_check();
-        if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+        if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE) {
+            tft_actief = true; tft_bijna_uit = false;
+            tft_helderheid_zet(tft_helderheid);
+            actief_scherm = SCREEN_OTA; herteken = true;
             ota_git_update();
+        }
     }
 
     // Bepaal of het tijd is voor de periodieke check
@@ -127,8 +131,12 @@ void ota_loop() {
         } else {
             _check_gepland = false;
             ota_git_check();
-            if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+            if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE) {
+                tft_actief = true; tft_bijna_uit = false;
+                tft_helderheid_zet(tft_helderheid);
+                actief_scherm = SCREEN_OTA; herteken = true;
                 ota_git_update();
+            }
         }
     }
 }

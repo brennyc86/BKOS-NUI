@@ -60,6 +60,7 @@ jobs:
           cp /tmp/lua-5.4.7/src/lopnames.h ~/Arduino/libraries/LuaBKOS/src/
           cp $GITHUB_WORKSPACE/BKOS_NUI/lua_bkos_conf.h ~/Arduino/libraries/LuaBKOS/src/luaconf.h
           rm -f ~/Arduino/libraries/LuaBKOS/src/linit.c
+          cp $GITHUB_WORKSPACE/BKOS_NUI/lua_linit_bkos.c ~/Arduino/libraries/LuaBKOS/src/linit.c
           cat > ~/Arduino/libraries/LuaBKOS/library.properties << 'PROPS'
           name=LuaBKOS
           version=5.4.7

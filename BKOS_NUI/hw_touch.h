@@ -12,9 +12,9 @@
   extern XPT2046_Touchscreen ts;
 #endif
 
-// Gedeelde HSPI bus voor display + touch (WROOM / CYD28)
+// Gedeelde HSPI bus voor display + touch (WROOM: display en touch delen dezelfde bus)
 // HSPI native pins op ESP32: SCK=14, MISO=12, MOSI=13
-#if (PLATFORM_WROOM || PLATFORM_CYD28) && PLATFORM_ESP32
+#if PLATFORM_WROOM && PLATFORM_ESP32
   extern SPIClass shared_hspi;
 #endif
 

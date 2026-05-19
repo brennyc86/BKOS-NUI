@@ -35,8 +35,8 @@ void ts_kalibratie_opslaan() {
 }
 #endif
 
-// ─── Gedeelde HSPI bus voor WROOM / CYD28 ────────────────────────────────────
-#if (PLATFORM_WROOM || PLATFORM_CYD28) && PLATFORM_ESP32
+// ─── Gedeelde HSPI bus voor WROOM (display + touch delen bus via CS) ─────────
+#if PLATFORM_WROOM && PLATFORM_ESP32
   SPIClass shared_hspi(HSPI);
 #endif
 
@@ -46,11 +46,12 @@ void ts_kalibratie_opslaan() {
 #elif PLATFORM_PICO
   XPT2046_Touchscreen ts(PICO_TS_CS, PICO_TS_IRQ);
 #elif PLATFORM_WROOM
-  XPT2046_Touchscreen ts(WROOM_TS_CS, WROOM_TS_IRQ);   // board heeft externe pullup op GPIO36
+  XPT2046_Touchscreen ts(WROOM_TS_CS, WROOM_TS_IRQ);
 #elif PLATFORM_CYD28
-  XPT2046_Touchscreen ts(CYD28_TS_CS);          // geen IRQ (GPIO36 SVP)
+  static SPIClass cyd28_vspi(VSPI);
+  XPT2046_Touchscreen ts(CYD28_TS_CS, CYD28_TS_IRQ);   // aparte VSPI met IRQ
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-  XPT2046_Touchscreen ts(CYD40_TS_CS);          // geen IRQ, aparte VSPI
+  XPT2046_Touchscreen ts(CYD40_TS_CS);          // aparte VSPI, geen IRQ
   static SPIClass cyd_vspi(VSPI);
 #endif
 
@@ -64,9 +65,15 @@ void ts_setup() {
     ts.begin();
     ts_kalibratie_laden();
 
-#elif PLATFORM_WROOM || PLATFORM_CYD28
+#elif PLATFORM_WROOM
     // shared_hspi al geïnitialiseerd door tft_setup() via Arduino_HWSPI::begin()
     ts.begin(shared_hspi);
+    ts_kalibratie_laden();
+
+#elif PLATFORM_CYD28
+    // Aparte VSPI voor touch (display gebruikt HSPI)
+    cyd28_vspi.begin(CYD28_TS_SCK, CYD28_TS_MISO, CYD28_TS_MOSI, CYD28_TS_CS);
+    ts.begin(cyd28_vspi);
     ts_kalibratie_laden();
 
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
@@ -106,8 +113,8 @@ bool ts_touched() {
     actieve_touch = false;
     return false;
 
-#elif PLATFORM_WROOM
-    // WROOM: IRQ op GPIO36 (board heeft externe pullup)
+#elif PLATFORM_WROOM || PLATFORM_CYD28
+    // IRQ beschikbaar (WROOM: externe pullup; CYD28: GPIO36 input-only)
     bool aangeraakt = ts.tirqTouched() && ts.touched();
     if (aangeraakt) {
         TS_Point p = ts.getPoint();
@@ -122,8 +129,8 @@ bool ts_touched() {
     actieve_touch = false;
     return false;
 
-#elif PLATFORM_CYD28 || PLATFORM_CYD40H || PLATFORM_CYD40V
-    // CYD: polling zonder IRQ (GPIO36 SVP zonder pullup)
+#elif PLATFORM_CYD40H || PLATFORM_CYD40V
+    // CYD40: polling zonder IRQ
     bool aangeraakt = ts.touched();
     if (aangeraakt) {
         TS_Point p = ts.getPoint();

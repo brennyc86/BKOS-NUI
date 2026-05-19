@@ -96,7 +96,7 @@
   #define IO_UART_TX  27   // GPIO27 — WROOM TX → ATtiny RX
 
 #elif PLATFORM_CYD28
-  // ESP32-2432S028R: ILI9341 240×320 portret, HSPI gedeeld met XPT2046
+  // ESP32-2432S028R: ILI9341 240×320 portret, display HSPI, touch aparte VSPI
   #define TFT_W     240
   #define TFT_H     320
   #define TFT_BL    21   // GPIO21 — backlight PWM
@@ -107,7 +107,12 @@
   #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
   #define TFT_MISO  12   // GPIO12 — HSPI MISO
 
-  #define CYD28_TS_CS   33   // GPIO33 — touch chip select (geen IRQ: GPIO36 SVP)
+  // Aparte VSPI bus voor XPT2046 touch
+  #define CYD28_TS_SCK   25   // GPIO25
+  #define CYD28_TS_MOSI  32   // GPIO32
+  #define CYD28_TS_MISO  39   // GPIO39 (SVP, input-only)
+  #define CYD28_TS_IRQ   36   // GPIO36 (VP, input-only)
+  #define CYD28_TS_CS    33   // GPIO33 — touch chip select
 
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
   // 4" CYD (ESP32-32E): ST7796, display HSPI + aparte VSPI voor XPT2046

@@ -41,6 +41,27 @@
 #define OTA_GITHUB_RELEASES_URL  "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/firmware/releases.json"
 #define OTA_GITHUB_BASE_URL      "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/"
 
+// ─── BKOS-blanco URLs (firmware kiezer) — heen-richting NUI→blanco ───────────
+#if PLATFORM_PICO
+  #define BLANCO_VERSIE_URL "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/versie_pico.txt"
+  #define BLANCO_BIN_URL    "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/bkos_blanco_pico.uf2"
+#elif PLATFORM_WROOM
+  #define BLANCO_VERSIE_URL "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/versie_wroom.txt"
+  #define BLANCO_BIN_URL    "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/bkos_blanco_wroom.bin"
+#elif PLATFORM_CYD28
+  #define BLANCO_VERSIE_URL "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/versie_cyd28.txt"
+  #define BLANCO_BIN_URL    "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/bkos_blanco_cyd28.bin"
+#elif PLATFORM_CYD40H
+  #define BLANCO_VERSIE_URL "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/versie_cyd40h.txt"
+  #define BLANCO_BIN_URL    "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/bkos_blanco_cyd40h.bin"
+#elif PLATFORM_CYD40V
+  #define BLANCO_VERSIE_URL "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/versie_cyd40v.txt"
+  #define BLANCO_BIN_URL    "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/bkos_blanco_cyd40v.bin"
+#else
+  #define BLANCO_VERSIE_URL "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/versie_esp32s3.txt"
+  #define BLANCO_BIN_URL    "https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/firmware/bkos_blanco_esp32s3.bin"
+#endif
+
 // ─── Release-struct voor VORIGE VERSIES ───────────────────────────────────────
 #define OTA_RELEASES_MAX 10
 struct OtaReleaseItem {

@@ -172,6 +172,20 @@
       margin: 8px 0; font-size: 0.85rem; text-align: left;
     }
     .pico-step strong { color: var(--cyan); }
+    #pico-auto-btn {
+      background: var(--cyan); color: #001a26;
+      border: none; border-radius: 6px;
+      padding: 14px 36px; font-size: 1rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 1px; transition: opacity .15s;
+      margin-top: 6px;
+    }
+    #pico-auto-btn:hover:not(:disabled) { opacity: .85; }
+    #pico-auto-btn:disabled { background: var(--surface2); color: var(--text-dim); cursor: not-allowed; }
+    #pico-manual-toggle {
+      display: inline-block; margin-top: 14px;
+      font-size: 0.78rem; color: var(--text-dim); cursor: pointer; text-decoration: underline;
+    }
+    #pico-manual-zone { display: none; margin-top: 14px; }
     #download-btn {
       display: inline-block; margin-top: 14px;
       background: var(--surface2); color: var(--cyan);
@@ -179,6 +193,12 @@
       padding: 12px 28px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
     }
     #download-btn[disabled] { opacity: .4; pointer-events: none; }
+    #pico-progress {
+      margin-top: 14px; font-size: 0.82rem; color: var(--text-dim);
+      background: var(--surface2); border-radius: 6px; padding: 10px 14px;
+      display: none; text-align: left; line-height: 1.7;
+    }
+    #pico-progress.on { display: block; }
 
     /* ── Status line ── */
     #status { margin-top: 16px; font-size: 0.85rem; color: var(--text-dim); min-height: 20px; }
@@ -301,11 +321,21 @@
 
       <!-- Pico zone -->
       <div id="pico-zone">
-        <div class="pico-step"><strong>1.</strong> Houd de <strong>BOOTSEL</strong>-knop ingedrukt op de Pico W</div>
-        <div class="pico-step"><strong>2.</strong> Sluit de Pico W aan via USB — er verschijnt een schijf genaamd <strong>RPI-RP2</strong></div>
-        <div class="pico-step"><strong>3.</strong> Sleep het gedownloade <strong>.uf2</strong> bestand naar de schijf</div>
-        <div class="pico-step"><strong>4.</strong> De Pico herstart automatisch met BKOS-NUI</div>
-        <a id="download-btn" href="#" download disabled>⬇ Download firmware (.uf2)</a>
+        <button id="pico-auto-btn" disabled onclick="picoFlash()">▶ Verbind en installeer automatisch</button>
+        <p class="flash-note" style="margin-top:10px">
+          Vereist Chrome of Edge. Sluit de Pico aan via USB. De bootloader wordt automatisch geactiveerd — BOOTSEL indrukken is niet nodig als BKOS al geïnstalleerd is.<br>
+          Je wordt gevraagd de <strong>RPI-RP2</strong> schijf te selecteren zodra die verschijnt.
+        </p>
+        <div id="pico-progress"></div>
+
+        <span id="pico-manual-toggle" onclick="picoManualToggle()">▸ Handmatig installeren / nieuwe Pico (zonder BKOS)</span>
+        <div id="pico-manual-zone">
+          <div class="pico-step"><strong>1.</strong> Houd de <strong>BOOTSEL</strong>-knop ingedrukt op de Pico W</div>
+          <div class="pico-step"><strong>2.</strong> Sluit de Pico W aan via USB — er verschijnt een schijf genaamd <strong>RPI-RP2</strong></div>
+          <div class="pico-step"><strong>3.</strong> Klik op Downloaden en sleep het <strong>.uf2</strong> bestand naar de schijf</div>
+          <div class="pico-step"><strong>4.</strong> De Pico herstart automatisch met de nieuwe firmware</div>
+          <a id="download-btn" href="#" download disabled>⬇ Download firmware (.uf2)</a>
+        </div>
       </div>
 
       <div id="status">Selecteer hardware en firmware om te beginnen</div>
@@ -479,11 +509,17 @@ async function update() {
 
     // Klaar
     if (p.pico) {
+      const autoBtn = document.getElementById('pico-auto-btn');
+      const hasAutoSupport = ('serial' in navigator) && ('showDirectoryPicker' in window);
+      autoBtn.disabled = !hasAutoSupport;
+      if (!hasAutoSupport) {
+        autoBtn.textContent = '⚠ Automatisch installeren vereist Chrome of Edge';
+      }
       dlBtn.href = flashUrl;
       dlBtn.download = `${fv.bin.replace('.uf2', '')}_${flashVer}.uf2`;
       dlBtn.textContent = `⬇ Download ${firmware === 'blanco' ? 'BKOS Blanco' : 'BKOS-NUI'} ${flashVer} (.uf2)`;
       dlBtn.removeAttribute('disabled');
-      setStatus('Klaar — volg de stappen hieronder om te installeren', 'ok');
+      setStatus('Klaar — klik op de knop of volg de handmatige stappen', 'ok');
     } else {
       berekenManifest(p.chip, flashVer, flashUrl);
       flashBtn.disabled = false;
@@ -526,6 +562,101 @@ function berekenManifest(chip, ver, url) {
 
 function doFlash() {
   document.getElementById('esp-btn').click();
+}
+
+function picoManualToggle() {
+  const zone = document.getElementById('pico-manual-zone');
+  const tog  = document.getElementById('pico-manual-toggle');
+  const open = zone.style.display !== 'none';
+  zone.style.display = open ? 'none' : 'block';
+  tog.textContent = (open ? '▸' : '▾') + ' Handmatig installeren / nieuwe Pico (zonder BKOS)';
+}
+
+async function picoFlash() {
+  const btn  = document.getElementById('pico-auto-btn');
+  const prog = document.getElementById('pico-progress');
+  btn.disabled = true;
+  prog.classList.add('on');
+
+  function picoLog(msg, cls = '') {
+    prog.innerHTML += `<span style="color:${cls==='ok'?'var(--green)':cls==='err'?'var(--red)':cls==='warn'?'var(--amber)':'var(--text-dim)'}">${msg}</span><br>`;
+  }
+  prog.innerHTML = '';
+
+  // Stap 1: download UF2 naar geheugen
+  picoLog('⬇ Firmware downloaden…');
+  let uf2Data;
+  try {
+    const resp = await fetch(flashUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    uf2Data = await resp.arrayBuffer();
+    picoLog(`✓ Firmware geladen (${(uf2Data.byteLength/1024).toFixed(0)} KB)`, 'ok');
+  } catch(e) {
+    picoLog('✗ Download mislukt: ' + e.message, 'err');
+    setStatus('Download mislukt', 'err');
+    btn.disabled = false;
+    return;
+  }
+
+  // Stap 2: 1200-baud reset via WebSerial (activeert bootloader zonder BOOTSEL)
+  picoLog('🔌 Verbinden via USB — kies de seriële poort van de Pico…');
+  let resetGelukt = false;
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 1200 });
+    await new Promise(r => setTimeout(r, 400));
+    if (port.readable) { const r = port.readable.getReader(); r.cancel(); r.releaseLock(); }
+    await port.close();
+    resetGelukt = true;
+    picoLog('✓ Bootloader geactiveerd — RPI-RP2 verschijnt nu als schijf', 'ok');
+    picoLog('⏳ Wachten op schijf…');
+    await new Promise(r => setTimeout(r, 2500));
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      picoLog('Geannuleerd.', 'warn');
+      setStatus('Geannuleerd', 'warn');
+      btn.disabled = false;
+      prog.classList.remove('on');
+      return;
+    }
+    picoLog('⚠ Serieel verbinding mislukt — als de Pico al in bootloadermodus staat, ga je verder.', 'warn');
+    picoLog('⏳ Wachten…');
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  // Stap 3: directory picker → gebruiker kiest RPI-RP2 schijf
+  picoLog('📂 Selecteer de <strong>RPI-RP2</strong> schijf in het volgende venster…');
+  let dirHandle;
+  try {
+    dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      picoLog('Geannuleerd.', 'warn');
+      setStatus('Geannuleerd', 'warn');
+    } else {
+      picoLog('✗ Kan schijf niet openen: ' + e.message, 'err');
+      setStatus('Schijf openen mislukt', 'err');
+    }
+    btn.disabled = false;
+    return;
+  }
+
+  // Stap 4: schrijf UF2 naar de schijf
+  picoLog('✍ Firmware schrijven naar Pico…');
+  try {
+    const fileHandle = await dirHandle.getFileHandle('firmware.uf2', { create: true });
+    const writable   = await fileHandle.createWritable();
+    await writable.write(uf2Data);
+    await writable.close();
+    picoLog('✓ Klaar! Pico herstart automatisch met de nieuwe firmware.', 'ok');
+    setStatus('✓ Installatie voltooid — Pico herstart automatisch', 'ok');
+  } catch(e) {
+    picoLog('✗ Schrijven mislukt: ' + e.message, 'err');
+    picoLog('Controleer of je de juiste schijf hebt geselecteerd (RPI-RP2).', 'warn');
+    setStatus('Schrijven mislukt — verkeerde schijf?', 'err');
+  }
+
+  btn.disabled = false;
 }
 </script>
 

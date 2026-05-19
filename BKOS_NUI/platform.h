@@ -82,18 +82,21 @@
   #define TFT_W     240
   #define TFT_H     320
   #define TFT_BL    19   // GPIO19 — backlight PWM
-  #define TFT_CS     0   // GPIO0  — display chip select (zie BKOS4 hw_scherm.h)
-  #define TFT_DC    23   // GPIO23 — data/command       (zie BKOS4 hw_scherm.h)
-  #define TFT_RST   -1   // niet aangesloten
+  #define TFT_CS    15   // GPIO15 — display chip select (zie BKOS3 hardware.h: cs_tft=15)
+  #define TFT_DC    23   // GPIO23 — data/command        (zie BKOS3/4 hardware.h: dc=23)
+  #define TFT_RST   16   // GPIO16 — display reset       (zie BKOS3 hardware.h: rst=16)
   #define TFT_SCK   14   // GPIO14 — HSPI SCK
   #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
   #define TFT_MISO  12   // GPIO12 — HSPI MISO
 
-  #define WROOM_TS_CS   22   // GPIO22 — touch chip select   (zie BKOS4 hw_touch.h)
-  #define WROOM_TS_IRQ  21   // GPIO21 — touch interrupt     (zie BKOS4 hw_touch.h)
+  #define WROOM_TS_CS   22   // GPIO22 — touch chip select (zie BKOS3 hardware.h: cs_ts=22)
+  #define WROOM_TS_IRQ  21   // GPIO21 — touch interrupt   (zie BKOS3 hardware.h: irq=21)
 
-  #define IO_UART_RX  22   // GPIO22 — ATtiny TX → WROOM RX
-  #define IO_UART_TX  27   // GPIO27 — WROOM TX → ATtiny RX
+  // BKOS3 HC-IO pins: hc_pck=18, hc_sck=17, hc_in=35, hc_uit=2, hc_id=34
+  // Op custom board zijn deze pins vervangen door ATtiny3217 UART — exacte toewijzing
+  // afhankelijk van custom PCB-schema; hier een plausibele keuze:
+  #define IO_UART_RX  35   // GPIO35 (input-only) — ATtiny TX → WROOM RX (hc_in)
+  #define IO_UART_TX   2   // GPIO2  — WROOM TX → ATtiny RX (hc_uit)
 
 #elif PLATFORM_CYD28
   // ESP32-2432S028R: ILI9341 240×320 portret, display HSPI, touch aparte VSPI

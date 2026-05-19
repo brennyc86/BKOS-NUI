@@ -47,7 +47,7 @@ void hw_setup() {
     tft.print("TOUCH DIAGNOSTIEK");
     tft.setTextSize(1);
     tft.setCursor(10, 40);
-    tft.print("SCK=25 MOSI=32 MISO=39 CS=33 IRQ=36");
+    tft.print("SCK=14 MOSI=13 MISO=12 CS=33 IRQ=36  (HSPI)");
     tft.setCursor(10, 55);
     tft.print("Raak scherm aan — status verschijnt hieronder");
     return;

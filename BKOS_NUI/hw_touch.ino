@@ -51,8 +51,9 @@ void ts_kalibratie_opslaan() {
   static SPIClass cyd28_vspi(VSPI);
   XPT2046_Touchscreen ts(CYD28_TS_CS, CYD28_TS_IRQ);   // aparte VSPI met IRQ
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-  XPT2046_Touchscreen ts(CYD40_TS_CS, CYD40_TS_IRQ);  // aparte VSPI met IRQ
-  static SPIClass cyd_vspi(VSPI);
+  // Touch deelt HSPI bus met display (CS=33 vs display CS=15)
+  XPT2046_Touchscreen ts(CYD40_TS_CS, CYD40_TS_IRQ);
+  static SPIClass cyd40_hspi(HSPI);
 #endif
 
 void ts_setup() {
@@ -77,9 +78,9 @@ void ts_setup() {
     ts_kalibratie_laden();
 
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-    // Aparte VSPI voor touch (display gebruikt HSPI)
-    cyd_vspi.begin(CYD40_TS_SCK, CYD40_TS_MISO, CYD40_TS_MOSI, CYD40_TS_CS);
-    ts.begin(cyd_vspi);
+    // Touch deelt HSPI met display — zelfde pins, alleen CS=33 verschilt
+    cyd40_hspi.begin(CYD40_TS_SCK, CYD40_TS_MISO, CYD40_TS_MOSI, CYD40_TS_CS);
+    ts.begin(cyd40_hspi);
     ts_kalibratie_laden();
 #endif
 }

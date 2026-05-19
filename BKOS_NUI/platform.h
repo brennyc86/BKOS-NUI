@@ -134,12 +134,12 @@
   #define TFT_MOSI  13   // GPIO13 — HSPI MOSI
   #define TFT_MISO  12   // GPIO12 — HSPI MISO
 
-  // Aparte VSPI bus voor XPT2046 touch
-  #define CYD40_TS_SCK   25   // GPIO25
-  #define CYD40_TS_MOSI  32   // GPIO32
-  #define CYD40_TS_MISO  39   // GPIO39 (SVP, input-only — alleen MISO)
-  #define CYD40_TS_CS    33   // GPIO33 — touch chip select
-  #define CYD40_TS_IRQ   36   // GPIO36 (VP, input-only) — XPT2046 heeft interne pull-up
+  // XPT2046 deelt HSPI met display (zelfde SCK/MOSI/MISO, eigen CS)
+  #define CYD40_TS_SCK   14   // GPIO14 — HSPI SCK  (= TFT_SCK)
+  #define CYD40_TS_MOSI  13   // GPIO13 — HSPI MOSI (= TFT_MOSI)
+  #define CYD40_TS_MISO  12   // GPIO12 — HSPI MISO (= TFT_MISO)
+  #define CYD40_TS_CS    33   // GPIO33 — touch CS  (display CS = 15)
+  #define CYD40_TS_IRQ   36   // GPIO36 — touch interrupt (input-only, XPT2046 pull-up)
 
 #else
   // ESP32-S3 800×480 RGB liggend

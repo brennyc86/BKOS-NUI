@@ -102,7 +102,7 @@ void ota_loop() {
         if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE) {
             tft_actief = true; tft_bijna_uit = false;
             tft_helderheid_zet(tft_helderheid);
-            actief_scherm = SCREEN_OTA; herteken = true;
+            actief_scherm = SCREEN_OTA; scherm_bouwen = true;
             ota_git_update();
         }
     }
@@ -134,7 +134,7 @@ void ota_loop() {
             if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE) {
                 tft_actief = true; tft_bijna_uit = false;
                 tft_helderheid_zet(tft_helderheid);
-                actief_scherm = SCREEN_OTA; herteken = true;
+                actief_scherm = SCREEN_OTA; scherm_bouwen = true;
                 ota_git_update();
             }
         }

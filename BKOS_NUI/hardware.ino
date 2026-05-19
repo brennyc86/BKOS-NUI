@@ -39,15 +39,17 @@ void hw_setup() {
     tft_setup();
     ts_setup();
 #if PLATFORM_CYD40H || PLATFORM_CYD40V
-    // TIJDELIJK: touch test modus — zwart scherm, witte punten bij aanraking
+    // TIJDELIJK: touch diagnostiek — toont IRQ + polling status + punt bij aanraking
     tft.fillScreen(0x0000);
     tft.setTextColor(0xFFFF);
     tft.setTextSize(2);
     tft.setCursor(10, 10);
-    tft.print("TOUCH TEST");
+    tft.print("TOUCH DIAGNOSTIEK");
     tft.setTextSize(1);
-    tft.setCursor(10, 35);
-    tft.print("Raak het scherm aan — witte punt = touch gedetecteerd");
+    tft.setCursor(10, 40);
+    tft.print("SCK=25 MOSI=32 MISO=39 CS=33 IRQ=36");
+    tft.setCursor(10, 55);
+    tft.print("Raak scherm aan — status verschijnt hieronder");
     return;
 #endif
     hw_io_setup();
@@ -110,9 +112,31 @@ void hw_setup() {
 
 void hw_loop() {
 #if PLATFORM_CYD40H || PLATFORM_CYD40V
-    // TIJDELIJK: touch test modus
-    ts_touched();
-    if (actieve_touch) tft.fillCircle(ts_x, ts_y, 5, 0xFFFF);
+    // TIJDELIJK: touch diagnostiek
+    {
+        static unsigned long vorige_ms = 0;
+        if (millis() - vorige_ms > 200) {
+            vorige_ms = millis();
+            bool irq     = ts.tirqTouched();
+            bool polling = ts.touched();
+            // Status regel boven — elke 200ms bijwerken
+            tft.fillRect(0, 70, TFT_W, 20, 0x0000);
+            tft.setTextColor(0xFFFF);
+            tft.setTextSize(1);
+            tft.setCursor(10, 75);
+            tft.print("IRQ=");   tft.print(irq     ? "JA " : "NEE");
+            tft.print("  POLL="); tft.print(polling ? "JA " : "NEE");
+            if (polling) {
+                TS_Point p = ts.getPoint();
+                tft.print("  raw x="); tft.print(p.x);
+                tft.print(" y=");      tft.print(p.y);
+                // Punt op scherm (eenvoudige mapping)
+                int sx = map(p.y, 200, 3700, 0, TFT_W - 1);
+                int sy = map(p.x, 3700, 200, 0, TFT_H - 1);
+                tft.fillCircle(sx, sy, 6, 0x07E0);  // groen punt
+            }
+        }
+    }
     return;
 #endif
     // Touch en scherm-wake altijd EERST lezen — vóór blokkerende IO/WiFi calls

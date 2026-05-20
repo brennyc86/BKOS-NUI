@@ -147,11 +147,10 @@ static bool _bereken() {
 
 // ─── Publieke interface ───────────────────────────────────────────────────────
 void screen_calibratie_teken() {
-    cal_stap    = 0;
-    cal_mislukt = false;
-    cal_klaar_ms = 0;
-
 #if PLATFORM_XPT2046
+    cal_stap     = 0;
+    cal_mislukt  = false;
+    cal_klaar_ms = 0;
     _init_punten();
     _toon_stap(0);
 #else

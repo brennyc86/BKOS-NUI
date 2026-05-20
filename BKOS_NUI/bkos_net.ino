@@ -470,22 +470,23 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         break;
 
     case NET_MSG_APP_DATA: {
-        // Enqueue voor Lua runtime (verwerkt in lua_app_run op Core 1)
+        // Lokaal enqueueren voor Lua runtime (Core 1)
         if (lua_net_q_cnt < LUA_NET_Q_SIZE) {
-            memcpy(lua_net_q[lua_net_q_cnt].id,  pkt.data,                                   LUA_NET_ID_LEN);
-            memcpy(lua_net_q[lua_net_q_cnt].key, pkt.data + LUA_NET_ID_LEN,                  LUA_NET_KEY_LEN);
+            memcpy(lua_net_q[lua_net_q_cnt].id,  pkt.data,                                    LUA_NET_ID_LEN);
+            memcpy(lua_net_q[lua_net_q_cnt].key, pkt.data + LUA_NET_ID_LEN,                   LUA_NET_KEY_LEN);
             memcpy(lua_net_q[lua_net_q_cnt].val, pkt.data + LUA_NET_ID_LEN + LUA_NET_KEY_LEN, LUA_NET_VAL_LEN);
             lua_net_q[lua_net_q_cnt].id [LUA_NET_ID_LEN  - 1] = '\0';
             lua_net_q[lua_net_q_cnt].key[LUA_NET_KEY_LEN - 1] = '\0';
             lua_net_q[lua_net_q_cnt].val[LUA_NET_VAL_LEN - 1] = '\0';
             lua_net_q_cnt++;
         }
-        // Master: re-broadcast naar andere slaves
-        if (net_modus == NET_MASTER) {
-            int dlen = LUA_NET_ID_LEN + LUA_NET_KEY_LEN + LUA_NET_VAL_LEN;
-            for (int i = 0; i < net_peers_cnt; i++)
-                if (net_peers[i].bevestigd && !_mac_gelijk(net_peers[i].mac, mac))
-                    _stuur(net_peers[i].mac, pkt, dlen);
+        // Master: doorsturen via achtergrond-taak op Core 0 (niet-blokkerend)
+        if (net_modus == NET_MASTER && _app_fwd_q) {
+            _NetAppFwdMsg fwd;
+            memcpy(fwd.van_mac, mac, 6);
+            fwd.dlen = LUA_NET_ID_LEN + LUA_NET_KEY_LEN + LUA_NET_VAL_LEN;
+            memcpy(fwd.data, pkt.data, fwd.dlen);
+            xQueueSend(_app_fwd_q, &fwd, 0);  // laat vallen als queue vol
         }
         break;
     }
@@ -831,6 +832,43 @@ void net_app_data_sturen(const char* app_id, const char* key, const char* val) {
 #endif
 }
 
+// ─── App-bericht achtergrond-router (Core 0) ──────────────────────────────────
+struct _NetAppFwdMsg {
+    uint8_t van_mac[6];
+    uint8_t data[LUA_NET_ID_LEN + LUA_NET_KEY_LEN + LUA_NET_VAL_LEN];
+    int     dlen;
+};
+static QueueHandle_t _app_fwd_q = nullptr;
+
+#if PLATFORM_ESP32
+static void _app_router_taak(void*) {
+    _NetAppFwdMsg msg;
+    for (;;) {
+        if (xQueueReceive(_app_fwd_q, &msg, portMAX_DELAY) != pdTRUE) continue;
+        if (net_modus != NET_MASTER || !_espnow_ok) continue;
+        NetPaket pkt = {};
+        pkt.versie = NET_PROTOCOL_VERSIE;
+        pkt.type   = NET_MSG_APP_DATA;
+        pkt.modus  = net_modus;
+        strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+        memcpy(pkt.data, msg.data, msg.dlen);
+        for (int i = 0; i < net_peers_cnt; i++) {
+            if (net_peers[i].bevestigd && !_mac_gelijk(net_peers[i].mac, msg.van_mac))
+                _stuur(net_peers[i].mac, pkt, msg.dlen);
+        }
+    }
+}
+#endif
+
+void net_app_router_start() {
+#if PLATFORM_ESP32
+    if (_app_fwd_q) return;
+    _app_fwd_q = xQueueCreate(8, sizeof(_NetAppFwdMsg));
+    if (_app_fwd_q)
+        xTaskCreatePinnedToCore(_app_router_taak, "app_router", 3072, nullptr, 1, nullptr, 0);
+#endif
+}
+
 void net_app_lijst_sturen() {
 #if PLATFORM_ESP32
     if (!_espnow_ok || net_modus != NET_MASTER || net_peers_cnt == 0) return;
@@ -861,6 +899,7 @@ void net_setup() {
         net_status = "Standalone modus";
         net_klaar  = true;
     }
+    if (net_modus == NET_MASTER) net_app_router_start();
     // ESP-NOW init volgt bij eerste net_loop() aanroep (WiFi radio moet al actief zijn)
 }
 

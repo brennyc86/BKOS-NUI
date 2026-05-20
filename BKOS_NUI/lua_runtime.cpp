@@ -406,6 +406,19 @@ static int l_net_sturen(lua_State* ls) {
     return 0;
 }
 
+static int l_net_peers(lua_State* ls) {
+    lua_newtable(ls);
+    int idx = 1;
+    for (int i = 0; i < net_peers_cnt; i++) {
+        if (!net_peers[i].bevestigd || !net_peers[i].actief) continue;
+        lua_newtable(ls);
+        lua_pushstring(ls, net_peers[i].naam);         lua_setfield(ls, -2, "naam");
+        lua_pushstring(ls, net_modus_naam(net_peers[i].modus)); lua_setfield(ls, -2, "modus");
+        lua_seti(ls, -2, idx++);
+    }
+    return 1;
+}
+
 // ─── bkos tabel opbouwen ─────────────────────────────────────────────────────
 static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);  // bkos
@@ -501,7 +514,9 @@ static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);
     lua_pushcfunction(ls, l_net_modus);  lua_setfield(ls, -2, "modus");
     lua_pushcfunction(ls, l_net_sturen); lua_setfield(ls, -2, "sturen");
+    lua_pushcfunction(ls, l_net_peers);  lua_setfield(ls, -2, "peers");
     lua_pushnil(ls);                     lua_setfield(ls, -2, "ontvangen");  // callback placeholder
+    lua_pushnil(ls);                     lua_setfield(ls, -2, "ontvang");    // alias
     lua_setfield(ls, -2, "net");
 
     lua_setglobal(ls, "bkos");
@@ -640,7 +655,12 @@ void lua_app_run(int app_idx, int x, int y, bool aanraking) {
             lua_getglobal(L, "bkos");
             lua_getfield(L, -1, "net");
             lua_remove(L, -2);
+            // probeer "ontvangen", dan "ontvang" als alias
             lua_getfield(L, -1, "ontvangen");
+            if (!lua_isfunction(L, -1)) {
+                lua_pop(L, 1);
+                lua_getfield(L, -1, "ontvang");
+            }
             lua_remove(L, -2);
             if (lua_isfunction(L, -1)) {
                 lua_pushstring(L, lua_net_q[i].key);

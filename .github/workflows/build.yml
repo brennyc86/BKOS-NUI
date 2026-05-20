@@ -7,6 +7,7 @@ on:
       - 'BKOS_NUI/**.ino'
       - 'BKOS_NUI/**.h'
       - 'BKOS_NUI/**.cpp'
+      - 'libraries/LuaBKOS/**'
       - '.github/workflows/build.yml'
 
 permissions:
@@ -40,38 +41,8 @@ jobs:
           arduino-cli lib install "TAMC_GT911@1.0.2"
           arduino-cli lib install "ArduinoJson"
 
-      - name: Install Lua 5.4
-        run: |
-          curl -L https://www.lua.org/ftp/lua-5.4.7.tar.gz -o /tmp/lua.tgz
-          tar xzf /tmp/lua.tgz -C /tmp
-          mkdir -p ~/Arduino/libraries/LuaBKOS/src
-          for name in lapi lauxlib lbaselib lcode lctype ldebug ldo ldump \
-                      lfunc lgc llex lmathlib lmem lobject lopcodes lparser \
-                      lstate lstring lstrlib ltable ltablib ltm lundump \
-                      lvm lzio lcorolib; do
-            [ -f /tmp/lua-5.4.7/src/${name}.c ] && cp /tmp/lua-5.4.7/src/${name}.c ~/Arduino/libraries/LuaBKOS/src/
-            [ -f /tmp/lua-5.4.7/src/${name}.h ] && cp /tmp/lua-5.4.7/src/${name}.h ~/Arduino/libraries/LuaBKOS/src/
-          done
-          cp /tmp/lua-5.4.7/src/lua.h      ~/Arduino/libraries/LuaBKOS/src/
-          cp /tmp/lua-5.4.7/src/lualib.h  ~/Arduino/libraries/LuaBKOS/src/
-          cp /tmp/lua-5.4.7/src/lprefix.h ~/Arduino/libraries/LuaBKOS/src/
-          cp /tmp/lua-5.4.7/src/llimits.h ~/Arduino/libraries/LuaBKOS/src/
-          cp /tmp/lua-5.4.7/src/ljumptab.h ~/Arduino/libraries/LuaBKOS/src/
-          cp /tmp/lua-5.4.7/src/lopnames.h ~/Arduino/libraries/LuaBKOS/src/
-          cp $GITHUB_WORKSPACE/BKOS_NUI/lua_bkos_conf.h ~/Arduino/libraries/LuaBKOS/src/luaconf.h
-          rm -f ~/Arduino/libraries/LuaBKOS/src/linit.c
-          cp $GITHUB_WORKSPACE/BKOS_NUI/lua_linit_bkos.c ~/Arduino/libraries/LuaBKOS/src/linit.c
-          cat > ~/Arduino/libraries/LuaBKOS/library.properties << 'PROPS'
-          name=LuaBKOS
-          version=5.4.7
-          author=PUC-Rio (stripped for ESP32)
-          maintainer=BKOS-NUI
-          sentence=Lua 5.4 embedded interpreter voor BKOS apps
-          paragraph=Zonder os/io/package bibliotheken; gebruikt PSRAM heap
-          category=Other
-          url=https://lua.org
-          architectures=esp32
-          PROPS
+      - name: Install LuaBKOS library
+        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile ESP32-S3 firmware
         run: |
@@ -120,6 +91,9 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+
+      - name: Install LuaBKOS library
+        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile WROOM firmware
         run: |
@@ -170,6 +144,9 @@ jobs:
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
 
+      - name: Install LuaBKOS library
+        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
+
       - name: Compile CYD28 firmware
         run: |
           arduino-cli compile \
@@ -218,6 +195,9 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+
+      - name: Install LuaBKOS library
+        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile CYD40H firmware
         run: |
@@ -268,6 +248,9 @@ jobs:
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
 
+      - name: Install LuaBKOS library
+        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
+
       - name: Compile CYD40V firmware
         run: |
           arduino-cli compile \
@@ -316,6 +299,9 @@ jobs:
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
           arduino-cli lib install "Preferences@2.2.2"
+
+      - name: Install LuaBKOS library
+        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile Pico W firmware
         run: |

@@ -129,4 +129,5 @@ void net_peer_info_sturen();  // slave → master: rapporteer lokale IO telling
 
 // App netwerk-communicatie
 void net_app_data_sturen(const char* app_id, const char* key, const char* val);
-void net_app_lijst_sturen();  // master → slaves: geïnst. app IDs + namen
+void net_app_lijst_sturen();    // master → slaves: geïnst. app IDs + namen
+void net_app_router_start();    // master: start Core-0 achtergrond-taak voor app-bericht routing

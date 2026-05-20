@@ -56,10 +56,12 @@ extern int           nav_midden_scroll;
 void nav_midden_bouwen();
 
 // ─── Status bar klok positie ─────────────────────────────────────────────────
+// "HH:MM" met textSize=2 = 5×12 = 60px breed; vaste 68px offset werkt op alle
+// formaten (800px, 480px CYD40H). UI_SCX(68) schaalde te agressief op 480px.
 #if SCREEN_SMALL
   #define SB_KLOK_X  (TFT_W - 34)
 #else
-  #define SB_KLOK_X  (TFT_W - UI_SCX(68))
+  #define SB_KLOK_X  (TFT_W - 68)
 #endif
 
 void nav_bar_teken();

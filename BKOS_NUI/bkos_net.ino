@@ -350,6 +350,12 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             ack.modus  = net_modus;
             strncpy(ack.naam, net_eigen_naam, NET_NAAM_LEN - 1);
             _stuur(mac, ack, 0);
+            // Vernieuw module-telling op master elke 60s
+            static unsigned long _last_peer_info = 0;
+            if (millis() - _last_peer_info >= 60000UL) {
+                _last_peer_info = millis();
+                net_peer_info_sturen();
+            }
         }
         break;
 

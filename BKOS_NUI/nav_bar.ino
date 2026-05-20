@@ -3,13 +3,6 @@
 #include "app_manager.h"
 #include <math.h>
 
-#if SCREEN_SMALL
-int pico_nav_scroll = 0;
-#define PICO_NAV_ARROW_W  20
-#define PICO_NAV_ITEM_W   ((TFT_W - 2 * PICO_NAV_ARROW_W) / 3)
-#define PICO_NAV_VISIBLE  3
-#endif
-
 // ─── Navigatiebalk midden-items ───────────────────────────────────────────────
 NavMiddenItem nav_midden[NAV_MIDDEN_MAX];
 int           nav_midden_cnt    = 0;
@@ -27,18 +20,46 @@ void nav_midden_bouwen() {
         nav_midden_cnt++;
     };
 
+#if SCREEN_SMALL
+    // Systeem-schermen links van de apps (in horizontale volgorde)
+  #if TFT_W == 240
+    _voeg("IO",      SCREEN_IO);
+    _voeg("METEO",   SCREEN_METEO);
+    _voeg("VICTRON", SCREEN_VICTRON);
+  #else
+    _voeg("METEO",   SCREEN_METEO);
+    _voeg("VICTRON", SCREEN_VICTRON);
+  #endif
+#endif
+
     // Geïnstalleerde apps met in_balk == true
     for (int i = 0; i < apps_cnt; i++) {
         if (apps[i].actief && apps[i].in_balk)
             _voeg(apps[i].naam, SCREEN_LUA_APP, i);
     }
 
+#if SCREEN_SMALL
+    // Systeem-schermen rechts van de apps (in horizontale volgorde)
+  #if TFT_W == 240
+    _voeg("NETWERK", SCREEN_NETWERK);
+    _voeg("APPS",    SCREEN_APPS);
+    _voeg("CONFIG",  SCREEN_CONFIG);
+  #else
+    _voeg("NETWERK", SCREEN_NETWERK);
+    _voeg("APPS",    SCREEN_APPS);
+  #endif
+#endif
+
     // Scroll terugzetten als buiten bereik
+#if SCREEN_SMALL
+    int max_scroll = nav_midden_cnt - PNB_MAX_V;
+#else
     int max_scroll = nav_midden_cnt - NB_MAX_V;
+#endif
     if (nav_midden_scroll > max_scroll) nav_midden_scroll = max(0, max_scroll);
 }
 
-// ─── WiFi signaalicoon (22px breed) ──────────────────────────────────────────
+// ─── WiFi signaalicoon ────────────────────────────────────────────────────────
 static void _wifi_icon(int x) {
     int y = SB_H - 5;
     int staat;
@@ -137,7 +158,7 @@ void sb_app_teken(const char* app_naam) {
     tft.print(klok_tijd.c_str());
 }
 
-// ─── Icoon-hulpfuncties (gecentreerd op cx, cy) ───────────────────────────────
+// ─── Icoon-hulpfuncties ───────────────────────────────────────────────────────
 
 static void _ic_wolk(int cx, int cy, uint16_t c) {
     tft.fillCircle(cx - 7, cy + 2, 6, c);
@@ -155,10 +176,9 @@ static void _ic_zon(int cx, int cy, uint16_t c, int r = 6) {
     }
 }
 
-// ─── Iconen voor vaste knoppen ────────────────────────────────────────────────
+// ─── Iconen voor knoppen ──────────────────────────────────────────────────────
 
 static void _nav_icon_io(int cx, int cy, uint16_t c) {
-    // Chip/IC-symbool: rechthoek met 3 pinnen aan elke zijde
     int bw = 12, bh = 14;
     int bx = cx - bw / 2, by = cy - bh / 2;
     tft.drawRect(bx, by, bw, bh, c);
@@ -170,26 +190,23 @@ static void _nav_icon_io(int cx, int cy, uint16_t c) {
 }
 
 static void _nav_icon_paneel(int cx, int cy, uint16_t c) {
-    // 2×2 raster van vierkantjes
     const int sz = 7, gap = 3;
     int ox = cx - sz - gap / 2, oy = cy - sz - gap / 2;
-    tft.fillRoundRect(ox,        oy,        sz, sz, 2, c);
-    tft.fillRoundRect(ox + sz + gap, oy,        sz, sz, 2, c);
-    tft.fillRoundRect(ox,        oy + sz + gap, sz, sz, 2, c);
+    tft.fillRoundRect(ox,            oy,            sz, sz, 2, c);
+    tft.fillRoundRect(ox + sz + gap, oy,            sz, sz, 2, c);
+    tft.fillRoundRect(ox,            oy + sz + gap, sz, sz, 2, c);
     tft.fillRoundRect(ox + sz + gap, oy + sz + gap, sz, sz, 2, c);
 }
 
 static void _nav_icon_store(int cx, int cy, uint16_t c) {
-    // 3×2 raster van cirkeltjes (app-grid)
     for (int r = 0; r < 2; r++)
         for (int k = 0; k < 3; k++)
             tft.fillCircle(cx - 9 + k * 9, cy - 4 + r * 9, 3, c);
 }
 
-static void _nav_icon_config(int cx, int cy, uint16_t c) {
-    // Tandwiel: zes nopjes rond een ring
+static void _nav_icon_config(int cx, int cy, uint16_t c, uint16_t bg = C_NAVBAR) {
     tft.fillCircle(cx, cy, 6, c);
-    tft.fillCircle(cx, cy, 3, C_NAVBAR);  // uitsnede midden
+    tft.fillCircle(cx, cy, 3, bg);
     for (int i = 0; i < 6; i++) {
         float a = i * M_PI / 3;
         tft.fillCircle(cx + (int)(9.5f * cos(a)), cy + (int)(9.5f * sin(a)), 3, c);
@@ -197,15 +214,13 @@ static void _nav_icon_config(int cx, int cy, uint16_t c) {
 }
 
 static void _nav_icon_info(int cx, int cy, uint16_t c) {
-    // Cirkel met 'i'
     tft.drawCircle(cx, cy, 12, c);
     tft.drawCircle(cx, cy, 11, c);
-    tft.fillRect(cx - 1, cy - 6, 3, 3, c);   // punt van 'i'
-    tft.fillRect(cx - 1, cy - 1, 3, 8, c);   // stam van 'i'
+    tft.fillRect(cx - 1, cy - 6, 3, 3, c);
+    tft.fillRect(cx - 1, cy - 1, 3, 8, c);
 }
 
 static void _nav_icon_solar(int cx, int cy, uint16_t c) {
-    // Zonnepaneel: 3×2 raster + kleine zon rechtsboven
     int pw = 20, ph = 12;
     int px = cx - pw / 2, py = cy - ph / 2 + 3;
     tft.drawRect(px, py, pw, ph, c);
@@ -216,7 +231,6 @@ static void _nav_icon_solar(int cx, int cy, uint16_t c) {
 }
 
 static void _nav_icon_netwerk(int cx, int cy, uint16_t c) {
-    // Drie nodes in driehoek, verbonden met lijnen
     int x1 = cx - 9, y1 = cy - 7;
     int x2 = cx + 9, y2 = cy - 7;
     int x3 = cx,     y3 = cy + 8;
@@ -253,7 +267,6 @@ static void _ic_sneeuw(int cx, int cy) {
 static void _ic_onweer(int cx, int cy) {
     _ic_wolk(cx, cy - 5, RGB565(65, 80, 100));
     uint16_t b = C_AMBER;
-    // Bliksemschicht (zigzag, 2px dik)
     tft.drawLine(cx + 2, cy + 4,  cx - 3, cy + 11, b);
     tft.drawLine(cx + 3, cy + 4,  cx - 2, cy + 11, b);
     tft.drawLine(cx - 3, cy + 11, cx + 4, cy + 11, b);
@@ -264,7 +277,6 @@ static void _ic_onweer(int cx, int cy) {
 
 static void _nav_icon_meteo(int cx, int cy) {
     if (!meteo_geladen) {
-        // Geen data: twee streepjes
         uint16_t c = RGB565(80, 100, 120);
         tft.fillRect(cx - 9, cy - 3, 18, 3, c);
         tft.fillRect(cx - 6, cy + 3, 12, 3, c);
@@ -276,7 +288,6 @@ static void _nav_icon_meteo(int cx, int cy) {
     if (code == 0 || code == 1) {
         _ic_zon(cx, cy, dag ? C_AMBER : RGB565(170, 180, 220));
     } else if (code == 2) {
-        // Zon halfbewolkt: kleine zon rechtsboven, wolk linksonder
         _ic_zon(cx + 6, cy - 5, C_AMBER, 4);
         _ic_wolk(cx - 3, cy + 3, RGB565(110, 135, 165));
     } else if (code == 3 || code == 45 || code == 48) {
@@ -286,8 +297,30 @@ static void _nav_icon_meteo(int cx, int cy) {
     } else if (code >= 95) {
         _ic_onweer(cx, cy);
     } else {
-        // 51-68 (motregen/regen), 80-82 (buien) en overig
         _ic_regen(cx, cy);
+    }
+}
+
+// ─── Scrollitem icoon tekenen (portret) ──────────────────────────────────────
+// Tekent het juiste icoon of de tekstlabel voor een scrollbaar nav-item.
+static void _pnb_item_render(NavMiddenItem& item, int cx, int cy, uint16_t kleur, uint16_t bg) {
+    if (item.app_idx >= 0) {
+        // Lua-app: korte tekstlabel
+        tft.setTextSize(1); tft.setTextColor(kleur);
+        char buf[9]; strncpy(buf, item.label, 8); buf[8] = '\0';
+        int tw = strlen(buf) * 6;
+        tft.setCursor(cx - tw / 2, cy - 4);
+        tft.print(buf);
+    } else {
+        // Systeem-scherm: zelfde icoon als horizontale nav bar
+        switch (item.scherm) {
+            case SCREEN_IO:      _nav_icon_io(cx, cy, kleur);        break;
+            case SCREEN_METEO:   _nav_icon_meteo(cx, cy);             break;
+            case SCREEN_VICTRON: _nav_icon_solar(cx, cy, kleur);      break;
+            case SCREEN_NETWERK: _nav_icon_netwerk(cx, cy, kleur);    break;
+            case SCREEN_APPS:    _nav_icon_store(cx, cy, kleur);      break;
+            case SCREEN_CONFIG:  _nav_icon_config(cx, cy, kleur, bg); break;
+        }
     }
 }
 
@@ -298,44 +331,107 @@ void nav_bar_teken() {
     tft.drawFastHLine(0, y, TFT_W, C_SURFACE2);
 
 #if SCREEN_SMALL
-    // Pico: pijltje links | 3 zichtbare items | pijltje rechts
-    tft.setTextSize(1);
-    tft.setTextColor(pico_nav_scroll > 0 ? C_TEXT : C_SURFACE2);
-    tft.setCursor(4, y + (NAV_H - 8) / 2);
-    tft.print("<");
-    tft.drawFastVLine(PICO_NAV_ARROW_W - 1, y + 4, NAV_H - 8, C_SURFACE2);
+    nav_midden_bouwen();
+    int cy = y + NAV_H / 2;
 
-    for (int vi = 0; vi < PICO_NAV_VISIBLE; vi++) {
-        int ai = pico_nav_scroll + vi;
-        if (ai >= NAV_ITEMS) break;
-        int ix = PICO_NAV_ARROW_W + vi * PICO_NAV_ITEM_W;
-        bool actief = (actief_scherm == nav_scherm[ai]);
-        if (actief) {
-            tft.fillRect(ix + 1, y + 1, PICO_NAV_ITEM_W - 2, NAV_H - 2, C_SURFACE2);
-            tft.drawFastHLine(ix + 4, y, PICO_NAV_ITEM_W - 8, C_CYAN);
-            tft.drawFastHLine(ix + 4, y + 1, PICO_NAV_ITEM_W - 8, C_CYAN);
+    // Helper: vierkante vaste knop
+    auto _pnb_knop = [&](int x, int scherm_id) -> bool {
+        bool act = (actief_scherm == scherm_id);
+        tft.fillRect(x + 1, y + 1, PNB_SQ - 2, NAV_H - 2, act ? C_SURFACE2 : C_SURFACE);
+        if (act) {
+            tft.drawFastHLine(x + 3, y,     PNB_SQ - 6, C_CYAN);
+            tft.drawFastHLine(x + 3, y + 1, PNB_SQ - 6, C_CYAN);
         }
-        tft.setTextSize(1); tft.setTextColor(actief ? C_CYAN : C_TEXT_DIM);
-        int tw = strlen(nav_labels[ai]) * 6;
-        tft.setCursor(ix + (PICO_NAV_ITEM_W - tw) / 2, y + (NAV_H - 8) / 2);
-        tft.print(nav_labels[ai]);
-        if (vi < PICO_NAV_VISIBLE - 1)
-            tft.drawFastVLine(ix + PICO_NAV_ITEM_W - 1, y + 4, NAV_H - 8, C_SURFACE2);
+        return act;
+    };
+
+    // ── Vaste knoppen links ──────────────────────────────────────────────────
+    {
+        bool act = _pnb_knop(0, SCREEN_MAIN);
+        _nav_icon_paneel(PNB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
+        tft.drawFastVLine(PNB_SQ - 1, y + 2, NAV_H - 4, C_SURFACE2);
+    }
+  #if TFT_W != 240
+    {
+        bool act = _pnb_knop(PNB_SQ, SCREEN_IO);
+        _nav_icon_io(PNB_SQ + PNB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
+        tft.drawFastVLine(2 * PNB_SQ - 1, y + 2, NAV_H - 4, C_SURFACE2);
+    }
+  #endif
+
+    // ── Vaste knoppen rechts ─────────────────────────────────────────────────
+  #if TFT_W != 240
+    {
+        int rx = TFT_W - 2 * PNB_SQ;
+        bool act = _pnb_knop(rx, SCREEN_CONFIG);
+        uint16_t bg = act ? C_SURFACE2 : C_SURFACE;
+        _nav_icon_config(rx + PNB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM, bg);
+        tft.drawFastVLine(rx - 1, y + 2, NAV_H - 4, C_SURFACE2);
+    }
+  #endif
+    {
+        int rx = TFT_W - PNB_SQ;
+        bool act = _pnb_knop(rx, SCREEN_INFO);
+        _nav_icon_info(rx + PNB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
+        tft.drawFastVLine(rx - 1, y + 2, NAV_H - 4, C_SURFACE2);
     }
 
-    tft.drawFastVLine(TFT_W - PICO_NAV_ARROW_W, y + 4, NAV_H - 8, C_SURFACE2);
-    bool kan_rechts = (pico_nav_scroll + PICO_NAV_VISIBLE < NAV_ITEMS);
-    tft.setTextColor(kan_rechts ? C_TEXT : C_SURFACE2);
-    tft.setCursor(TFT_W - PICO_NAV_ARROW_W + 6, y + (NAV_H - 8) / 2);
+    // ── Scrollbaar midden ────────────────────────────────────────────────────
+    tft.fillRect(PNB_MID_X, y + 1, PNB_MID_W, NAV_H - 2, C_SURFACE);
+    tft.drawFastHLine(PNB_MID_X, y, PNB_MID_W, C_SURFACE2);
+
+    bool kan_links  = (nav_midden_scroll > 0);
+    bool kan_rechts = (nav_midden_scroll + PNB_MAX_V < nav_midden_cnt);
+
+    // Linker pijl
+    tft.setTextSize(1);
+    tft.setTextColor(kan_links ? C_TEXT : C_TEXT_DARK);
+    tft.setCursor(PNB_MID_X + 3, y + (NAV_H - 8) / 2);
+    tft.print("<");
+    tft.drawFastVLine(PNB_MID_X + PNB_ARROW_W - 1, y + 2, NAV_H - 4, C_SURFACE2);
+
+    // Rechter pijl
+    int rp_x = PNB_MID_X + PNB_MID_W - PNB_ARROW_W;
+    tft.setTextColor(kan_rechts ? C_TEXT : C_TEXT_DARK);
+    tft.setCursor(rp_x + 3, y + (NAV_H - 8) / 2);
     tft.print(">");
+    tft.drawFastVLine(rp_x - 1, y + 2, NAV_H - 4, C_SURFACE2);
+
+    // Items
+    int items_x = PNB_MID_X + PNB_ARROW_W;
+    for (int vi = 0; vi < PNB_MAX_V; vi++) {
+        int ai = nav_midden_scroll + vi;
+        if (ai >= nav_midden_cnt) break;
+        NavMiddenItem& item = nav_midden[ai];
+        int bx = items_x + vi * PNB_ITEM_W;
+
+        bool act = false;
+        if (item.scherm == SCREEN_LUA_APP) {
+            act = (actief_scherm == SCREEN_LUA_APP && lua_forceer_app == item.app_idx);
+        } else {
+            act = (actief_scherm == item.scherm);
+        }
+
+        uint16_t bg = act ? C_SURFACE2 : C_SURFACE;
+        if (act) {
+            tft.fillRect(bx + 1, y + 1, PNB_ITEM_W - 2, NAV_H - 2, C_SURFACE2);
+            tft.drawFastHLine(bx + 2, y,     PNB_ITEM_W - 4, C_CYAN);
+            tft.drawFastHLine(bx + 2, y + 1, PNB_ITEM_W - 4, C_CYAN);
+        }
+
+        uint16_t kleur = act ? C_CYAN : C_TEXT_DIM;
+        _pnb_item_render(item, bx + PNB_ITEM_W / 2, cy, kleur, bg);
+
+        if (vi < PNB_MAX_V - 1 && ai + 1 < nav_midden_cnt)
+            tft.drawFastVLine(bx + PNB_ITEM_W - 1, y + 2, NAV_H - 4, C_SURFACE2);
+    }
 
 #else
-    // ── 800×480: nieuwe navigatiebalk ────────────────────────────────────────
+    // ── 800×480 landscape: navigatiebalk ─────────────────────────────────────
     nav_midden_bouwen();
 
     int cy = y + NAV_H / 2;
 
-    // Helper: teken één vierkante systeemknop met bevel effect
     auto _sys_knop = [&](int x, int scherm_id) -> bool {
         bool act = (actief_scherm == scherm_id);
         tft.fillRect(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, act ? C_SURFACE2 : C_SURFACE);
@@ -343,7 +439,6 @@ void nav_bar_teken() {
             tft.drawFastHLine(x + 4, y,     NB_SQ - 8, C_CYAN);
             tft.drawFastHLine(x + 4, y + 1, NB_SQ - 8, C_CYAN);
         } else {
-            // Bevel: licht randje boven/links, donker randje onder/rechts
             tft.drawFastHLine(x + 1, y + 1,           NB_SQ - 2, C_SURFACE3);
             tft.drawFastVLine(x + 1, y + 1,           NAV_H - 2, C_SURFACE3);
             tft.drawFastHLine(x + 1, y + NAV_H - 2,   NB_SQ - 2, C_NAVBAR);
@@ -352,28 +447,25 @@ void nav_bar_teken() {
         return act;
     };
 
-    // ── PANEEL (links) ──────────────────────────────────────────────────────
+    // ── PANEEL ──────────────────────────────────────────────────────────────
     {
         bool act = _sys_knop(0, SCREEN_MAIN);
         _nav_icon_paneel(NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
         tft.drawFastVLine(NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
-
-    // ── IO (tweede links) ───────────────────────────────────────────────────
+    // ── IO ───────────────────────────────────────────────────────────────────
     {
         bool act = _sys_knop(NB_SQ, SCREEN_IO);
         _nav_icon_io(NB_SQ + NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
         tft.drawFastVLine(2 * NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
-
-    // ── METEO (derde links) ─────────────────────────────────────────────────
+    // ── METEO ────────────────────────────────────────────────────────────────
     {
         _sys_knop(2 * NB_SQ, SCREEN_METEO);
         _nav_icon_meteo(2 * NB_SQ + NB_SQ / 2, cy);
         tft.drawFastVLine(3 * NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
-
-    // ── VICTRON (vierde links) ──────────────────────────────────────────────
+    // ── VICTRON ──────────────────────────────────────────────────────────────
     {
         bool act = _sys_knop(3 * NB_SQ, SCREEN_VICTRON);
         _nav_icon_solar(3 * NB_SQ + NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
@@ -385,17 +477,15 @@ void nav_bar_teken() {
     int  app_x0, app_zichtbaar;
 
     if (toon_pijlen) {
-        app_x0       = NB_MX + NB_AW;
+        app_x0        = NB_MX + NB_AW;
         app_zichtbaar = NB_MAX_V;
 
-        // Linker pijl
         uint16_t lp_c = (nav_midden_scroll > 0) ? C_TEXT : C_TEXT_DARK;
         tft.fillRect(NB_MX, y, NB_AW, NAV_H, C_SURFACE);
         tft.setTextSize(2); tft.setTextColor(lp_c);
         tft.setCursor(NB_MX + 3, y + (NAV_H - 16) / 2);
         tft.print("<");
 
-        // Rechter pijl
         int rp_x = NB_MX + NB_AW + app_zichtbaar * NB_KW;
         bool kan_rechts = (nav_midden_scroll + app_zichtbaar < nav_midden_cnt);
         uint16_t rp_c = kan_rechts ? C_TEXT : C_TEXT_DARK;
@@ -403,15 +493,12 @@ void nav_bar_teken() {
         tft.setTextSize(2); tft.setTextColor(rp_c);
         tft.setCursor(rp_x + 3, y + (NAV_H - 16) / 2);
         tft.print(">");
-
     } else {
-        // Geen pijlen — apps gecentreerd in de midden-zone
         int totaal_breed = nav_midden_cnt * NB_KW;
-        app_x0       = NB_MX + (NB_MW - totaal_breed) / 2;
+        app_x0        = NB_MX + (NB_MW - totaal_breed) / 2;
         app_zichtbaar = nav_midden_cnt;
     }
 
-    // Midden achtergrond tint
     tft.fillRect(NB_MX, y + 1, NB_MW, NAV_H - 2, C_SURFACE);
     tft.drawFastHLine(NB_MX, y, NB_MW, C_SURFACE2);
 
@@ -419,7 +506,6 @@ void nav_bar_teken() {
         int ai = nav_midden_scroll + vi;
         if (ai >= nav_midden_cnt) break;
         NavMiddenItem& item = nav_midden[ai];
-
         int bx = app_x0 + vi * NB_KW;
 
         bool act = false;
@@ -440,7 +526,6 @@ void nav_bar_teken() {
             tft.drawFastVLine(bx + NB_KW - 2, y + 1,   NAV_H - 2, C_NAVBAR);
         }
 
-        // Naam gecentreerd, afgekapt als te lang
         char buf[17];
         strncpy(buf, item.label, 16); buf[16] = '\0';
         int tw = strlen(buf) * 6;
@@ -455,7 +540,6 @@ void nav_bar_teken() {
         tft.setCursor(bx + (NB_KW - tw) / 2, y + (NAV_H - 8) / 2);
         tft.print(buf);
 
-        // Scheider
         if (vi < app_zichtbaar - 1)
             tft.drawFastVLine(bx + NB_KW - 1, y + 4, NAV_H - 8, C_SURFACE2);
     }
@@ -465,7 +549,6 @@ void nav_bar_teken() {
     tft.drawFastVLine(NB_R1X - 1, y + 4, NAV_H - 8, C_SURFACE2);
     tft.drawFastVLine(NB_R2X - 1, y + 4, NAV_H - 8, C_SURFACE2);
     tft.drawFastVLine(NB_R3X - 1, y + 4, NAV_H - 8, C_SURFACE2);
-
     {
         bool act = _sys_knop(NB_R0X, SCREEN_NETWERK);
         _nav_icon_netwerk(NB_R0X + NB_SQ / 2, cy, act ? C_CYAN : C_TEXT_DIM);
@@ -490,48 +573,67 @@ int nav_bar_klik(int x, int y) {
     if (y < NAV_Y - 8 || y >= TFT_H) return -1;
 
 #if SCREEN_SMALL
-    if (x < PICO_NAV_ARROW_W) {
-        if (pico_nav_scroll > 0) { pico_nav_scroll--; nav_bar_teken(); }
+    // ── Vaste knoppen links ──────────────────────────────────────────────────
+    if (x < PNB_SQ) return SCREEN_MAIN;
+  #if TFT_W != 240
+    if (x < 2 * PNB_SQ) return SCREEN_IO;
+  #endif
+
+    // ── Vaste knoppen rechts ─────────────────────────────────────────────────
+    if (x >= TFT_W - PNB_SQ) return SCREEN_INFO;
+  #if TFT_W != 240
+    if (x >= TFT_W - 2 * PNB_SQ) return SCREEN_CONFIG;
+  #endif
+
+    // ── Linker scroll-pijl ───────────────────────────────────────────────────
+    if (x < PNB_MID_X + PNB_ARROW_W) {
+        if (nav_midden_scroll > 0) { nav_midden_scroll--; nav_bar_teken(); }
         return -1;
     }
-    if (x >= TFT_W - PICO_NAV_ARROW_W) {
-        if (pico_nav_scroll + PICO_NAV_VISIBLE < NAV_ITEMS) { pico_nav_scroll++; nav_bar_teken(); }
+
+    // ── Rechter scroll-pijl ──────────────────────────────────────────────────
+    int rp_x = PNB_MID_X + PNB_MID_W - PNB_ARROW_W;
+    if (x >= rp_x) {
+        if (nav_midden_scroll + PNB_MAX_V < nav_midden_cnt) { nav_midden_scroll++; nav_bar_teken(); }
         return -1;
     }
-    int vi = (x - PICO_NAV_ARROW_W) / PICO_NAV_ITEM_W;
-    int ai = pico_nav_scroll + vi;
-    if (ai >= 0 && ai < NAV_ITEMS) return nav_scherm[ai];
+
+    // ── Scroll-items ─────────────────────────────────────────────────────────
+    int vi = (x - (PNB_MID_X + PNB_ARROW_W)) / PNB_ITEM_W;
+    int ai = nav_midden_scroll + vi;
+    if (vi >= 0 && vi < PNB_MAX_V && ai < nav_midden_cnt) {
+        NavMiddenItem& item = nav_midden[ai];
+        if (item.scherm == SCREEN_LUA_APP) lua_forceer_app = item.app_idx;
+        return item.scherm;
+    }
     return -1;
 
 #else
     // ── Links: PANEEL, IO, METEO, VICTRON ────────────────────────────────────
-    if (x < NB_SQ)          return SCREEN_MAIN;
-    if (x < 2 * NB_SQ)      return SCREEN_IO;
-    if (x < 3 * NB_SQ)      return SCREEN_METEO;
-    if (x < NB_MX)          return SCREEN_VICTRON;
+    if (x < NB_SQ)      return SCREEN_MAIN;
+    if (x < 2 * NB_SQ)  return SCREEN_IO;
+    if (x < 3 * NB_SQ)  return SCREEN_METEO;
+    if (x < NB_MX)      return SCREEN_VICTRON;
 
     // ── Rechts ──────────────────────────────────────────────────────────────
-    if (x >= NB_R3X)         return SCREEN_INFO;
-    if (x >= NB_R2X)         return SCREEN_CONFIG;
-    if (x >= NB_R1X)         return SCREEN_APPS;
-    if (x >= NB_R0X)         return SCREEN_NETWERK;
+    if (x >= NB_R3X)    return SCREEN_INFO;
+    if (x >= NB_R2X)    return SCREEN_CONFIG;
+    if (x >= NB_R1X)    return SCREEN_APPS;
+    if (x >= NB_R0X)    return SCREEN_NETWERK;
 
     // ── Midden ──────────────────────────────────────────────────────────────
     bool toon_pijlen = (nav_midden_cnt > NB_MAX_V);
 
     if (toon_pijlen) {
-        // Linker pijl
         if (x < NB_MX + NB_AW) {
             if (nav_midden_scroll > 0) { nav_midden_scroll--; nav_bar_teken(); }
             return -1;
         }
-        // Rechter pijl
         int rp_x = NB_MX + NB_AW + NB_MAX_V * NB_KW;
         if (x >= rp_x && x < rp_x + NB_AW) {
             if (nav_midden_scroll + NB_MAX_V < nav_midden_cnt) { nav_midden_scroll++; nav_bar_teken(); }
             return -1;
         }
-        // App-knoppen
         int vi = (x - (NB_MX + NB_AW)) / NB_KW;
         int ai = nav_midden_scroll + vi;
         if (vi >= 0 && vi < NB_MAX_V && ai < nav_midden_cnt) {

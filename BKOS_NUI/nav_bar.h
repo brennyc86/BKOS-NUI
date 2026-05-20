@@ -3,28 +3,42 @@
 #include "app_state.h"
 #include "meteo.h"
 
-// ─── Pico: scrollbare nav bar met vaste itemlijst ─────────────────────────────
+// ─── Portret (SCREEN_SMALL) nav bar layout ───────────────────────────────────
+// 240×320 (Pico/WROOM/CYD28): [PANEEL] | ← scrollbar → | [INFO]
+// 320×480 (CYD40V):           [PANEEL|IO] | ← scrollbar → | [CONFIG|INFO]
+// Volgorde scrollbar = horizontale volgorde min de vaste knoppen.
+// Systeem-schermen en geïnstalleerde apps scrollen als één lijst.
 #if SCREEN_SMALL
-  #define NAV_ITEMS 8
-  static const char* nav_labels[NAV_ITEMS] = {"PANEEL","IO","METEO","APPS","CONFIG","INFO","VICTRON","NETWERK"};
-  static const int   nav_scherm[NAV_ITEMS] = {SCREEN_MAIN,SCREEN_IO,SCREEN_METEO,SCREEN_APPS,SCREEN_CONFIG,SCREEN_INFO,SCREEN_VICTRON,SCREEN_NETWERK};
-  extern int pico_nav_scroll;
+  #define PNB_SQ       NAV_H    // vierkante vaste knop (= NAV_H px)
+  #define PNB_ARROW_W  14       // pijl-knop breedte
+
+  #if TFT_W == 240
+    #define PNB_FIXED_L  1      // links: PANEEL
+    #define PNB_FIXED_R  1      // rechts: INFO
+  #else                         // 320×480 (CYD40V)
+    #define PNB_FIXED_L  2      // links: PANEEL, IO
+    #define PNB_FIXED_R  2      // rechts: CONFIG, INFO
+  #endif
+
+  #define PNB_MID_X    (PNB_FIXED_L * PNB_SQ)
+  #define PNB_MID_W    (TFT_W - (PNB_FIXED_L + PNB_FIXED_R) * PNB_SQ)
+  #define PNB_ITEM_W   ((PNB_MID_W - 2 * PNB_ARROW_W) / 2)
+  #define PNB_MAX_V    2
 #endif
 
-// ─── Navigatiebalk midden-sectie (800px) ──────────────────────────────────────
+// ─── Navigatiebalk midden-sectie (800px landscape) ───────────────────────────
 // Vaste vierkante knoppen links: PANEEL, IO, METEO, VICTRON (elk NB_SQ breed)
 // Vaste vierkante knoppen rechts: NETWERK, APPSTORE, CONFIG, INFO (elk NB_SQ breed)
 // Midden: scrollbare app-knoppen (NB_KW breed, naam uitgeschreven)
-#define NB_SQ    NAV_H               // vierkante knopbreedte = hoogte (42px)
-#define NB_MX    (4 * NB_SQ)         // midden zone start-x (168px)
-#define NB_MW    (TFT_W - 8 * NB_SQ) // midden zone breedte (464px)
-#define NB_R0X   (TFT_W - 4 * NB_SQ) // NETWERK  x (632px)
-#define NB_R1X   (TFT_W - 3 * NB_SQ) // APPSTORE x (674px)
-#define NB_R2X   (TFT_W - 2 * NB_SQ) // CONFIG   x (716px)
-#define NB_R3X   (TFT_W -     NB_SQ) // INFO     x (758px)
-#define NB_AW    22                   // pijl-knop breedte (< en >)
-#define NB_KW    100                  // app-knop vaste breedte
-// Maximaal zichtbare apps bij pijlen: (NB_MW - 2*NB_AW) / NB_KW = 4
+#define NB_SQ    NAV_H
+#define NB_MX    (4 * NB_SQ)
+#define NB_MW    (TFT_W - 8 * NB_SQ)
+#define NB_R0X   (TFT_W - 4 * NB_SQ)
+#define NB_R1X   (TFT_W - 3 * NB_SQ)
+#define NB_R2X   (TFT_W - 2 * NB_SQ)
+#define NB_R3X   (TFT_W -     NB_SQ)
+#define NB_AW    22
+#define NB_KW    100
 #define NB_MAX_V ((NB_MW - 2 * NB_AW) / NB_KW)
 
 #define NAV_MIDDEN_MAX 16
@@ -45,7 +59,7 @@ void nav_midden_bouwen();
 #if SCREEN_SMALL
   #define SB_KLOK_X  (TFT_W - 34)
 #else
-  #define SB_KLOK_X  (TFT_W - UI_SCX(68))  // 68px van rechts (was 800-732=68)
+  #define SB_KLOK_X  (TFT_W - UI_SCX(68))
 #endif
 
 void nav_bar_teken();

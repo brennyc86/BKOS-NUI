@@ -7,16 +7,18 @@ int  ts_x = 0;
 int  ts_y = 0;
 
 #if PLATFORM_XPT2046
-int ts_raw_px    = 0;
-int ts_raw_py    = 0;
-int ts_cal_py_min = 200;
-int ts_cal_py_max = 3700;
-int ts_cal_px_hi  = 3700;
-int ts_cal_px_lo  = 200;
+int  ts_raw_px    = 0;
+int  ts_raw_py    = 0;
+int  ts_cal_py_min = 200;
+int  ts_cal_py_max = 3700;
+int  ts_cal_px_hi  = 3700;
+int  ts_cal_px_lo  = 200;
+bool ts_kalibratie_vereist = false;
 
 void ts_kalibratie_laden() {
     Preferences prefs;
     prefs.begin("ts_cal", true);
+    ts_kalibratie_vereist = !prefs.getBool("gedaan", false);
     ts_cal_py_min = prefs.getInt("py_min", 200);
     ts_cal_py_max = prefs.getInt("py_max", 3700);
     ts_cal_px_hi  = prefs.getInt("px_hi",  3700);
@@ -27,11 +29,13 @@ void ts_kalibratie_laden() {
 void ts_kalibratie_opslaan() {
     Preferences prefs;
     prefs.begin("ts_cal", false);
-    prefs.putInt("py_min", ts_cal_py_min);
-    prefs.putInt("py_max", ts_cal_py_max);
-    prefs.putInt("px_hi",  ts_cal_px_hi);
-    prefs.putInt("px_lo",  ts_cal_px_lo);
+    prefs.putBool("gedaan",  true);
+    prefs.putInt("py_min",   ts_cal_py_min);
+    prefs.putInt("py_max",   ts_cal_py_max);
+    prefs.putInt("px_hi",    ts_cal_px_hi);
+    prefs.putInt("px_lo",    ts_cal_px_lo);
     prefs.end();
+    ts_kalibratie_vereist = false;
 }
 #endif
 

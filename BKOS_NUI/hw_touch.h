@@ -23,12 +23,13 @@ extern int  ts_x;
 extern int  ts_y;
 
 #if PLATFORM_XPT2046
-extern int ts_raw_px;
-extern int ts_raw_py;
-extern int ts_cal_py_min;
-extern int ts_cal_py_max;
-extern int ts_cal_px_hi;
-extern int ts_cal_px_lo;
+extern int  ts_raw_px;
+extern int  ts_raw_py;
+extern int  ts_cal_py_min;
+extern int  ts_cal_py_max;
+extern int  ts_cal_px_hi;
+extern int  ts_cal_px_lo;
+extern bool ts_kalibratie_vereist;  // true als nog nooit gekalibreerd op dit apparaat
 void ts_kalibratie_laden();
 void ts_kalibratie_opslaan();
 #endif

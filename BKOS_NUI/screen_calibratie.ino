@@ -42,11 +42,16 @@ void screen_calibratie_teken() {
 
 #if PLATFORM_XPT2046
     tft.fillScreen(C_BG);
-    cal_instructie("Touch kalibratie", "Tik op het kruis (punt 1)");
+    // Subtitel: kalibratie geldt voor alle oriëntaties
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    int sw = strlen("Geldig voor portrait en landscape") * 6;
+    tft.setCursor(TFT_W / 2 - sw / 2, TFT_H / 2 + 18);
+    tft.print("Geldig voor portrait en landscape");
+    cal_instructie("Touch kalibratie", "Tik op het kruis (punt 1 van 2)");
     cal_kruis(20, 20, C_GREEN);
 #else
     // Capacitief scherm: kalibratie niet nodig
-    actief_scherm = SCREEN_CONFIG;
+    actief_scherm = SCREEN_MAIN;
     scherm_bouwen = true;
 #endif
 }
@@ -54,10 +59,10 @@ void screen_calibratie_teken() {
 void screen_calibratie_run(int x, int y, bool aanraking) {
 #if PLATFORM_XPT2046
 
-    // Stap 2: klaar — wacht 1.5s en ga terug
+    // Stap 2: klaar — wacht 1.5s en ga naar hoofdscherm
     if (cal_stap == 2) {
         if (!aanraking && millis() - cal_klaar_ms > 1500) {
-            actief_scherm = SCREEN_CONFIG;
+            actief_scherm = SCREEN_MAIN;
             scherm_bouwen = true;
         }
         return;
@@ -72,7 +77,11 @@ void screen_calibratie_run(int x, int y, bool aanraking) {
 
         cal_stap = 1;
         tft.fillScreen(C_BG);
-        cal_instructie("Touch kalibratie", "Tik op het kruis (punt 2)");
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        int sw2 = strlen("Geldig voor portrait en landscape") * 6;
+        tft.setCursor(TFT_W / 2 - sw2 / 2, TFT_H / 2 + 18);
+        tft.print("Geldig voor portrait en landscape");
+        cal_instructie("Touch kalibratie", "Tik op het kruis (punt 2 van 2)");
         cal_kruis(TFT_W - 20, TFT_H - 20, C_CYAN);
 
         // Tijdelijk opslaan in kalibratie variabelen (py_min/px_hi)
@@ -105,7 +114,7 @@ void screen_calibratie_run(int x, int y, bool aanraking) {
 
 #else
     // Niet van toepassing op dit platform
-    actief_scherm = SCREEN_CONFIG;
+    actief_scherm = SCREEN_MAIN;
     scherm_bouwen = true;
 #endif
 }

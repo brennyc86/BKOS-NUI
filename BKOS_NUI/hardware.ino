@@ -94,6 +94,12 @@ void hw_setup() {
 
     scherm_bouwen = true;
     actief_scherm = SCREEN_MAIN;
+
+#if PLATFORM_XPT2046
+    // Eerste boot zonder kalibratie: toon kalibratiescherm vóór hoofdscherm
+    if (ts_kalibratie_vereist && net_modus != NET_HEADLESS)
+        actief_scherm = SCREEN_CALIBRATIE;
+#endif
 }
 
 void hw_loop() {

@@ -285,6 +285,16 @@ void net_tijd_sturen() {
 #endif
 }
 
+// ─── App-bericht achtergrond-router (Core 0) — forward declaraties ───────────
+#if PLATFORM_ESP32
+struct _NetAppFwdMsg {
+    uint8_t van_mac[6];
+    uint8_t data[LUA_NET_ID_LEN + LUA_NET_KEY_LEN + LUA_NET_VAL_LEN];
+    int     dlen;
+};
+static QueueHandle_t _app_fwd_q = nullptr;
+#endif
+
 // ─── Bericht verwerking ───────────────────────────────────────────────────────
 #if PLATFORM_ESP32
 static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
@@ -834,13 +844,6 @@ void net_app_data_sturen(const char* app_id, const char* key, const char* val) {
 
 // ─── App-bericht achtergrond-router (Core 0) ──────────────────────────────────
 #if PLATFORM_ESP32
-struct _NetAppFwdMsg {
-    uint8_t van_mac[6];
-    uint8_t data[LUA_NET_ID_LEN + LUA_NET_KEY_LEN + LUA_NET_VAL_LEN];
-    int     dlen;
-};
-static QueueHandle_t _app_fwd_q = nullptr;
-
 static void _app_router_taak(void*) {
     _NetAppFwdMsg msg;
     for (;;) {

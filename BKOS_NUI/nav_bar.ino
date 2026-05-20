@@ -302,18 +302,20 @@ static void _nav_icon_meteo(int cx, int cy) {
 }
 
 // ─── Scrollitem icoon tekenen (portret) ──────────────────────────────────────
-// Tekent het juiste icoon of de tekstlabel voor een scrollbaar nav-item.
-static void _pnb_item_render(NavMiddenItem& item, int cx, int cy, uint16_t kleur, uint16_t bg) {
-    if (item.app_idx >= 0) {
-        // Lua-app: korte tekstlabel
+// Neemt een index ipv NavMiddenItem& zodat de auto-forward-declaratie alleen
+// primitieve types bevat (NavMiddenItem& is nog niet beschikbaar vóór nav_bar.h).
+static void _pnb_item_render(int ai, int cx, int cy, uint16_t kleur, uint16_t bg) {
+    bool        is_app = (nav_midden[ai].app_idx >= 0);
+    int         scherm = nav_midden[ai].scherm;
+    const char* lbl    = nav_midden[ai].label;
+    if (is_app) {
         tft.setTextSize(1); tft.setTextColor(kleur);
-        char buf[9]; strncpy(buf, item.label, 8); buf[8] = '\0';
+        char buf[9]; strncpy(buf, lbl, 8); buf[8] = '\0';
         int tw = strlen(buf) * 6;
         tft.setCursor(cx - tw / 2, cy - 4);
         tft.print(buf);
     } else {
-        // Systeem-scherm: zelfde icoon als horizontale nav bar
-        switch (item.scherm) {
+        switch (scherm) {
             case SCREEN_IO:      _nav_icon_io(cx, cy, kleur);        break;
             case SCREEN_METEO:   _nav_icon_meteo(cx, cy);             break;
             case SCREEN_VICTRON: _nav_icon_solar(cx, cy, kleur);      break;
@@ -420,7 +422,7 @@ void nav_bar_teken() {
         }
 
         uint16_t kleur = act ? C_CYAN : C_TEXT_DIM;
-        _pnb_item_render(item, bx + PNB_ITEM_W / 2, cy, kleur, bg);
+        _pnb_item_render(ai, bx + PNB_ITEM_W / 2, cy, kleur, bg);
 
         if (vi < PNB_MAX_V - 1 && ai + 1 < nav_midden_cnt)
             tft.drawFastVLine(bx + PNB_ITEM_W - 1, y + 2, NAV_H - 4, C_SURFACE2);

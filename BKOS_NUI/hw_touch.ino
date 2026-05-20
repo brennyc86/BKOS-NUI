@@ -7,33 +7,41 @@ int  ts_x = 0;
 int  ts_y = 0;
 
 #if PLATFORM_XPT2046
-int  ts_raw_px    = 0;
-int  ts_raw_py    = 0;
-int  ts_cal_py_min = 200;
-int  ts_cal_py_max = 3700;
-int  ts_cal_px_hi  = 3700;
-int  ts_cal_px_lo  = 200;
-bool ts_kalibratie_vereist = false;
+int   ts_raw_px = 0;
+int   ts_raw_py = 0;
+float ts_cal_ax = 0.0f, ts_cal_bx = 0.0f, ts_cal_cx = 0.0f;
+float ts_cal_ay = 0.0f, ts_cal_by = 0.0f, ts_cal_cy = 0.0f;
+bool  ts_kalibratie_vereist = false;
+
+// Aparte namespace per oriëntatie zodat portrait/landscape firmware nooit
+// elkaars kalibratie overschrijft op hetzelfde apparaat.
+static const char* _cal_ns() {
+    return (TFT_W > TFT_H) ? "ts_cal_l" : "ts_cal_p";
+}
 
 void ts_kalibratie_laden() {
     Preferences prefs;
-    prefs.begin("ts_cal", true);
+    prefs.begin(_cal_ns(), true);
     ts_kalibratie_vereist = !prefs.getBool("gedaan", false);
-    ts_cal_py_min = prefs.getInt("py_min", 200);
-    ts_cal_py_max = prefs.getInt("py_max", 3700);
-    ts_cal_px_hi  = prefs.getInt("px_hi",  3700);
-    ts_cal_px_lo  = prefs.getInt("px_lo",  200);
+    ts_cal_ax = prefs.getFloat("ax", 0.0f);
+    ts_cal_bx = prefs.getFloat("bx", 0.0f);
+    ts_cal_cx = prefs.getFloat("cx", 0.0f);
+    ts_cal_ay = prefs.getFloat("ay", 0.0f);
+    ts_cal_by = prefs.getFloat("by", 0.0f);
+    ts_cal_cy = prefs.getFloat("cy", 0.0f);
     prefs.end();
 }
 
 void ts_kalibratie_opslaan() {
     Preferences prefs;
-    prefs.begin("ts_cal", false);
-    prefs.putBool("gedaan",  true);
-    prefs.putInt("py_min",   ts_cal_py_min);
-    prefs.putInt("py_max",   ts_cal_py_max);
-    prefs.putInt("px_hi",    ts_cal_px_hi);
-    prefs.putInt("px_lo",    ts_cal_px_lo);
+    prefs.begin(_cal_ns(), false);
+    prefs.putBool("gedaan", true);
+    prefs.putFloat("ax", ts_cal_ax);
+    prefs.putFloat("bx", ts_cal_bx);
+    prefs.putFloat("cx", ts_cal_cx);
+    prefs.putFloat("ay", ts_cal_ay);
+    prefs.putFloat("by", ts_cal_by);
+    prefs.putFloat("cy", ts_cal_cy);
     prefs.end();
     ts_kalibratie_vereist = false;
 }
@@ -53,9 +61,8 @@ void ts_kalibratie_opslaan() {
   XPT2046_Touchscreen ts(WROOM_TS_CS, WROOM_TS_IRQ);
 #elif PLATFORM_CYD28
   static SPIClass cyd28_vspi(VSPI);
-  XPT2046_Touchscreen ts(CYD28_TS_CS, CYD28_TS_IRQ);   // aparte VSPI met IRQ
+  XPT2046_Touchscreen ts(CYD28_TS_CS, CYD28_TS_IRQ);
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-  // Touch deelt HSPI bus met display (CS=33 vs display CS=15)
   XPT2046_Touchscreen ts(CYD40_TS_CS, CYD40_TS_IRQ);
   static SPIClass cyd40_hspi(HSPI);
 #endif
@@ -71,18 +78,15 @@ void ts_setup() {
     ts_kalibratie_laden();
 
 #elif PLATFORM_WROOM
-    // shared_hspi al geïnitialiseerd door tft_setup() via Arduino_HWSPI::begin()
     ts.begin(shared_hspi);
     ts_kalibratie_laden();
 
 #elif PLATFORM_CYD28
-    // Aparte VSPI voor touch (display gebruikt HSPI)
     cyd28_vspi.begin(CYD28_TS_SCK, CYD28_TS_MISO, CYD28_TS_MOSI, CYD28_TS_CS);
     ts.begin(cyd28_vspi);
     ts_kalibratie_laden();
 
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-    // Touch deelt HSPI met display — zelfde pins, alleen CS=33 verschilt
     cyd40_hspi.begin(CYD40_TS_SCK, CYD40_TS_MISO, CYD40_TS_MOSI, CYD40_TS_CS);
     ts.begin(cyd40_hspi);
     ts_kalibratie_laden();
@@ -102,67 +106,19 @@ bool ts_touched() {
     actieve_touch = false;
     return false;
 
-#elif PLATFORM_PICO
-    // Pico: IRQ beschikbaar, gebruik tirqTouched voor efficiëntie
+#elif PLATFORM_XPT2046
+    // Gemeenschappelijk pad voor alle XPT2046 platforms.
+    // De affine coëfficiënten uit de 5-punts kalibratie verwerken alle
+    // platform-specifieke assen-spiegeling/-rotatie — geen aparte map() per platform.
     bool aangeraakt = ts.tirqTouched() && ts.touched();
     if (aangeraakt) {
         TS_Point p = ts.getPoint();
         ts_raw_px = p.x;
         ts_raw_py = p.y;
-        ts_x = map(ts_raw_py, ts_cal_py_min, ts_cal_py_max, 0, TFT_W);
-        ts_y = map(ts_raw_px, ts_cal_px_hi,  ts_cal_px_lo,  0, TFT_H);
-        scherm_touched = millis();
-        actieve_touch  = true;
-        return true;
-    }
-    actieve_touch = false;
-    return false;
-
-#elif PLATFORM_WROOM
-    bool aangeraakt = ts.tirqTouched() && ts.touched();
-    if (aangeraakt) {
-        TS_Point p = ts.getPoint();
-        ts_raw_px = p.x;
-        ts_raw_py = p.y;
-        ts_x = map(ts_raw_py, ts_cal_py_min, ts_cal_py_max, 0, TFT_W);
-        ts_y = map(ts_raw_px, ts_cal_px_hi,  ts_cal_px_lo,  0, TFT_H);
-        scherm_touched = millis();
-        actieve_touch  = true;
-        return true;
-    }
-    actieve_touch = false;
-    return false;
-
-#elif PLATFORM_CYD28
-    // Touch-panel is 180° ten opzichte van display → gespiegelde assen
-    bool aangeraakt = ts.tirqTouched() && ts.touched();
-    if (aangeraakt) {
-        TS_Point p = ts.getPoint();
-        ts_raw_px = p.x;
-        ts_raw_py = p.y;
-        ts_x = map(ts_raw_py, ts_cal_py_max, ts_cal_py_min, 0, TFT_W);
-        ts_y = map(ts_raw_px, ts_cal_px_lo,  ts_cal_px_hi,  0, TFT_H);
-        scherm_touched = millis();
-        actieve_touch  = true;
-        return true;
-    }
-    actieve_touch = false;
-    return false;
-
-#elif PLATFORM_CYD40H || PLATFORM_CYD40V
-    // CYD40: IRQ op GPIO36 (XPT2046 heeft interne pull-up)
-    bool aangeraakt = ts.tirqTouched() && ts.touched();
-    if (aangeraakt) {
-        TS_Point p = ts.getPoint();
-        ts_raw_px = p.x;
-        ts_raw_py = p.y;
-        ts_x = map(ts_raw_py, ts_cal_py_min, ts_cal_py_max, 0, TFT_W);
-#if PLATFORM_CYD40H
-        // CYD40H: touchpanel Y gespiegeld t.o.v. display (landscape rotatie)
-        ts_y = map(ts_raw_px, ts_cal_px_lo,  ts_cal_px_hi,  0, TFT_H);
-#else
-        ts_y = map(ts_raw_px, ts_cal_px_hi,  ts_cal_px_lo,  0, TFT_H);
-#endif
+        ts_x = (int)(ts_cal_ax * ts_raw_px + ts_cal_bx * ts_raw_py + ts_cal_cx);
+        ts_y = (int)(ts_cal_ay * ts_raw_px + ts_cal_by * ts_raw_py + ts_cal_cy);
+        ts_x = constrain(ts_x, 0, TFT_W - 1);
+        ts_y = constrain(ts_y, 0, TFT_H - 1);
         scherm_touched = millis();
         actieve_touch  = true;
         return true;
@@ -179,9 +135,6 @@ bool ts_touched() {
 int touch_x() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     return map(ts.points[0].y, 5, 800, 0, TFT_W);
-#elif PLATFORM_XPT2046
-    TS_Point p = ts.getPoint();
-    return map(p.y, ts_cal_py_min, ts_cal_py_max, 0, TFT_W);
 #else
     return 0;
 #endif
@@ -190,9 +143,6 @@ int touch_x() {
 int touch_y() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     return map(ts.points[0].x, 490, 5, 0, TFT_H);
-#elif PLATFORM_XPT2046
-    TS_Point p = ts.getPoint();
-    return map(p.x, ts_cal_px_hi, ts_cal_px_lo, 0, TFT_H);
 #else
     return 0;
 #endif

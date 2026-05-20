@@ -23,13 +23,14 @@ extern int  ts_x;
 extern int  ts_y;
 
 #if PLATFORM_XPT2046
-extern int  ts_raw_px;
-extern int  ts_raw_py;
-extern int  ts_cal_py_min;
-extern int  ts_cal_py_max;
-extern int  ts_cal_px_hi;
-extern int  ts_cal_px_lo;
-extern bool ts_kalibratie_vereist;  // true als nog nooit gekalibreerd op dit apparaat
+extern int   ts_raw_px;
+extern int   ts_raw_py;
+// Affine kalibratie-coëfficiënten (5-punts least-squares, apart per oriëntatie):
+//   screen_x = ts_cal_ax * raw_px + ts_cal_bx * raw_py + ts_cal_cx
+//   screen_y = ts_cal_ay * raw_px + ts_cal_by * raw_py + ts_cal_cy
+extern float ts_cal_ax, ts_cal_bx, ts_cal_cx;
+extern float ts_cal_ay, ts_cal_by, ts_cal_cy;
+extern bool  ts_kalibratie_vereist;
 void ts_kalibratie_laden();
 void ts_kalibratie_opslaan();
 #endif

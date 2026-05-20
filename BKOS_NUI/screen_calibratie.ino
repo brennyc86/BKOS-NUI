@@ -34,7 +34,50 @@ static void cal_instructie(const char* regel1, const char* regel2) {
     tft.print(regel2);
 }
 
+// Sla raw waarden van cross 1 platform-correct op als tijdelijke buffer
+static void cal_cross1_opslaan() {
+#if PLATFORM_CYD28
+    // CYD28: panel 180° gedraaid.
+    // Screen linksboven (20,20) = fysiek paneel rechtsonder → hoge raw waarden.
+    // X-formule: map(py, py_max, py_min, 0, W) → py_max moet HOOG zijn → cross 1
+    // Y-formule: map(px, px_lo, px_hi, 0, H)  → px_lo  moet HOOG zijn → cross 1
+    ts_cal_py_max = ts_raw_py;
+    ts_cal_px_lo  = ts_raw_px;
+#elif PLATFORM_CYD40H
+    // CYD40H: X-as normaal, Y-as gespiegeld.
+    // X-formule: map(py, py_min, py_max, 0, W) → py_min laag → cross 1 ✓ normaal
+    // Y-formule: map(px, px_lo, px_hi, 0, H)  → px_lo  moet HOOG zijn (Y gespiegeld)
+    ts_cal_py_min = ts_raw_py;
+    ts_cal_px_lo  = ts_raw_px;   // bovenkant scherm = hoge raw px → opgeslagen in px_lo
+#else
+    // Pico / WROOM / CYD40V: geen gespiegelde assen
+    // X-formule: map(py, py_min, py_max, 0, W) → py_min laag → cross 1
+    // Y-formule: map(px, px_hi, px_lo, 0, H)  → px_hi  hoog → cross 1
+    ts_cal_py_min = ts_raw_py;
+    ts_cal_px_hi  = ts_raw_px;
 #endif
+}
+
+// Sla raw waarden van cross 2 op en schrijf kalibratie naar NVS
+static void cal_cross2_opslaan() {
+    // Basiscontrole: beide punten moeten ver genoeg uiteen liggen
+#if PLATFORM_CYD28
+    if (abs(ts_raw_py - ts_cal_py_max) < 200 || abs(ts_raw_px - ts_cal_px_lo) < 200) return;
+    ts_cal_py_min = ts_raw_py;
+    ts_cal_px_hi  = ts_raw_px;
+#elif PLATFORM_CYD40H
+    if (abs(ts_raw_py - ts_cal_py_min) < 200 || abs(ts_raw_px - ts_cal_px_lo) < 200) return;
+    ts_cal_py_max = ts_raw_py;
+    ts_cal_px_hi  = ts_raw_px;   // onderkant scherm = lage raw px → opgeslagen in px_hi
+#else
+    if (abs(ts_raw_py - ts_cal_py_min) < 200 || abs(ts_raw_px - ts_cal_px_hi) < 200) return;
+    ts_cal_py_max = ts_raw_py;
+    ts_cal_px_lo  = ts_raw_px;
+#endif
+    ts_kalibratie_opslaan();
+}
+
+#endif  // PLATFORM_XPT2046
 
 void screen_calibratie_teken() {
     cal_stap     = 0;
@@ -42,11 +85,6 @@ void screen_calibratie_teken() {
 
 #if PLATFORM_XPT2046
     tft.fillScreen(C_BG);
-    // Subtitel: kalibratie geldt voor alle oriëntaties
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    int sw = strlen("Geldig voor portrait en landscape") * 6;
-    tft.setCursor(TFT_W / 2 - sw / 2, TFT_H / 2 + 18);
-    tft.print("Geldig voor portrait en landscape");
     cal_instructie("Touch kalibratie", "Tik op het kruis (punt 1 van 2)");
     cal_kruis(20, 20, C_GREEN);
 #else
@@ -71,34 +109,15 @@ void screen_calibratie_run(int x, int y, bool aanraking) {
     if (!aanraking) return;
 
     if (cal_stap == 0) {
-        // Punt 1 (linksboven) aangeraakt — sla raw op
-        int py_min = ts_raw_py;   // p.y bij scherm X≈0
-        int px_hi  = ts_raw_px;   // p.x bij scherm Y≈0 (groot getal, omgekeerd)
+        cal_cross1_opslaan();
 
         cal_stap = 1;
         tft.fillScreen(C_BG);
-        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        int sw2 = strlen("Geldig voor portrait en landscape") * 6;
-        tft.setCursor(TFT_W / 2 - sw2 / 2, TFT_H / 2 + 18);
-        tft.print("Geldig voor portrait en landscape");
         cal_instructie("Touch kalibratie", "Tik op het kruis (punt 2 van 2)");
         cal_kruis(TFT_W - 20, TFT_H - 20, C_CYAN);
 
-        // Tijdelijk opslaan in kalibratie variabelen (py_min/px_hi)
-        ts_cal_py_min = py_min;
-        ts_cal_px_hi  = px_hi;
-
     } else if (cal_stap == 1) {
-        // Punt 2 (rechtsonder) aangeraakt — bereken en sla op
-        int py_max = ts_raw_py;   // p.y bij scherm X≈TFT_W
-        int px_lo  = ts_raw_px;   // p.x bij scherm Y≈TFT_H (klein getal, omgekeerd)
-
-        // Basiscontrole: waarden moeten logisch zijn
-        if (abs(py_max - ts_cal_py_min) > 200 && abs(ts_cal_px_hi - px_lo) > 200) {
-            ts_cal_py_max = py_max;
-            ts_cal_px_lo  = px_lo;
-            ts_kalibratie_opslaan();
-        }
+        cal_cross2_opslaan();
 
         cal_stap     = 2;
         cal_klaar_ms = millis();

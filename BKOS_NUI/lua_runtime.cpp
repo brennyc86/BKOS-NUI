@@ -650,8 +650,14 @@ void lua_app_run(int app_idx, int x, int y, bool aanraking) {
     // Drain wachtende net-berichten voor deze app
     if (lua_net_q_cnt > 0 && app_idx >= 0 && app_idx < apps_cnt) {
         const char* huidig_id = apps[app_idx].id;
+        uint8_t nieuwe_cnt = 0;
         for (uint8_t i = 0; i < lua_net_q_cnt; i++) {
-            if (strcmp(lua_net_q[i].id, huidig_id) != 0) continue;
+            if (strcmp(lua_net_q[i].id, huidig_id) != 0) {
+                // Bewaar berichten voor andere apps
+                if (i != nieuwe_cnt) lua_net_q[nieuwe_cnt] = lua_net_q[i];
+                nieuwe_cnt++;
+                continue;
+            }
             lua_getglobal(L, "bkos");
             lua_getfield(L, -1, "net");
             lua_remove(L, -2);
@@ -675,7 +681,7 @@ void lua_app_run(int app_idx, int x, int y, bool aanraking) {
                 lua_pop(L, 1);
             }
         }
-        lua_net_q_cnt = 0;
+        lua_net_q_cnt = nieuwe_cnt;
     }
 
     if (aanraking) {

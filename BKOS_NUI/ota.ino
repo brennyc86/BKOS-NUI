@@ -243,14 +243,14 @@ void ota_git_check() {
 
 void ota_git_update() {
     _ota_wacht_wifi();
-    if (!wifi_verbonden) return;
+    if (!wifi_verbonden) { ota_status_tekst = "Geen WiFi"; return; }
     ota_status_tekst = "Downloaden...";
-    if (ota_beta_kanal) {
-        ota_download_toepassen(String(OTA_GITHUB_FIRMWARE_URL));
-    } else {
-        // Stabiel: download van git-tag URL (v0.1.1/firmware/bkos_*.bin)
-        String url = String(OTA_GITHUB_BASE_URL) + "v" + ota_versie_github + "/firmware/" + OTA_GITHUB_FIRMWARE_BESTAND;
-        ota_download_toepassen(url);
+    String url = ota_beta_kanal
+        ? String(OTA_GITHUB_FIRMWARE_URL)
+        : String(OTA_GITHUB_BASE_URL) + "v" + ota_versie_github + "/firmware/" + OTA_GITHUB_FIRMWARE_BESTAND;
+    if (!ota_download_toepassen(url)) {
+        // ota_status_tekst is ingesteld door ota_download_toepassen()
+        scherm_bouwen = true;  // herteken OTA scherm met foutmelding
     }
 }
 
@@ -300,11 +300,22 @@ void ota_laad_releases() {
 #elif PLATFORM_WROOM
         _extract_json_veld(json, start, eind, "url_wroom",
                            ota_releases[ota_releases_cnt].url, 128);
+#elif PLATFORM_CYD28
+        _extract_json_veld(json, start, eind, "url_cyd28",
+                           ota_releases[ota_releases_cnt].url, 128);
+#elif PLATFORM_CYD40H
+        _extract_json_veld(json, start, eind, "url_cyd40h",
+                           ota_releases[ota_releases_cnt].url, 128);
+#elif PLATFORM_CYD40V
+        _extract_json_veld(json, start, eind, "url_cyd40v",
+                           ota_releases[ota_releases_cnt].url, 128);
 #else
         _extract_json_veld(json, start, eind, "url_s3",
                            ota_releases[ota_releases_cnt].url, 128);
 #endif
-        if (ota_releases[ota_releases_cnt].versie[0] != '\0') ota_releases_cnt++;
+        // Sla over als versie of URL ontbreekt (platform niet ondersteund in deze release)
+        if (ota_releases[ota_releases_cnt].versie[0] != '\0' &&
+            ota_releases[ota_releases_cnt].url[0]    != '\0') ota_releases_cnt++;
         pos = eind + 1;
     }
 #endif
@@ -316,7 +327,8 @@ bool ota_download_toepassen(String url) {
     return false;
 #else
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http.setTimeout(20000);
     http.begin(url);
     int code = http.GET();
     if (code != HTTP_CODE_OK) {
@@ -325,9 +337,17 @@ bool ota_download_toepassen(String url) {
         return false;
     }
     int len = http.getSize();
-    if (len <= 0) { http.end(); return false; }
+    if (len <= 0) {
+        ota_status_tekst = "Bestandsgrootte onbekend";
+        http.end();
+        return false;
+    }
 
-    if (!Update.begin(len)) { http.end(); return false; }
+    if (!Update.begin((size_t)len)) {
+        ota_status_tekst = String("Flash fout: ") + Update.errorString();
+        http.end();
+        return false;
+    }
 
     // Voortgangsscherm initialiseren
     tft.fillScreen(C_BG);
@@ -354,7 +374,12 @@ bool ota_download_toepassen(String url) {
             size_t rd = stream->read(buf, sizeof(buf));
             if (rd > 0) { Update.write(buf, rd); written += rd; last_data = millis(); }
         }
-        if (millis() - last_data > 15000) { Update.abort(); http.end(); return false; }
+        if (millis() - last_data > 20000) {
+            Update.abort();
+            ota_status_tekst = "Timeout tijdens download";
+            http.end();
+            return false;
+        }
 
         // Voortgangsbalk bijwerken (alleen bij %-verandering)
         int pct = (int)(written * 100UL / (size_t)len);
@@ -373,7 +398,10 @@ bool ota_download_toepassen(String url) {
         yield();
     }
     http.end();
-    if (!Update.end()) return false;
+    if (!Update.end()) {
+        ota_status_tekst = String("Flash fout: ") + Update.errorString();
+        return false;
+    }
 
     tft.fillRect(bx, by + bh + 8, 300, 20, C_BG);
     tft.setTextSize(2); tft.setTextColor(C_GREEN);

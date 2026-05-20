@@ -7,7 +7,7 @@ on:
       - 'BKOS_NUI/**.ino'
       - 'BKOS_NUI/**.h'
       - 'BKOS_NUI/**.cpp'
-      - 'libraries/LuaBKOS/**'
+      - 'BKOS_NUI/libraries/LuaBKOS/**'
       - '.github/workflows/build.yml'
 
 permissions:
@@ -40,9 +40,6 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "TAMC_GT911@1.0.2"
           arduino-cli lib install "ArduinoJson"
-
-      - name: Install LuaBKOS library
-        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile ESP32-S3 firmware
         run: |
@@ -91,9 +88,6 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
-
-      - name: Install LuaBKOS library
-        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile WROOM firmware
         run: |
@@ -144,9 +138,6 @@ jobs:
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
 
-      - name: Install LuaBKOS library
-        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
-
       - name: Compile CYD28 firmware
         run: |
           arduino-cli compile \
@@ -195,9 +186,6 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
-
-      - name: Install LuaBKOS library
-        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile CYD40H firmware
         run: |
@@ -248,9 +236,6 @@ jobs:
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
 
-      - name: Install LuaBKOS library
-        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
-
       - name: Compile CYD40V firmware
         run: |
           arduino-cli compile \
@@ -299,9 +284,6 @@ jobs:
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
           arduino-cli lib install "Preferences@2.2.2"
-
-      - name: Install LuaBKOS library
-        run: cp -r $GITHUB_WORKSPACE/libraries/LuaBKOS ~/Arduino/libraries/LuaBKOS
 
       - name: Compile Pico W firmware
         run: |

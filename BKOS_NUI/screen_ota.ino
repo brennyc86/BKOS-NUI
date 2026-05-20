@@ -294,6 +294,9 @@ static void _ota_vorige_overlay_teken() {
         if (huidig) {
             tft.setTextColor(C_CYAN);
             tft.setCursor(UI_SCX(400), hy + UI_SCY(20)); tft.print("actief");
+        } else if (strlen(ota_releases[i].url) == 0) {
+            tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(UI_SCX(400), hy + UI_SCY(20)); tft.print("n.v.t.");
         } else {
             ui_knop(TFT_W - UI_SCX(124), hy + UI_SCY(8), UI_SCX(110), UI_SCY(30), "FLASH", C_AMBER, C_BG);
         }
@@ -522,7 +525,7 @@ void screen_ota_run(int x, int y, bool aanraking) {
                 ota_verwijder_bevestig = false; screen_ota_teken();
             } else if (x >= ox + 32 + bw && x < ox + 32 + bw + bw) {
                 ota_verwijder_bevestig = false;
-                ota_download_toepassen("https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main/BKOS_blanco/firmware.bin");
+                ota_download_toepassen(String(BLANCO_BIN_URL));
             }
         }
         return;

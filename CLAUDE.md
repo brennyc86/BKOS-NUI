@@ -196,32 +196,24 @@ Touch debouncing via `touch_verwerkt` flag; eerste touch na display wake wordt g
 
 ## Taakoverzicht
 
-Volledige geschiedenis: zie [docs/TAAKHISTORIE.md](docs/TAAKHISTORIE.md) (sessies 1–18).
+Volledige geschiedenis: zie [docs/TAAKHISTORIE.md](docs/TAAKHISTORIE.md) (sessies 1–22).
 
 Recente taken:
 
 | # | Sessie | Taak |
 |---|---|---|
-| 113 | Sessie 18 | Coördinatenstelsel: 1:1 pixels, bkos.H=396, schaal-modi in manifest |
-| 114 | Sessie 18 | Pico port fasen 1-3: platform.h, platform_fs.h, hw_scherm/touch, wifi/ota conditioneel, CI Pico job |
-| 115 | Sessie 18 | lua_app_laden stub signatuur fix (int,bool); lua_linit_bkos.c compileert leeg zonder Lua; library.properties vereist voor LuaBKOS |
-| 116 | Sessie 19 | Pico Compileer-fixes: FreeRTOS stubs, WiFi API guards, LittleFS.begin(), SPI constructor, hardware pins (ILI9341+XPT2046) |
-| 117 | Sessie 19 | Pico UI: compact nav bar (< 3 items >) + portret hoofdscherm 240×320 (boot links, controls rechts) |
-| 118 | Sessie 20 | getijdata_update_alle(eerst_idx): bij opstarten alle 12 stations ophalen, geselecteerde eerste |
-| 119 | Sessie 20 | IO_INTERVAL 50→100ms, cycle delay 30→60ms voor stabiliteit |
-| 120 | Sessie 20 | provider.h/.ino: lichtgewicht achtergrond-scheduler (tft_actief check) |
-| 121 | Sessie 20 | victron_ble.h/.ino: passieve BLE scan + AES-128-CTR, MPPT bit-parser, Preferences opslag |
-| 122 | Sessie 20 | screen_victron.h/.ino: DATA tab (apparaat kaarten) + CONFIG tab (discovery + hex-toetsenbord advertising key) |
-| 123 | Sessie 20 | Nav bar 6→7 items (VICTRON toegevoegd, SCREEN_VICTRON=11) |
-| 124 | Sessie 20 | Hoofdscherm: Victron mini-widget (accu V, zonne-W, dagopbrengst) in INT-STATUS balk |
-| 125 | Sessie 21 | Compileer-fix bkos_net.ino: _verwerk binnen #if PLATFORM_ESP32, bkos_net.h in hardware.h |
-| 126 | Sessie 21 | Nav bar: VICTRON → 4e links (zonnepaneel icoon), NETWERK → 4e rechts (nodes icoon), 4+4 vaste knoppen |
-| 127 | Sessie 21 | OTA v0.1.1 officiële release: stabiel kanaal (versie_stable_*.txt + releases.json), BETA toggle, VORIGE VERSIES overlay |
 | 128 | Sessie 22 | UI scaling (UI_SCX/UI_SCY) uitgebreid naar alle schermen voor CYD40H compatibiliteit |
 | 129 | Sessie 22 | Tijddeling via ESP-NOW: NET_MSG_TIJD broadcast + ntp_vanaf_net() — slave/extra deelt NTP-tijd |
 | 130 | Sessie 22 | Staat-herstel bij herstart: NET_MSG_STATE_REQ — master vraagt vaarmodus/verlichting op bij slave na pairing |
 | 131 | Sessie 22 | Touch kalibratie CYD40H: TOUCH KAL knop toegevoegd aan cfg_instellingen_teken voor PLATFORM_XPT2046 |
 | 132 | Sessie 22 | Lua melding: OPEN-knop toont duidelijke foutmelding als LUA_BESCHIKBAAR=0 (OTA build vereist) |
+| 133 | Sessie 23 | Lua altijd mee in firmware + app-netwerk achtergrond-router (Core 0 FreeRTOS taak voor slave→slave routing) |
+| 134 | Sessie 23 | 5-punts affiene touch kalibratie, apart per oriëntatie |
+| 135 | Sessie 23 | Portret nav bar met iconen en vaste knoppen (240px: 1L+1R, 320px: 2L+2R) |
+| 136 | Sessie 23 | Netwerk scherm SCREEN_SMALL layout + klok fix CYD40H + peer info refresh elke 60s |
+| 137 | Sessie 23 | LuaBKOS naar sketch-local library (BKOS_NUI/libraries/LuaBKOS/) — Lua werkt nu ook bij lokale Arduino IDE compilatie |
+| 138 | Sessie 23 | lua_net_q queue-clearing fix: alleen verwerkte berichten verwijderen, niet de hele queue |
+| 139 | Sessie 23 | OTA verbeteringen: betere foutmeldingen, CYD platform support in releases.json, timeout 20s, HTTPC_FORCE_FOLLOW_REDIRECTS |
 
 ---
 
@@ -300,26 +292,8 @@ bkos.update = function() ... end
 - Apps: `https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/appstore/apps/<id>/main.lua`
 - Lokale map: `appstore/` in de repo-root
 
-### Lua installatie (lokale Arduino IDE compilatie)
-De CI downloadt Lua 5.4.7 automatisch van lua.org. Voor lokale compilatie:
-1. Download `https://www.lua.org/ftp/lua-5.4.7.tar.gz`
-2. Pak uit naar `~/Arduino/libraries/LuaBKOS/src/`
-3. Kopieer `BKOS_NUI/lua_bkos_conf.h` → `~/Arduino/libraries/LuaBKOS/src/luaconf.h`
-4. Kopieer `BKOS_NUI/lua_linit_bkos.c` → `~/Arduino/libraries/LuaBKOS/src/linit.c`
-5. Verwijder: `loadlib.c`, `loslib.c`, `liolib.c`, `luac.c`
-6. Maak `~/Arduino/libraries/LuaBKOS/library.properties` aan met deze inhoud:
-   ```
-   name=LuaBKOS
-   version=5.4.7
-   author=PUC-Rio (stripped for ESP32)
-   maintainer=BKOS-NUI
-   sentence=Lua 5.4 embedded interpreter voor BKOS apps
-   paragraph=Zonder os/io/package bibliotheken; gebruikt PSRAM heap
-   category=Other
-   url=https://lua.org
-   architectures=esp32
-   ```
-   **Zonder dit bestand herkent Arduino IDE de library niet en werkt `__has_include("lua.h")` niet.**
+### Lua library (LuaBKOS)
+De LuaBKOS library staat in `BKOS_NUI/libraries/LuaBKOS/`. Arduino IDE en arduino-cli vinden dit automatisch als sketch-local library — geen handmatige installatie vereist. Zowel lokale compilatie als CI werken out-of-the-box.
 
 ## Conventies
 

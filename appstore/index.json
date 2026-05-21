@@ -63,5 +63,18 @@
     "api_versie": 1,
     "grootte_kb": 1,
     "actief": true
+  },
+  {
+    "id": "zeeslag",
+    "naam": "Zeeslag",
+    "versie": "1.0.0",
+    "auteur": "BKOS-NUI Team",
+    "beschrijving": "Klassiek Zeeslag voor 1 speler (vs computer) of 2 spelers via netwerk.",
+    "scherm_b": 800,
+    "scherm_h": 480,
+    "vervangt": -1,
+    "api_versie": 1,
+    "grootte_kb": 12,
+    "actief": true
   }
 ]

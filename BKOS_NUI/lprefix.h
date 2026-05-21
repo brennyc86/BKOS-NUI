@@ -9,9 +9,9 @@
 
 
 /*
-** Allows POSIX/XSI stuff
+** Allows POSIX/XSI stuff (not on Arduino/ESP32/RP2040 — no POSIX layer)
 */
-#if !defined(LUA_USE_C89)	/* { */
+#if !defined(LUA_USE_C89) && !defined(ARDUINO)	/* { */
 
 #if !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE           600

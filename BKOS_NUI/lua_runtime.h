@@ -4,18 +4,13 @@
 
 // Lua 5.4 runtime voor BKOS apps.
 // LuaBKOS staat in BKOS_NUI/libraries/LuaBKOS/ (sketch-local).
-// CI voegt deze toe via --library flag; Arduino IDE detecteert hem automatisch.
-
-#if __has_include("lua.h")
+// Directe include: arduino-cli detecteert #include "lua.h" en activeert de library.
 extern "C" {
   #include "lua.h"
   #include "lualib.h"
   #include "lauxlib.h"
 }
 #define LUA_BESCHIKBAAR 1
-#else
-#define LUA_BESCHIKBAAR 0
-#endif
 
 extern bool  lua_fout_actief;
 extern char  lua_fout_tekst[];

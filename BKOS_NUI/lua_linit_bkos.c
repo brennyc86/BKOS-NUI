@@ -2,10 +2,7 @@
 ** linit_bkos.c — aangepaste Lua bibliotheek-initialisatie voor BKOS.
 ** Laadt alleen ingebedde bibliotheken (geen os/io/package/debug).
 ** Vervangt de standaard linit.c uit de Lua distributie.
-** Als lua.h niet aanwezig is (geen LuaBKOS library), compileert dit bestand leeg.
 */
-#if __has_include("lua.h")
-
 #define linit_c
 #define LUA_LIB
 
@@ -32,5 +29,3 @@ LUALIB_API void luaL_openlibs(lua_State *L) {
         lua_pop(L, 1);
     }
 }
-
-#endif /* __has_include("lua.h") */

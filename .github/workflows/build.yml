@@ -45,6 +45,7 @@ jobs:
         run: |
           arduino-cli compile \
             --fqbn "esp32:esp32:esp32s3:CDCOnBoot=default,PartitionScheme=default_8MB,FlashSize=16M,FlashMode=dio,PSRAM=opi" \
+            --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_esp32s3/ \
             BKOS_NUI/
 
@@ -94,6 +95,7 @@ jobs:
           arduino-cli compile \
             --fqbn "esp32:esp32:esp32:PartitionScheme=default,FlashFreq=80,FlashMode=dio" \
             --build-property "compiler.cpp.extra_flags=-DPLATFORM_WROOM=1" \
+            --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_wroom/ \
             BKOS_NUI/
 
@@ -143,6 +145,7 @@ jobs:
           arduino-cli compile \
             --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashFreq=80,FlashMode=dio" \
             --build-property "compiler.cpp.extra_flags=-DPLATFORM_CYD28=1" \
+            --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_cyd28/ \
             BKOS_NUI/
 
@@ -192,6 +195,7 @@ jobs:
           arduino-cli compile \
             --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashFreq=80,FlashMode=dio" \
             --build-property "compiler.cpp.extra_flags=-DPLATFORM_CYD40H=1" \
+            --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_cyd40h/ \
             BKOS_NUI/
 
@@ -241,6 +245,7 @@ jobs:
           arduino-cli compile \
             --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashFreq=80,FlashMode=dio" \
             --build-property "compiler.cpp.extra_flags=-DPLATFORM_CYD40V=1" \
+            --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_cyd40v/ \
             BKOS_NUI/
 
@@ -289,6 +294,7 @@ jobs:
         run: |
           arduino-cli compile \
             --fqbn "rp2040:rp2040:rpipicow:flash=2097152_65536,freq=133,opt=Optimize2,rtti=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only" \
+            --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_pico/ \
             BKOS_NUI/
 

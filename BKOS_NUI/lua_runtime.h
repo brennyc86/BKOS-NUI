@@ -3,11 +3,8 @@
 #include "hw_scherm.h"
 
 // Lua 5.4 runtime voor BKOS apps.
-// De Lua-bibliotheek (LuaBKOS) wordt tijdens CI gedownload van lua.org.
-// Lokaal installeren: zie CLAUDE.md sectie "App Systeem".
-//
-// Als Lua niet beschikbaar is (#if __has_include mislukt), worden
-// alle functies stubbies die niets doen.
+// LuaBKOS staat in BKOS_NUI/libraries/LuaBKOS/ (sketch-local).
+// CI voegt deze toe via --library flag; Arduino IDE detecteert hem automatisch.
 
 #if __has_include("lua.h")
 extern "C" {

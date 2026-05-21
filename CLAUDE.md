@@ -293,7 +293,7 @@ bkos.update = function() ... end
 - Lokale map: `appstore/` in de repo-root
 
 ### Lua library (LuaBKOS)
-De LuaBKOS library staat in `BKOS_NUI/libraries/LuaBKOS/`. Arduino IDE en arduino-cli vinden dit automatisch als sketch-local library — geen handmatige installatie vereist. Zowel lokale compilatie als CI werken out-of-the-box.
+De LuaBKOS library staat in `BKOS_NUI/libraries/LuaBKOS/`. Arduino IDE detecteert dit automatisch als sketch-local library. arduino-cli (CI) vereist de `--library BKOS_NUI/libraries/LuaBKOS` flag — deze staat in alle `arduino-cli compile` commando's in `build.yml`. Zonder deze flag geeft `__has_include("lua.h")` false terug en is `LUA_BESCHIKBAAR = 0`.
 
 ## Conventies
 

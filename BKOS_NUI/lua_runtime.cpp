@@ -400,7 +400,7 @@ static int l_net_modus(lua_State* ls) {
 static int l_net_sturen(lua_State* ls) {
     if (!L || lua_app_huidig < 0 || lua_app_huidig >= apps_cnt) return 0;
     const char* key = luaL_checkstring(ls, 1);
-    const char* val = luaL_tostring(ls, 2);
+    const char* val = lua_tostring(ls, 2);
     if (!val) val = "";
     net_app_data_sturen(apps[lua_app_huidig].id, key, val);
     return 0;

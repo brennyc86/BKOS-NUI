@@ -2,16 +2,24 @@
 #include "lua_runtime.h"
 #include "wifi.h"
 #include "platform_fs.h"
-#if PLATFORM_ESP32
-  #include <SD_MMC.h>
+// ESP32-S3 8048S070: SD via SPI op GPIO 10-13 (vrij van RGB-display)
+// CYD/WROOM platforms: geen SD-ondersteuning in deze build
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
+  #include <SD.h>
+  #include <SPI.h>
+  #define SD_S3_SCK  12
+  #define SD_S3_MISO 13
+  #define SD_S3_MOSI 11
+  #define SD_S3_CS   10
 #endif
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
-#if PLATFORM_ESP32
-static bool _sd_geinitialiseerd = false;
-static bool _sd_aanwezig        = false;
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
+static bool     _sd_geinitialiseerd = false;
+static bool     _sd_aanwezig        = false;
+static SPIClass _spi_sd(FSPI);
 #endif
 
 // SPIFFS heeft geen echte mappen — bestanden worden plat opgeslagen:
@@ -373,11 +381,11 @@ size_t app_spiffs_totaal() {
 }
 
 bool app_sd_aanwezig() {
-#if PLATFORM_ESP32
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
     if (!_sd_geinitialiseerd) {
         _sd_geinitialiseerd = true;
-        _sd_aanwezig = SD_MMC.begin("/sdcard", true);
-        if (!_sd_aanwezig) SD_MMC.end();
+        _spi_sd.begin(SD_S3_SCK, SD_S3_MISO, SD_S3_MOSI, -1);
+        _sd_aanwezig = SD.begin(SD_S3_CS, _spi_sd);
     }
     return _sd_aanwezig;
 #else
@@ -386,9 +394,9 @@ bool app_sd_aanwezig() {
 }
 
 size_t app_sd_vrij() {
-#if PLATFORM_ESP32
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
     if (!app_sd_aanwezig()) return 0;
-    return (size_t)SD_MMC.totalBytes() - (size_t)SD_MMC.usedBytes();
+    return (size_t)(SD.totalBytes() - SD.usedBytes());
 #else
     return 0;
 #endif

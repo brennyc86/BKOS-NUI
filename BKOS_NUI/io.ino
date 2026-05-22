@@ -490,17 +490,33 @@ void io_verlichting_update() {
 }
 
 void io_zekering_check() {
-    if (vaar_modus == MODE_HAVEN) return;
+    static int           geen_sig_teller    = 0;
+    static unsigned long geen_sig_eerste_ms = 0;
+
+    if (vaar_modus == MODE_HAVEN) { geen_sig_teller = 0; return; }
+
+    bool gevonden = false;
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
         if ((io_naam_is(i, "**L_3kl") || io_naam_is(i, "**L_navi") ||
              io_naam_is(i, "**L_stoom") || io_naam_is(i, "**L_hek") ||
              io_naam_is(i, "**L_anker")) &&
             io_output[i] == IO_AAN &&
             io_licht_staat(i) == LSTATE_GEEN_SIGNAAL) {
-            licht_cfg_idx++;
-            io_verlichting_update();
-            return;
+            gevonden = true;
+            break;
         }
+    }
+
+    if (!gevonden) { geen_sig_teller = 0; return; }
+
+    if (geen_sig_teller == 0) geen_sig_eerste_ms = millis();
+    geen_sig_teller++;
+
+    // Pas overschakelen na 3 waarnemingen én minimaal 10 seconden
+    if (geen_sig_teller >= 3 && (millis() - geen_sig_eerste_ms) >= 10000UL) {
+        geen_sig_teller = 0;
+        licht_cfg_idx++;
+        io_verlichting_update();
     }
 }
 

@@ -45,6 +45,7 @@ bool cfg_kb_foutlog_token       = false;
 char cfg_kb_label[24]           = "Naam:";
 static unsigned long cfg_kb_sloot = 0;
 static bool cfg_preset_menu     = false;
+static int  cfg_ins_scroll_y    = 0;
 
 // Wachtwoord-display: alle tekens behalve het laatste als '*'
 static void kb_wachtwoord_print(const char* s) {
@@ -988,12 +989,10 @@ static void palette_swatches_teken(int sy) {
 static void cfg_instellingen_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, TFT_H - SB_H - NAV_H - CFG_TAB_H, C_BG);
 
-    helderheid_balk_teken();
-
     bool ontg = config_ontgrendeld;
 
     // WiFi | Foutrapportage | Ontgrendelen (altijd toegankelijk, 3 knoppen in één rij)
-    int wow_y = HLD_Y + HLD_H + 4;
+    int wow_y = HLD_Y + HLD_H + 4 - cfg_ins_scroll_y;
 
     // WiFi (links)
     tft.fillRoundRect(8, wow_y + 2, 220, 34, 6, C_SURFACE);
@@ -1136,6 +1135,10 @@ static void cfg_instellingen_teken() {
                     tok ? C_CYAN    : C_AMBER);
         }
     }
+    helderheid_balk_teken();
+    int _cfg_sb_y = HLD_Y + HLD_H + 4;
+    ui_scrollbar(TFT_W - UI_SB_W, _cfg_sb_y, NAV_Y - _cfg_sb_y, cfg_ins_scroll_y,
+                 max(0, 380 + (int)UI_SCY(40) - CONTENT_H));
 }
 
 static void cfg_instellingen_run(int x, int y) {
@@ -1163,7 +1166,20 @@ static void cfg_instellingen_run(int x, int y) {
         }
     }
 
-    int wow_y = HLD_Y + HLD_H + 4;
+    {
+        int max_scroll = max(0, 380 + (int)UI_SCY(40) - CONTENT_H);
+        if (max_scroll > 0) {
+            int sb_y_pos = HLD_Y + HLD_H + 4;
+            int klik = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, sb_y_pos, NAV_Y - sb_y_pos);
+            if (klik != 0) {
+                if (klik == -1) cfg_ins_scroll_y = max(0, cfg_ins_scroll_y - 20);
+                else if (klik == 1) cfg_ins_scroll_y = min(max_scroll, cfg_ins_scroll_y + 20);
+                cfg_instellingen_teken(); return;
+            }
+        }
+    }
+
+    int wow_y = HLD_Y + HLD_H + 4 - cfg_ins_scroll_y;
     int sy    = wow_y + 38 + 4;
     int by    = sy + 62;
     int zy    = by + 44;
@@ -1933,6 +1949,7 @@ void screen_config_run(int x, int y, bool aanraking) {
         cfg_toetsenbord_actief = false;
         pin_overlay_actief    = false;
         pin_stap              = 0;
+        cfg_ins_scroll_y      = 0;
         actief_scherm = nav; scherm_bouwen = true; return;
     }
 

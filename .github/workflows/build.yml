@@ -92,7 +92,7 @@ jobs:
       - name: Compile WROOM firmware
         run: |
           arduino-cli compile \
-            --fqbn "esp32:esp32:esp32:PartitionScheme=default,FlashFreq=80,FlashMode=dio" \
+            --fqbn "esp32:esp32:esp32:PartitionScheme=min_spiffs,FlashFreq=80,FlashMode=dio" \
             --build-property "compiler.cpp.extra_flags=-DPLATFORM_WROOM=1" \
             --output-dir build_wroom/ \
             BKOS_NUI/
@@ -112,7 +112,7 @@ jobs:
 
   build_cyd28:
     runs-on: ubuntu-latest
-    needs: build_wroom
+    needs: build_esp32s3
 
     steps:
       - name: Checkout

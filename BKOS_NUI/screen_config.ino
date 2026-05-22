@@ -116,6 +116,10 @@ static const char* cfg_chips_r2[] = {
 // ─────────────────────── PICO UI ────────────────────────────────────────────
 #if SCREEN_SMALL
 
+// Totale virtuele inhoudshoogte instellingen (som van alle y += stappen + 26px laatste rij)
+#define PICO_CFG_INS_H  252  // 2 + 36+30+34+30+30+30+30 = 222 + 30(PIN item)
+static int pico_cfg_scroll_y = 0;  // pixels omhoog verschoven
+
 // PIN overlay voor 240×320
 #define PICO_PIN_OV_X   4
 #define PICO_PIN_OV_Y   (CONTENT_Y)
@@ -397,7 +401,7 @@ static void pico_cfg_instellingen_teken() {
     bool ontg = config_ontgrendeld;
 
     // Helderheid
-    int y = CFG_CONT_Y + 2;
+    int y = CFG_CONT_Y + 2 - pico_cfg_scroll_y;
     tft.fillRoundRect(4, y, TFT_W - 8, 32, 5, C_SURFACE);
     tft.fillRoundRect(8, y + 4, 32, 24, 4, C_SURFACE2);
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
@@ -484,11 +488,21 @@ static void pico_cfg_instellingen_teken() {
     // PIN
     ui_knop(4, y, TFT_W - 8, 26, "PINCODE WIJZIGEN  >",
             C_SURFACE2, ontg ? C_AMBER : C_TEXT_DIM);
+
+    // Scrollbar indicator (rechts, smal)
+    int max_scroll = max(0, CONTENT_Y + PICO_CFG_INS_H - (int)NAV_Y);
+    if (max_scroll > 0) {
+        int bar_h = CONTENT_H;
+        int thumb_h = max(18, bar_h * CONTENT_H / (CONTENT_H + max_scroll));
+        int thumb_y = CONTENT_Y + (int)((long)pico_cfg_scroll_y * (bar_h - thumb_h) / max_scroll);
+        tft.fillRect(TFT_W - 4, CONTENT_Y, 4, CONTENT_H, C_SURFACE2);
+        tft.fillRect(TFT_W - 4, thumb_y, 4, thumb_h, C_CYAN);
+    }
 }
 
 static void pico_cfg_instellingen_run(int x, int y) {
     bool ontg = config_ontgrendeld;
-    int y0 = CFG_CONT_Y + 2;
+    int y0 = CFG_CONT_Y + 2 - pico_cfg_scroll_y;
 
     // Helderheid
     if (y >= y0 && y < y0 + 32) {
@@ -1873,8 +1887,23 @@ void screen_config_run(int x, int y, bool aanraking) {
     int nav = nav_bar_klik(x, y);
     if (nav >= 0 && nav != actief_scherm) {
         config_ontgrendeld = false; cfg_toetsenbord_actief = false; pin_overlay_actief = false; pin_stap = 0;
+        pico_cfg_scroll_y = 0;
         actief_scherm = nav; scherm_bouwen = true; return;
     }
+
+    // Drag-to-scroll: extern hw_touch_drag_dy bevat y-delta sinds touch_start
+    {
+        int max_scroll = max(0, CONTENT_Y + PICO_CFG_INS_H - (int)NAV_Y);
+        if (max_scroll > 0 && abs(hw_touch_drag_dy) > 25) {
+            int nieuw = constrain(pico_cfg_scroll_y - hw_touch_drag_dy, 0, max_scroll);
+            if (nieuw != pico_cfg_scroll_y) {
+                pico_cfg_scroll_y = nieuw;
+                pico_cfg_instellingen_teken();
+            }
+            return;
+        }
+    }
+
     pico_cfg_instellingen_run(x, y);
     return;
 #else

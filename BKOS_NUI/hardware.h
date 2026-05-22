@@ -14,3 +14,7 @@
 
 void hw_setup();
 void hw_loop();
+
+// y-drag delta van touch_start tot huidig punt (positief = vinger omlaag bewogen)
+// Ingesteld net vóór elke screen_X_run(true) aanroep; screens lezen dit voor drag-scroll
+extern int hw_touch_drag_dy;

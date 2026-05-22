@@ -35,6 +35,8 @@ static int           touch_start_x       = -1;
 static int           touch_start_y       = -1;
 static bool          lang_druk_verwerkt  = false;
 
+int hw_touch_drag_dy = 0;  // y-delta (touch_start → huidig) vóór elke screen_X_run call
+
 void hw_setup() {
     tft_setup();
     ts_setup();
@@ -219,7 +221,8 @@ void hw_loop() {
                         }
                     }
                 } else {
-                    switch (actief_scherm) {
+                    hw_touch_drag_dy = ts_y - touch_start_y;
+                switch (actief_scherm) {
                         case SCREEN_MAIN:   screen_main_run(ts_x, ts_y, true);   break;
                         case SCREEN_IO:     screen_io_run(ts_x, ts_y, true);     break;
                         case SCREEN_METEO:  screen_meteo_run(ts_x, ts_y, true);  break;

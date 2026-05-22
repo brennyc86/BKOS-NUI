@@ -1,6 +1,9 @@
 #include "ota.h"
 #include "hw_scherm.h"
 #include "ui_colors.h"
+#if PLATFORM_ESP32
+#include <esp_task_wdt.h>
+#endif
 
 bool   ota_wifi_actief        = false;
 bool   ota_beta_kanal         = false;
@@ -327,7 +330,8 @@ bool ota_download_toepassen(String url) {
     return false;
 #else
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    // STRICT voorkomt twee gelijktijdige TLS-verbindingen (minder RAM-gebruik)
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(20000);
     http.begin(url);
     int code = http.GET();
@@ -336,14 +340,10 @@ bool ota_download_toepassen(String url) {
         http.end();
         return false;
     }
-    int len = http.getSize();
-    if (len <= 0) {
-        ota_status_tekst = "Bestandsgrootte onbekend";
-        http.end();
-        return false;
-    }
+    int len = http.getSize();  // -1 bij chunked transfer
+    size_t update_grootte = (len > 0) ? (size_t)len : UPDATE_SIZE_UNKNOWN;
 
-    if (!Update.begin((size_t)len)) {
+    if (!Update.begin(update_grootte)) {
         ota_status_tekst = String("Flash fout: ") + Update.errorString();
         http.end();
         return false;
@@ -355,8 +355,12 @@ bool ota_download_toepassen(String url) {
     tft.setCursor(50, 80); tft.print("Firmware downloaden...");
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(50, 112);
-    char szb[32]; snprintf(szb, sizeof(szb), "Grootte: %d KB", len / 1024);
-    tft.print(szb);
+    if (len > 0) {
+        char szb[32]; snprintf(szb, sizeof(szb), "Grootte: %d KB", len / 1024);
+        tft.print(szb);
+    } else {
+        tft.print("Grootte: onbekend");
+    }
     tft.setCursor(50, 124); tft.print("Niet uitschakelen!");
 
     // Lege voortgangsbalk tekenen
@@ -365,14 +369,22 @@ bool ota_download_toepassen(String url) {
 
     WiFiClient* stream = http.getStreamPtr();
     size_t written = 0;
-    uint8_t buf[512];
+    static uint8_t buf[4096];  // statisch: niet op de stack, minder sectorwisselingen
     unsigned long last_data = millis();
     int laaste_pct = -1;
 
-    while (written < (size_t)len) {
+    while (http.connected() || stream->available()) {
+        if (len > 0 && written >= (size_t)len) break;
         if (stream->available()) {
             size_t rd = stream->read(buf, sizeof(buf));
-            if (rd > 0) { Update.write(buf, rd); written += rd; last_data = millis(); }
+            if (rd > 0) {
+                Update.write(buf, rd);
+                written += rd;
+                last_data = millis();
+#if PLATFORM_ESP32
+                esp_task_wdt_reset();
+#endif
+            }
         }
         if (millis() - last_data > 20000) {
             Update.abort();
@@ -382,18 +394,30 @@ bool ota_download_toepassen(String url) {
         }
 
         // Voortgangsbalk bijwerken (alleen bij %-verandering)
-        int pct = (int)(written * 100UL / (size_t)len);
-        if (pct != laaste_pct) {
-            laaste_pct = pct;
-            int fill = (int)((long)bw * pct / 100);
-            tft.fillRoundRect(bx + 1, by + 1, bw - 2, bh - 2, 5, C_BG);
-            if (fill > 0) tft.fillRoundRect(bx + 1, by + 1, fill - 2, bh - 2, 5, C_GREEN);
-            tft.setTextSize(2); tft.setTextColor(C_TEXT);
-            tft.fillRect(bx, by + bh + 8, 160, 20, C_BG);
-            tft.setCursor(bx, by + bh + 8);
-            char pb[24];
-            snprintf(pb, sizeof(pb), "%d%%  %d / %d KB", pct, (int)(written/1024), len/1024);
-            tft.print(pb);
+        if (len > 0) {
+            int pct = (int)(written * 100UL / (size_t)len);
+            if (pct != laaste_pct) {
+                laaste_pct = pct;
+                int fill = (int)((long)bw * pct / 100);
+                tft.fillRoundRect(bx + 1, by + 1, bw - 2, bh - 2, 5, C_BG);
+                if (fill > 0) tft.fillRoundRect(bx + 1, by + 1, fill - 2, bh - 2, 5, C_GREEN);
+                tft.setTextSize(2); tft.setTextColor(C_TEXT);
+                tft.fillRect(bx, by + bh + 8, 200, 20, C_BG);
+                tft.setCursor(bx, by + bh + 8);
+                char pb[24];
+                snprintf(pb, sizeof(pb), "%d%%  %d / %d KB", pct, (int)(written/1024), len/1024);
+                tft.print(pb);
+            }
+        } else {
+            int kb_nu = (int)(written / 1024);
+            if (kb_nu != laaste_pct) {
+                laaste_pct = kb_nu;
+                tft.fillRect(bx, by + bh + 8, 200, 20, C_BG);
+                tft.setTextSize(2); tft.setTextColor(C_TEXT);
+                tft.setCursor(bx, by + bh + 8);
+                char pb[24]; snprintf(pb, sizeof(pb), "%d KB ontvangen...", kb_nu);
+                tft.print(pb);
+            }
         }
         yield();
     }

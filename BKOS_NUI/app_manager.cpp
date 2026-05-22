@@ -17,8 +17,8 @@
 #include <WiFiClientSecure.h>
 
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
-static bool     _sd_geinitialiseerd = false;
-static bool     _sd_aanwezig        = false;
+static bool     _sd_spi_gestart  = false;   // SPI bus één keer starten
+static bool     _sd_aanwezig     = false;
 static SPIClass _spi_sd(FSPI);
 #endif
 
@@ -382,10 +382,13 @@ size_t app_spiffs_totaal() {
 
 bool app_sd_aanwezig() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
-    if (!_sd_geinitialiseerd) {
-        _sd_geinitialiseerd = true;
+    if (!_sd_spi_gestart) {
+        _sd_spi_gestart = true;
         _spi_sd.begin(SD_S3_SCK, SD_S3_MISO, SD_S3_MOSI, -1);
-        _sd_aanwezig = SD.begin(SD_S3_CS, _spi_sd);
+    }
+    // Herdetectie: SD.begin() opnieuw als kaart nog niet aanwezig was
+    if (!_sd_aanwezig) {
+        _sd_aanwezig = SD.begin(SD_S3_CS, _spi_sd, 4000000);
     }
     return _sd_aanwezig;
 #else
@@ -396,7 +399,14 @@ bool app_sd_aanwezig() {
 size_t app_sd_vrij() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
     if (!app_sd_aanwezig()) return 0;
-    return (size_t)(SD.totalBytes() - SD.usedBytes());
+    size_t totaal = SD.totalBytes();
+    if (totaal == 0) {
+        // Kaart verwijderd: reset zodat volgende check opnieuw probeert
+        SD.end();
+        _sd_aanwezig = false;
+        return 0;
+    }
+    return (size_t)(totaal - SD.usedBytes());
 #else
     return 0;
 #endif

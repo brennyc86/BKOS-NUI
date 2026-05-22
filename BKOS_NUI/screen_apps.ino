@@ -41,7 +41,12 @@
   #define VPOP_Y   ((TFT_H - NAV_H - VPOP_H) / 2 + CONTENT_Y)
 #endif
 
-#define APPS_RIJEN_N  (APPS_LIST_H / APPS_RIJ_H)
+// Zoekbalk boven de winkel-lijst
+#define APPS_ZOEK_H    22
+#define APPS_STORE_Y   (APPS_LIST_Y + APPS_ZOEK_H + 2)
+#define APPS_STORE_H   (APPS_LIST_H - APPS_ZOEK_H - 2)
+#define APPS_STORE_ROWS ((APPS_STORE_H - 34) / APPS_RIJ_H)
+#define APPS_RIJEN_N   (APPS_LIST_H / APPS_RIJ_H)
 
 // ─── State ────────────────────────────────────────────────────────────────────
 // Actieve tab in portret-modus: 0=GEINSTALLEERD, 1=APP STORE
@@ -53,6 +58,15 @@ static bool apps_toewijzing_modus = false;
 // Scroll state
 static int  apps_scroll        = 0;
 static int  apps_winkel_scroll = 0;
+
+// Zoek state voor app store
+static char winkel_zoek[24]   = "";
+static bool winkel_kb_actief  = false;
+static bool winkel_kb_hoofd   = false;
+
+// Gefilterde winkel (op basis van zoekterm)
+static int  _wf[WINKEL_MAX];
+static int  _wf_cnt = 0;
 
 // Bevestigings-overlay (verwijderen)
 static bool apps_bevestig_actief = false;
@@ -69,6 +83,156 @@ static int  apps_popup_idx     = -1;
 // Voortgang popup
 static bool apps_voortgang_actief     = false;
 static AppInstallatieStatus apps_voortgang_vorige = APP_INS_IDLE;
+
+// ─── Zoek-filter ─────────────────────────────────────────────────────────────
+static bool _str_bevat(const char* hay, const char* needle) {
+    if (!needle[0]) return true;
+    char h[APP_NAAM_LEN + 1] = {}, n[25] = {};
+    for (int i = 0; i < APP_NAAM_LEN && hay[i]; i++) h[i] = tolower((unsigned char)hay[i]);
+    for (int i = 0; i < 24 && needle[i]; i++) n[i] = tolower((unsigned char)needle[i]);
+    return strstr(h, n) != nullptr;
+}
+
+static void _winkel_filter() {
+    _wf_cnt = 0;
+    for (int i = 0; i < winkel_cnt && _wf_cnt < WINKEL_MAX; i++) {
+        if (!winkel_zoek[0] || _str_bevat(winkel[i].naam, winkel_zoek) ||
+            _str_bevat(winkel[i].auteur, winkel_zoek))
+            _wf[_wf_cnt++] = i;
+    }
+    apps_winkel_scroll = 0;
+}
+
+// ─── Zoekbalk + keyboard ──────────────────────────────────────────────────────
+static void _apps_zoek_balk_teken(int panel_x, int panel_w) {
+    tft.fillRect(panel_x, APPS_LIST_Y, panel_w, APPS_ZOEK_H + 2, C_SURFACE);
+    int field_w = panel_w - UI_SB_W - 6;
+    tft.fillRoundRect(panel_x + 2, APPS_LIST_Y + 2, field_w, APPS_ZOEK_H - 2, 3, C_BG);
+    tft.drawRoundRect(panel_x + 2, APPS_LIST_Y + 2, field_w, APPS_ZOEK_H - 2, 3,
+                      winkel_kb_actief ? C_CYAN : C_SURFACE3);
+    tft.setTextSize(1);
+    if (winkel_zoek[0]) {
+        tft.setTextColor(C_TEXT);
+        tft.setCursor(panel_x + 6, APPS_LIST_Y + (APPS_ZOEK_H - 8) / 2 + 1);
+        tft.print(winkel_zoek);
+        if (winkel_kb_actief) {
+            int cx = panel_x + 6 + strlen(winkel_zoek) * 6;
+            tft.fillRect(cx, APPS_LIST_Y + 4, 2, APPS_ZOEK_H - 6, C_CYAN);
+        }
+    } else {
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(panel_x + 6, APPS_LIST_Y + (APPS_ZOEK_H - 8) / 2 + 1);
+        tft.print(winkel_kb_actief ? "|" : "Zoeken...");
+    }
+    tft.drawFastHLine(panel_x, APPS_LIST_Y + APPS_ZOEK_H, panel_w, C_SURFACE3);
+}
+
+static void _apps_zoek_kb_rij(int ky, const char* rij, int kw, int kh, int kg,
+                               int panel_x, int panel_w) {
+    int n = strlen(rij);
+    int rw = n * kw + (n - 1) * kg;
+    int kx = panel_x + (panel_w - rw) / 2;
+    for (int k = 0; k < n; k++) {
+        char c = winkel_kb_hoofd ? rij[k] : (char)tolower((unsigned char)rij[k]);
+        char buf[2] = { c, 0 };
+        tft.fillRoundRect(kx, ky, kw, kh, 3, C_SURFACE2);
+        tft.drawRoundRect(kx, ky, kw, kh, 3, C_SURFACE3);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT);
+        tft.setCursor(kx + (kw - 6) / 2, ky + (kh - 8) / 2);
+        tft.print(buf);
+        kx += kw + kg;
+    }
+}
+
+static void _apps_zoek_kb_teken(int panel_x, int panel_w) {
+    int kb_y = APPS_STORE_Y;
+    tft.fillRect(panel_x, kb_y, panel_w, NAV_Y - kb_y, C_BG);
+#if SCREEN_SMALL
+    int kw = UI_SCX(21), kh = UI_SCY(28), kg = 1;
+#else
+    int kw = UI_SCX(35), kh = UI_SCY(40), kg = 2;
+#endif
+    static const char* rijen[] = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM" };
+    int ky = kb_y + 4;
+    for (int r = 0; r < 3; r++) {
+        _apps_zoek_kb_rij(ky, rijen[r], kw, kh, kg, panel_x, panel_w);
+        ky += kh + kg + 2;
+    }
+    // Onderste rij: HOOFD | CLR | SPC | OK
+    int bh = kh + 2;
+    int hw = kw * 2 + kg, cw = kw * 2, sw = kw * 3 + kg, ow = kw * 2;
+    int total = hw + cw + sw + ow + 3 * (kg + 2);
+    int bx = panel_x + (panel_w - total) / 2;
+    ui_knop(bx, ky, hw, bh, winkel_kb_hoofd ? "HOOFD" : "klein",
+            C_SURFACE2, winkel_kb_hoofd ? C_CYAN : C_TEXT_DIM);
+    bx += hw + kg + 2;
+    ui_knop(bx, ky, cw, bh, "CLR", C_SURFACE2, C_AMBER);
+    bx += cw + kg + 2;
+    ui_knop(bx, ky, sw, bh, " ", C_SURFACE2, C_TEXT);
+    bx += sw + kg + 2;
+    ui_knop(bx, ky, ow, bh, "OK", C_SURFACE2, C_CYAN);
+}
+
+// Geeft true als de tap door het keyboard is verwerkt
+static bool _apps_zoek_kb_run(int x, int y, int panel_x, int panel_w) {
+    int kb_y = APPS_STORE_Y;
+    if (y < kb_y) return false;
+#if SCREEN_SMALL
+    int kw = UI_SCX(21), kh = UI_SCY(28), kg = 1;
+#else
+    int kw = UI_SCX(35), kh = UI_SCY(40), kg = 2;
+#endif
+    static const char* rijen[] = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM" };
+    int ky = kb_y + 4;
+    for (int r = 0; r < 3; r++) {
+        if (y >= ky && y < ky + kh) {
+            const char* rij = rijen[r]; int n = strlen(rij);
+            int rw = n * kw + (n - 1) * kg;
+            int kx = panel_x + (panel_w - rw) / 2;
+            for (int k = 0; k < n; k++) {
+                if (x >= kx && x < kx + kw) {
+                    char c = winkel_kb_hoofd ? rij[k] : (char)tolower((unsigned char)rij[k]);
+                    int len = strlen(winkel_zoek);
+                    if (len < (int)sizeof(winkel_zoek) - 1) {
+                        winkel_zoek[len] = c; winkel_zoek[len + 1] = '\0';
+                        _winkel_filter();
+                    }
+                    return true;
+                }
+                kx += kw + kg;
+            }
+            return true;
+        }
+        ky += kh + kg + 2;
+    }
+    // Onderste rij
+    int bh = kh + 2;
+    if (y >= ky && y < ky + bh) {
+        int hw = kw * 2 + kg, cw = kw * 2, sw = kw * 3 + kg, ow = kw * 2;
+        int total = hw + cw + sw + ow + 3 * (kg + 2);
+        int bx = panel_x + (panel_w - total) / 2;
+        if (x >= bx && x < bx + hw) { winkel_kb_hoofd = !winkel_kb_hoofd; return true; }
+        bx += hw + kg + 2;
+        if (x >= bx && x < bx + cw) {
+            int len = strlen(winkel_zoek);
+            if (len > 0) { winkel_zoek[len - 1] = '\0'; _winkel_filter(); }
+            return true;
+        }
+        bx += cw + kg + 2;
+        if (x >= bx && x < bx + sw) {
+            int len = strlen(winkel_zoek);
+            if (len < (int)sizeof(winkel_zoek) - 1) {
+                winkel_zoek[len] = ' '; winkel_zoek[len + 1] = '\0'; _winkel_filter();
+            }
+            return true;
+        }
+        bx += sw + kg + 2;
+        if (x >= bx && x < bx + ow) {
+            winkel_kb_actief = false; scherm_bouwen = true; return true;
+        }
+    }
+    return false;
+}
 
 // ─── Deelscherm-headers / Tab-balk ────────────────────────────────────────────
 static void _apps_headers_teken() {
@@ -118,7 +282,7 @@ static void _apps_headers_teken() {
 static void _apps_rij_links(int y, int app_idx, int visueel_idx) {
     AppManifest& m = apps[app_idx];
     bool even = (visueel_idx % 2 == 0);
-    int row_w = APPS_PNL_W - 1;
+    int row_w = APPS_PNL_W - 1 - UI_SB_W;  // ruimte voor scrollbar rechts
 #if SCREEN_SMALL
     // Portret: kompakte rij volledige breedte
     tft.fillRect(0, y, row_w, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
@@ -243,7 +407,11 @@ static void _apps_geinstalleerd_teken() {
 
     // SCHERMEN BEHEREN knop (altijd onderaan links)
     tft.fillRect(0, ky - 2, APPS_PNL_W - 1, 2, C_SURFACE2);
-    ui_knop(8, ky, APPS_PNL_W - 16, 28, "SCHERMEN BEHEREN", C_SURFACE2, C_TEXT_DIM);
+    ui_knop(8, ky, APPS_PNL_W - UI_SB_W - 16, 28, "SCHERMEN BEHEREN", C_SURFACE2, C_TEXT_DIM);
+
+    // Scrollbar
+    int max_sc = max(0, apps_cnt - max_lokaal);
+    ui_scrollbar(APPS_PNL_W - UI_SB_W, APPS_LIST_Y, ky - APPS_LIST_Y - 2, apps_scroll, max_sc);
 }
 
 // ─── Scherm-toewijzing overlay (linker deelscherm) ────────────────────────────
@@ -304,9 +472,10 @@ static void _apps_rij_rechts(int y, int winkel_idx, int visueel_idx) {
     uint16_t    kleur = geinstall ? (update_av ? C_AMBER  : C_SURFACE3)  : C_CYAN;
 
 #if SCREEN_SMALL
-    // Portret: volledige breedte
-    tft.fillRect(0, y, TFT_W - 1, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
-    tft.drawFastHLine(0, y + APPS_RIJ_H - 1, TFT_W - 1, C_SURFACE2);
+    // Portret: volledige breedte (zonder scrollbar kolom)
+    int rw = TFT_W - 1 - UI_SB_W;
+    tft.fillRect(0, y, rw, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
+    tft.drawFastHLine(0, y + APPS_RIJ_H - 1, rw, C_SURFACE2);
 
     tft.setTextSize(1);
     tft.setTextColor(C_TEXT);
@@ -316,11 +485,12 @@ static void _apps_rij_rechts(int y, int winkel_idx, int visueel_idx) {
     tft.setCursor(6, y + 18);
     tft.print(m.auteur); tft.print(" v"); tft.print(m.versie);
 
-    ui_knop(TFT_W - 84, y + 7, 80, APPS_RIJ_H - 16, lbl, C_SURFACE2, kleur);
+    ui_knop(rw - 82, y + 7, 80, APPS_RIJ_H - 16, lbl, C_SURFACE2, kleur);
 #else
-    // Liggend: rechter helft
-    tft.fillRect(APPS_PNL_W + 1, y, APPS_PNL_W - 1, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
-    tft.drawFastHLine(APPS_PNL_W + 1, y + APPS_RIJ_H - 1, APPS_PNL_W - 1, C_SURFACE2);
+    // Liggend: rechter helft (zonder scrollbar kolom)
+    int rw = TFT_W - 1 - UI_SB_W;
+    tft.fillRect(APPS_PNL_W + 1, y, APPS_PNL_W - UI_SB_W - 2, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
+    tft.drawFastHLine(APPS_PNL_W + 1, y + APPS_RIJ_H - 1, APPS_PNL_W - UI_SB_W - 2, C_SURFACE2);
 
     tft.setTextSize(2);
     tft.setTextColor(C_TEXT);
@@ -334,73 +504,75 @@ static void _apps_rij_rechts(int y, int winkel_idx, int visueel_idx) {
     tft.print(" v");
     tft.print(m.versie);
 
-    ui_knop(TFT_W - 112, y + 15, 100, 26, lbl, C_SURFACE2, kleur);
+    ui_knop(rw - 112, y + 15, 100, 26, lbl, C_SURFACE2, kleur);
 #endif
 }
 
 static void _apps_winkel_teken() {
 #if SCREEN_SMALL
-    // Portret: volledige breedte
     tft.fillRect(0, APPS_LIST_Y, TFT_W, APPS_LIST_H, C_BG);
     int panel_x = 0, panel_w = TFT_W;
 #else
-    // Liggend: rechter helft
     tft.fillRect(APPS_PNL_W + 1, APPS_LIST_Y, APPS_PNL_W - 1, APPS_LIST_H, C_BG);
     int panel_x = APPS_PNL_W, panel_w = APPS_PNL_W;
 #endif
 
+    // Zoekbalk (altijd tonen)
+    _apps_zoek_balk_teken(panel_x, panel_w);
+
+    // Keyboard overlay
+    if (winkel_kb_actief) {
+        _apps_zoek_kb_teken(panel_x, panel_w);
+        return;
+    }
+
     if (apps_bezig) {
-        int mid = APPS_LIST_Y + APPS_LIST_H / 2;
+        int mid = APPS_STORE_Y + APPS_STORE_H / 2;
         ui_tekst_midden(panel_x, mid - 8, panel_w, "Laden...", C_CYAN, 1);
-        if (apps_status[0])
-            ui_tekst_midden(panel_x, mid + 8, panel_w, apps_status, C_TEXT_DIM, 1);
         return;
     }
 
     if (!winkel_geladen) {
-        int mid = APPS_LIST_Y + APPS_LIST_H / 2;
+        int mid = APPS_STORE_Y + APPS_STORE_H / 2;
         ui_tekst_midden(panel_x, mid - 28, panel_w, "App store niet geladen", C_TEXT_DIM, 1);
-#if SCREEN_SMALL
-        int btn_w = min(panel_w - 20, 200);
-        ui_knop(panel_x + (panel_w - btn_w) / 2, mid, btn_w, 34, "LADEN", C_SURFACE2, C_CYAN);
-#else
-        ui_knop(APPS_PNL_W + 60, mid - 6, 280, 36, "LADEN", C_SURFACE2, C_CYAN);
-#endif
+        ui_knop(panel_x + (panel_w - 120) / 2, mid, 120, 34, "LADEN", C_SURFACE2, C_CYAN);
         return;
     }
 
-    if (winkel_cnt == 0) {
-        int mid = APPS_LIST_Y + APPS_LIST_H / 2;
-        ui_tekst_midden(panel_x, mid - 8, panel_w, "Geen apps beschikbaar", C_TEXT_DIM, 1);
-        return;
-    }
+    // Filter opnieuw toepassen als nodig
+    if (_wf_cnt == 0 && winkel_cnt > 0) _winkel_filter();
 
-    int max_scroll = max(0, winkel_cnt - APPS_RIJEN_N);
-    if (apps_winkel_scroll > max_scroll) apps_winkel_scroll = max_scroll;
+    if (_wf_cnt == 0) {
+        int mid = APPS_STORE_Y + APPS_STORE_H / 2;
+        ui_tekst_midden(panel_x, mid - 8, panel_w,
+                        winkel_zoek[0] ? "Geen resultaten" : "Geen apps beschikbaar",
+                        C_TEXT_DIM, 1);
+    } else {
+        int max_scroll = max(0, _wf_cnt - APPS_STORE_ROWS);
+        if (apps_winkel_scroll > max_scroll) apps_winkel_scroll = max_scroll;
 
-    for (int i = 0; i < APPS_RIJEN_N; i++) {
-        int idx = apps_winkel_scroll + i;
-        if (idx >= winkel_cnt) break;
-        _apps_rij_rechts(APPS_LIST_Y + i * APPS_RIJ_H, idx, i);
+        for (int i = 0; i < APPS_STORE_ROWS; i++) {
+            int idx = apps_winkel_scroll + i;
+            if (idx >= _wf_cnt) break;
+            _apps_rij_rechts(APPS_STORE_Y + i * APPS_RIJ_H, _wf[idx], i);
+        }
+
+        // Scrollbar
+        ui_scrollbar(panel_x + panel_w - UI_SB_W, APPS_STORE_Y,
+                     APPS_STORE_H - 36, apps_winkel_scroll, max_scroll);
     }
 
     // Status feedback
     if (apps_status[0]) {
-        tft.setTextSize(1);
-        tft.setTextColor(C_AMBER);
+        tft.setTextSize(1); tft.setTextColor(C_AMBER);
         tft.setCursor(panel_x + 8, APPS_LIST_Y + APPS_LIST_H - 16);
         tft.print(apps_status);
     }
 
-    // VERNIEUWEN knop (rechtsonder)
+    // VERNIEUWEN knop
     int ky = APPS_LIST_Y + APPS_LIST_H - 34;
-#if SCREEN_SMALL
-    tft.fillRect(0, ky - 2, TFT_W, 2, C_SURFACE2);
-    ui_knop(TFT_W - 110, ky, 106, 28, "VERNIEUWEN", C_SURFACE2, C_TEXT_DIM);
-#else
-    tft.fillRect(APPS_PNL_W + 1, ky - 2, APPS_PNL_W - 1, 2, C_SURFACE2);
-    ui_knop(TFT_W - 110, ky, 98, 28, "VERNIEUWEN", C_SURFACE2, C_TEXT_DIM);
-#endif
+    tft.fillRect(panel_x, ky - 2, panel_w, 2, C_SURFACE2);
+    ui_knop(panel_x + panel_w - UI_SB_W - 108, ky, 106, 28, "VERNIEUWEN", C_SURFACE2, C_TEXT_DIM);
 }
 
 // ─── Bevestigings overlay ─────────────────────────────────────────────────────
@@ -817,20 +989,28 @@ void screen_apps_run(int x, int y, bool aanraking) {
 
     // ─── Portret tab 0: GEINSTALLEERD ─────────────────────────────────────────
     if (apps_tab == 0) {
+        // Scrollbar installed
+        if (x >= TFT_W - UI_SB_W) {
+            int ky_s = APPS_LIST_Y + APPS_LIST_H - 34;
+            int max_l = max(0, apps_cnt - _apps_rijen_zichtbaar());
+            int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, APPS_LIST_Y, ky_s - APPS_LIST_Y - 2);
+            if (dir == -1) { apps_scroll = max(0, apps_scroll - 1); scherm_bouwen = true; }
+            else if (dir == 1) { apps_scroll = min(max_l, apps_scroll + 1); scherm_bouwen = true; }
+            return;
+        }
+
         int ky = APPS_LIST_Y + APPS_LIST_H - 34;
 
         if (apps_toewijzing_modus) {
             // TERUG knop
             if (y >= ky && y <= ky + 28) {
-                apps_toewijzing_modus = false;
-                scherm_bouwen = true;
-                return;
+                apps_toewijzing_modus = false; scherm_bouwen = true; return;
             }
             // Scherm-toewijzingsrijen
             int y0 = APPS_LIST_Y + 20;
             for (int s = 0; s < INS_SCHERM_N; s++) {
                 if (y >= y0 && y < y0 + INS_RIJ_H) {
-                    if (x >= TFT_W - 90) {
+                    if (x >= TFT_W - UI_SB_W - 90) {
                         int app_idx = app_voor_scherm(ins_scherm_ids[s]);
                         if (app_idx >= 0) {
                             apps[app_idx].vervangt = APP_VERVANGT_GEEN;
@@ -862,7 +1042,7 @@ void screen_apps_run(int x, int y, bool aanraking) {
         int btn_h = APPS_RIJ_H - 16;  // knop hoogte in portret rij
 
         // Portret knop x-grenzen (zie _apps_rij_links portret layout)
-        int row_w   = TFT_W - 1;
+        int row_w   = TFT_W - 1 - UI_SB_W;  // zelfde als in _apps_rij_links
         int btn_area = 108;
         int bx = row_w - btn_area + 2;  // OPEN start
         int open_x0 = bx, open_x1 = bx + 40;
@@ -904,33 +1084,53 @@ void screen_apps_run(int x, int y, bool aanraking) {
 
     // ─── Portret tab 1: APP STORE ──────────────────────────────────────────────
     {
+        // Keyboard actief?
+        if (winkel_kb_actief) {
+            if (_apps_zoek_kb_run(x, y, 0, TFT_W)) scherm_bouwen = true;
+            return;
+        }
+        // Zoekbalk aangeraakt?
+        if (y >= APPS_LIST_Y && y < APPS_STORE_Y) {
+            winkel_kb_actief = true; scherm_bouwen = true; return;
+        }
+        // Scrollbar?
+        if (x >= TFT_W - UI_SB_W) {
+            int max_s = max(0, _wf_cnt - APPS_STORE_ROWS);
+            int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, APPS_STORE_Y, APPS_STORE_H - 36);
+            if (dir == -1) { apps_winkel_scroll = max(0, apps_winkel_scroll - 1); scherm_bouwen = true; }
+            else if (dir == 1) { apps_winkel_scroll = min(max_s, apps_winkel_scroll + 1); scherm_bouwen = true; }
+            return;
+        }
+
         if (!winkel_geladen) {
-            int mid = APPS_LIST_Y + APPS_LIST_H / 2;
+            int mid = APPS_STORE_Y + APPS_STORE_H / 2;
             if (y >= mid && y <= mid + 34) {
                 apps_bezig = true; scherm_bouwen = true;
-                app_winkel_laden();
+                app_winkel_laden(); _winkel_filter();
                 apps_bezig = false; scherm_bouwen = true;
             }
             return;
         }
 
         int ky = APPS_LIST_Y + APPS_LIST_H - 34;
-        if (y >= ky && y <= ky + 28 && x >= TFT_W - 110) {
+        if (y >= ky && y <= ky + 28) {
             apps_status[0] = '\0'; winkel_geladen = false;
-            apps_winkel_scroll = 0; scherm_bouwen = true;
+            winkel_zoek[0] = '\0'; winkel_kb_actief = false;
+            _winkel_filter(); apps_winkel_scroll = 0; scherm_bouwen = true;
             return;
         }
 
-        int rij = (y - APPS_LIST_Y) / APPS_RIJ_H;
+        int rij = (y - APPS_STORE_Y) / APPS_RIJ_H;
+        if (rij < 0) return;
         int idx = apps_winkel_scroll + rij;
-        if (idx < 0 || idx >= winkel_cnt) return;
+        if (idx < 0 || idx >= _wf_cnt) return;
+        int widx = _wf[idx];
 
-        // INSTALLEER/UPDATE knop: x >= TFT_W - 84
-        if (x >= TFT_W - 84) {
-            int inst = app_vindt(winkel[idx].id);
-            if (inst >= 0 && strcmp(apps[inst].versie, winkel[idx].versie) == 0) return;
-            apps_popup_idx = idx; apps_popup_actief = true;
-            scherm_bouwen = true;
+        // INSTALLEER/UPDATE knop
+        if (x >= TFT_W - UI_SB_W - 84) {
+            int inst = app_vindt(winkel[widx].id);
+            if (inst >= 0 && strcmp(apps[inst].versie, winkel[widx].versie) == 0) return;
+            apps_popup_idx = widx; apps_popup_actief = true; scherm_bouwen = true;
         }
     }
 
@@ -940,18 +1140,26 @@ void screen_apps_run(int x, int y, bool aanraking) {
 
     // ── Linker deelscherm ──────────────────────────────────────────────────────
     if (x < APPS_PNL_W) {
+        // Scrollbar installed (links)
+        if (x >= APPS_PNL_W - UI_SB_W) {
+            int ky_l = APPS_LIST_Y + APPS_LIST_H - 34;
+            int max_l = max(0, apps_cnt - _apps_rijen_zichtbaar());
+            int dir = ui_scrollbar_klik(x, y, APPS_PNL_W - UI_SB_W, APPS_LIST_Y, ky_l - APPS_LIST_Y - 2);
+            if (dir == -1) { apps_scroll = max(0, apps_scroll - 1); scherm_bouwen = true; }
+            else if (dir == 1) { apps_scroll = min(max_l, apps_scroll + 1); scherm_bouwen = true; }
+            return;
+        }
+
         int ky = APPS_LIST_Y + APPS_LIST_H - 34;
 
         if (apps_toewijzing_modus) {
             if (y >= ky && y <= ky + 28) {
-                apps_toewijzing_modus = false;
-                scherm_bouwen = true;
-                return;
+                apps_toewijzing_modus = false; scherm_bouwen = true; return;
             }
             int y0 = APPS_LIST_Y + 20;
             for (int s = 0; s < INS_SCHERM_N; s++) {
                 if (y >= y0 && y < y0 + INS_RIJ_H) {
-                    if (x >= APPS_PNL_W - 90) {
+                    if (x >= APPS_PNL_W - UI_SB_W - 90) {
                         int app_idx = app_voor_scherm(ins_scherm_ids[s]);
                         if (app_idx >= 0) {
                             apps[app_idx].vervangt = APP_VERVANGT_GEEN;
@@ -965,9 +1173,7 @@ void screen_apps_run(int x, int y, bool aanraking) {
             }
         } else {
             if (y >= ky && y <= ky + 28) {
-                apps_toewijzing_modus = true;
-                scherm_bouwen = true;
-                return;
+                apps_toewijzing_modus = true; scherm_bouwen = true; return;
             }
             int rijen = _apps_rijen_zichtbaar();
             int rij   = (y - APPS_LIST_Y) / APPS_RIJ_H;
@@ -975,29 +1181,22 @@ void screen_apps_run(int x, int y, bool aanraking) {
             int idx = apps_scroll + rij;
             if (idx < 0 || idx >= apps_cnt) return;
             int rij_y = APPS_LIST_Y + rij * APPS_RIJ_H;
+            int rw = APPS_PNL_W - 1 - UI_SB_W;
 
-            if (x >= APPS_PNL_W - 50 && x <= APPS_PNL_W - 12 &&
-                y >= rij_y + 15 && y <= rij_y + 41) {
+            if (x >= rw - 50 && x <= rw - 12 && y >= rij_y + 15 && y <= rij_y + 41) {
                 apps_bevestig_idx = idx; apps_bevestig_actief = true;
-                scherm_bouwen = true;
-                return;
+                scherm_bouwen = true; return;
             }
-            if (x >= APPS_PNL_W - 110 && x <= APPS_PNL_W - 58 &&
-                y >= rij_y + 16 && y <= rij_y + 42) {
+            if (x >= rw - 110 && x <= rw - 58 && y >= rij_y + 16 && y <= rij_y + 42) {
                 app_zet_actief(idx, !apps[idx].actief);
-                lua_app_sluiten(); lua_setup();
-                scherm_bouwen = true;
-                return;
+                lua_app_sluiten(); lua_setup(); scherm_bouwen = true; return;
             }
-            if (x >= APPS_PNL_W - 170 && x <= APPS_PNL_W - 118 &&
-                y >= rij_y + 15 && y <= rij_y + 41) {
+            if (x >= rw - 170 && x <= rw - 118 && y >= rij_y + 15 && y <= rij_y + 41) {
                 if (apps[idx].actief) {
 #if LUA_BESCHIKBAAR
-                    lua_forceer_app = idx;
-                    actief_scherm   = SCREEN_LUA_APP;
-                    scherm_bouwen   = true;
+                    lua_forceer_app = idx; actief_scherm = SCREEN_LUA_APP; scherm_bouwen = true;
 #else
-                    strncpy(apps_status, "Lua niet beschikbaar \x2014 installeer via OTA", sizeof(apps_status) - 1);
+                    strncpy(apps_status, "Lua niet beschikbaar", sizeof(apps_status) - 1);
                     scherm_bouwen = true;
 #endif
                 }
@@ -1008,33 +1207,52 @@ void screen_apps_run(int x, int y, bool aanraking) {
     }
 
     // ── Rechter deelscherm ─────────────────────────────────────────────────────
+    // Keyboard actief?
+    if (winkel_kb_actief) {
+        if (_apps_zoek_kb_run(x, y, APPS_PNL_W, APPS_PNL_W)) scherm_bouwen = true;
+        return;
+    }
+    // Zoekbalk aangeraakt?
+    if (y >= APPS_LIST_Y && y < APPS_STORE_Y) {
+        winkel_kb_actief = true; scherm_bouwen = true; return;
+    }
+    // Scrollbar winkel (rechts)
+    if (x >= TFT_W - UI_SB_W) {
+        int max_s = max(0, _wf_cnt - APPS_STORE_ROWS);
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, APPS_STORE_Y, APPS_STORE_H - 36);
+        if (dir == -1) { apps_winkel_scroll = max(0, apps_winkel_scroll - 1); scherm_bouwen = true; }
+        else if (dir == 1) { apps_winkel_scroll = min(max_s, apps_winkel_scroll + 1); scherm_bouwen = true; }
+        return;
+    }
+
     if (!winkel_geladen) {
-        int mid = APPS_LIST_Y + APPS_LIST_H / 2;
-        if (y >= mid - 6 && y <= mid + 30 &&
-            x >= APPS_PNL_W + 60 && x <= APPS_PNL_W + 340) {
+        int mid = APPS_STORE_Y + APPS_STORE_H / 2;
+        if (y >= mid && y <= mid + 34) {
             apps_bezig = true; scherm_bouwen = true;
-            app_winkel_laden();
+            app_winkel_laden(); _winkel_filter();
             apps_bezig = false; scherm_bouwen = true;
         }
         return;
     }
 
     int ky = APPS_LIST_Y + APPS_LIST_H - 34;
-    if (y >= ky && y <= ky + 28 && x >= TFT_W - 110) {
+    if (y >= ky && y <= ky + 28) {
         apps_status[0] = '\0'; winkel_geladen = false;
-        apps_winkel_scroll = 0; scherm_bouwen = true;
+        winkel_zoek[0] = '\0'; winkel_kb_actief = false;
+        _winkel_filter(); apps_winkel_scroll = 0; scherm_bouwen = true;
         return;
     }
 
-    int rij = (y - APPS_LIST_Y) / APPS_RIJ_H;
+    int rij = (y - APPS_STORE_Y) / APPS_RIJ_H;
+    if (rij < 0) return;
     int idx = apps_winkel_scroll + rij;
-    if (idx < 0 || idx >= winkel_cnt) return;
+    if (idx < 0 || idx >= _wf_cnt) return;
+    int widx = _wf[idx];
 
-    if (x >= TFT_W - 112) {
-        int inst = app_vindt(winkel[idx].id);
-        if (inst >= 0 && strcmp(apps[inst].versie, winkel[idx].versie) == 0) return;
-        apps_popup_idx = idx; apps_popup_actief = true;
-        scherm_bouwen = true;
+    if (x >= TFT_W - UI_SB_W - 112) {
+        int inst = app_vindt(winkel[widx].id);
+        if (inst >= 0 && strcmp(apps[inst].versie, winkel[widx].versie) == 0) return;
+        apps_popup_idx = widx; apps_popup_actief = true; scherm_bouwen = true;
     }
 #endif
 }

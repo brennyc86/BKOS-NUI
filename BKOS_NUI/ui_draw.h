@@ -47,3 +47,9 @@ void ui_tekst_midden_v(int x, int y, int h, const char* tekst, uint16_t kleur, u
 void ui_scheidingslijn(int x, int y, int len, uint16_t kleur, bool horizontaal = true);
 void ui_panel_bg(int x, int y, int w, int h, uint16_t kleur);
 void ui_maan_symbool(int cx, int cy, int r, float fase);  // fase 0..1
+
+// Scrollbar met pijl-knoppen (alleen zichtbaar als max_scroll > 0)
+#define UI_SB_W  16
+void ui_scrollbar(int x, int y, int h, int scroll, int max_scroll);
+// Geeft -1 (▲), +1 (▼), 2 (thumb), 0 (niet geraakt)
+int  ui_scrollbar_klik(int kx, int ky, int sb_x, int sb_y, int sb_h);

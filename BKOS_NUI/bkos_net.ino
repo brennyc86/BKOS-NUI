@@ -38,6 +38,15 @@ static unsigned long _last_io_sync   = 0;
 static bool          _espnow_ok      = false;
 static bool          _io_sync_reset  = false;  // forceer volgende net_io_sturen() ongeacht snapshot
 
+// Boot-sync: master neemt staat over van peer met langste uptime na herstart
+#define BOOT_SYNC_MS  6000UL
+static bool          _boot_sync_actief    = false;
+static unsigned long _boot_sync_start     = 0;
+static uint32_t      _boot_sync_beste_ms  = 0;
+static uint8_t       _boot_sync_vaar      = 0;
+static uint8_t       _boot_sync_licht     = 0;
+static uint8_t       _boot_sync_cfg       = 0;
+
 // SPSC ontvangst-queue (callback = Core 0, net_loop = Core 1)
 #define NET_RX_Q 8
 static volatile uint8_t _rx_head = 0;  // consumer schrijft
@@ -449,13 +458,25 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             licht_cfg_idx    = (byte)pkt.data[2];
             if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
         } else if (pkt.modus != NET_MASTER && net_modus == NET_MASTER) {
-            // Van slave → master: verwerk en stuur terug naar alle slaves
-            vaar_modus       = (byte)pkt.data[0];
-            licht_instelling = (byte)pkt.data[1];
-            licht_cfg_idx    = (byte)pkt.data[2];
-            io_verlichting_update();
-            io_direct_aanvraag = true;
-            net_app_staat_sturen();  // broadcast naar alle slaves
+            if (_boot_sync_actief) {
+                // Boot-sync venster: neem staat over van peer met hoogste uptime
+                uint32_t peer_uptime = 0;
+                memcpy(&peer_uptime, &pkt.data[3], sizeof(uint32_t));
+                if (peer_uptime > _boot_sync_beste_ms) {
+                    _boot_sync_beste_ms  = peer_uptime;
+                    _boot_sync_vaar      = pkt.data[0];
+                    _boot_sync_licht     = pkt.data[1];
+                    _boot_sync_cfg       = pkt.data[2];
+                }
+            } else {
+                // Normale werking: verwerk slave-staat en broadcast naar alle slaves
+                vaar_modus       = (byte)pkt.data[0];
+                licht_instelling = (byte)pkt.data[1];
+                licht_cfg_idx    = (byte)pkt.data[2];
+                io_verlichting_update();
+                io_direct_aanvraag = true;
+                net_app_staat_sturen();
+            }
         }
         break;
     }
@@ -518,8 +539,11 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
     }
 
     case NET_MSG_STATE_REQ: {
-        // Master vraagt naar onze huidige vaarmodus en verlichting
-        if (net_modus != NET_MASTER) net_app_staat_sturen();
+        if (net_modus != NET_MASTER) {
+            // Leer master-MAC uit het pakket als die nog niet bekend is
+            if (!net_master_bekend()) memcpy(net_master_mac, mac, 6);
+            net_app_staat_sturen();
+        }
         break;
     }
 
@@ -768,11 +792,14 @@ void net_app_staat_sturen() {
     pkt.data[0] = (uint8_t)vaar_modus;
     pkt.data[1] = (uint8_t)licht_instelling;
     pkt.data[2] = (uint8_t)licht_cfg_idx;
+    uint32_t uptime = (uint32_t)millis();
+    memcpy(&pkt.data[3], &uptime, sizeof(uint32_t));
     if (net_modus == NET_MASTER) {
         for (int i = 0; i < net_peers_cnt; i++)
-            if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, pkt, 3);
-    } else if (net_gepaard) {
-        _stuur(net_master_mac, pkt, 3);
+            if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, pkt, 7);
+    } else if (net_master_bekend()) {
+        // Altijd sturen als master-MAC bekend is — ook tijdens boot-sync vóór PAIR_ACK
+        _stuur(net_master_mac, pkt, 7);
     }
 #endif
 }
@@ -940,6 +967,14 @@ void net_loop() {
         if (net_modus == NET_MASTER) {
             net_gepaard = true;
             net_status  = "Master actief";
+            // Boot-sync: vraag staat op bij alle bekende peers (langste uptime wint)
+            if (net_peers_cnt > 0) {
+                _boot_sync_actief   = true;
+                _boot_sync_start    = millis();
+                _boot_sync_beste_ms = 0;
+                for (int i = 0; i < net_peers_cnt; i++)
+                    net_staat_aanvragen(i);
+            }
         } else if (net_master_bekend()) {
             // Veronderstel nog gepaard zodat slave direct kan sturen;
             // PAIR_ACK herbevestigt dit na de PAIR_REQ handshake
@@ -959,6 +994,19 @@ void net_loop() {
     }
 
     unsigned long nu = millis();
+
+    // Boot-sync timeout: pas staat toe van peer met hoogste uptime
+    if (_boot_sync_actief && net_modus == NET_MASTER && nu - _boot_sync_start >= BOOT_SYNC_MS) {
+        _boot_sync_actief = false;
+        if (_boot_sync_beste_ms > 0) {
+            vaar_modus       = _boot_sync_vaar;
+            licht_instelling = _boot_sync_licht;
+            licht_cfg_idx    = _boot_sync_cfg;
+            io_verlichting_update();
+            net_app_staat_sturen();
+            if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
+        }
+    }
 
     // Master: heartbeat naar gepairde apparaten
     if (net_modus == NET_MASTER && nu - _last_hb >= NET_HEARTBEAT_MS) {

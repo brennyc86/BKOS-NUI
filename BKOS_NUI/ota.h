@@ -2,7 +2,7 @@
 #include "platform.h"
 #include "wifi.h"
 
-#define BKOS_NUI_VERSIE     "0.1.260523.1"
+#define BKOS_NUI_VERSIE     "0.1.260523.2"
 
 // ─── Beta kanaal (tussenversies) ──────────────────────────────────────────────
 #if PLATFORM_PICO
@@ -82,6 +82,10 @@ extern String ota_versie_github;
 extern String ota_status_tekst;
 extern int    ota_check_interval_min; // check-interval in minuten (5/10/15/30/45/60/120/1440)
 extern int    ota_check_tijd_uur;     // uur voor dagelijkse check (0–23)
+
+// Core-0 → Core-1 signalen (volatile, geen mutex nodig voor enkelvoudige bool)
+extern volatile bool ota_check_aangevraagd;   // Core 1 vraagt check aan; Core 0 voert uit
+extern volatile bool ota_nieuwer_beschikbaar; // Core 0 meldt: nieuwe versie gevonden
 
 void ota_setup();
 void ota_loop();

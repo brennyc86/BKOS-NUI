@@ -71,6 +71,7 @@ void ts_setup() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     ts.begin();
     ts.setRotation(0);
+    Wire.setTimeout(50);  // GT911 I2C: max 50ms per transactie, voorkomt oneindige blokkering bij busstoring
 
 #elif PLATFORM_PICO
     SPI.begin();

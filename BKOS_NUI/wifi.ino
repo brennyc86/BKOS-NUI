@@ -1,5 +1,6 @@
 #include "wifi.h"
 #include "ota.h"
+// ota_check_aangevraagd / ota_nieuwer_beschikbaar gedeclareerd in ota.h
 #include "hw_scherm.h"
 #include "ui_colors.h"
 #include "app_state.h"
@@ -72,6 +73,8 @@ static void netwerk_taak(void* param) {
         meteo_getij_berekenen();
         getijdata_update_alle(getijdata_station_idx);  // alle stations, geselecteerde eerst
         ota_git_check();
+        if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+            ota_nieuwer_beschikbaar = true;
     }
     _wifi_verbreken_intern();
 
@@ -87,8 +90,10 @@ static void netwerk_taak(void* param) {
         unsigned long nu = millis();
         bool update_nodig = (!meteo_geladen) ||
                             (nu - meteo_laatste_update > 1800000UL);
+        bool ota_gevraagd = ota_check_aangevraagd;
+        if (ota_gevraagd) ota_check_aangevraagd = false;
 
-        if (!update_nodig && !wifi_ota_modus) continue;
+        if (!update_nodig && !wifi_ota_modus && !ota_gevraagd) continue;
 
         // Verbinden
         if (WiFi.status() != WL_CONNECTED) _wifi_verbinden_intern();
@@ -99,6 +104,13 @@ static void netwerk_taak(void* param) {
                 meteo_getij_berekenen();
                 getijdata_check_update(getijdata_station_idx);
                 ota_git_check();
+                if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+                    ota_nieuwer_beschikbaar = true;
+            } else if (ota_gevraagd) {
+                // Alleen OTA check, geen meteo-update nodig
+                ota_git_check();
+                if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+                    ota_nieuwer_beschikbaar = true;
             }
         }
 

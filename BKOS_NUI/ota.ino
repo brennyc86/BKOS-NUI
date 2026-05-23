@@ -12,6 +12,10 @@ bool   ota_beta_kanal_geladen = false;  // true als ota_beta uit config geladen 
 String ota_versie_github = "";
 String ota_status_tekst  = "Niet gecontroleerd";
 
+// Signaalvlaggen voor inter-core communicatie (Core 0 = netwerk, Core 1 = UI)
+volatile bool ota_check_aangevraagd   = false;
+volatile bool ota_nieuwer_beschikbaar = false;
+
 OtaReleaseItem ota_releases[OTA_RELEASES_MAX];
 int            ota_releases_cnt = 0;
 
@@ -97,17 +101,13 @@ void ota_loop() {
     _was_verbonden    = wifi_nu;
     unsigned long nu  = millis();
 
-    // Voer geplande check direct uit zodra WiFi beschikbaar wordt
+    // Voer geplande check uit zodra WiFi beschikbaar wordt:
+    // NIET rechtstreeks — stuur signaal naar netwerk-taak (Core 0) om blokkering van UI-lus te vermijden
     if (_check_gepland && wifi_net_aan && ota_auto_update && strlen(OTA_GITHUB_VERSIE_URL) > 5) {
-        _check_gepland     = false;
-        ota_last_git_check = nu;
-        ota_git_check();
-        if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE) {
-            tft_actief = true; tft_bijna_uit = false;
-            tft_helderheid_zet(tft_helderheid);
-            actief_scherm = SCREEN_OTA; scherm_bouwen = true;
-            ota_git_update();
-        }
+        _check_gepland        = false;
+        ota_last_git_check    = nu;
+        ota_check_aangevraagd = true;    // netwerk-taak (Core 0) pikt dit op
+        wifi_verbind_aanvragen();
     }
 
     // Bepaal of het tijd is voor de periodieke check
@@ -132,15 +132,20 @@ void ota_loop() {
         if (!wifi_verbonden) {
             _check_gepland = true;   // herhaal zodra WiFi beschikbaar is
         } else {
-            _check_gepland = false;
-            ota_git_check();
-            if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE) {
-                tft_actief = true; tft_bijna_uit = false;
-                tft_helderheid_zet(tft_helderheid);
-                actief_scherm = SCREEN_OTA; scherm_bouwen = true;
-                ota_git_update();
-            }
+            // Signaleer netwerk-taak (Core 0) — nooit HTTP aanroepen vanuit UI-lus (Core 1)
+            ota_check_aangevraagd = true;
+            wifi_verbind_aanvragen();
         }
+    }
+
+    // Netwerk-taak (Core 0) heeft een nieuwe versie gevonden → download starten op Core 1
+    // (download mag alleen op Core 1 omdat het TFT-tekenen gebruikt)
+    if (ota_auto_update && ota_nieuwer_beschikbaar) {
+        ota_nieuwer_beschikbaar = false;
+        tft_actief = true; tft_bijna_uit = false;
+        tft_helderheid_zet(tft_helderheid);
+        actief_scherm = SCREEN_OTA; scherm_bouwen = true;
+        ota_git_update();
     }
 }
 

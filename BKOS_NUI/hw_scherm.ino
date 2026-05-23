@@ -27,8 +27,8 @@ void tft_setup() {
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
 #elif PLATFORM_WROOM
-    // ILI9341 via shared HSPI (display + touch delen bus, eigen CS)
-    Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS, TFT_SCK, TFT_MOSI, TFT_MISO, &shared_hspi);
+    // ILI9341 via HSPI native driver (touch deelt bus via shared_hspi SPIClass, eigen CS)
+    Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCK, TFT_MOSI, TFT_MISO, HSPI);
     tft_p = new Arduino_ILI9341(bus, TFT_RST, 0, false);
 
 #elif PLATFORM_CYD28

@@ -7,14 +7,15 @@
 
 // ─── Stationsdata ─────────────────────────────────────────────────────────
 const GetijStation getij_stations[GETIJ_STATIONS] = {
-    // naam,          lat,    lon,   LAT_nap, MHWS,   MHWN,  MLWS,   MLWN,  hwfc
-    { "Vlissingen",  51.44,  3.57,  -2.97f,  2.35f, 1.88f, -2.13f, -0.74f, 11.40f },
-    { "Hoek v.Holl", 51.98,  4.12,  -1.62f,  0.95f, 0.72f, -0.67f, -0.44f, 12.00f },
-    { "Rotterdam",   51.90,  4.48,  -1.55f,  0.90f, 0.68f, -0.65f, -0.43f, 12.25f },
-    { "Den Helder",  52.96,  4.75,  -1.35f,  0.80f, 0.62f, -0.55f, -0.37f, 11.75f },
-    { "IJmuiden",    52.46,  4.55,  -1.30f,  0.85f, 0.65f, -0.45f, -0.25f, 11.50f },
-    { "Harlingen",   53.18,  5.41,  -2.30f,  1.25f, 0.93f, -1.05f, -0.73f, 11.00f },
-    { "Delfzijl",    53.33,  6.93,  -3.20f,  1.65f, 1.20f, -1.55f, -1.10f, 11.50f },
+    // naam,          lat,    lon,   LAT_nap  MHWS    MHWN   MLWS    MLWN   hwfc
+    // Bron: RWS Getijdetafels + KNMI waterhoogtestatistieken + hydrografische kaarten
+    { "Vlissingen",  51.44,  3.57,  -2.12f,  2.53f, 1.91f, -0.76f, -0.10f, 11.67f },
+    { "Hoek v.Holl", 51.98,  4.12,  -0.90f,  0.93f, 0.70f, -0.68f, -0.44f, 12.00f },
+    { "Rotterdam",   51.90,  4.48,  -0.80f,  0.90f, 0.68f, -0.60f, -0.38f, 12.25f },
+    { "Den Helder",  52.96,  4.75,  -1.00f,  0.78f, 0.62f, -0.75f, -0.37f, 11.75f },
+    { "IJmuiden",    52.46,  4.55,  -1.00f,  0.83f, 0.65f, -0.52f, -0.25f, 11.50f },
+    { "Harlingen",   53.18,  5.41,  -2.20f,  1.29f, 0.93f, -1.05f, -0.73f, 11.00f },
+    { "Delfzijl",    53.33,  6.93,  -3.10f,  1.67f, 1.20f, -1.31f, -1.10f, 11.50f },
 };
 
 // ─── Runtime state ────────────────────────────────────────────────────────

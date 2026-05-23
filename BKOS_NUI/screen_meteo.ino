@@ -674,23 +674,24 @@ static void meteo_getij_teken() {
             tft.fillRoundRect(bx, ey, GTJ_COL_W - 4, GTJ_ROW_H - 1, 3, bg);
 
             struct tm* lt = localtime(&tijdstip);
-            char rowbuf[36];
-            snprintf(rowbuf, sizeof(rowbuf), "%s %02d-%02d  %02d:%02d  %s  %.2fm",
-                dag_afk[lt->tm_wday], lt->tm_mday, lt->tm_mon + 1,
-                lt->tm_hour, lt->tm_min,
-                hw ? "HW" : "LW", nap_m);
 
+            // Lijn 1 (textSize 2): dag datum tijd + HW/LW type
+            char lijn1[24];
+            snprintf(lijn1, sizeof(lijn1), "%s %02d-%02d  %02d:%02d  %s",
+                dag_afk[lt->tm_wday], lt->tm_mday, lt->tm_mon + 1,
+                lt->tm_hour, lt->tm_min, hw ? "HW" : "LW");
             tft.setTextSize(2);
             tft.setTextColor(verleden ? C_TEXT_DIM : tekst_kleur);
-            tft.setCursor(bx + 5, ey + (GTJ_ROW_H - 16) / 2);
-            tft.print(rowbuf);
+            tft.setCursor(bx + 5, ey + 2);
+            tft.print(lijn1);
 
-            // LAT-afstand uiterst rechts
-            char latbuf[8]; snprintf(latbuf, sizeof(latbuf), "+%.1f", lat_m);
-            int lat_tw = strlen(latbuf) * 6;
-            tft.setTextSize(1); tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
-            tft.setCursor(bx + GTJ_COL_W - 4 - lat_tw - 4, ey + (GTJ_ROW_H - 8) / 2);
-            tft.print(latbuf);
+            // Lijn 2 (textSize 1): NAP en LAT in meters — beide referentievlakken zichtbaar
+            char lijn2[36];
+            snprintf(lijn2, sizeof(lijn2), "NAP %+.2fm    LAT %+.2fm", nap_m, lat_m);
+            tft.setTextSize(1);
+            tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
+            tft.setCursor(bx + 5, ey + 22);
+            tft.print(lijn2);
         }
     }
 }

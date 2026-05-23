@@ -205,18 +205,26 @@ bool getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, in
     int lat_offset = doc["lat_offset"] | loc.lat_offset_cm;
     JsonArray arr  = doc["metingen"].as<JsonArray>();
 
-    // GETETBRKD2 geeft al alleen extremen terug — geen piek-detectie nodig.
-    // Positieve waterstand = boven NAP = HW; negatief = onder NAP = LW.
+    // GETETBRKD2 geeft al alleen extremen terug — HW/LW afwisselend in de tijd.
+    // Stap 1: alle waarden inlezen.
     for (JsonObject item : arr) {
         if (*aantal >= max_aantal) break;
         float  w = item["w"].as<float>();
         String t = item["t"].as<String>();
-        if (w == 0.0f && t.length() < 10) continue;  // lege entry overslaan
+        if (w == 0.0f && t.length() < 10) continue;
         extremen[*aantal].tijdstip          = _getij_parseer_tijdstip(t.c_str());
         extremen[*aantal].waterstand_nap_cm = w;
         extremen[*aantal].waterstand_lat_cm = w - (float)lat_offset;
-        extremen[*aantal].is_hoogwater      = (w > 0);
+        extremen[*aantal].is_hoogwater      = false;
         (*aantal)++;
+    }
+    // Stap 2: HW/LW bepalen via buurvergelijking — robuust voor alle stations,
+    // ook Rotterdam waar LW boven NAP=0 kan liggen.
+    for (int i = 0; i < *aantal; i++) {
+        float w    = extremen[i].waterstand_nap_cm;
+        float prev = (i > 0)           ? extremen[i - 1].waterstand_nap_cm : w - 1.0f;
+        float next = (i < *aantal - 1) ? extremen[i + 1].waterstand_nap_cm : w - 1.0f;
+        extremen[i].is_hoogwater = (w >= prev && w >= next);
     }
 
     return true;

@@ -84,12 +84,12 @@ static const GetijLocatie GETIJ_LOCATIES[] = {
     { "Rotterdam",        "rotterdam.nieuwemaas.boerengat",    "/getij_rotterdam.json",          -70 },
 
     // Noordzeekust
-    { "IJmuiden",         "ijmuiden.buitenhaven",              "/getij_ijmuiden.json",           -72 },
-    { "Den Helder",       "denhelder.marsdiep",                "/getij_denhelder.json",          -68 },
+    { "IJmuiden",         "ijmuiden.buitenhaven",              "/getij_ijmuiden.json",           -80 },
+    { "Den Helder",       "denhelder.marsdiep",                "/getij_denhelder.json",         -100 },
 
     // Waddenzee
-    { "Kornwerderzand",   "kornwerderzand.waddenzee.buitenhaven", "/getij_kornwerderzand.json", -95 },
-    { "Harlingen",        "harlingen.waddenzee",               "/getij_harlingen.json",         -114 },
+    { "Kornwerderzand",   "kornwerderzand.waddenzee.buitenhaven", "/getij_kornwerderzand.json",-110 },
+    { "Harlingen",        "harlingen.waddenzee",               "/getij_harlingen.json",         -145 },
     { "Terschelling",     "terschelling.west",                 "/getij_terschelling.json",      -110 },
     { "Delfzijl",         "delfzijl",                          "/getij_delfzijl.json",          -155 },
 };

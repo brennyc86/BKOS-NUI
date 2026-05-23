@@ -129,3 +129,8 @@ int getijdata_aantal_locaties();
 
 // Geef true terug als er geldige data op schijf staat voor deze locatie
 bool getijdata_beschikbaar(int locatie_index);
+
+// ─── Debug: laatste ruwe HTTP response ───────────────────────────────────────
+#define GETIJ_DEBUG_LEN 2000
+extern char getij_debug_raw[GETIJ_DEBUG_LEN];
+extern int  getij_debug_http_code;

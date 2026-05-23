@@ -51,7 +51,8 @@ static const int rws_naar_harm[12] = {
 #define GTJ_COL_W   ((TFT_W - 20) / GTJ_COLS_N)
 #define GTJ_ROWS_N  ((PANEL_H - GTJ_HDR_H - GTJ_NOW_H - 4) / GTJ_ROW_H)
 
-static int getij_scroll = 0;
+static int  getij_scroll    = 0;
+static bool getij_raw_modus = false;  // toon ruwe JSON i.p.v. opgemaakte tabel
 
 // ─── Weericons (getekend) ─────────────────────────────────────────────────
 static void weer_zon(int cx, int cy, int r, uint16_t c) {
@@ -598,13 +599,68 @@ static void meteo_getij_teken() {
         tft.print(labuf);
     }
 
-    // Scroll knoppen rechts
-    bool voor   = (getij_scroll > 0);
-    bool achter = (getij_scroll < max_sc);
-    ui_knop(TFT_W - 250, PANEL_Y + 2, 110, GTJ_HDR_H - 4, "< VORIGE",
-            voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
-    ui_knop(TFT_W - 132, PANEL_Y + 2, 120, GTJ_HDR_H - 4, "VOLGENDE >",
-            achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
+    // RAW toggle knop (uiterst rechts)
+    ui_knop(TFT_W - 70, PANEL_Y + 2, 62, GTJ_HDR_H - 4, "RAW",
+            getij_raw_modus ? C_SURFACE3 : C_SURFACE,
+            getij_raw_modus ? C_CYAN     : C_TEXT_DIM);
+
+    if (!getij_raw_modus) {
+        // Scroll knoppen
+        bool voor   = (getij_scroll > 0);
+        bool achter = (getij_scroll < max_sc);
+        ui_knop(TFT_W - 262, PANEL_Y + 2, 110, GTJ_HDR_H - 4, "< VORIGE",
+                voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
+        ui_knop(TFT_W - 144, PANEL_Y + 2, 68, GTJ_HDR_H - 4, "VOLG >",
+                achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
+    }
+
+    if (getij_raw_modus) {
+        // ── RAW JSON weergave ─────────────────────────────────────────────
+        int raw_y = PANEL_Y + GTJ_HDR_H + 4;
+        tft.fillRect(0, raw_y, TFT_W, PANEL_H - GTJ_HDR_H, C_BG);
+
+        // HTTP code + station info
+        tft.setTextSize(1);
+        tft.setTextColor(getij_debug_http_code == 200 ? C_GREEN : C_RED_BRIGHT);
+        tft.setCursor(6, raw_y);
+        char hdr[48];
+        snprintf(hdr, sizeof(hdr), "HTTP %d", getij_debug_http_code);
+        tft.print(hdr);
+
+        // Ruwe tekst afdrukken, max wat op scherm past
+        int tekst_y  = raw_y + 14;
+        int regel_h  = 9;
+        int max_y    = PANEL_Y + PANEL_H - regel_h;
+        int char_b   = 6;                     // pixels per teken bij textSize 1
+        int max_col  = TFT_W / char_b;        // tekens per regel
+
+        const char* p    = getij_debug_raw;
+        int         col  = 0;
+        int         regel_y = tekst_y;
+
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(6, regel_y);
+
+        while (*p && regel_y < max_y) {
+            char c = *p++;
+            if (c == '\n' || col >= max_col - 1) {
+                regel_y += regel_h;
+                col = 0;
+                if (regel_y >= max_y) break;
+                tft.setCursor(6, regel_y);
+                if (c == '\n') continue;
+            }
+            tft.print(c);
+            col++;
+        }
+        if (*p) {
+            // Meer tekst dan op scherm past — toon ellipsis
+            tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(6, max_y);
+            tft.print("...");
+        }
+        return;
+    }
 
     // ── Waterstand nu ─────────────────────────────────────────────────────
     int now_y = PANEL_Y + GTJ_HDR_H;
@@ -766,7 +822,7 @@ void screen_meteo_teken() {
     meteo_tabs_teken();
     nav_bar_teken();
 
-    if (meteo_tab == METEO_TAB_GETIJ) getij_scroll = 0;
+    if (meteo_tab == METEO_TAB_GETIJ) { getij_scroll = 0; getij_raw_modus = false; }
 
     switch (meteo_tab) {
         case METEO_TAB_WEER:
@@ -874,18 +930,26 @@ void screen_meteo_run(int x, int y, bool aanraking) {
         return;
     }
 
-    // ── GETIJ TAB: scroll knoppen ─────────────────────────────────────────
+    // ── GETIJ TAB: RAW toggle + scroll knoppen ────────────────────────────
     if (meteo_tab == METEO_TAB_GETIJ) {
-        bool gebruik_rws = (rws_geladen_idx == getijdata_station_idx && rws_ext_cnt > 0);
-        int rij_n  = gebruik_rws ? rws_ext_cnt : getij_ext_cnt;
-        int max_sc = max(0, rij_n - GTJ_ROWS_N * GTJ_COLS_N);
         if (y >= PANEL_Y && y < PANEL_Y + GTJ_HDR_H) {
-            if (x >= TFT_W - 250 && x < TFT_W - 140 && getij_scroll > 0) {
-                getij_scroll = max(0, getij_scroll - GTJ_ROWS_N * GTJ_COLS_N);
+            // RAW knop (uiterst rechts)
+            if (x >= TFT_W - 70) {
+                getij_raw_modus = !getij_raw_modus;
                 meteo_getij_teken();
-            } else if (x >= TFT_W - 132 && getij_scroll < max_sc) {
-                getij_scroll = min(max_sc, getij_scroll + GTJ_ROWS_N * GTJ_COLS_N);
-                meteo_getij_teken();
+                return;
+            }
+            if (!getij_raw_modus) {
+                bool gebruik_rws = (rws_geladen_idx == getijdata_station_idx && rws_ext_cnt > 0);
+                int rij_n  = gebruik_rws ? rws_ext_cnt : getij_ext_cnt;
+                int max_sc = max(0, rij_n - GTJ_ROWS_N * GTJ_COLS_N);
+                if (x >= TFT_W - 262 && x < TFT_W - 152 && getij_scroll > 0) {
+                    getij_scroll = max(0, getij_scroll - GTJ_ROWS_N * GTJ_COLS_N);
+                    meteo_getij_teken();
+                } else if (x >= TFT_W - 144 && x < TFT_W - 76 && getij_scroll < max_sc) {
+                    getij_scroll = min(max_sc, getij_scroll + GTJ_ROWS_N * GTJ_COLS_N);
+                    meteo_getij_teken();
+                }
             }
             return;
         }

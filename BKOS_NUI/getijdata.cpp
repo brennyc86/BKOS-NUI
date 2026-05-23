@@ -42,17 +42,26 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, time_t van, time_t
 
     String body = _getij_maak_request_body(loc.code, van, tot);
     int httpCode = http.POST(body);
+    getij_debug_http_code = httpCode;
 
     if (httpCode != 200) {
-        Serial.printf("[Getij] %s: HTTP %d\n", loc.naam, httpCode);
+        String fout = http.getString();
         http.end();
+        snprintf(getij_debug_raw, GETIJ_DEBUG_LEN,
+            "HTTP %d\nStation: %s\n\nAntwoord:\n%s", httpCode, loc.naam, fout.c_str());
+        Serial.printf("[Getij] %s: HTTP %d\n", loc.naam, httpCode);
         return false;
     }
 
+    // Lees volledige response in geheugen voor debug + parse
+    String raw = http.getString();
+    http.end();
+    snprintf(getij_debug_raw, GETIJ_DEBUG_LEN,
+        "HTTP %d  Station: %s\n\n%s", httpCode, loc.naam, raw.c_str());
+
     // Verwerk response
     JsonDocument response;
-    DeserializationError err = deserializeJson(response, http.getStream());
-    http.end();
+    DeserializationError err = deserializeJson(response, raw);
 
     if (err) {
         Serial.printf("[Getij] %s: JSON fout: %s\n", loc.naam, err.c_str());
@@ -110,6 +119,10 @@ static time_t _getij_parseer_tijdstip(const char* iso) {
 
 // Per-station tijdstip van laatste succesvolle update (module-niveau)
 static time_t _laatste_update[12] = {};
+
+// Debug: laatste ruwe HTTP response (publiek zichtbaar via extern in .h)
+char getij_debug_raw[GETIJ_DEBUG_LEN] = "(nog geen ophaalpoging)";
+int  getij_debug_http_code = 0;
 
 // ------------------------------------------------------------
 // Publieke functies

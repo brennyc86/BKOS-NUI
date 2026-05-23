@@ -23,8 +23,14 @@ static String _getij_iso8601(time_t t) {
 static String _getij_maak_request_body(const char* code, time_t van, time_t tot) {
     JsonDocument doc;
     doc["Locatie"]["Code"] = code;
-    doc["AquoPlusWaarnemingMetadata"]["AquoMetadata"]["Grootheid"]["Code"]   = "WATHTE";
-    doc["AquoPlusWaarnemingMetadata"]["AquoMetadata"]["Groepering"]["Code"]  = "GETETBRKD2";
+    JsonObject meta = doc["AquoPlusWaarnemingMetadata"]["AquoMetadata"].to<JsonObject>();
+    meta["Compartiment"]["Code"]            = "OW";
+    meta["Eenheid"]["Code"]                 = "cm";
+    meta["Grootheid"]["Code"]               = "WATHTE";
+    meta["Groepering"]["Code"]              = "GETETBRKD2";
+    meta["Hoedanigheid"]["Code"]            = "NAP";
+    meta["MeetApparaat"]["Code"]            = "";
+    meta["WaardeBepalingsmethode"]["Code"]  = "";
     doc["Periode"]["Begindatumtijd"] = _getij_iso8601(van);
     doc["Periode"]["Einddatumtijd"]  = _getij_iso8601(tot);
     String body;
@@ -56,12 +62,27 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, time_t van, time_t
     // Lees volledige response in geheugen voor debug + parse
     String raw = http.getString();
     http.end();
-    snprintf(getij_debug_raw, GETIJ_DEBUG_LEN,
-        "HTTP %d  Station: %s\n\n%s", httpCode, loc.naam, raw.c_str());
 
     // Verwerk response
     JsonDocument response;
     DeserializationError err = deserializeJson(response, raw);
+
+    int n_metingen = 0;
+    if (!err) {
+        n_metingen = response["WaarnemingenLijst"][0]["MetingenLijst"].as<JsonArray>().size();
+    }
+
+    // Debug header: HTTP code + count + eerste deel raw response
+    int raw_len = (int)raw.length();
+    char hdr[80];
+    snprintf(hdr, sizeof(hdr), "HTTP %d  %s  N=%d  (%d bytes)%s\n\n",
+        httpCode, loc.naam, n_metingen, raw_len,
+        err ? (String(" ERR:") + err.c_str()).c_str() : "");
+    strncpy(getij_debug_raw, hdr, GETIJ_DEBUG_LEN - 1);
+    int hdr_len = strlen(getij_debug_raw);
+    int rem     = GETIJ_DEBUG_LEN - hdr_len - 1;
+    if (rem > 0) strncat(getij_debug_raw, raw.c_str(), rem);
+    getij_debug_raw[GETIJ_DEBUG_LEN - 1] = '\0';
 
     if (err) {
         Serial.printf("[Getij] %s: JSON fout: %s\n", loc.naam, err.c_str());

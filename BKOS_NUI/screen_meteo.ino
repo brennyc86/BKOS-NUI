@@ -28,7 +28,7 @@ static int          rws_geladen_idx = -1;
 
 // ─── Getij tabel layout ───────────────────────────────────────────────────
 #define GTJ_HDR_H   UI_SCY(26)
-#define GTJ_NOW_H   UI_SCY(26)
+#define GTJ_NOW_H   UI_SCY(56)
 #define GTJ_ROW_H   UI_SCY(50)
 #define GTJ_COLS_N  2
 #define GTJ_STRIP_W UI_SCX(56)          // breedte van de dag-strip links
@@ -559,33 +559,7 @@ static void meteo_getij_teken() {
         else if (next_idx < 0) { next_idx = i; break; }
     }
 
-    // ── Header ────────────────────────────────────────────────────────────
-    int hdr_y = PANEL_Y + 3;
-
-    // Maansymbool + faseinfo links
-    float maan_dag = meteo_maan_dag();
-    ui_maan_symbool(22, hdr_y + 13, 8, maan_dag / 29.53f);
-    char maan_buf[10];
-    meteo_maan_nautisc(maan_dag, maan_buf, sizeof(maan_buf));
-    tft.setTextSize(1); tft.setTextColor(RGB565(200, 210, 150));
-    tft.setCursor(34, hdr_y + 4);
-    tft.print(maan_buf);
-    float spring_f = (cosf(2.0f * M_PI * maan_dag / 29.53f) + 1.0f) / 2.0f;
-    tft.setCursor(34, hdr_y + 14);
-    if      (spring_f > 0.70f) { tft.setTextColor(C_RED_BRIGHT); tft.print("springtij"); }
-    else if (spring_f < 0.30f) { tft.setTextColor(C_TEXT_DIM);   tft.print("doodtij"); }
-    else                        { tft.setTextColor(C_TEXT_DIM);   tft.print("gemidd."); }
-
-    // Station naam + databron
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(120, hdr_y + 4); tft.print("Station: ");
-    tft.setTextColor(C_CYAN);
-    tft.print(getijdata_naam(getijdata_station_idx));
-    if (heeft_data) { tft.setTextColor(C_GREEN); tft.print(" RWS"); }
-    char labuf[16];
-    snprintf(labuf, sizeof(labuf), "  LAT=%.2fm", getijdata_lat_offset(getijdata_station_idx) / 100.0f);
-    tft.setTextColor(C_TEXT_DIM); tft.print(labuf);
-
+    // ── Header (knoppen) ─────────────────────────────────────────────────
     // RAW toggle knop
     ui_knop(TFT_W - 70, PANEL_Y + 2, 62, GTJ_HDR_H - 4, "RAW",
             getij_raw_modus ? C_SURFACE3 : C_SURFACE,
@@ -663,41 +637,62 @@ static void meteo_getij_teken() {
         return;
     }
 
-    // ── Waterstand nu (lineair geïnterpoleerd uit RWS extremen) ───────────
+    // ── Actuele info balk: maan | station | waterstand LAT ───────────────
     int now_y = PANEL_Y + GTJ_HDR_H;
-    tft.fillRect(0, now_y, TFT_W, GTJ_NOW_H, RGB565(10, 22, 40));
+    tft.fillRect(0, now_y, TFT_W, GTJ_NOW_H, RGB565(8, 18, 36));
     tft.drawFastHLine(0, now_y, TFT_W, C_SURFACE2);
     tft.drawFastHLine(0, now_y + GTJ_NOW_H - 1, TFT_W, C_SURFACE2);
 
+    // ─ Maan (0–175px) ────────────────────────────────────────────────────
+    float maan_dag = meteo_maan_dag();
+    float spring_f = (cosf(2.0f * M_PI * maan_dag / 29.53f) + 1.0f) / 2.0f;
+    ui_maan_symbool(22, now_y + 28, 11, maan_dag / 29.53f);
+    char maan_buf[10];
+    meteo_maan_nautisc(maan_dag, maan_buf, sizeof(maan_buf));
+    tft.setTextSize(1); tft.setTextColor(RGB565(200, 210, 150));
+    tft.setCursor(38, now_y + 18); tft.print(maan_buf);
+    tft.setCursor(38, now_y + 30);
+    if      (spring_f > 0.70f) { tft.setTextColor(C_RED_BRIGHT); tft.print("springtij"); }
+    else if (spring_f < 0.30f) { tft.setTextColor(C_TEXT_DIM);   tft.print("doodtij"); }
+    else                        { tft.setTextColor(C_TEXT_DIM);   tft.print("gemidd."); }
+    tft.drawFastVLine(175, now_y + 4, GTJ_NOW_H - 8, C_SURFACE2);
+
+    // ─ Station (180–430px) ────────────────────────────────────────────────
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(185, now_y + 16); tft.print("Station");
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    tft.setCursor(185, now_y + 28); tft.print(getijdata_naam(getijdata_station_idx));
+    if (heeft_data) { tft.setTextColor(C_GREEN); tft.setTextSize(1); tft.print(" RWS"); }
+    tft.drawFastVLine(430, now_y + 4, GTJ_NOW_H - 8, C_SURFACE2);
+
+    // ─ Waterstand nu in LAT (440–795px) ──────────────────────────────────
     if (heeft_data && prev_idx >= 0 && next_idx >= 0) {
         float h1 = rws_ext[prev_idx].waterstand_nap_cm;
         float h2 = rws_ext[next_idx].waterstand_nap_cm;
         time_t t1 = rws_ext[prev_idx].tijdstip;
         time_t t2 = rws_ext[next_idx].tijdstip;
-        float ws_nu = 0.0f; int richting = 0;
+        float ws_lat = 0.0f; int richting = 0;
         if (t2 > t1) {
             float frac = (float)(nu - t1) / (float)(t2 - t1);
-            ws_nu    = (h1 + frac * (h2 - h1)) / 100.0f;
+            float ws_nap = (h1 + frac * (h2 - h1)) / 100.0f;
+            ws_lat = ws_nap + getijdata_lat_offset(getijdata_station_idx) / 100.0f;
             richting = (h2 > h1) ? 1 : -1;
         }
-        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(10, now_y + 4); tft.print("Waterstand nu:");
-        char wsbuf[14]; snprintf(wsbuf, sizeof(wsbuf), "%.2fm NAP", ws_nu);
-        tft.setTextSize(2); tft.setTextColor(C_CYAN);
-        tft.setCursor(100, now_y + 2); tft.print(wsbuf);
-        int ax = 100 + strlen(wsbuf) * 12 + 8, ay = now_y + 2 + 8;
+        int wx = 440;
         if (richting > 0) {
-            tft.fillTriangle(ax + 6, ay - 8, ax, ay + 4, ax + 12, ay + 4, C_GREEN);
-            tft.setTextSize(1); tft.setTextColor(C_GREEN);
-            tft.setCursor(ax + 18, now_y + 4); tft.print("opkomend");
+            tft.fillTriangle(wx + 6, now_y + 19, wx, now_y + 31, wx + 12, now_y + 31, C_GREEN);
         } else if (richting < 0) {
-            tft.fillTriangle(ax + 6, ay + 6, ax, ay - 6, ax + 12, ay - 6, RGB565(80, 150, 255));
-            tft.setTextSize(1); tft.setTextColor(RGB565(80, 150, 255));
-            tft.setCursor(ax + 18, now_y + 4); tft.print("afgaand");
+            tft.fillTriangle(wx + 6, now_y + 37, wx, now_y + 25, wx + 12, now_y + 25, RGB565(80, 150, 255));
         }
+        char wsbuf[14]; snprintf(wsbuf, sizeof(wsbuf), "%+.2fm LAT", ws_lat);
+        tft.setTextSize(2); tft.setTextColor(C_CYAN);
+        tft.setCursor(wx + 18, now_y + 20); tft.print(wsbuf);
+        tft.setTextSize(1);
+        if      (richting > 0) { tft.setTextColor(C_GREEN);              tft.setCursor(wx + 18, now_y + 38); tft.print("opkomend"); }
+        else if (richting < 0) { tft.setTextColor(RGB565(80, 150, 255)); tft.setCursor(wx + 18, now_y + 38); tft.print("afgaand"); }
     } else {
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(10, now_y + 9);
+        tft.setCursor(448, now_y + 24);
         tft.print(heeft_data ? "Waterstand onbekend" : "Geen getijdata");
     }
 
@@ -779,7 +774,7 @@ static void meteo_getij_teken() {
 
             char datum_str[6];
             snprintf(datum_str, sizeof(datum_str), "%02d-%02d", lt->tm_mday, lt->tm_mon + 1);
-            tft.setTextSize(1); tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
+            tft.setTextSize(1); tft.setTextColor(dag_kleur);
             tft.setCursor(bx + 3, ey + 30);
             tft.print(datum_str);
 
@@ -794,8 +789,8 @@ static void meteo_getij_teken() {
 
             char tijd_str[6];
             snprintf(tijd_str, sizeof(tijd_str), "%02d:%02d", lt->tm_hour, lt->tm_min);
-            char lat_str[8];
-            snprintf(lat_str, sizeof(lat_str), "%+.2fm", lat_m);
+            char lat_str[12];
+            snprintf(lat_str, sizeof(lat_str), "%+.2fm LAT", lat_m);
 
             tft.setTextSize(2);
             tft.setTextColor(tx_kleur);
@@ -805,8 +800,8 @@ static void meteo_getij_teken() {
             tft.print(hw ? "  HW  " : "  LW  ");
             tft.print(lat_str);
 
-            char nap_str[12];
-            snprintf(nap_str, sizeof(nap_str), "(%+.2fm)", nap_m);
+            char nap_str[16];
+            snprintf(nap_str, sizeof(nap_str), "(%+.2fm NAP)", nap_m);
             tft.setTextSize(1); tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
             tft.setCursor(rx, nap_y);
             tft.print(nap_str);

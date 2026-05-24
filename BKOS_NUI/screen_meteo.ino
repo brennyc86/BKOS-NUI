@@ -675,7 +675,7 @@ static void meteo_getij_teken() {
         if (t2 > t1) {
             float frac = (float)(nu - t1) / (float)(t2 - t1);
             float ws_nap = (h1 + frac * (h2 - h1)) / 100.0f;
-            ws_lat = ws_nap + getijdata_lat_offset(getijdata_station_idx) / 100.0f;
+            ws_lat = ws_nap - (float)getijdata_lat_offset(getijdata_station_idx) / 100.0f;
             richting = (h2 > h1) ? 1 : -1;
         }
         int wx = 440;

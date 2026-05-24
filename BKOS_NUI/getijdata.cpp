@@ -13,6 +13,7 @@
 #include "platform.h"
 #include "platform_fs.h"
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <WiFi.h>
 #include <time.h>
 
@@ -87,8 +88,10 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
     String body = _getij_maak_request_body(loc.code, van, tot);
     bool wifi_ok = (WiFi.status() == WL_CONNECTED);
 
+    WiFiClientSecure tls;
+    tls.setInsecure();  // geen CA verificatie — RWS API heeft geen pinned cert
     HTTPClient http;
-    bool begin_ok = http.begin(GETIJ_API_URL);
+    bool begin_ok = http.begin(tls, GETIJ_API_URL);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(GETIJ_TIMEOUT_MS);
 
@@ -102,18 +105,28 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
         if (begin_ok) http.end();
 
         const char* err = "onbekend";
-        if      (httpCode == 0)   err = "geen verbinding / begin() mislukt";
+        if      (httpCode == 0)   err = "geen verbinding / TLS mislukt";
         else if (httpCode == -1)  err = "verbinding geweigerd";
         else if (httpCode == -11) err = "header verzenden mislukt";
+        else if (httpCode == -5)  err = "SSL / TLS handshake mislukt";
         else if (httpCode < 0)    err = "ESP32 HTTPClient fout";
         else if (httpCode == 204) err = "204 No Content — extra velden in body?";
         else if (httpCode == 404) err = "404 station niet gevonden";
+        else if (httpCode == 400) err = "400 Bad Request — request body ongeldig";
 
+        char tijdbuf[32] = "(onbekend)";
+        time_t nu_t = time(nullptr);
+        if (nu_t > 1000000) {
+            struct tm* lt = localtime(&nu_t);
+            strftime(tijdbuf, sizeof(tijdbuf), "%d-%m-%Y %H:%M:%S", lt);
+        }
         snprintf(getij_debug_raw, GETIJ_DEBUG_LEN,
-            "HTTP %d — %s\nbegin_ok=%s  WiFi=%s\n\nRequest body:\n%s\n\nServer:\n%s",
+            "HTTP %d — %s\nbegin_ok=%s  WiFi=%s  Tijd=%s\nURL=%s\n\nRequest body:\n%s\n\nServer:\n%s",
             httpCode, err,
             begin_ok ? "ja" : "NEE",
             wifi_ok  ? "verbonden" : "NIET verbonden",
+            tijdbuf,
+            GETIJ_API_URL,
             body.c_str(), fout.c_str());
 
         Serial.printf("[Getij] %s: HTTP %d (%s)\n", loc.naam, httpCode, err);

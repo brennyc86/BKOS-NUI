@@ -4,35 +4,17 @@
 // getijdata.h — Rijkswaterstaat getijextremen module
 // ============================================================
 // Haalt HW/LW extremen op voor 12 Nederlandse havens via de
-// Rijkswaterstaat WaterWebservices API en slaat deze op in
-// LittleFS als JSON bestanden (één per locatie).
-//
-// GEBRUIK:
-//   1. #include "getijdata.h" in je hoofdsketch
-//   2. Roep getijdata_init() aan in setup()
-//   3. Roep getijdata_update() aan na WiFi+NTP sync
-//   4. Roep getijdata_check_update() aan in loop()
-//   5. Gebruik getijdata_get() om extremen op te vragen
-//
-// VEREISTE LIBRARIES (installeer via Arduino Library Manager):
-//   - ArduinoJson  (Benoit Blanchon)
-//   LittleFS en HTTPClient zitten ingebouwd in ESP32 Arduino core
+// waterinfo.rws.nl chart API en slaat deze op in LittleFS.
 //
 // API:
-//   Rijkswaterstaat WaterWebservices (POST, geen API key nodig)
-//   https://ddapi20-waterwebservices.rijkswaterstaat.nl
+//   https://waterinfo.rws.nl/api/chart/get
+//   GET, geen API-sleutel nodig
+//   mapType=getij geeft pre-berekende HW/LW extremen terug
+//   als twee series (hoog water / laag water).
 //
-// LOCATIECODES:
-//   Getest en geverifieerd via de catalogus API april 2026.
-//   Let op: de oude codes (bijv. DENHDR) werken niet meer in
-//   de nieuwe API — gebruik altijd de codes uit GETIJ_LOCATIES.
-//
-// REFERENTIEVLAKKEN:
-//   - waterstand_nap_cm : waterstand t.o.v. NAP (zoals RWS meet)
-//   - waterstand_lat_cm : waterstand t.o.v. LAT (zoals zeekaarten)
-//   LAT offset = hoeveel cm LAT onder NAP ligt (negatieve waarde)
-//   Formule: waterstand_lat_cm = waterstand_nap_cm - lat_offset_cm
-//   Bron offsets: officiële Nederlandse zeekaarten (INT 1463/1464)
+// Opslagformaat (LittleFS, per locatie):
+//   {"naam":"...","bijgewerkt":unix_s,"lat_offset":cm,
+//    "metingen":[{"t":unix_s,"w":cm_nap,"hw":bool},...]}
 // ============================================================
 
 #include <Arduino.h>
@@ -42,29 +24,31 @@
 // Configuratie
 // ------------------------------------------------------------
 
-#define GETIJ_API_URL         "https://ddapi20-waterwebservices.rijkswaterstaat.nl/ONLINEWAARNEMINGENSERVICES/OphalenWaarnemingen"
-#define GETIJ_WEKEN_TERUG     2      // Weken terug t.o.v. vandaag
-#define GETIJ_MAANDEN_VOORUIT 2      // Maanden vooruit t.o.v. vandaag
-#define GETIJ_MAX_EXTREMEN    300    // Max HW/LW punten per locatie
-#define GETIJ_CACHE_UREN      6      // Uren tussen automatische verversing
-#define GETIJ_TIMEOUT_MS      15000  // HTTP timeout in milliseconden
+#define GETIJ_API_URL         "https://waterinfo.rws.nl/api/chart/get"
+#define GETIJ_VAN_UREN        (-2 * 7 * 24)    // 2 weken terug
+#define GETIJ_TOT_UREN        (4 * 7 * 24)     // 4 weken vooruit
+#define GETIJ_WEKEN_TERUG     2                 // (legacy, voor check_update)
+#define GETIJ_MAX_EXTREMEN    300               // max HW/LW punten per locatie
+#define GETIJ_CACHE_UREN      6                 // uren tussen automatische verversing
+#define GETIJ_TIMEOUT_MS      15000             // HTTP timeout
 
 // ------------------------------------------------------------
 // Datastructuren
 // ------------------------------------------------------------
 
 struct GetijExtreme {
-    time_t tijdstip;            // Unix timestamp (lokale tijd)
+    time_t tijdstip;            // Unix timestamp (UTC)
     float  waterstand_nap_cm;   // Waterstand in cm t.o.v. NAP
     float  waterstand_lat_cm;   // Waterstand in cm t.o.v. LAT
     bool   is_hoogwater;        // true = HW, false = LW
 };
 
 struct GetijLocatie {
-    const char* naam;           // Leesbare naam
-    const char* code;           // RWS API locatiecode (geverifieerd april 2026)
+    const char* naam;           // Leesbare naam (voor display)
+    const char* code;           // ddapi20 locatiecode (gereserveerd)
+    const char* wi_naam;        // Naam voor waterinfo.rws.nl API
     const char* bestand;        // LittleFS bestandsnaam
-    int         lat_offset_cm;  // LAT onder NAP in cm (negatieve waarde)
+    int         lat_offset_cm;  // LAT onder NAP in cm (negatief)
 };
 
 // ------------------------------------------------------------
@@ -74,24 +58,24 @@ struct GetijLocatie {
 
 static const GetijLocatie GETIJ_LOCATIES[] = {
     // Zeeland / Westerschelde
-    { "Vlissingen",       "vlissingen",                        "/getij_vlissingen.json",       -238 },
-    { "Terneuzen",        "terneuzen",                         "/getij_terneuzen.json",         -220 },
-    { "Yerseke",          "yerseke",                           "/getij_yerseke.json",           -210 },
+    { "Vlissingen",      "vlissingen",                         "Vlissingen",         "/getij_vlissingen.json",       -238 },
+    { "Terneuzen",       "terneuzen",                          "Terneuzen",          "/getij_terneuzen.json",         -220 },
+    { "Yerseke",         "yerseke",                            "Yerseke",            "/getij_yerseke.json",           -210 },
 
     // Rijnmond / Zuid-Holland
-    { "Hellevoetsluis",   "hellevoetsluis",                    "/getij_hellevoetsluis.json",     -85 },
-    { "Hoek v. Holland",  "hoekvanholland",                    "/getij_hoekvanholland.json",     -85 },
-    { "Rotterdam",        "rotterdam.nieuwemaas.boerengat",    "/getij_rotterdam.json",          -70 },
+    { "Hellevoetsluis",  "hellevoetsluis",                     "Hellevoetsluis",     "/getij_hellevoetsluis.json",     -85 },
+    { "Hoek v. Holland", "hoekvanholland",                     "Hoek van Holland",   "/getij_hoekvanholland.json",     -85 },
+    { "Rotterdam",       "rotterdam.nieuwemaas.boerengat",     "Rotterdam",          "/getij_rotterdam.json",          -70 },
 
     // Noordzeekust
-    { "IJmuiden",         "ijmuiden.buitenhaven",              "/getij_ijmuiden.json",           -80 },
-    { "Den Helder",       "denhelder.marsdiep",                "/getij_denhelder.json",         -100 },
+    { "IJmuiden",        "ijmuiden.buitenhaven",               "IJmuiden",           "/getij_ijmuiden.json",           -80 },
+    { "Den Helder",      "denhelder.marsdiep",                 "Den Helder",         "/getij_denhelder.json",         -100 },
 
     // Waddenzee
-    { "Kornwerderzand",   "kornwerderzand.waddenzee.buitenhaven", "/getij_kornwerderzand.json",-110 },
-    { "Harlingen",        "harlingen.waddenzee",               "/getij_harlingen.json",         -145 },
-    { "Terschelling",     "terschelling.west",                 "/getij_terschelling.json",      -110 },
-    { "Delfzijl",         "delfzijl",                          "/getij_delfzijl.json",          -155 },
+    { "Kornwerderzand",  "kornwerderzand.waddenzee.buitenhaven","Kornwerderzand",    "/getij_kornwerderzand.json",    -110 },
+    { "Harlingen",       "harlingen.waddenzee",                "Harlingen",          "/getij_harlingen.json",         -145 },
+    { "Terschelling",    "terschelling.west",                  "West-Terschelling",  "/getij_terschelling.json",      -110 },
+    { "Delfzijl",        "delfzijl",                          "Delfzijl",           "/getij_delfzijl.json",          -155 },
 };
 
 static const int GETIJ_AANTAL_LOCATIES = sizeof(GETIJ_LOCATIES) / sizeof(GETIJ_LOCATIES[0]);
@@ -100,35 +84,14 @@ static const int GETIJ_AANTAL_LOCATIES = sizeof(GETIJ_LOCATIES) / sizeof(GETIJ_L
 // Publieke functies — implementatie in getijdata.cpp
 // ------------------------------------------------------------
 
-// Initialiseer LittleFS — aanroepen in setup()
-bool getijdata_init();
-
-// Haal data op voor ALLE locaties en sla op in het bestandssysteem.
-// eerst_idx: dit station wordt eerst opgehaald (direct zichtbaar in UI).
-// Bestaand bestand per station wordt vervangen zodra nieuwe data beschikbaar is.
-// Bij een mislukte fetch blijft het bestaande bestand intact (fallback).
-bool getijdata_update_alle(int eerst_idx);
-
-// Controleer of het opgegeven station verouderd is en ververs indien nodig.
-// Aanroepen in de periodieke netwerktaak — doet niets als data vers genoeg is.
-void getijdata_check_update(int locatie_index);
-
-// Lees opgeslagen extremen voor een locatie op index (0 t/m 11)
-// extremen[] wordt gevuld, aantal bevat het werkelijke aantal punten
-// Geeft true terug bij succes
-bool getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, int* aantal);
-
-// Geef de naam van een locatie terug op index
+bool        getijdata_init();
+bool        getijdata_update_alle(int eerst_idx);
+void        getijdata_check_update(int locatie_index);
+bool        getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, int* aantal);
 const char* getijdata_naam(int index);
-
-// Geef de LAT offset van een locatie terug op index (cm)
-int getijdata_lat_offset(int index);
-
-// Geef het totaal aantal beschikbare locaties terug
-int getijdata_aantal_locaties();
-
-// Geef true terug als er geldige data op schijf staat voor deze locatie
-bool getijdata_beschikbaar(int locatie_index);
+int         getijdata_lat_offset(int index);
+int         getijdata_aantal_locaties();
+bool        getijdata_beschikbaar(int locatie_index);
 
 // ─── Debug: laatste ruwe HTTP response ───────────────────────────────────────
 #define GETIJ_DEBUG_LEN 2000

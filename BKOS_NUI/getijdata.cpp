@@ -207,6 +207,14 @@ bool getijdata_init() {
 
 bool getijdata_ophalen_nu(int locatie_index) {
     if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return false;
+    if (time(nullptr) < 1000000UL) {
+        snprintf(getij_debug_raw, GETIJ_DEBUG_LEN,
+            "Geen geldige systeemtijd — wacht op NTP synchronisatie.\n"
+            "Controleer WiFi verbinding en probeer opnieuw.");
+        getij_debug_http_code = 0;
+        getijdata_ophalen_klaar = true;
+        return false;
+    }
     bool ok = _getij_haal_op_en_sla_op(
         GETIJ_LOCATIES[locatie_index], GETIJ_VAN_UREN, GETIJ_TOT_UREN);
     if (ok) _laatste_update[locatie_index] = time(nullptr);

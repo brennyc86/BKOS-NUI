@@ -67,7 +67,9 @@ static void netwerk_taak(void* param) {
     _wifi_verbinden_intern();
     if (wifi_verbonden) {
         configTime(NTP_GMT_OFFSET, NTP_DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        // Wacht tot NTP gesynchroniseerd is (max 20 seconden)
+        for (int _ntp_i = 0; _ntp_i < 40 && time(nullptr) < 1000000UL; _ntp_i++)
+            vTaskDelay(500 / portTICK_PERIOD_MS);
         if (!meteo_geladen) meteo_locatie_ophalen();
         meteo_weer_ophalen();
         meteo_getij_berekenen();

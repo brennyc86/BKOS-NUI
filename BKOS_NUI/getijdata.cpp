@@ -20,9 +20,10 @@
 static time_t _laatste_update[12] = {};
 
 // ─── Inter-core signalen ──────────────────────────────────────────────────────
-volatile bool getijdata_ophalen_aangevraagd = false;
-volatile int  getijdata_ophalen_station     = 0;
-volatile bool getijdata_ophalen_klaar       = false;
+volatile bool getijdata_ophalen_aangevraagd    = false;
+volatile bool getijdata_meer_laden_aangevraagd = false;
+volatile int  getijdata_ophalen_station        = 0;
+volatile bool getijdata_ophalen_klaar          = false;
 
 // ─── Debug ────────────────────────────────────────────────────────────────────
 char getij_debug_raw[GETIJ_DEBUG_LEN] = "(nog geen ophaalpoging)";
@@ -208,6 +209,15 @@ bool getijdata_ophalen_nu(int locatie_index) {
     if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return false;
     bool ok = _getij_haal_op_en_sla_op(
         GETIJ_LOCATIES[locatie_index], GETIJ_VAN_UREN, GETIJ_TOT_UREN);
+    if (ok) _laatste_update[locatie_index] = time(nullptr);
+    getijdata_ophalen_klaar = true;
+    return ok;
+}
+
+bool getijdata_meer_ophalen_nu(int locatie_index) {
+    if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return false;
+    bool ok = _getij_haal_op_en_sla_op(
+        GETIJ_LOCATIES[locatie_index], GETIJ_VAN_UREN, GETIJ_TOT_UREN_MEER);
     if (ok) _laatste_update[locatie_index] = time(nullptr);
     getijdata_ophalen_klaar = true;
     return ok;

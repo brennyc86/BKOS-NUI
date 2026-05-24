@@ -13,26 +13,10 @@ static int meteo_dag_offset = 0;   // dag-navigatie offset (0-3)
 static int meteo_detail_dag = -1;  // -1=overzicht, 0-6=detailweergave dag
 
 // RWS getij data cache
-#define GETIJ_SCHERM_MAX 80
+#define GETIJ_SCHERM_MAX 500
 static GetijExtreme rws_ext[GETIJ_SCHERM_MAX];
 static int          rws_ext_cnt   = 0;
 static int          rws_geladen_idx = -1;
-
-// Mapping RWS station index (0-11) → harmonisch station index (0-6)
-static const int rws_naar_harm[12] = {
-    0, // Vlissingen → Vlissingen
-    0, // Terneuzen → Vlissingen
-    0, // Yerseke → Vlissingen
-    1, // Hellevoetsluis → Hoek v.Holl
-    1, // Hoek v. Holland → Hoek v.Holl
-    2, // Rotterdam → Rotterdam
-    4, // IJmuiden → IJmuiden
-    3, // Den Helder → Den Helder
-    5, // Kornwerderzand → Harlingen
-    5, // Harlingen → Harlingen
-    3, // Terschelling → Den Helder
-    6, // Delfzijl → Delfzijl
-};
 
 // ─── Layout (geschaald vanuit S3 800×480 referentie) ──────────────────────
 #define TAB_Y       CONTENT_Y
@@ -174,10 +158,7 @@ static void meteo_sb_teken() {
         tft.print(strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad);
         tft.print("  ~  ");
         // Toon RWS station als dat geselecteerd is, anders harmonisch
-        if (getijdata_beschikbaar(getijdata_station_idx))
-            tft.print(getijdata_naam(getijdata_station_idx));
-        else
-            tft.print(getij_stations[meteo_station_idx].naam);
+        tft.print(getijdata_naam(getijdata_station_idx));
         if (meteo_update_tijd > 0) {
             struct tm* lt = localtime(&meteo_update_tijd);
             char tbuf[10]; snprintf(tbuf, sizeof(tbuf), "  %02d:%02d", lt->tm_hour, lt->tm_min);
@@ -546,13 +527,10 @@ static void meteo_detail_teken(int dag_idx) {
 
 // ─── Scroll-positie voor landing (2 verleden + toekomst) ─────────────────
 static int _getij_scroll_voor_nu() {
-    bool gebruik_rws = (rws_geladen_idx == getijdata_station_idx && rws_ext_cnt > 0);
-    int rij_n = gebruik_rws ? rws_ext_cnt : getij_ext_cnt;
     time_t nu = time(nullptr);
-    int eerste_toekomst = rij_n;
-    for (int i = 0; i < rij_n; i++) {
-        time_t ts = gebruik_rws ? rws_ext[i].tijdstip : getij_ext[i].tijd;
-        if (ts >= nu) { eerste_toekomst = i; break; }
+    int eerste_toekomst = rws_ext_cnt;
+    for (int i = 0; i < rws_ext_cnt; i++) {
+        if (rws_ext[i].tijdstip >= nu) { eerste_toekomst = i; break; }
     }
     int start_idx = max(0, eerste_toekomst - 2);
     int pagina_sz = GTJ_ROWS_N * GTJ_COLS_N;
@@ -563,16 +541,22 @@ static int _getij_scroll_voor_nu() {
 static void meteo_getij_teken() {
     tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
 
-    // Zorg dat RWS data geladen is als beschikbaar
-    bool gebruik_rws = getijdata_beschikbaar(getijdata_station_idx);
-    if (gebruik_rws && rws_geladen_idx != getijdata_station_idx) {
+    // Laad RWS data uit SPIFFS als nodig
+    if (rws_geladen_idx != getijdata_station_idx) {
         getijdata_get(getijdata_station_idx, rws_ext, GETIJ_SCHERM_MAX, &rws_ext_cnt);
         rws_geladen_idx = getijdata_station_idx;
     }
-    if (gebruik_rws && rws_ext_cnt == 0) gebruik_rws = false;
+    bool heeft_data = (rws_ext_cnt > 0);
+    int rij_n  = rws_ext_cnt;
+    int max_sc = max(0, rij_n - GTJ_ROWS_N * GTJ_COLS_N);
 
-    int rij_n   = gebruik_rws ? rws_ext_cnt   : getij_ext_cnt;
-    int max_sc  = max(0, rij_n - GTJ_ROWS_N * GTJ_COLS_N);
+    // Pre-bereken vorige/volgende extreem
+    time_t nu = time(nullptr);
+    int prev_idx = -1, next_idx = -1;
+    for (int i = 0; i < rij_n; i++) {
+        if (rws_ext[i].tijdstip < nu) prev_idx = i;
+        else if (next_idx < 0) { next_idx = i; break; }
+    }
 
     // ── Header ────────────────────────────────────────────────────────────
     int hdr_y = PANEL_Y + 3;
@@ -591,28 +575,15 @@ static void meteo_getij_teken() {
     else if (spring_f < 0.30f) { tft.setTextColor(C_TEXT_DIM);   tft.print("doodtij"); }
     else                        { tft.setTextColor(C_TEXT_DIM);   tft.print("gemidd."); }
 
-    // Station naam + databron midden
+    // Station naam + databron
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(120, hdr_y + 4); tft.print("Station: ");
     tft.setTextColor(C_CYAN);
-    if (gebruik_rws) {
-        tft.print(getijdata_naam(getijdata_station_idx));
-        tft.setTextColor(C_GREEN); tft.print(" RWS");
-    } else {
-        tft.print(getij_stations[meteo_station_idx].naam);
-        tft.setTextColor(C_TEXT_DIM); tft.print(" (calc)");
-    }
-
-    // LAT info
-    tft.setTextColor(C_TEXT_DIM); tft.print("  LAT=");
-    tft.setTextColor(C_TEXT);
-    if (gebruik_rws) {
-        char labuf[12]; snprintf(labuf, sizeof(labuf), "%.2fm", getijdata_lat_offset(getijdata_station_idx) / 100.0f);
-        tft.print(labuf);
-    } else {
-        char labuf[12]; snprintf(labuf, sizeof(labuf), "%.2fm", getij_stations[meteo_station_idx].LAT_nap);
-        tft.print(labuf);
-    }
+    tft.print(getijdata_naam(getijdata_station_idx));
+    if (heeft_data) { tft.setTextColor(C_GREEN); tft.print(" RWS"); }
+    char labuf[16];
+    snprintf(labuf, sizeof(labuf), "  LAT=%.2fm", getijdata_lat_offset(getijdata_station_idx) / 100.0f);
+    tft.setTextColor(C_TEXT_DIM); tft.print(labuf);
 
     // RAW toggle knop
     ui_knop(TFT_W - 70, PANEL_Y + 2, 62, GTJ_HDR_H - 4, "RAW",
@@ -627,9 +598,14 @@ static void meteo_getij_teken() {
                 bezig ? C_SURFACE3 : C_SURFACE2,
                 bezig ? C_TEXT_DIM : C_CYAN);
     } else {
-        // Scroll knoppen + NU
+        // Scroll + actie knoppen
+        bool meer_bezig = getijdata_meer_laden_aangevraagd && !getijdata_ophalen_klaar;
         bool voor   = (getij_scroll > 0);
         bool achter = (getij_scroll < max_sc);
+        ui_knop(TFT_W - 364, PANEL_Y + 2, 72, GTJ_HDR_H - 4,
+                meer_bezig ? "Laden..." : "MEER",
+                meer_bezig ? C_SURFACE3 : C_SURFACE2,
+                meer_bezig ? C_TEXT_DIM : C_CYAN);
         ui_knop(TFT_W - 286, PANEL_Y + 2, 70, GTJ_HDR_H - 4, "< VOOR",
                 voor   ? C_SURFACE2 : C_SURFACE, voor   ? C_TEXT : C_TEXT_DIM);
         ui_knop(TFT_W - 210, PANEL_Y + 2, 60, GTJ_HDR_H - 4, "NU",
@@ -686,44 +662,57 @@ static void meteo_getij_teken() {
         return;
     }
 
-    // ── Waterstand nu ─────────────────────────────────────────────────────
+    // ── Waterstand nu (lineair geïnterpoleerd uit RWS extremen) ───────────
     int now_y = PANEL_Y + GTJ_HDR_H;
     tft.fillRect(0, now_y, TFT_W, GTJ_NOW_H, RGB565(10, 22, 40));
     tft.drawFastHLine(0, now_y, TFT_W, C_SURFACE2);
     tft.drawFastHLine(0, now_y + GTJ_NOW_H - 1, TFT_W, C_SURFACE2);
 
-    float ws = meteo_waterstand_nu();
-    int richting = meteo_getij_richting();
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(10, now_y + 4); tft.print("Waterstand nu:");
-    char wsbuf[12]; snprintf(wsbuf, sizeof(wsbuf), "%.2fm NAP", ws);
-    tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(100, now_y + 2); tft.print(wsbuf);
-    int ax = 100 + strlen(wsbuf) * 12 + 8;
-    int ay = now_y + 2 + 8;
-    if (richting > 0) {
-        tft.fillTriangle(ax + 6, ay - 8, ax, ay + 4, ax + 12, ay + 4, C_GREEN);
-        tft.setTextSize(1); tft.setTextColor(C_GREEN);
-        tft.setCursor(ax + 18, now_y + 4); tft.print("opkomend");
-    } else if (richting < 0) {
-        tft.fillTriangle(ax + 6, ay + 6, ax, ay - 6, ax + 12, ay - 6, RGB565(80, 150, 255));
-        tft.setTextSize(1); tft.setTextColor(RGB565(80, 150, 255));
-        tft.setCursor(ax + 18, now_y + 4); tft.print("afgaand");
+    if (heeft_data && prev_idx >= 0 && next_idx >= 0) {
+        float h1 = rws_ext[prev_idx].waterstand_nap_cm;
+        float h2 = rws_ext[next_idx].waterstand_nap_cm;
+        time_t t1 = rws_ext[prev_idx].tijdstip;
+        time_t t2 = rws_ext[next_idx].tijdstip;
+        float ws_nu = 0.0f; int richting = 0;
+        if (t2 > t1) {
+            float frac = (float)(nu - t1) / (float)(t2 - t1);
+            ws_nu    = (h1 + frac * (h2 - h1)) / 100.0f;
+            richting = (h2 > h1) ? 1 : -1;
+        }
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(10, now_y + 4); tft.print("Waterstand nu:");
+        char wsbuf[14]; snprintf(wsbuf, sizeof(wsbuf), "%.2fm NAP", ws_nu);
+        tft.setTextSize(2); tft.setTextColor(C_CYAN);
+        tft.setCursor(100, now_y + 2); tft.print(wsbuf);
+        int ax = 100 + strlen(wsbuf) * 12 + 8, ay = now_y + 2 + 8;
+        if (richting > 0) {
+            tft.fillTriangle(ax + 6, ay - 8, ax, ay + 4, ax + 12, ay + 4, C_GREEN);
+            tft.setTextSize(1); tft.setTextColor(C_GREEN);
+            tft.setCursor(ax + 18, now_y + 4); tft.print("opkomend");
+        } else if (richting < 0) {
+            tft.fillTriangle(ax + 6, ay + 6, ax, ay - 6, ax + 12, ay - 6, RGB565(80, 150, 255));
+            tft.setTextSize(1); tft.setTextColor(RGB565(80, 150, 255));
+            tft.setCursor(ax + 18, now_y + 4); tft.print("afgaand");
+        }
+    } else {
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(10, now_y + 9);
+        tft.print(heeft_data ? "Waterstand onbekend" : "Geen getijdata");
+    }
+
+    // ── Geen data: toon bericht ───────────────────────────────────────────
+    if (!heeft_data) {
+        ui_tekst_midden(0, GTJ_TABLE_Y + 30, TFT_W, "Geen getijdata beschikbaar", C_TEXT_DIM, 2);
+        ui_tekst_midden(0, GTJ_TABLE_Y + 60, TFT_W,
+            wifi_verbonden ? "Data wordt opgehaald..." : "Verbind met WiFi om data op te halen",
+            C_TEXT_DIM, 1);
+        return;
     }
 
     // ── 2-kolom tabel ─────────────────────────────────────────────────────
-    time_t nu = time(nullptr);
     const char* dag_afk[] = {"Zo","Ma","Di","Wo","Do","Vr","Za"};
-
-    // Nu-indicator: extreem voor en na huidige tijd
-    int prev_idx = -1, next_idx = -1;
-    for (int i = 0; i < rij_n; i++) {
-        time_t ts = gebruik_rws ? rws_ext[i].tijdstip : getij_ext[i].tijd;
-        if (ts < nu) prev_idx = i;
-        else if (next_idx < 0) { next_idx = i; break; }
-    }
-    time_t prev_ts = (prev_idx >= 0) ? (gebruik_rws ? rws_ext[prev_idx].tijdstip : getij_ext[prev_idx].tijd) : 0;
-    time_t next_ts = (next_idx >= 0) ? (gebruik_rws ? rws_ext[next_idx].tijdstip : getij_ext[next_idx].tijd) : 0;
+    time_t prev_ts = (prev_idx >= 0) ? rws_ext[prev_idx].tijdstip : 0;
+    time_t next_ts = (next_idx >= 0) ? rws_ext[next_idx].tijdstip : 0;
     bool dicht_prev = (prev_idx >= 0 && nu - prev_ts < 1800);
     bool dicht_next = (next_idx >= 0 && next_ts - nu < 1800);
 
@@ -737,23 +726,11 @@ static void meteo_getij_teken() {
                 continue;
             }
 
-            time_t tijdstip;
-            bool hw, verleden;
-            float nap_m, lat_m;
-
-            if (gebruik_rws) {
-                tijdstip = rws_ext[idx].tijdstip;
-                hw       = rws_ext[idx].is_hoogwater;
-                nap_m    = rws_ext[idx].waterstand_nap_cm / 100.0f;
-                lat_m    = rws_ext[idx].waterstand_lat_cm / 100.0f;
-                verleden = (tijdstip < nu);
-            } else {
-                tijdstip = getij_ext[idx].tijd;
-                hw       = getij_ext[idx].hoog_water;
-                nap_m    = getij_ext[idx].hoogte;
-                lat_m    = nap_m - getij_stations[meteo_station_idx].LAT_nap;
-                verleden = (tijdstip < nu);
-            }
+            time_t tijdstip = rws_ext[idx].tijdstip;
+            bool hw         = rws_ext[idx].is_hoogwater;
+            float nap_m     = rws_ext[idx].waterstand_nap_cm / 100.0f;
+            float lat_m     = rws_ext[idx].waterstand_lat_cm / 100.0f;
+            bool verleden   = (tijdstip < nu);
 
             // Nu-markering: binnen 30 min van één extreem → alleen dat; anders beide
             bool markeer;
@@ -892,12 +869,16 @@ void screen_meteo_teken() {
 }
 
 void screen_meteo_run(int x, int y, bool aanraking) {
-    // Auto-refresh RAW view zodra netwerktaak klaar is
-    if (!aanraking && meteo_tab == METEO_TAB_GETIJ && getij_raw_modus
-            && getijdata_ophalen_klaar) {
+    // Auto-refresh zodra netwerktaak klaar is (RAW of normale modus)
+    if (!aanraking && meteo_tab == METEO_TAB_GETIJ && getijdata_ophalen_klaar) {
         getijdata_ophalen_klaar = false;
-        rws_geladen_idx = -1;  // forceer herlaad uit bestand
+        rws_geladen_idx = -1;
         rws_ext_cnt = 0;
+        if (!getij_raw_modus) {
+            getijdata_get(getijdata_station_idx, rws_ext, GETIJ_SCHERM_MAX, &rws_ext_cnt);
+            rws_geladen_idx = getijdata_station_idx;
+            getij_scroll = _getij_scroll_voor_nu();
+        }
         meteo_getij_teken();
         return;
     }
@@ -1017,19 +998,21 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                     return;
                 }
             } else {
-                bool gebruik_rws = (rws_geladen_idx == getijdata_station_idx && rws_ext_cnt > 0);
-                int rij_n  = gebruik_rws ? rws_ext_cnt : getij_ext_cnt;
-                int max_sc = max(0, rij_n - GTJ_ROWS_N * GTJ_COLS_N);
-                if (x >= TFT_W - 286 && x < TFT_W - 216 && getij_scroll > 0) {
-                    // < VOOR
+                int max_sc = max(0, rws_ext_cnt - GTJ_ROWS_N * GTJ_COLS_N);
+                if (x >= TFT_W - 364 && x < TFT_W - 292) {
+                    // MEER — haal uitgebreide data op (4 maanden)
+                    bool bezig = getijdata_meer_laden_aangevraagd && !getijdata_ophalen_klaar;
+                    if (!bezig) {
+                        getijdata_meer_laden_aanvragen(getijdata_station_idx);
+                        meteo_getij_teken();
+                    }
+                } else if (x >= TFT_W - 286 && x < TFT_W - 216 && getij_scroll > 0) {
                     getij_scroll = max(0, getij_scroll - GTJ_ROWS_N * GTJ_COLS_N);
                     meteo_getij_teken();
                 } else if (x >= TFT_W - 210 && x < TFT_W - 150) {
-                    // NU — terug naar landingspositie
                     getij_scroll = _getij_scroll_voor_nu();
                     meteo_getij_teken();
                 } else if (x >= TFT_W - 144 && x < TFT_W - 76 && getij_scroll < max_sc) {
-                    // VOLG >
                     getij_scroll = min(max_sc, getij_scroll + GTJ_ROWS_N * GTJ_COLS_N);
                     meteo_getij_teken();
                 }
@@ -1070,8 +1053,7 @@ void screen_meteo_run(int x, int y, bool aanraking) {
             int by = sy + rij * (sh + 4);
             if (x >= bx && x <= bx + sw && y >= by && y <= by + sh) {
                 getijdata_station_idx = i;
-                meteo_station_idx = rws_naar_harm[i];
-                rws_geladen_idx = -1;  // cache ongeldig maken
+                rws_geladen_idx = -1;
                 rws_ext_cnt = 0;
                 meteo_inst_opslaan();
                 // Haal data op als nog niet aanwezig

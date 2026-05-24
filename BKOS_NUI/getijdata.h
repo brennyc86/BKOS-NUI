@@ -25,10 +25,11 @@
 // ------------------------------------------------------------
 
 #define GETIJ_API_URL         "https://ddapi20-waterwebservices.rijkswaterstaat.nl/ONLINEWAARNEMINGENSERVICES/OphalenWaarnemingen"
-#define GETIJ_VAN_UREN        (-2 * 7 * 24)    // 2 weken terug
-#define GETIJ_TOT_UREN        (6 * 7 * 24)     // 6 weken vooruit
+#define GETIJ_VAN_UREN        (-14 * 24)        // 2 weken terug
+#define GETIJ_TOT_UREN        (60 * 24)         // 2 maanden vooruit
+#define GETIJ_TOT_UREN_MEER   (120 * 24)        // 4 maanden (meer laden knop)
 #define GETIJ_WEKEN_TERUG     2                 // (legacy, voor check_update)
-#define GETIJ_MAX_EXTREMEN    300               // max HW/LW punten per locatie
+#define GETIJ_MAX_EXTREMEN    500               // max HW/LW punten per locatie
 #define GETIJ_CACHE_UREN      6                 // uren tussen automatische verversing
 #define GETIJ_TIMEOUT_MS      15000             // HTTP timeout
 
@@ -67,12 +68,12 @@ static const GetijLocatie GETIJ_LOCATIES[] = {
     { "Rotterdam",       "rotterdam.nieuwemaas.boerengat",      "/getij_rotterdam.json",          -70 },
 
     // Noordzeekust
-    { "IJmuiden",        "ijmuiden.buitenhaven",                "/getij_ijmuiden.json",           -80 },
-    { "Den Helder",      "denhelder.marsdiep",                  "/getij_denhelder.json",         -100 },
+    { "IJmuiden",        "ijmuiden.buitenhaven",                "/getij_ijmuiden.json",           -72 },
+    { "Den Helder",      "denhelder.marsdiep",                  "/getij_denhelder.json",          -68 },
 
     // Waddenzee
-    { "Kornwerderzand",  "kornwerderzand.waddenzee.buitenhaven","/getij_kornwerderzand.json",    -110 },
-    { "Harlingen",       "harlingen.waddenzee",                 "/getij_harlingen.json",         -145 },
+    { "Kornwerderzand",  "kornwerderzand.waddenzee.buitenhaven","/getij_kornwerderzand.json",     -95 },
+    { "Harlingen",       "harlingen.waddenzee",                 "/getij_harlingen.json",         -114 },
     { "Terschelling",    "terschelling.west",                   "/getij_terschelling.json",      -110 },
     { "Delfzijl",        "delfzijl",                           "/getij_delfzijl.json",          -155 },
 };
@@ -87,16 +88,18 @@ bool        getijdata_init();
 bool        getijdata_update_alle(int eerst_idx);
 void        getijdata_check_update(int locatie_index);
 bool        getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, int* aantal);
-bool        getijdata_ophalen_nu(int locatie_index);   // directe ophaalpoging (aanroepen vanuit netwerktaak)
+bool        getijdata_ophalen_nu(int locatie_index);        // normale fetch (2 maanden)
+bool        getijdata_meer_ophalen_nu(int locatie_index);   // uitgebreide fetch (4 maanden)
 const char* getijdata_naam(int index);
 int         getijdata_lat_offset(int index);
 int         getijdata_aantal_locaties();
 bool        getijdata_beschikbaar(int locatie_index);
 
 // ─── Inter-core signalen (UI → netwerktaak → UI) ─────────────────────────────
-extern volatile bool getijdata_ophalen_aangevraagd;  // UI vraagt fetch aan
-extern volatile int  getijdata_ophalen_station;      // welk station
-extern volatile bool getijdata_ophalen_klaar;        // netwerktaak meldt: klaar
+extern volatile bool getijdata_ophalen_aangevraagd;       // UI vraagt fetch aan
+extern volatile bool getijdata_meer_laden_aangevraagd;    // UI vraagt uitgebreide fetch aan
+extern volatile int  getijdata_ophalen_station;           // welk station
+extern volatile bool getijdata_ophalen_klaar;             // netwerktaak meldt: klaar
 
 // ─── Debug: laatste HTTP diagnostics ─────────────────────────────────────────
 #define GETIJ_DEBUG_LEN 1600

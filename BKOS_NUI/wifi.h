@@ -33,4 +33,5 @@ void wifi_taak_start();                         // start FreeRTOS background tas
 void wifi_ota_zet(bool actief);                 // OTA scherm aan/uit → WiFi beheer
 void wifi_verbind_aanvragen();                  // directe verbinding aanvragen
 void ntp_vanaf_net(time_t epoch);               // tijdstip ontvangen van netwerk peer
-void getijdata_ophalen_aanvragen(int station);  // vraag directe getijdata fetch aan
+void getijdata_ophalen_aanvragen(int station);      // vraag directe getijdata fetch aan (2 mnd)
+void getijdata_meer_laden_aanvragen(int station);   // vraag uitgebreide fetch aan (4 mnd)

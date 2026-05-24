@@ -783,30 +783,33 @@ static void meteo_getij_teken() {
             tft.setCursor(bx + 3, ey + 30);
             tft.print(datum_str);
 
-            char nap_str[10];
-            snprintf(nap_str, sizeof(nap_str), "%+.2fm", nap_m);
-            tft.setTextSize(1); tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
-            tft.setCursor(bx + 3, ey + 40);
-            tft.print(nap_str);
-
-            // ─ Rechter gebied: tijd + HW/LW (boven) + LAT (onder) ───
+            // ─ Rechter gebied: tijd HW/LW LAT op één rij, verticaal gecentreerd ─
             int rx = bx + GTJ_STRIP_W + 5;
             uint16_t hw_kleur = verleden ? C_TEXT_DIM : (markeer ? C_AMBER : (hw ? C_CYAN : RGB565(80, 150, 255)));
             uint16_t tx_kleur = verleden ? C_TEXT_DIM : (markeer ? C_AMBER : C_TEXT);
 
+            // textSize2=16px + 2px gap + textSize1=8px = 26px totaal
+            int main_y = ey + (GTJ_ROW_H - 26) / 2;
+            int nap_y  = main_y + 18;
+
             char tijd_str[6];
             snprintf(tijd_str, sizeof(tijd_str), "%02d:%02d", lt->tm_hour, lt->tm_min);
-            tft.setTextSize(2); tft.setTextColor(tx_kleur);
-            tft.setCursor(rx, ey + 5);
+            char lat_str[8];
+            snprintf(lat_str, sizeof(lat_str), "%+.2fm", lat_m);
+
+            tft.setTextSize(2);
+            tft.setTextColor(tx_kleur);
+            tft.setCursor(rx, main_y);
             tft.print(tijd_str);
             tft.setTextColor(hw_kleur);
-            tft.print(hw ? "  HW" : "  LW");
-
-            char lat_str[12];
-            snprintf(lat_str, sizeof(lat_str), "LAT %+.2fm", lat_m);
-            tft.setTextSize(2); tft.setTextColor(hw_kleur);
-            tft.setCursor(rx, ey + 27);
+            tft.print(hw ? "  HW  " : "  LW  ");
             tft.print(lat_str);
+
+            char nap_str[12];
+            snprintf(nap_str, sizeof(nap_str), "(%+.2fm)", nap_m);
+            tft.setTextSize(1); tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
+            tft.setCursor(rx, nap_y);
+            tft.print(nap_str);
         }
     }
 }

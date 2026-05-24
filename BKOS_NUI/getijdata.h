@@ -24,9 +24,9 @@
 // Configuratie
 // ------------------------------------------------------------
 
-#define GETIJ_API_URL         "https://waterinfo.rws.nl/api/chart/get"
+#define GETIJ_API_URL         "https://ddapi20-waterwebservices.rijkswaterstaat.nl/ONLINEWAARNEMINGENSERVICES/OphalenWaarnemingen"
 #define GETIJ_VAN_UREN        (-2 * 7 * 24)    // 2 weken terug
-#define GETIJ_TOT_UREN        (4 * 7 * 24)     // 4 weken vooruit
+#define GETIJ_TOT_UREN        (6 * 7 * 24)     // 6 weken vooruit
 #define GETIJ_WEKEN_TERUG     2                 // (legacy, voor check_update)
 #define GETIJ_MAX_EXTREMEN    300               // max HW/LW punten per locatie
 #define GETIJ_CACHE_UREN      6                 // uren tussen automatische verversing
@@ -45,8 +45,7 @@ struct GetijExtreme {
 
 struct GetijLocatie {
     const char* naam;           // Leesbare naam (voor display)
-    const char* code;           // ddapi20 locatiecode (gereserveerd)
-    const char* wi_naam;        // Naam voor waterinfo.rws.nl API
+    const char* code;           // ddapi20 locatiecode
     const char* bestand;        // LittleFS bestandsnaam
     int         lat_offset_cm;  // LAT onder NAP in cm (negatief)
 };
@@ -58,24 +57,24 @@ struct GetijLocatie {
 
 static const GetijLocatie GETIJ_LOCATIES[] = {
     // Zeeland / Westerschelde
-    { "Vlissingen",      "vlissingen",                         "Vlissingen",         "/getij_vlissingen.json",       -238 },
-    { "Terneuzen",       "terneuzen",                          "Terneuzen",          "/getij_terneuzen.json",         -220 },
-    { "Yerseke",         "yerseke",                            "Yerseke",            "/getij_yerseke.json",           -210 },
+    { "Vlissingen",      "vlissingen",                          "/getij_vlissingen.json",       -238 },
+    { "Terneuzen",       "terneuzen",                           "/getij_terneuzen.json",         -220 },
+    { "Yerseke",         "yerseke",                             "/getij_yerseke.json",           -210 },
 
     // Rijnmond / Zuid-Holland
-    { "Hellevoetsluis",  "hellevoetsluis",                     "Hellevoetsluis",     "/getij_hellevoetsluis.json",     -85 },
-    { "Hoek v. Holland", "hoekvanholland",                     "Hoek van Holland",   "/getij_hoekvanholland.json",     -85 },
-    { "Rotterdam",       "rotterdam.nieuwemaas.boerengat",     "Rotterdam",          "/getij_rotterdam.json",          -70 },
+    { "Hellevoetsluis",  "hellevoetsluis",                      "/getij_hellevoetsluis.json",     -85 },
+    { "Hoek v. Holland", "hoekvanholland",                      "/getij_hoekvanholland.json",     -85 },
+    { "Rotterdam",       "rotterdam.nieuwemaas.boerengat",      "/getij_rotterdam.json",          -70 },
 
     // Noordzeekust
-    { "IJmuiden",        "ijmuiden.buitenhaven",               "IJmuiden",           "/getij_ijmuiden.json",           -80 },
-    { "Den Helder",      "denhelder.marsdiep",                 "Den Helder",         "/getij_denhelder.json",         -100 },
+    { "IJmuiden",        "ijmuiden.buitenhaven",                "/getij_ijmuiden.json",           -80 },
+    { "Den Helder",      "denhelder.marsdiep",                  "/getij_denhelder.json",         -100 },
 
     // Waddenzee
-    { "Kornwerderzand",  "kornwerderzand.waddenzee.buitenhaven","Kornwerderzand",    "/getij_kornwerderzand.json",    -110 },
-    { "Harlingen",       "harlingen.waddenzee",                "Harlingen",          "/getij_harlingen.json",         -145 },
-    { "Terschelling",    "terschelling.west",                  "West-Terschelling",  "/getij_terschelling.json",      -110 },
-    { "Delfzijl",        "delfzijl",                          "Delfzijl",           "/getij_delfzijl.json",          -155 },
+    { "Kornwerderzand",  "kornwerderzand.waddenzee.buitenhaven","/getij_kornwerderzand.json",    -110 },
+    { "Harlingen",       "harlingen.waddenzee",                 "/getij_harlingen.json",         -145 },
+    { "Terschelling",    "terschelling.west",                   "/getij_terschelling.json",      -110 },
+    { "Delfzijl",        "delfzijl",                           "/getij_delfzijl.json",          -155 },
 };
 
 static const int GETIJ_AANTAL_LOCATIES = sizeof(GETIJ_LOCATIES) / sizeof(GETIJ_LOCATIES[0]);

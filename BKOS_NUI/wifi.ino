@@ -90,15 +90,22 @@ static void netwerk_taak(void* param) {
         unsigned long nu = millis();
         bool update_nodig = (!meteo_geladen) ||
                             (nu - meteo_laatste_update > 1800000UL);
-        bool ota_gevraagd = ota_check_aangevraagd;
+        bool ota_gevraagd   = ota_check_aangevraagd;
         if (ota_gevraagd) ota_check_aangevraagd = false;
 
-        if (!update_nodig && !wifi_ota_modus && !ota_gevraagd) continue;
+        bool getij_gevraagd = getijdata_ophalen_aangevraagd;
+        int  getij_station  = getijdata_ophalen_station;
+        if (getij_gevraagd) getijdata_ophalen_aangevraagd = false;
+
+        if (!update_nodig && !wifi_ota_modus && !ota_gevraagd && !getij_gevraagd) continue;
 
         // Verbinden
         if (WiFi.status() != WL_CONNECTED) _wifi_verbinden_intern();
 
         if (wifi_verbonden) {
+            if (getij_gevraagd) {
+                getijdata_ophalen_nu(getij_station);  // zet ook getijdata_ophalen_klaar
+            }
             if (update_nodig) {
                 meteo_weer_ophalen();
                 meteo_getij_berekenen();
@@ -107,11 +114,13 @@ static void netwerk_taak(void* param) {
                 if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
                     ota_nieuwer_beschikbaar = true;
             } else if (ota_gevraagd) {
-                // Alleen OTA check, geen meteo-update nodig
                 ota_git_check();
                 if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
                     ota_nieuwer_beschikbaar = true;
             }
+        } else if (getij_gevraagd) {
+            // WiFi verbinding mislukt — zet klaar zodat UI de foutmelding toont
+            getijdata_ophalen_klaar = true;
         }
 
         if (!wifi_ota_modus) _wifi_verbreken_intern();
@@ -145,6 +154,15 @@ void wifi_ota_zet(bool actief) {
 }
 
 void wifi_verbind_aanvragen() {
+#if PLATFORM_ESP32
+    if (netwerk_task_handle) xTaskNotifyGive(netwerk_task_handle);
+#endif
+}
+
+void getijdata_ophalen_aanvragen(int station) {
+    getijdata_ophalen_station     = station;
+    getijdata_ophalen_klaar       = false;
+    getijdata_ophalen_aangevraagd = true;
 #if PLATFORM_ESP32
     if (netwerk_task_handle) xTaskNotifyGive(netwerk_task_handle);
 #endif

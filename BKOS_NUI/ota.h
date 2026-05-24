@@ -2,7 +2,7 @@
 #include "platform.h"
 #include "wifi.h"
 
-#define BKOS_NUI_VERSIE     "0.1.260524.1"
+#define BKOS_NUI_VERSIE     "0.1.260524.2"
 
 // ─── Beta kanaal (tussenversies) ──────────────────────────────────────────────
 #if PLATFORM_PICO

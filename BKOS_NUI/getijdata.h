@@ -88,12 +88,18 @@ bool        getijdata_init();
 bool        getijdata_update_alle(int eerst_idx);
 void        getijdata_check_update(int locatie_index);
 bool        getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, int* aantal);
+bool        getijdata_ophalen_nu(int locatie_index);   // directe ophaalpoging (aanroepen vanuit netwerktaak)
 const char* getijdata_naam(int index);
 int         getijdata_lat_offset(int index);
 int         getijdata_aantal_locaties();
 bool        getijdata_beschikbaar(int locatie_index);
 
-// ─── Debug: laatste ruwe HTTP response ───────────────────────────────────────
-#define GETIJ_DEBUG_LEN 2000
+// ─── Inter-core signalen (UI → netwerktaak → UI) ─────────────────────────────
+extern volatile bool getijdata_ophalen_aangevraagd;  // UI vraagt fetch aan
+extern volatile int  getijdata_ophalen_station;      // welk station
+extern volatile bool getijdata_ophalen_klaar;        // netwerktaak meldt: klaar
+
+// ─── Debug: laatste HTTP diagnostics ─────────────────────────────────────────
+#define GETIJ_DEBUG_LEN 1600
 extern char getij_debug_raw[GETIJ_DEBUG_LEN];
 extern int  getij_debug_http_code;

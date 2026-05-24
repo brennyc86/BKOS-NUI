@@ -29,7 +29,8 @@ bool wifi_verbind(const char* ssid, const char* wachtwoord);
 void ntp_setup();
 void ntp_loop();
 
-void wifi_taak_start();          // start FreeRTOS background task
-void wifi_ota_zet(bool actief);  // OTA scherm aan/uit → WiFi beheer
-void wifi_verbind_aanvragen();   // directe verbinding aanvragen (OTA, versiecheck)
-void ntp_vanaf_net(time_t epoch); // tijdstip ontvangen van netwerk peer (ESP-NOW)
+void wifi_taak_start();                         // start FreeRTOS background task
+void wifi_ota_zet(bool actief);                 // OTA scherm aan/uit → WiFi beheer
+void wifi_verbind_aanvragen();                  // directe verbinding aanvragen
+void ntp_vanaf_net(time_t epoch);               // tijdstip ontvangen van netwerk peer
+void getijdata_ophalen_aanvragen(int station);  // vraag directe getijdata fetch aan

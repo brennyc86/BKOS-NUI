@@ -599,12 +599,19 @@ static void meteo_getij_teken() {
         tft.print(labuf);
     }
 
-    // RAW toggle knop (uiterst rechts)
+    // RAW toggle knop
     ui_knop(TFT_W - 70, PANEL_Y + 2, 62, GTJ_HDR_H - 4, "RAW",
             getij_raw_modus ? C_SURFACE3 : C_SURFACE,
             getij_raw_modus ? C_CYAN     : C_TEXT_DIM);
 
-    if (!getij_raw_modus) {
+    if (getij_raw_modus) {
+        // OPHALEN knop (alleen in RAW modus)
+        bool bezig = getijdata_ophalen_aangevraagd && !getijdata_ophalen_klaar;
+        ui_knop(TFT_W - 192, PANEL_Y + 2, 114, GTJ_HDR_H - 4,
+                bezig ? "Ophalen..." : "Ophalen",
+                bezig ? C_SURFACE3 : C_SURFACE2,
+                bezig ? C_TEXT_DIM : C_CYAN);
+    } else {
         // Scroll knoppen
         bool voor   = (getij_scroll > 0);
         bool achter = (getij_scroll < max_sc);
@@ -835,6 +842,16 @@ void screen_meteo_teken() {
 }
 
 void screen_meteo_run(int x, int y, bool aanraking) {
+    // Auto-refresh RAW view zodra netwerktaak klaar is
+    if (!aanraking && meteo_tab == METEO_TAB_GETIJ && getij_raw_modus
+            && getijdata_ophalen_klaar) {
+        getijdata_ophalen_klaar = false;
+        rws_geladen_idx = -1;  // forceer herlaad uit bestand
+        rws_ext_cnt = 0;
+        meteo_getij_teken();
+        return;
+    }
+
     if (!aanraking) return;
 
     // Nav bar
@@ -930,7 +947,7 @@ void screen_meteo_run(int x, int y, bool aanraking) {
         return;
     }
 
-    // ── GETIJ TAB: RAW toggle + scroll knoppen ────────────────────────────
+    // ── GETIJ TAB: RAW toggle + OPHALEN + scroll knoppen ─────────────────
     if (meteo_tab == METEO_TAB_GETIJ) {
         if (y >= PANEL_Y && y < PANEL_Y + GTJ_HDR_H) {
             // RAW knop (uiterst rechts)
@@ -939,7 +956,17 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                 meteo_getij_teken();
                 return;
             }
-            if (!getij_raw_modus) {
+            if (getij_raw_modus) {
+                // OPHALEN knop
+                if (x >= TFT_W - 192 && x < TFT_W - 78) {
+                    bool bezig = getijdata_ophalen_aangevraagd && !getijdata_ophalen_klaar;
+                    if (!bezig) {
+                        getijdata_ophalen_aanvragen(getijdata_station_idx);
+                        meteo_getij_teken();  // toon "Ophalen..."
+                    }
+                    return;
+                }
+            } else {
                 bool gebruik_rws = (rws_geladen_idx == getijdata_station_idx && rws_ext_cnt > 0);
                 int rij_n  = gebruik_rws ? rws_ext_cnt : getij_ext_cnt;
                 int max_sc = max(0, rij_n - GTJ_ROWS_N * GTJ_COLS_N);

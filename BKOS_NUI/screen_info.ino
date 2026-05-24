@@ -44,9 +44,10 @@ const char* info_boot_naam() {
     if (!info_geladen) info_laden();
     return boot_vals[0];  // b_naam
 }
-static bool info_kb_actief = false;
-static int  info_kb_idx    = -1;
-static bool info_kb_boot   = true;
+static bool info_kb_actief      = false;
+static bool info_naam_kb_actief = false;  // apparaatnaam toetsenbord (altijd bewerkbaar)
+static int  info_kb_idx         = -1;
+static bool info_kb_boot        = true;
 static unsigned long info_kb_sloot = 0;
 
 // ─── SPIFFS opslaan/laden ─────────────────────────────────────────────
@@ -285,11 +286,24 @@ static void info_velden_teken() {
             fy += VELD_H;
         }
     } else {
-        // ── SYSTEEM: 2 kolommen ───────────────────────────────────────────
+        // ── SYSTEEM: apparaatnaam (full-width) + 2 kolommen ──────────────
+        // Apparaatnaam rij — altijd bewerkbaar, per apparaat
+        int naam_y = VELD_START_Y;
+        tft.fillRect(10, naam_y, TFT_W - 20, VELD_H - 2, C_SURFACE2);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, naam_y + (VELD_H - 8) / 2 - 5); tft.print("Apparaatnaam");
+        tft.setTextSize(2);
+        tft.setTextColor(strlen(net_eigen_naam) > 0 && strcmp(net_eigen_naam, "BKOS-NUI") != 0
+                         ? C_CYAN : C_DARK_GRAY);
+        tft.setCursor(18 + VELD_LABEL_W, naam_y + (VELD_H - 16) / 2 + 2);
+        tft.print(strlen(net_eigen_naam) > 0 ? net_eigen_naam : "(niet ingesteld)");
+        tft.setTextSize(1); tft.setTextColor(C_SURFACE3);
+        tft.setCursor(TFT_W - 30, naam_y + (VELD_H - 8) / 2); tft.print(">");
+
         int LX = 10,  LW = 370;   // linker kolom (lokaal)
         int RX = 402, RW = 388;   // rechter kolom (master / netwerk)
         int RH = 32;              // rij hoogte
-        int ry = VELD_START_Y + 4;
+        int ry = VELD_START_Y + VELD_H + 4;
 
         // Scheidingslijn
         tft.drawFastVLine(RX - 4, VELD_START_Y, NAV_Y - VELD_START_Y, C_SURFACE2);
@@ -558,10 +572,18 @@ void screen_info_teken() {
     pico_info_velden_teken();
 #else
     sb_scherm_teken("BOOT & EIGENAAR", C_CYAN);
-    // BEWERK / VERGRENDELEN knop in status balk
-    ui_knop(SB_KLOK_X - 120, (SB_H - 26) / 2, 112, 26,
-            info_bewerkbaar ? "VERGRENDEL" : "BEWERK",
-            C_SURFACE2, info_bewerkbaar ? C_AMBER : C_TEXT_DIM);
+    // BEWERK knop: alleen op master/standalone voor BOOT/EIGENAAR tabs
+    bool kan_bewerken = (info_tab != 2) &&
+                        (net_modus == NET_MASTER || net_modus == NET_STANDALONE);
+    if (kan_bewerken) {
+        ui_knop(SB_KLOK_X - 120, (SB_H - 26) / 2, 112, 26,
+                info_bewerkbaar ? "VERGRENDEL" : "BEWERK",
+                C_SURFACE2, info_bewerkbaar ? C_AMBER : C_TEXT_DIM);
+    } else if (info_tab != 2) {
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(SB_KLOK_X - 116, (SB_H - 8) / 2);
+        tft.print("Info van master");
+    }
     info_tabs_teken();
     info_velden_teken();
 #endif
@@ -635,13 +657,29 @@ void screen_info_run(int x, int y, bool aanraking) {
     return;
 #else
 
+    // Apparaatnaam toetsenbord (altijd beschikbaar, geen PIN)
+    if (info_naam_kb_actief) {
+        bool klaar = screen_config_toetsenbord_run(x, y);
+        if (klaar) {
+            if (cfg_kb_opgeslagen) {
+                strncpy(net_eigen_naam, cfg_invoer, NET_NAAM_LEN - 1);
+                net_eigen_naam[NET_NAAM_LEN - 1] = '\0';
+                net_opslaan();
+            }
+            info_naam_kb_actief = false;
+            info_kb_sloot  = millis();
+            scherm_bouwen  = true;
+        }
+        return;
+    }
+
     // PIN overlay voor BEWERK ontgrendeling
     if (info_pin_wacht && pin_overlay_actief) {
         if (pin_overlay_run(x, y)) {
             info_kb_sloot = millis();
             if (config_ontgrendeld) {
                 info_bewerkbaar    = true;
-                config_ontgrendeld = false;  // niet CONFIG ontgrendelen
+                config_ontgrendeld = false;
             }
             info_pin_wacht = false;
             scherm_bouwen  = true;
@@ -669,8 +707,10 @@ void screen_info_run(int x, int y, bool aanraking) {
         return;
     }
 
-    // BEWERK / VERGRENDELEN knop in status balk
-    if (y < SB_H && x >= SB_KLOK_X - 120 && x < SB_KLOK_X) {
+    // BEWERK / VERGRENDELEN knop — alleen master/standalone op BOOT/EIGENAAR tabs
+    bool kan_bewerken_run = (info_tab != 2) &&
+                            (net_modus == NET_MASTER || net_modus == NET_STANDALONE);
+    if (kan_bewerken_run && y < SB_H && x >= SB_KLOK_X - 120 && x < SB_KLOK_X) {
         if (info_bewerkbaar) {
             info_bewerkbaar = false;
             scherm_bouwen   = true;
@@ -693,9 +733,22 @@ void screen_info_run(int x, int y, bool aanraking) {
         if (nieuwe_tab >= INFO_TAB_N) nieuwe_tab = INFO_TAB_N - 1;
         if (nieuwe_tab != info_tab) {
             info_tab = nieuwe_tab;
+            info_bewerkbaar = false;
             info_tabs_teken();
             info_velden_teken();
         }
+        return;
+    }
+
+    // Apparaatnaam veld in SYSTEEM tab (eerste rij, altijd klikbaar)
+    if (info_tab == 2 && y >= VELD_START_Y && y < VELD_START_Y + VELD_H) {
+        strncpy(cfg_invoer, net_eigen_naam, CFG_INVOER_LEN - 1);
+        cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+        snprintf(cfg_kb_label, 24, "Apparaatnaam:");
+        cfg_kb_numeriek = false; cfg_geselecteerd = -1; cfg_bewerk_zeilnr = false;
+        cfg_kb_info_mode = true; cfg_kb_opgeslagen = false; kb_sym = false;
+        info_naam_kb_actief = true;
+        screen_config_toetsenbord_teken();
         return;
     }
 

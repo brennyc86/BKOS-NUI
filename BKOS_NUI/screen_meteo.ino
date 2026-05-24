@@ -31,6 +31,7 @@ static int          rws_geladen_idx = -1;
 #define GTJ_NOW_H   UI_SCY(26)
 #define GTJ_ROW_H   UI_SCY(50)
 #define GTJ_COLS_N  2
+#define GTJ_STRIP_W UI_SCX(56)          // breedte van de dag-strip links
 #define GTJ_TABLE_Y (PANEL_Y + GTJ_HDR_H + GTJ_NOW_H + 4)
 #define GTJ_COL_W   ((TFT_W - 20) / GTJ_COLS_N)
 #define GTJ_ROWS_N  ((PANEL_H - GTJ_HDR_H - GTJ_NOW_H - 4) / GTJ_ROW_H)
@@ -732,48 +733,80 @@ static void meteo_getij_teken() {
             float lat_m     = rws_ext[idx].waterstand_lat_cm / 100.0f;
             bool verleden   = (tijdstip < nu);
 
-            // Nu-markering: binnen 30 min van één extreem → alleen dat; anders beide
             bool markeer;
             if (dicht_prev && !dicht_next)       markeer = (idx == prev_idx);
             else if (dicht_next && !dicht_prev)  markeer = (idx == next_idx);
             else                                  markeer = (idx == prev_idx || idx == next_idx);
 
-            uint16_t bg;
-            if (markeer)        bg = hw ? RGB565(0, 60, 130) : RGB565(20, 40, 80);
-            else if (verleden)  bg = RGB565(12, 18, 35);
-            else if (hw)        bg = RGB565(0, 45, 110);
-            else                bg = RGB565(15, 28, 55);
+            struct tm* lt = localtime(&tijdstip);
+            bool is_weekend = (lt->tm_wday == 0 || lt->tm_wday == 6);
 
-            tft.fillRoundRect(bx, ey, GTJ_COL_W - 4, GTJ_ROW_H - 1, 3, bg);
+            // ─ Cel + strip achtergronden ──────────────────────────────
+            uint16_t bg_cel, bg_strip;
+            if (markeer) {
+                bg_cel   = hw ? RGB565(0, 60, 130)  : RGB565(20, 40, 80);
+                bg_strip = hw ? RGB565(0, 80, 160)  : RGB565(25, 55, 110);
+            } else if (verleden) {
+                bg_cel   = RGB565(12, 18, 35);
+                bg_strip = RGB565(8, 13, 26);
+            } else if (is_weekend) {
+                bg_cel   = hw ? RGB565(0, 45, 110)  : RGB565(15, 28, 55);
+                bg_strip = hw ? RGB565(50, 30, 0)   : RGB565(35, 20, 5);
+            } else if (hw) {
+                bg_cel   = RGB565(0, 45, 110);
+                bg_strip = RGB565(0, 60, 135);
+            } else {
+                bg_cel   = RGB565(15, 28, 55);
+                bg_strip = RGB565(10, 35, 70);
+            }
+
+            tft.fillRoundRect(bx, ey, GTJ_COL_W - 4, GTJ_ROW_H - 1, 3, bg_cel);
+            tft.fillRect(bx + 1, ey + 1, GTJ_STRIP_W - 1, GTJ_ROW_H - 3, bg_strip);
             if (markeer) tft.drawRoundRect(bx, ey, GTJ_COL_W - 4, GTJ_ROW_H - 1, 3, C_AMBER);
 
-            struct tm* lt = localtime(&tijdstip);
+            // ─ Linker strip: dag (groot) + datum + NAP ───────────────
+            uint16_t dag_kleur;
+            if (verleden)        dag_kleur = C_TEXT_DIM;
+            else if (markeer)    dag_kleur = C_AMBER;
+            else if (is_weekend) dag_kleur = C_AMBER;
+            else                 dag_kleur = hw ? C_CYAN : RGB565(100, 160, 255);
 
-            // Lijn 1 (textSize 1): dag datum tijd + HW/LW
-            char lijn1[24];
-            snprintf(lijn1, sizeof(lijn1), "%s %02d-%02d  %02d:%02d  %s",
-                dag_afk[lt->tm_wday], lt->tm_mday, lt->tm_mon + 1,
-                lt->tm_hour, lt->tm_min, hw ? "HW" : "LW");
-            tft.setTextSize(1);
-            tft.setTextColor(verleden ? C_TEXT_DIM : (markeer ? C_AMBER : C_TEXT_DIM));
-            tft.setCursor(bx + 5, ey + 2);
-            tft.print(lijn1);
+            // Dag afkorting (textSize 3 = 18px per char breed, 24px hoog)
+            tft.setTextSize(3); tft.setTextColor(dag_kleur);
+            int dag_px = strlen(dag_afk[lt->tm_wday]) * 18;
+            tft.setCursor(bx + (GTJ_STRIP_W - dag_px) / 2, ey + 3);
+            tft.print(dag_afk[lt->tm_wday]);
 
-            // Lijn 2 (textSize 2): LAT hoogte — primaire waarde groot
+            char datum_str[6];
+            snprintf(datum_str, sizeof(datum_str), "%02d-%02d", lt->tm_mday, lt->tm_mon + 1);
+            tft.setTextSize(1); tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
+            tft.setCursor(bx + 3, ey + 30);
+            tft.print(datum_str);
+
+            char nap_str[10];
+            snprintf(nap_str, sizeof(nap_str), "%+.2fm", nap_m);
+            tft.setTextSize(1); tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
+            tft.setCursor(bx + 3, ey + 40);
+            tft.print(nap_str);
+
+            // ─ Rechter gebied: tijd + HW/LW (boven) + LAT (onder) ───
+            int rx = bx + GTJ_STRIP_W + 5;
+            uint16_t hw_kleur = verleden ? C_TEXT_DIM : (markeer ? C_AMBER : (hw ? C_CYAN : RGB565(80, 150, 255)));
+            uint16_t tx_kleur = verleden ? C_TEXT_DIM : (markeer ? C_AMBER : C_TEXT);
+
+            char tijd_str[6];
+            snprintf(tijd_str, sizeof(tijd_str), "%02d:%02d", lt->tm_hour, lt->tm_min);
+            tft.setTextSize(2); tft.setTextColor(tx_kleur);
+            tft.setCursor(rx, ey + 5);
+            tft.print(tijd_str);
+            tft.setTextColor(hw_kleur);
+            tft.print(hw ? "  HW" : "  LW");
+
             char lat_str[12];
             snprintf(lat_str, sizeof(lat_str), "LAT %+.2fm", lat_m);
-            tft.setTextSize(2);
-            tft.setTextColor(verleden ? C_TEXT_DIM : (markeer ? C_AMBER : (hw ? C_CYAN : RGB565(80, 150, 255))));
-            tft.setCursor(bx + 5, ey + 13);
+            tft.setTextSize(2); tft.setTextColor(hw_kleur);
+            tft.setCursor(rx, ey + 27);
             tft.print(lat_str);
-
-            // Lijn 3 (textSize 1): NAP hoogte — secundair
-            char nap_str[14];
-            snprintf(nap_str, sizeof(nap_str), "NAP %+.2fm", nap_m);
-            tft.setTextSize(1);
-            tft.setTextColor(verleden ? C_DARK_GRAY : C_TEXT_DIM);
-            tft.setCursor(bx + 5, ey + 33);
-            tft.print(nap_str);
         }
     }
 }

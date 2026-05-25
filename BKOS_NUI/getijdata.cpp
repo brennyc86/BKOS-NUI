@@ -133,13 +133,23 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
         return false;
     }
 
-    // ── Lees volledige response body (robuuster dan stream-parse via TLS) ──
-    // Stream-parse via WiFiClientSecure+chunked kan stil stoppen vóór EOF;
-    // getString() wacht tot verbinding sluit en geeft altijd de volledige body.
+    // ── Lees volledige response body ──────────────────────────────────────
+    // getString() wacht tot verbinding sluit — robuuster dan stream-parse via TLS.
+    // Let op: grote responses (>100KB) kunnen heap uitputten → lege String.
     String respBody = http.getString();
     http.end();
 
     int content_len = (int)respBody.length();
+
+    // Detecteer lege response (heap-geheugen vol of TLS-fout)
+    if (content_len < 10) {
+        snprintf(getij_debug_raw, GETIJ_DEBUG_LEN,
+            "HTTP 200 maar lege response (%d bytes)\n"
+            "Oorzaak: heap vol bij ophalen grote response, of TLS-verbinding verbroken.\n"
+            "WiFi: %s\n\nRequest body:\n%s",
+            content_len, wifi_ok ? "verbonden" : "NIET verbonden", body.c_str());
+        return false;
+    }
 
     // ── Parse met filter ──────────────────────────────────────────────────
     JsonDocument filter;
@@ -179,7 +189,7 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
         wifi_ok ? "verbonden" : "NIET verbonden",
         content_len / 1024,
         n,
-        err ? (String("  ERR: ") + err.c_str()).c_str() : "",
+        err ? (String("\nERR: ") + err.c_str()).c_str() : "",
         body.c_str(),
         sample.c_str(),
         resp_preview.c_str());

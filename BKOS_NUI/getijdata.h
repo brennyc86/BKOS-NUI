@@ -25,9 +25,9 @@
 // ------------------------------------------------------------
 
 #define GETIJ_API_URL         "https://ddapi20-waterwebservices.rijkswaterstaat.nl/ONLINEWAARNEMINGENSERVICES/OphalenWaarnemingen"
-#define GETIJ_VAN_UREN        (-14 * 24)        // 2 weken terug
-#define GETIJ_TOT_UREN        (60 * 24)         // 2 maanden vooruit
-#define GETIJ_TOT_UREN_MEER   (120 * 24)        // 4 maanden (meer laden knop)
+#define GETIJ_VAN_UREN        (-5 * 24)         // 5 dagen terug  (~20 extremen)
+#define GETIJ_TOT_UREN        (21 * 24)         // 3 weken vooruit (~84 extremen) → ~30KB
+#define GETIJ_TOT_UREN_MEER   (60 * 24)         // 2 maanden (meer laden knop)
 #define GETIJ_WEKEN_TERUG     2                 // (legacy, voor check_update)
 #define GETIJ_MAX_EXTREMEN    500               // max HW/LW punten per locatie
 #define GETIJ_CACHE_UREN      6                 // uren tussen automatische verversing

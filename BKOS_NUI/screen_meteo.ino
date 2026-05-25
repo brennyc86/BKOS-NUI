@@ -526,16 +526,16 @@ static void meteo_detail_teken(int dag_idx) {
     }
 }
 
-// ─── Scroll-positie voor landing (2 verleden + toekomst) ─────────────────
+// ─── Scroll-positie voor landing: meest recente verleden extreem bovenlinks ──
 static int _getij_scroll_voor_nu() {
     time_t nu = time(nullptr);
-    int eerste_toekomst = rws_ext_cnt;
+    int prev_idx = 0;
     for (int i = 0; i < rws_ext_cnt; i++) {
-        if (rws_ext[i].tijdstip >= nu) { eerste_toekomst = i; break; }
+        if (rws_ext[i].tijdstip < nu) prev_idx = i;
+        else break;
     }
-    int start_idx = max(0, eerste_toekomst - 2);
-    int pagina_sz = GTJ_ROWS_N * GTJ_COLS_N;
-    return (start_idx / pagina_sz) * pagina_sz;
+    int max_sc = max(0, rws_ext_cnt - GTJ_ROWS_N * GTJ_COLS_N);
+    return min(prev_idx, max_sc);
 }
 
 // ─── GETIJ TAB ────────────────────────────────────────────────────────────
@@ -1038,13 +1038,13 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                         meteo_getij_teken();
                     }
                 } else if (x >= TFT_W - 286 && x < TFT_W - 216 && getij_scroll > 0) {
-                    getij_scroll = max(0, getij_scroll - GTJ_ROWS_N * GTJ_COLS_N);
+                    getij_scroll = max(0, getij_scroll - GTJ_ROWS_N);
                     meteo_getij_teken();
                 } else if (x >= TFT_W - 210 && x < TFT_W - 150) {
                     getij_scroll = _getij_scroll_voor_nu();
                     meteo_getij_teken();
                 } else if (x >= TFT_W - 144 && x < TFT_W - 76 && getij_scroll < max_sc) {
-                    getij_scroll = min(max_sc, getij_scroll + GTJ_ROWS_N * GTJ_COLS_N);
+                    getij_scroll = min(max_sc, getij_scroll + GTJ_ROWS_N);
                     meteo_getij_teken();
                 }
             }

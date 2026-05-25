@@ -133,24 +133,28 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
         return false;
     }
 
-    int content_len = http.getSize();
+    // ── Lees volledige response body (robuuster dan stream-parse via TLS) ──
+    // Stream-parse via WiFiClientSecure+chunked kan stil stoppen vóór EOF;
+    // getString() wacht tot verbinding sluit en geeft altijd de volledige body.
+    String respBody = http.getString();
+    http.end();
 
-    // ── Stream-parse met filter (geheugenbesparend) ───────────────────────
-    // Filter: haal alleen Tijdstip en Waarde_Numeriek op
+    int content_len = (int)respBody.length();
+
+    // ── Parse met filter ──────────────────────────────────────────────────
     JsonDocument filter;
     filter["WaarnemingenLijst"][0]["MetingenLijst"][0]["Tijdstip"] = true;
     filter["WaarnemingenLijst"][0]["MetingenLijst"][0]["Meetwaarde"]["Waarde_Numeriek"] = true;
 
     JsonDocument response;
-    DeserializationError err = deserializeJson(response, http.getStream(),
+    DeserializationError err = deserializeJson(response, respBody,
         DeserializationOption::Filter(filter));
-    http.end();
 
     // ── Debug string ─────────────────────────────────────────────────────
     JsonArray metingen = response["WaarnemingenLijst"][0]["MetingenLijst"].as<JsonArray>();
     int n = err ? 0 : metingen.size();
 
-    // Toon eerste drie waarden als sample
+    // Eerste drie waarden als sample
     String sample = "";
     int getoond = 0;
     if (!err) {
@@ -163,15 +167,22 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
         }
     }
 
+    // Als N=0: toon eerste 300 tekens van de response voor diagnose
+    String resp_preview = "";
+    if (n == 0) {
+        resp_preview = "\n\nResponse preview:\n" + respBody.substring(0, min((int)respBody.length(), 300));
+    }
+
     snprintf(getij_debug_raw, GETIJ_DEBUG_LEN,
-        "HTTP %d   WiFi: %s   %s\nN=%d extremen%s\n\nRequest body:\n%s\n\nEerste waarden:\n%s",
+        "HTTP %d   WiFi: %s   %dKB\nN=%d extremen%s\n\nRequest body:\n%s\n\nEerste waarden:\n%s%s",
         httpCode,
         wifi_ok ? "verbonden" : "NIET verbonden",
-        (content_len > 0) ? (String(content_len/1024) + "KB").c_str() : "chunked",
+        content_len / 1024,
         n,
         err ? (String("  ERR: ") + err.c_str()).c_str() : "",
         body.c_str(),
-        sample.c_str());
+        sample.c_str(),
+        resp_preview.c_str());
     getij_debug_raw[GETIJ_DEBUG_LEN - 1] = '\0';
 
     if (err) {
@@ -180,7 +191,7 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
     }
 
     if (n == 0) {
-        Serial.printf("[Getij] %s: Geen metingen in response\n", loc.naam);
+        Serial.printf("[Getij] %s: Geen metingen in response (%dKB body)\n", loc.naam, content_len/1024);
         return false;
     }
 

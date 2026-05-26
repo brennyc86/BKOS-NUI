@@ -66,6 +66,7 @@ extern int    ota_check_tijd_uur;     // uur voor dagelijkse check (0–23)
 // Klok
 extern String klok_tijd;
 extern volatile bool wifi_verbonden;  // geschreven door Core 0, gelezen door Core 1
+extern bool wifi_open_auto;           // auto-verbinden met open netwerken (tracking)
 
 // Apparaat lokale staat (fallback als geen IO module)
 extern bool dev_lokaal[5];

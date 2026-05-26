@@ -118,7 +118,7 @@ static const char* cfg_chips_r2[] = {
 #if SCREEN_SMALL
 
 // Totale virtuele inhoudshoogte instellingen (som van alle y += stappen + 26px laatste rij)
-#define PICO_CFG_INS_H  252  // 2 + 36+30+34+30+30+30+30 = 222 + 30(PIN item)
+#define PICO_CFG_INS_H  282  // +30 voor open netwerken toggle
 static int pico_cfg_scroll_y = 0;  // pixels omhoog verschoven
 
 // PIN overlay voor 240×320
@@ -486,6 +486,18 @@ static void pico_cfg_instellingen_teken() {
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
     y += 30;
 
+    // Open netwerken toggle (PIN vereist)
+    {
+        uint16_t obg  = (ontg && wifi_open_auto) ? RGB565(20, 4, 0) : C_SURFACE2;
+        uint16_t oacc = (ontg && wifi_open_auto) ? C_AMBER           : C_TEXT_DIM;
+        tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, ontg ? obg : C_SURFACE);
+        tft.drawRoundRect(4, y, TFT_W - 8, 26, 5, oacc);
+        tft.setTextSize(1); tft.setTextColor(ontg ? oacc : C_DARK_GRAY);
+        tft.setCursor(10, y + (26 - 8) / 2);
+        tft.print(wifi_open_auto ? "OPEN WIFI: AAN" : "OPEN WIFI: UIT");
+    }
+    y += 30;
+
     // PIN
     ui_knop(4, y, TFT_W - 8, 26, "PINCODE WIJZIGEN  >",
             C_SURFACE2, ontg ? C_AMBER : C_TEXT_DIM);
@@ -584,6 +596,13 @@ static void pico_cfg_instellingen_run(int x, int y) {
     if (y >= y0 && y < y0 + 26) {
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_OTA; scherm_bouwen = true; return;
+    }
+    y0 += 30;
+    // Open netwerken toggle (PIN vereist)
+    if (y >= y0 && y < y0 + 26) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        wifi_open_auto = !wifi_open_auto;
+        state_save(); pico_cfg_instellingen_teken(); return;
     }
     y0 += 30;
     // PIN
@@ -1032,8 +1051,23 @@ static void cfg_instellingen_teken() {
             ontg ? "VERGRENDELEN" : "ONTGRENDELEN",
             C_SURFACE2, ontg ? C_AMBER : C_TEXT);
 
+    // Open netwerken toggle (PIN vereist — tracking-optie)
+    int ow_y = wow_y + 38 + 2;
+    {
+        uint16_t obg  = wifi_open_auto ? RGB565(20, 4, 0) : C_SURFACE2;
+        uint16_t oacc = wifi_open_auto ? C_AMBER         : C_TEXT_DIM;
+        tft.fillRoundRect(8, ow_y, TFT_W - 16, 30, 6, ontg ? obg : C_SURFACE);
+        tft.drawRoundRect(8, ow_y, TFT_W - 16, 30, 6, ontg ? oacc : C_SURFACE3);
+        tft.setTextSize(1);
+        tft.setTextColor(ontg ? oacc : C_DARK_GRAY);
+        const char* olbl = wifi_open_auto ? "OPEN WIFI AAN  (verbindt automatisch met open netwerken — tracking)"
+                                          : "OPEN WIFI UIT  (verbindt niet automatisch met open netwerken)";
+        tft.setCursor(16, ow_y + (30 - 8) / 2);
+        tft.print(olbl);
+    }
+
     // Kleurpaletten (achter PIN — gedempt als vergrendeld)
-    int sy = wow_y + 38 + 4;
+    int sy = ow_y + 30 + 4;
     palette_swatches_teken(sy);
     if (!ontg) {
         for (int dy = sy; dy < sy + 58; dy += 2)
@@ -1138,7 +1172,7 @@ static void cfg_instellingen_teken() {
     helderheid_balk_teken();
     int _cfg_sb_y = HLD_Y + HLD_H + 4;
     ui_scrollbar(TFT_W - UI_SB_W, _cfg_sb_y, NAV_Y - _cfg_sb_y, cfg_ins_scroll_y,
-                 max(0, 380 + (int)UI_SCY(40) - CONTENT_H));
+                 max(0, 414 + (int)UI_SCY(40) - CONTENT_H));
 }
 
 static void cfg_instellingen_run(int x, int y) {
@@ -1167,7 +1201,7 @@ static void cfg_instellingen_run(int x, int y) {
     }
 
     {
-        int max_scroll = max(0, 380 + (int)UI_SCY(40) - CONTENT_H);
+        int max_scroll = max(0, 414 + (int)UI_SCY(40) - CONTENT_H);
         if (max_scroll > 0) {
             int sb_y_pos = HLD_Y + HLD_H + 4;
             int klik = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, sb_y_pos, NAV_Y - sb_y_pos);
@@ -1180,7 +1214,8 @@ static void cfg_instellingen_run(int x, int y) {
     }
 
     int wow_y = HLD_Y + HLD_H + 4 - cfg_ins_scroll_y;
-    int sy    = wow_y + 38 + 4;
+    int ow_y  = wow_y + 38 + 2;   // open netwerken toggle
+    int sy    = ow_y + 30 + 4;
     int by    = sy + 62;
     int zy    = by + 44;
     int ay    = zy + 44;
@@ -1208,6 +1243,15 @@ static void cfg_instellingen_run(int x, int y) {
                 pin_vereist_tonen();
             }
         }
+        return;
+    }
+
+    // Open netwerken toggle — PIN vereist
+    if (y >= ow_y && y < ow_y + 30) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        wifi_open_auto = !wifi_open_auto;
+        state_save();
+        cfg_instellingen_teken();
         return;
     }
 

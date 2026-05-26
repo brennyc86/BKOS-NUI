@@ -16,10 +16,13 @@
 #define NTP_GMT_OFFSET   3600   // CET = UTC+1
 #define NTP_DST_OFFSET   3600   // CEST = +1 extra
 
+#define WIFI_MAX_CREDS   5     // maximaal aantal opgeslagen netwerken
+
 extern volatile bool wifi_verbonden;
 extern bool wifi_aangesloten;
 extern volatile bool wifi_ota_modus;   // true = OTA scherm actief, WiFi aanhouden
 extern TaskHandle_t  netwerk_task_handle;
+extern bool wifi_open_auto;            // auto-verbinden met open netwerken (tracking)
 
 void wifi_setup();
 void wifi_loop();
@@ -28,6 +31,14 @@ void wifi_reset();
 bool wifi_verbind(const char* ssid, const char* wachtwoord);
 void ntp_setup();
 void ntp_loop();
+
+// Meervoudige credential opslag
+int  wifi_creds_cnt();
+void wifi_creds_lees(int idx, char* ssid, int ssid_len, char* pass, int pass_len);
+bool wifi_creds_toevoegen(const char* ssid, const char* pass);
+void wifi_creds_verwijder(int idx);
+void wifi_creds_wis_alles();
+bool wifi_internet_ok();
 
 void wifi_taak_start();                         // start FreeRTOS background task
 void wifi_ota_zet(bool actief);                 // OTA scherm aan/uit → WiFi beheer

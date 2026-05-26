@@ -47,6 +47,7 @@ void state_save() {
     f.printf("ota_beta=%d\n", (int)ota_beta_kanal);
     f.printf("ota_int=%d\n",  ota_check_interval_min);
     f.printf("ota_tijd=%d\n", ota_check_tijd_uur);
+    f.printf("wifi_open=%d\n", (int)wifi_open_auto);
     f.close();
 }
 
@@ -61,6 +62,7 @@ void state_load() {
     licht_nav_offset_min  = 0;
     licht_int_offset_min  = 15;
     onthoud_licht_modus   = false;
+    wifi_open_auto        = false;
     for (int i = 0; i < 5; i++) dev_lokaal[i] = false;
 
     if (!SPIFFS.exists(CONFIG_BESTAND)) return;
@@ -94,6 +96,7 @@ void state_load() {
         if (key == "ota_beta")  { ota_beta_kanal = (val.toInt() != 0); ota_beta_kanal_geladen = true; }
         if (key == "ota_int")   ota_check_interval_min = val.toInt();
         if (key == "ota_tijd")  ota_check_tijd_uur     = val.toInt();
+        if (key == "wifi_open") wifi_open_auto         = (val.toInt() != 0);
     }
     f.close();
 

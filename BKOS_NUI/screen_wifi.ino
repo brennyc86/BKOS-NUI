@@ -205,22 +205,54 @@ void screen_wifi_teken() {
 
     if (wifi_staat == WIFI_ST_IDLE) {
         tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);
+
+        // Verbinding status
+        int cy = CONTENT_Y + 10;
         if (wifi_verbonden) {
-            tft.setTextSize(2);
-            tft.setTextColor(C_GREEN);
-            tft.setCursor(40, CONTENT_Y + 60);
-            tft.print("Verbonden: ");
-            tft.print(WiFi.SSID());
-            tft.setTextSize(1);
-            tft.setTextColor(C_TEXT_DIM);
-            tft.setCursor(40, CONTENT_Y + 90);
-            tft.print("IP: "); tft.print(WiFi.localIP().toString());
+            tft.setTextSize(2); tft.setTextColor(C_GREEN);
+            tft.setCursor(40, cy); tft.print("Verbonden: "); tft.print(WiFi.SSID());
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(40, cy + 26); tft.print("IP: "); tft.print(WiFi.localIP().toString());
+        } else {
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(40, cy + 10); tft.print("Niet verbonden");
         }
-        ui_knop_groot(60, CONTENT_Y + 120, TFT_W - 120, 60,
+
+        // Opgeslagen netwerken
+        int cnt = wifi_creds_cnt();
+        int ly = CONTENT_Y + 64;
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        char hbuf[40]; snprintf(hbuf, sizeof(hbuf), "OPGESLAGEN NETWERKEN (%d/%d)", cnt, WIFI_MAX_CREDS);
+        tft.setCursor(40, ly); tft.print(hbuf);
+        ly += 18;
+        if (cnt == 0) {
+            tft.setTextColor(C_DARK_GRAY);
+            tft.setCursor(40, ly + 8); tft.print("Geen opgeslagen netwerken");
+            ly += 30;
+        } else {
+            for (int n = 0; n < cnt; n++) {
+                char ns[33]; char np[2];
+                wifi_creds_lees(n, ns, sizeof(ns), np, sizeof(np));
+                bool actief = (wifi_verbonden && WiFi.SSID() == ns);
+                uint16_t rbg = actief ? RGB565(0,16,0) : C_SURFACE;
+                tft.fillRoundRect(34, ly, TFT_W - 100, 28, 4, rbg);
+                tft.setTextSize(1); tft.setTextColor(actief ? C_GREEN : C_TEXT);
+                tft.setCursor(42, ly + (28 - 8) / 2); tft.print(ns);
+                // X knop
+                tft.fillRoundRect(TFT_W - 60, ly + 4, 30, 20, 3, C_SURFACE2);
+                tft.setTextColor(C_RED_BRIGHT); tft.setTextSize(1);
+                tft.setCursor(TFT_W - 52, ly + 6); tft.print("X");
+                ly += 32;
+            }
+        }
+
+        // Knoppen
+        int btn_y = max(ly + 10, CONTENT_Y + 238);
+        ui_knop_groot(60, btn_y, TFT_W - 120, 52,
                       "SCANNEN", "Beschikbare WiFi netwerken zoeken",
                       C_SURFACE, C_CYAN, C_CYAN, false);
-        ui_knop_groot(60, CONTENT_Y + 200, TFT_W - 120, 60,
-                      "WIFI WISSEN",  "Verbinding vergeten — herstart vereist",
+        ui_knop_groot(60, btn_y + 62, TFT_W - 120, 52,
+                      "WIFI WISSEN", "Alle opgeslagen netwerken vergeten — herstart",
                       C_SURFACE, C_RED_BRIGHT, C_RED_BRIGHT, false);
     } else if (wifi_staat == WIFI_ST_WACHTWOORD) {
         screen_config_toetsenbord_teken();
@@ -235,6 +267,18 @@ static void wifi_selecteer_netwerk(int idx) {
     String ssid = WiFi.SSID(idx);
     strncpy(wifi_ssid_buf, ssid.c_str(), 32); wifi_ssid_buf[32] = '\0';
     wifi_pass_buf[0] = '\0';
+
+    // Open netwerk: direct verbinden zonder wachtwoord
+#if PLATFORM_ESP32
+    bool is_open = (WiFi.encryptionType(idx) == WIFI_AUTH_OPEN);
+#else
+    bool is_open = (WiFi.encryptionType(idx) == CYW43_AUTH_OPEN);
+#endif
+    if (is_open) {
+        wifi_verbind_uitvoeren();
+        return;
+    }
+
     wifi_staat = WIFI_ST_WACHTWOORD;
     cfg_invoer[0]     = '\0';
     cfg_kb_info_mode  = true;
@@ -329,14 +373,27 @@ void screen_wifi_run(int x, int y, bool aanraking) {
     }
 
     if (wifi_staat == WIFI_ST_IDLE) {
+        // X knop: verwijder opgeslagen netwerk
+        int cnt = wifi_creds_cnt();
+        int ly = CONTENT_Y + 82;
+        for (int n = 0; n < cnt; n++) {
+            if (y >= ly && y < ly + 32 && x >= TFT_W - 60 && x < TFT_W - 30) {
+                wifi_creds_verwijder(n);
+                scherm_bouwen = true;
+                return;
+            }
+            ly += 32;
+        }
+
+        // Knoppen — y positie afhankelijk van aantal opgeslagen netwerken
+        int btn_y = max(ly + 10, CONTENT_Y + 238);
+
         // SCANNEN knop
-        if (y >= CONTENT_Y + 120 && y < CONTENT_Y + 180) {
+        if (y >= btn_y && y < btn_y + 52) {
             wifi_staat = WIFI_ST_SCANNING;
             tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);
-            tft.setTextSize(2);
-            tft.setTextColor(C_CYAN);
-            tft.setCursor(60, CONTENT_Y + 100);
-            tft.print("Scannen...");
+            tft.setTextSize(2); tft.setTextColor(C_CYAN);
+            tft.setCursor(60, CONTENT_Y + 100); tft.print("Scannen...");
             WiFi.mode(WIFI_STA);
             wifi_n_netwerken = WiFi.scanNetworks();
             wifi_scroll = 0;
@@ -345,14 +402,11 @@ void screen_wifi_run(int x, int y, bool aanraking) {
             return;
         }
         // WIFI WISSEN
-        if (y >= CONTENT_Y + 200 && y < CONTENT_Y + 260) {
+        if (y >= btn_y + 62 && y < btn_y + 114) {
             tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);
-            tft.setTextSize(2);
-            tft.setTextColor(C_RED_BRIGHT);
-            tft.setCursor(40, CONTENT_Y + 80);
-            tft.print("WiFi wordt gewist...");
-            tft.setTextSize(1);
-            tft.setTextColor(C_TEXT_DIM);
+            tft.setTextSize(2); tft.setTextColor(C_RED_BRIGHT);
+            tft.setCursor(40, CONTENT_Y + 80); tft.print("WiFi wordt gewist...");
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(40, CONTENT_Y + 110);
             tft.print("Apparaat herstart. Verbind daarna met AP: BKOS-NUI-Setup");
             delay(2500);

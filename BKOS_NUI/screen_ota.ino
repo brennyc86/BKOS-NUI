@@ -6,15 +6,17 @@
 
 #define PICO_OTA_BTN_X   8
 #define PICO_OTA_BTN_W   (TFT_W - 16)
-#define PICO_OTA_BTN_H   32
-#define PICO_OTA_BTN_GAP 6
-#define PICO_OTA_BTN_Y1  (CONTENT_Y + 8)
+#define PICO_OTA_BTN_H   UI_SCY(32)
+#define PICO_OTA_BTN_GAP 5
+#define PICO_OTA_BTN_Y1  (CONTENT_Y + 6)
 #define PICO_OTA_BTN_Y2  (PICO_OTA_BTN_Y1 + PICO_OTA_BTN_H + PICO_OTA_BTN_GAP)
 #define PICO_OTA_BTN_Y3  (PICO_OTA_BTN_Y2 + PICO_OTA_BTN_H + PICO_OTA_BTN_GAP)
 #define PICO_OTA_BTN_Y4  (PICO_OTA_BTN_Y3 + PICO_OTA_BTN_H + PICO_OTA_BTN_GAP)
+#define PICO_OTA_BTN_Y5  (PICO_OTA_BTN_Y4 + PICO_OTA_BTN_H + PICO_OTA_BTN_GAP)
+#define PICO_OTA_BTN_Y6  (PICO_OTA_BTN_Y5 + PICO_OTA_BTN_H + PICO_OTA_BTN_GAP)
 
 static void pico_ota_info_teken() {
-    int y = PICO_OTA_BTN_Y4 + PICO_OTA_BTN_H + 8;
+    int y = PICO_OTA_BTN_Y6 + PICO_OTA_BTN_H + 6;
     int h = NAV_Y - y - 4;
     tft.fillRect(PICO_OTA_BTN_X, y, PICO_OTA_BTN_W, h, C_BG);
     if (h < 10) return;
@@ -65,6 +67,15 @@ static void pico_screen_ota_teken_impl() {
 #endif
     ui_knop(PICO_OTA_BTN_X, PICO_OTA_BTN_Y4, PICO_OTA_BTN_W, PICO_OTA_BTN_H,
             "WIFI NETWERKEN", C_SURFACE, C_CYAN);
+    ui_knop(PICO_OTA_BTN_X, PICO_OTA_BTN_Y5, PICO_OTA_BTN_W, PICO_OTA_BTN_H,
+            "VORIGE VERSIES", C_SURFACE, C_TEXT_DIM);
+#if PLATFORM_CYD40H || PLATFORM_CYD40V
+    ui_knop(PICO_OTA_BTN_X, PICO_OTA_BTN_Y6, PICO_OTA_BTN_W, PICO_OTA_BTN_H,
+            "ROTEER: " OTA_ALT_ORIENT_NAAM, C_SURFACE, C_AMBER);
+#else
+    // Geen oriëntatie-schakelaar voor andere platforms
+    (void)PICO_OTA_BTN_Y6;
+#endif
     pico_ota_info_teken();
     nav_bar_teken();
 }
@@ -96,9 +107,15 @@ static void pico_screen_ota_teken_impl() {
 #define OTA_RINT_H   UI_SCY(36)
 #define OTA_RTIME_Y  (OTA_RINT_Y + OTA_RINT_H + 2)   // Dagelijkse check tijd
 #define OTA_RTIME_H  UI_SCY(28)
-#define OTA_RVGV_Y   (OTA_RTIME_Y + OTA_RTIME_H + 4) // Vorige versies knop
+#define OTA_RVGV_Y   (OTA_RTIME_Y + OTA_RTIME_H + 4)  // Vorige versies knop
 #define OTA_RVGV_H   UI_SCY(40)
-#define OTA_RINFO_Y  (OTA_RVGV_Y + OTA_RVGV_H + 6)  // Info panel
+#define OTA_RORIENT_Y (OTA_RVGV_Y + OTA_RVGV_H + 4)  // Oriëntatie wissel (alleen CYD40)
+#define OTA_RORIENT_H UI_SCY(36)
+#if PLATFORM_CYD40H || PLATFORM_CYD40V
+  #define OTA_RINFO_Y  (OTA_RORIENT_Y + OTA_RORIENT_H + 6)
+#else
+  #define OTA_RINFO_Y  (OTA_RVGV_Y + OTA_RVGV_H + 6)  // Info panel
+#endif
 
 // ─── State ───────────────────────────────────────────────────────────────────
 static bool ota_verwijder_bevestig = false;
@@ -409,6 +426,10 @@ void screen_ota_teken() {
     _ota_interval_teken();
     _ota_time_teken();
     ui_knop(OTA_RX, OTA_RVGV_Y, OTA_RW, OTA_RVGV_H, "VORIGE VERSIES", C_SURFACE, C_TEXT_DIM);
+#if PLATFORM_CYD40H || PLATFORM_CYD40V
+    ui_knop(OTA_RX, OTA_RORIENT_Y, OTA_RW, OTA_RORIENT_H,
+            "ROTEER: " OTA_ALT_ORIENT_NAAM, C_SURFACE, C_AMBER);
+#endif
     _ota_info_rechts_teken();
 
     if (ota_verwijder_bevestig) ota_verwijder_overlay_teken();
@@ -420,11 +441,73 @@ void screen_ota_run(int x, int y, bool aanraking) {
 #if SCREEN_SMALL
     if (!aanraking) {
         static unsigned long last_update = 0;
-        if (millis() - last_update > 3000) { last_update = millis(); pico_ota_info_teken(); }
+        if (millis() - last_update > 3000) { last_update = millis(); if (!ota_vorige_tonen) pico_ota_info_teken(); }
         return;
     }
     int nav = nav_bar_klik(x, y);
-    if (nav >= 0 && nav != actief_scherm) { actief_scherm = nav; scherm_bouwen = true; return; }
+    if (nav >= 0 && nav != actief_scherm) {
+        ota_vorige_tonen = false; ota_flash_bevestig = false;
+        actief_scherm = nav; scherm_bouwen = true; return;
+    }
+
+    // ── VORIGE VERSIES overlay (portret) ─────────────────────────────────
+    if (ota_vorige_tonen) {
+        if (ota_flash_bevestig) {
+            int ox = 8, oy = CONTENT_Y + UI_SCY(40);
+            int ow = TFT_W - 16, oh = UI_SCY(160);
+            int bw2 = (ow - 24) / 2;
+            int by2 = oy + oh - UI_SCY(48);
+            int bh2 = UI_SCY(38);
+            if (y >= by2 && y < by2 + bh2) {
+                if (x >= ox + 8 && x < ox + 8 + bw2) {
+                    ota_flash_bevestig = false;
+                    _ota_vorige_overlay_teken();
+                } else if (x >= ox + 16 + bw2) {
+                    ota_flash_bevestig = false; ota_vorige_tonen = false;
+                    ota_download_toepassen(String(ota_flash_url));
+                }
+            }
+            return;
+        }
+        int hdr_h = UI_SCY(40);
+        if (y >= CONTENT_Y + 4 && y < CONTENT_Y + hdr_h && x >= TFT_W - UI_SCX(114)) {
+            ota_vorige_tonen = false; screen_ota_teken(); return;
+        }
+        int col_h = UI_SCY(20);
+        int rij_start_y = CONTENT_Y + hdr_h + 4 + col_h;
+        int rij_h = UI_SCY(46);
+        for (int i = 0; i < ota_releases_cnt; i++) {
+            int ry = rij_start_y + i * rij_h;
+            if (ry >= NAV_Y - 10) break;
+            if (y >= ry && y < ry + rij_h) {
+                bool huidig = (strcmp(ota_releases[i].versie, BKOS_NUI_VERSIE) == 0);
+                if (!huidig && x >= TFT_W - UI_SCX(124)) {
+                    strncpy(ota_flash_versie, ota_releases[i].versie, 15);
+                    strncpy(ota_flash_url,    ota_releases[i].url,    127);
+                    ota_flash_bevestig = true;
+                    // Compacte bevestigingsdialoog op portret
+                    int ox = 8, oy = CONTENT_Y + UI_SCY(40);
+                    int ow = TFT_W - 16, oh = UI_SCY(160);
+                    tft.fillRect(0, CONTENT_Y, TFT_W, NAV_Y - CONTENT_Y, RGB565(4, 8, 16));
+                    tft.fillRoundRect(ox, oy, ow, oh, 8, C_SURFACE);
+                    tft.drawRoundRect(ox, oy, ow, oh, 8, C_AMBER);
+                    tft.setTextSize(1); tft.setTextColor(C_AMBER);
+                    char ttl[32]; snprintf(ttl, sizeof(ttl), "VERSIE %s FLASHEN?", ota_flash_versie);
+                    ui_tekst_midden(ox, oy + UI_SCY(10), ow, ttl, C_AMBER, 1);
+                    tft.setTextColor(C_TEXT_DIM);
+                    tft.setCursor(ox + 10, oy + UI_SCY(28)); tft.print("Huidige firmware overschreven.");
+                    tft.setCursor(ox + 10, oy + UI_SCY(40)); tft.print("Apparaat herstart automatisch.");
+                    int bw2 = (ow - 24) / 2;
+                    int by2 = oy + oh - UI_SCY(48);
+                    int bh2 = UI_SCY(38);
+                    ui_knop(ox + 8,       by2, bw2, bh2, "ANNULEREN", C_SURFACE2, C_TEXT_DIM);
+                    ui_knop(ox + 16 + bw2, by2, bw2, bh2, "BEVESTIG",  C_AMBER,    C_BG);
+                }
+                return;
+            }
+        }
+        return;
+    }
     if (y >= PICO_OTA_BTN_Y1 && y < PICO_OTA_BTN_Y1 + PICO_OTA_BTN_H) {
 #if !PLATFORM_PICO
         ota_status_tekst = "Controleren..."; pico_ota_info_teken();
@@ -448,6 +531,22 @@ void screen_ota_run(int x, int y, bool aanraking) {
     if (y >= PICO_OTA_BTN_Y4 && y < PICO_OTA_BTN_Y4 + PICO_OTA_BTN_H) {
         actief_scherm = SCREEN_WIFI; scherm_bouwen = true; return;
     }
+    if (y >= PICO_OTA_BTN_Y5 && y < PICO_OTA_BTN_Y5 + PICO_OTA_BTN_H) {
+        ota_vorige_tonen   = true;
+        ota_vorige_geladen = false;
+        screen_ota_teken();
+        ota_laad_releases();
+        ota_vorige_geladen = true;
+        _ota_vorige_overlay_teken();
+        nav_bar_teken();
+        return;
+    }
+#if PLATFORM_CYD40H || PLATFORM_CYD40V
+    if (y >= PICO_OTA_BTN_Y6 && y < PICO_OTA_BTN_Y6 + PICO_OTA_BTN_H) {
+        ota_download_toepassen(String(OTA_ALT_ORIENT_URL));
+        return;
+    }
+#endif
     return;
 
 #else
@@ -620,6 +719,13 @@ void screen_ota_run(int x, int y, bool aanraking) {
             nav_bar_teken();
             return;
         }
+#if PLATFORM_CYD40H || PLATFORM_CYD40V
+        // Oriëntatie wissel
+        if (y >= OTA_RORIENT_Y && y < OTA_RORIENT_Y + OTA_RORIENT_H) {
+            ota_download_toepassen(String(OTA_ALT_ORIENT_URL));
+            return;
+        }
+#endif
     }
 #endif
 }

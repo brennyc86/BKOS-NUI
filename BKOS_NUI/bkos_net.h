@@ -66,6 +66,7 @@ struct NetPeer {
     uint32_t laast_gezien;
     uint8_t  io_modules;    // gerapporteerd door peer (0 = onbekend)
     uint8_t  io_kanalen;
+    char     pin[5];         // 4-cijferige PIN van slave (bekende peer)
 };
 
 // ESP-NOW pakket (max 250 bytes)
@@ -89,6 +90,7 @@ extern int      net_pair_pending;  // peer-idx met openstaand pairing-verzoek (-
 extern String   net_status;
 extern bool     net_klaar;
 extern bool     net_staat_gesync;   // master: true zodra staat gesynchroniseerd van een slave
+extern bool     net_auto_verbinden; // slave: automatisch zoeken naar master
 
 // ─── Functies ─────────────────────────────────────────────────────────────────
 void        net_setup();
@@ -98,6 +100,7 @@ void        net_opslaan();
 void        net_pair_sturen();
 void        net_pair_bevestigen(int peer_idx);
 void        net_pair_weigeren(int peer_idx);
+void        net_peer_verwijder(int idx);
 String      net_mac_str(const uint8_t* mac);
 const char* net_modus_naam(uint8_t m);
 bool        net_master_bekend();

@@ -56,15 +56,13 @@ static void _snw_tabs_teken() {
 struct _ModiItem { uint8_t m; const char* naam; const char* beschr; uint16_t kleur; };
 
 static void _snw_modus_tab_teken() {
-    const _ModiItem _modi[5] = {
-        { NET_STANDALONE, "STANDALONE",   "Geen netwerk, lokale bediening",        C_TEXT      },
-        { NET_MASTER,     "MASTER",       "Hoofd module — beheert netwerk en IO",  C_CYAN      },
-        { NET_SLAVE,      "SLAVE",        "Extra module met scherm en IO modules", C_GREEN     },
-        { NET_EXTRA,      "EXTRA SCHERM", "Alleen scherm, geen IO modules",        C_AMBER     },
-        { NET_HEADLESS,   "HEADLESS",     "Geen scherm, automatisch pairen",       C_TEXT_DIM  },
+    const _ModiItem _modi[3] = {
+        { NET_STANDALONE, "STANDALONE", "Geen netwerk, lokale bediening",        C_TEXT  },
+        { NET_MASTER,     "MASTER",     "Hoofd module — beheert netwerk en IO",  C_CYAN  },
+        { NET_SLAVE,      "SLAVE",      "Extra module met scherm en IO modules", C_GREEN },
     };
     int fy = SNW_VELD_Y;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
         bool sel = (net_modus == _modi[i].m);
         tft.fillRect(4, fy, TFT_W-8, SNW_MODUS_H-2,
                      sel ? C_SURFACE2 : (i%2==0 ? C_SURFACE : C_BG));
@@ -84,6 +82,25 @@ static void _snw_modus_tab_teken() {
         tft.setCursor(56, fy + 30); tft.print(_modi[i].beschr);
 #endif
         fy += SNW_MODUS_H;
+    }
+
+    // Auto-verbinden toggle (relevant voor SLAVE)
+    {
+        fy += 4;
+        bool av = net_auto_verbinden;
+        uint16_t tbg  = av ? RGB565(0,20,10) : C_SURFACE2;
+        uint16_t tacc = av ? C_GREEN : C_TEXT_DIM;
+        tft.fillRoundRect(4, fy, TFT_W-8, 30, 5, tbg);
+        tft.drawRoundRect(4, fy, TFT_W-8, 30, 5, tacc);
+        tft.setTextSize(1); tft.setTextColor(tacc);
+        tft.setCursor(16, fy + 11);
+#if SCREEN_SMALL
+        tft.print(av ? "AUTO-VERBINDEN AAN" : "AUTO-VERBINDEN UIT");
+#else
+        tft.print(av ? "AUTO-VERBINDEN AAN  (zoekt automatisch naar master)"
+                     : "AUTO-VERBINDEN UIT  (handmatig via PAIREN)");
+#endif
+        fy += 34;
     }
 
     // Herstart-banner als modus gewijzigd
@@ -135,15 +152,23 @@ static void _snw_apparaten_tab_teken() {
         tft.setCursor(12, fy + 6); tft.print(p.naam);
         tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(12, fy + 18); tft.print(net_modus_naam(p.modus));
-        // Status rechts
-        uint16_t sk = p.actief ? C_GREEN : (p.bevestigd ? C_TEXT_DIM : C_AMBER);
-        tft.setTextColor(sk);
-        tft.setCursor(TFT_W-52, fy + 14);
-        tft.print(p.bevestigd ? (p.actief ? "online" : "offline") : "wacht");
-        // Compacte JA/NEE knoppen bij pending
-        if (pending) {
+        // Status / PIN rechts
+        if (pending && strlen(p.pin) == 4) {
+            tft.setTextColor(C_AMBER);
+            tft.setCursor(TFT_W-100, fy + 6); tft.print("PIN:"); tft.print(p.pin);
+            ui_knop(TFT_W-88, fy+4+12, 40, SNW_PEER_H-8-12, "JA",  C_GREEN,      C_BG);
+            ui_knop(TFT_W-44, fy+4+12, 40, SNW_PEER_H-8-12, "NEE", C_RED_BRIGHT, C_BG);
+        } else if (pending) {
             ui_knop(TFT_W-88, fy+4, 40, SNW_PEER_H-8, "JA",  C_GREEN,      C_BG);
             ui_knop(TFT_W-44, fy+4, 40, SNW_PEER_H-8, "NEE", C_RED_BRIGHT, C_BG);
+        } else {
+            uint16_t sk = p.actief ? C_GREEN : C_TEXT_DIM;
+            tft.setTextColor(sk);
+            tft.setCursor(TFT_W-52, fy + 14);
+            tft.print(p.actief ? "online" : "offline");
+            // X verwijder knop
+            if (net_modus == NET_MASTER)
+                ui_knop(TFT_W-36, fy+4, 30, SNW_PEER_H-8, "X", C_RED_BRIGHT, C_TEXT);
         }
 #else
         uint16_t nk = pending ? C_AMBER : C_TEXT;
@@ -151,13 +176,24 @@ static void _snw_apparaten_tab_teken() {
         tft.setCursor(12, fy+12); tft.print(p.naam);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(220, fy+18); tft.print(net_modus_naam(p.modus));
-        uint16_t sk = p.actief ? C_GREEN : (p.bevestigd ? C_TEXT_DIM : C_AMBER);
-        tft.setTextColor(sk);
-        tft.setCursor(400, fy+18);
-        tft.print(p.bevestigd ? (p.actief ? "online" : "offline") : "wacht...");
         if (pending) {
+            // Toon PIN als beschikbaar
+            if (strlen(p.pin) == 4) {
+                tft.setTextColor(C_AMBER);
+                tft.setCursor(400, fy+10); tft.print("PIN:");
+                tft.setTextSize(2); tft.setCursor(430, fy+6); tft.print(p.pin);
+                tft.setTextSize(1);
+            }
             ui_knop(TFT_W-220, fy+6, 100, 30, "ACCEPTEER", C_GREEN,      C_BG);
             ui_knop(TFT_W-112, fy+6, 100, 30, "WEIGER",    C_RED_BRIGHT, C_BG);
+        } else {
+            uint16_t sk = p.actief ? C_GREEN : C_TEXT_DIM;
+            tft.setTextColor(sk);
+            tft.setCursor(400, fy+18);
+            tft.print(p.actief ? "online" : "offline");
+            // X verwijder knop (master only)
+            if (net_modus == NET_MASTER)
+                ui_knop(TFT_W-50, fy+7, 38, 28, "X", C_RED_BRIGHT, C_TEXT);
         }
 #endif
         fy += SNW_PEER_H;
@@ -254,17 +290,27 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
     if (snw_tab == 0) {
         int fy = SNW_VELD_Y;
 
-        // Selecteer modus via rijklik
+        // Selecteer modus via rijklik (3 modi)
         int rij = (y - fy) / SNW_MODUS_H;
-        if (rij >= 0 && rij < 5) {
-            net_modus = (uint8_t)rij;
+        if (rij >= 0 && rij < 3) {
+            const uint8_t modi_waarden[3] = { NET_STANDALONE, NET_MASTER, NET_SLAVE };
+            net_modus = modi_waarden[rij];
             snw_opgeslagen_modus = 0xFF;
             scherm_bouwen = true;
             return;
         }
 
+        // Auto-verbinden toggle
+        int toggle_y = SNW_VELD_Y + 3 * SNW_MODUS_H + 4;
+        if (y >= toggle_y && y < toggle_y + 30) {
+            net_auto_verbinden = !net_auto_verbinden;
+            net_opslaan();
+            scherm_bouwen = true;
+            return;
+        }
+
         // OPSLAAN / HERSTART knoppen
-        int knop_y = SNW_VELD_Y + 5 * SNW_MODUS_H + 4;
+        int knop_y = toggle_y + 34;
         if (y >= knop_y && y < knop_y + 36) {
             if (snw_opgeslagen_modus != 0xFF) {
                 // HERSTART NU
@@ -294,12 +340,20 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
             int ry = rij_start_y + i * SNW_PEER_H;
             if (y < ry || y >= ry + SNW_PEER_H) continue;
             if (!net_peers[i].bevestigd && net_modus == NET_MASTER) {
+                // Pending: ACCEPTEER / WEIGER knoppen
 #if SCREEN_SMALL
                 if (x >= TFT_W - 88 && x < TFT_W - 44) { net_pair_bevestigen(i); scherm_bouwen = true; return; }
                 if (x >= TFT_W - 44)                    { net_pair_weigeren(i);  scherm_bouwen = true; return; }
 #else
                 if (x >= TFT_W - 220 && x < TFT_W - 112) { net_pair_bevestigen(i); scherm_bouwen = true; return; }
                 if (x >= TFT_W - 112 && x < TFT_W - 10)  { net_pair_weigeren(i);  scherm_bouwen = true; return; }
+#endif
+            } else if (net_modus == NET_MASTER) {
+                // Bevestigd: X verwijder knop
+#if SCREEN_SMALL
+                if (x >= TFT_W - 36) { net_peer_verwijder(i); return; }
+#else
+                if (x >= TFT_W - 50) { net_peer_verwijder(i); return; }
 #endif
             }
         }

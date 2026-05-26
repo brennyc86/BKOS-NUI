@@ -16,7 +16,7 @@
 LuaNetMsg lua_net_q[LUA_NET_Q_SIZE];
 uint8_t   lua_net_q_cnt = 0;
 
-uint8_t  net_modus        = NET_STANDALONE;
+uint8_t  net_modus        = NET_SLAVE;
 NetPeer  net_peers[NET_MAX_PEERS];
 int      net_peers_cnt    = 0;
 char     net_eigen_naam[NET_NAAM_LEN] = "BKOS-NUI";
@@ -27,6 +27,7 @@ int      net_pair_pending = -1;
 String   net_status       = "Niet actief";
 bool     net_klaar        = false;
 bool     net_staat_gesync = false;
+bool     net_auto_verbinden = true;
 
 #define NET_BESTAND      "/net_config.csv"
 #define NET_PEERS_BESTAND "/net_peers.csv"
@@ -107,7 +108,8 @@ static void _mac_van_str(const char* str, uint8_t* mac) {
 
 // ─── SPIFFS opslaan / laden ───────────────────────────────────────────────────
 void net_laden() {
-    net_modus = NET_STANDALONE;
+    net_modus = NET_SLAVE;   // standaard voor nieuwe unit
+    net_auto_verbinden = true;
     snprintf(net_eigen_naam, NET_NAAM_LEN, "BKOS-NUI");
     memset(net_master_mac, 0, 6);
     net_peers_cnt = 0;
@@ -122,9 +124,10 @@ void net_laden() {
     if (!f) return;
     while (f.available()) {
         String lijn = f.readStringUntil('\n'); lijn.trim();
-        if (lijn.startsWith("modus:"))  net_modus = (uint8_t)lijn.substring(6).toInt();
-        if (lijn.startsWith("naam:"))   strncpy(net_eigen_naam, lijn.substring(5).c_str(), NET_NAAM_LEN - 1);
-        if (lijn.startsWith("master:")) _mac_van_str(lijn.substring(7).c_str(), net_master_mac);
+        if (lijn.startsWith("modus:"))         net_modus = (uint8_t)lijn.substring(6).toInt();
+        if (lijn.startsWith("naam:"))          strncpy(net_eigen_naam, lijn.substring(5).c_str(), NET_NAAM_LEN - 1);
+        if (lijn.startsWith("master:"))        _mac_van_str(lijn.substring(7).c_str(), net_master_mac);
+        if (lijn.startsWith("auto_verbinden:")) net_auto_verbinden = (lijn.substring(15).toInt() != 0);
     }
     f.close();
 
@@ -134,12 +137,17 @@ void net_laden() {
     while (fp.available() && net_peers_cnt < NET_MAX_PEERS) {
         String lijn = fp.readStringUntil('\n'); lijn.trim();
         if (lijn.length() < 17) continue;
-        // formaat: AA:BB:CC:DD:EE:FF:modus:naam
+        // formaat: AA:BB:CC:DD:EE:FF:modus:naam:pin
         if (lijn[17] != ':') continue;
         _mac_van_str(lijn.c_str(), net_peers[net_peers_cnt].mac);
         int p2 = lijn.indexOf(':', 18);
         net_peers[net_peers_cnt].modus = lijn.substring(18, p2 >= 18 ? p2 : lijn.length()).toInt();
-        if (p2 > 18) strncpy(net_peers[net_peers_cnt].naam, lijn.substring(p2 + 1).c_str(), NET_NAAM_LEN - 1);
+        int p3 = (p2 > 18) ? lijn.indexOf(':', p2 + 1) : -1;
+        if (p2 > 18) {
+            String naam = (p3 > p2) ? lijn.substring(p2 + 1, p3) : lijn.substring(p2 + 1);
+            strncpy(net_peers[net_peers_cnt].naam, naam.c_str(), NET_NAAM_LEN - 1);
+        }
+        if (p3 > 0) strncpy(net_peers[net_peers_cnt].pin, lijn.substring(p3 + 1).c_str(), 4);
         net_peers[net_peers_cnt].bevestigd = true;
         net_peers[net_peers_cnt].actief    = false;
         net_peers_cnt++;
@@ -151,8 +159,9 @@ void net_opslaan() {
     SPIFFS_BEGIN();
     File f = SPIFFS.open(NET_BESTAND, "w");
     if (!f) return;
-    f.printf("modus:%d\n", net_modus);
-    f.printf("naam:%s\n",  net_eigen_naam);
+    f.printf("modus:%d\n",          net_modus);
+    f.printf("naam:%s\n",           net_eigen_naam);
+    f.printf("auto_verbinden:%d\n", (int)net_auto_verbinden);
     if (net_master_bekend()) f.printf("master:%s\n", net_mac_str(net_master_mac).c_str());
     f.close();
 
@@ -161,10 +170,11 @@ void net_opslaan() {
         if (!fp) return;
         for (int i = 0; i < net_peers_cnt; i++) {
             if (!net_peers[i].bevestigd) continue;
-            fp.printf("%s:%d:%s\n",
+            fp.printf("%s:%d:%s:%s\n",
                 net_mac_str(net_peers[i].mac).c_str(),
                 net_peers[i].modus,
-                net_peers[i].naam);
+                net_peers[i].naam,
+                net_peers[i].pin);
         }
         fp.close();
     }
@@ -209,8 +219,15 @@ void net_pair_sturen() {
     pkt.type   = NET_MSG_PAIR_REQ;
     pkt.modus  = net_modus;
     strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    // Stuur eigen PIN mee (4 bytes ASCII) zodat master kan valideren
+    char eigen_pin[5] = "0000";
+    { File pf = SPIFFS.open("/bkos_pin.txt", "r");
+      if (pf) { String s = pf.readStringUntil('\n'); s.trim();
+                if (s.length() >= 4) strncpy(eigen_pin, s.c_str(), 4);
+                pf.close(); } }
+    memcpy(pkt.data, eigen_pin, 4);
     static const uint8_t broadcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
-    _stuur(broadcast, pkt, 0);
+    _stuur(broadcast, pkt, 4);
     net_pair_wacht = true;
     net_status = "Pairing verzoek verstuurd...";
     _last_pair_req = millis();
@@ -266,6 +283,16 @@ void net_pair_weigeren(int idx) {
     scherm_bouwen = true;
 }
 
+void net_peer_verwijder(int idx) {
+    if (idx < 0 || idx >= net_peers_cnt) return;
+    for (int i = idx; i < net_peers_cnt - 1; i++) net_peers[i] = net_peers[i + 1];
+    net_peers_cnt--;
+    if (net_pair_pending == idx) net_pair_pending = -1;
+    else if (net_pair_pending > idx) net_pair_pending--;
+    net_opslaan();
+    scherm_bouwen = true;
+}
+
 void net_staat_aanvragen(int peer_idx) {
 #if PLATFORM_ESP32
     if (!_espnow_ok || peer_idx < 0 || peer_idx >= net_peers_cnt) return;
@@ -314,8 +341,13 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 
     switch (pkt.type) {
 
-    case NET_MSG_PAIR_REQ:
+    case NET_MSG_PAIR_REQ: {
         if (net_modus != NET_MASTER) return;
+        // Extraheer PIN uit data[0..3]
+        char req_pin[5] = "0000";
+        if (pkt.data[0] >= '0' && pkt.data[0] <= '9') {
+            memcpy(req_pin, pkt.data, 4); req_pin[4] = '\0';
+        }
         if (idx < 0) {
             if (net_peers_cnt >= NET_MAX_PEERS) return;
             idx = net_peers_cnt++;
@@ -323,17 +355,33 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             net_peers[idx].bevestigd  = false;
             net_peers[idx].actief     = true;
             net_peers[idx].laast_gezien = millis();
+            net_peers[idx].pin[0] = '\0';
         }
         net_peers[idx].modus = pkt.modus;
         strncpy(net_peers[idx].naam, pkt.naam, NET_NAAM_LEN - 1);
-        if (net_peers[idx].bevestigd || pkt.modus == NET_HEADLESS) {
-            // Al gepaard of headless: stuur PAIR_ACK direct + hersynch IO/staat
+        if (pkt.modus == NET_HEADLESS) {
+            // Headless: direct accepteren zonder PIN-controle
+            memcpy(net_peers[idx].pin, req_pin, 5);
             net_pair_bevestigen(idx);
+        } else if (net_peers[idx].bevestigd) {
+            // Al gepaard: valideer PIN
+            if (strlen(net_peers[idx].pin) == 4 && memcmp(req_pin, net_peers[idx].pin, 4) == 0) {
+                net_pair_bevestigen(idx);  // PIN correct: auto-accept
+            } else {
+                // PIN klopt niet: vraag opnieuw goedkeuring
+                memcpy(net_peers[idx].pin, req_pin, 5);
+                net_peers[idx].bevestigd = false;
+                net_pair_pending = idx;
+                scherm_bouwen = true;
+            }
         } else {
+            // Nieuw apparaat: sla PIN op en wacht op goedkeuring
+            memcpy(net_peers[idx].pin, req_pin, 5);
             net_pair_pending = idx;
             scherm_bouwen    = true;
         }
         break;
+    }
 
     case NET_MSG_PAIR_ACK:
         if (net_modus == NET_MASTER) return;
@@ -1031,8 +1079,8 @@ void net_loop() {
         net_io_sturen();  // no-op als niets veranderd en <30s geleden verstuurd
     }
 
-    // Slave/extra/headless: herverbinden als niet gepaard
-    if (net_modus != NET_MASTER && !net_gepaard && nu - _last_pair_req >= NET_PAIR_INTERVAL) {
+    // Slave/extra/headless: herverbinden als niet gepaard én auto-verbinden aan
+    if (net_modus != NET_MASTER && net_auto_verbinden && !net_gepaard && nu - _last_pair_req >= NET_PAIR_INTERVAL) {
         net_pair_sturen();
     }
 

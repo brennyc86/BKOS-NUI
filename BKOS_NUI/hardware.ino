@@ -284,7 +284,7 @@ void hw_setup() {
     xTaskCreatePinnedToCore(
         _gui_taak,
         "gui_taak",
-        16384,   // 16KB stack — voldoende voor Lua + screen drawing + JSON
+        24576,   // 24KB stack — original ESP32 (CYD) heeft geen PSRAM, meer stack nodig
         nullptr,
         4,       // prioriteit 4 > loopTask prioriteit 1 → GUI preempt achtergrond
         nullptr,

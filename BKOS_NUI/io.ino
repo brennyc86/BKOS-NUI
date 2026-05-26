@@ -58,7 +58,7 @@ void io_bkoss_check() {
             }
             if (c != '\r') resp += c;
         }
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(1));  // idle task moet kunnen draaien; yield() volstaat niet
     }
     // Timeout — BKOSS reageert niet
 #endif
@@ -107,13 +107,13 @@ void io_detect() {
         IO_SERIAL.flush();
         unsigned long t = millis();
         for (int bit = 0; bit < 8; bit++) {
-            while (!IO_SERIAL.available() && millis() - t < 400) yield();
+            while (!IO_SERIAL.available() && millis() - t < 400) vTaskDelay(pdMS_TO_TICKS(1));
             if (!IO_SERIAL.available()) { ok = false; break; }
             char c = IO_SERIAL.read();
             if (c == '1') id |= (1 << bit);
         }
         // Spoel resterende bufferbytes weg (bijv. module-overgang karakter)
-        while (IO_SERIAL.available()) { IO_SERIAL.read(); yield(); }
+        while (IO_SERIAL.available()) IO_SERIAL.read();
         if (!ok || id == 0 || id == 255) break;
 
         tmp_aparaten[tmp_aparaten_cnt++] = id;
@@ -199,7 +199,7 @@ void io_cyclus() {
     // Lees ALLE inputs nadat de ATtiny alle outputs heeft verwerkt
     for (int i = 0; i < n; i++) {
         unsigned long t = millis();
-        while (!IO_SERIAL.available() && millis() - t < 200) yield();
+        while (!IO_SERIAL.available() && millis() - t < 200) vTaskDelay(pdMS_TO_TICKS(1));
 
         char c = '0';
         if (IO_SERIAL.available()) c = IO_SERIAL.read();
@@ -279,7 +279,7 @@ void io_setup_taak() {
     xTaskCreatePinnedToCore(
         _io_achtergrond_taak,
         "io_taak",
-        4096,
+        6144,
         nullptr,
         2,       // hogere prioriteit dan loopTask (1) zodat het niet uitgehongerd raakt
         nullptr,

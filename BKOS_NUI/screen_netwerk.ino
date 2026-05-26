@@ -17,10 +17,18 @@
   #define SNW_PEER_H  UI_SCY(44)  // rijhoogte in apparaten-tab
 #endif
 
-static byte snw_tab = 0;
-
-// Na OPSLAAN: modus waarvoor opgeslagen (om herstart-banner te tonen)
+static byte    snw_tab             = 0;
 static uint8_t snw_opgeslagen_modus = 0xFF;
+
+// PIN-invoer state voor pairing-beveiliging
+static char    snw_pin_buf[5]  = {0};
+static int     snw_pin_len     = 0;
+static bool    snw_pin_fout    = false;
+static int     snw_last_pending = -2;
+
+static void _snw_pin_reset() {
+    snw_pin_len = 0; snw_pin_fout = false; memset(snw_pin_buf, 0, 5);
+}
 
 // ─── Tab balk ─────────────────────────────────────────────────────────────────
 static void _snw_tabs_teken() {
@@ -84,7 +92,7 @@ static void _snw_modus_tab_teken() {
         fy += SNW_MODUS_H;
     }
 
-    // Auto-verbinden toggle (relevant voor SLAVE)
+    // Auto-verbinden toggle
     {
         fy += 4;
         bool av = net_auto_verbinden;
@@ -103,7 +111,7 @@ static void _snw_modus_tab_teken() {
         fy += 34;
     }
 
-    // Herstart-banner als modus gewijzigd
+    // Herstart-banner of OPSLAAN
     if (snw_opgeslagen_modus != 0xFF) {
         tft.fillRect(4, fy+4, TFT_W-8, 36, C_AMBER);
         tft.setTextSize(1); tft.setTextColor(C_BG);
@@ -118,8 +126,167 @@ static void _snw_modus_tab_teken() {
     }
 }
 
+// ─── PIN-invoer UI (bij pending pairing) ─────────────────────────────────────
+// Vaste Y-posities zodat teken en touch exact dezelfde layout gebruiken.
+#if SCREEN_SMALL
+  #define SNW_PIN_BOX_Y   (SNW_VELD_Y + 28)
+  #define SNW_PIN_BW      24
+  #define SNW_PIN_BH      28
+  #define SNW_PIN_BG      6
+  #define SNW_PIN_KBD_Y   (SNW_PIN_BOX_Y + SNW_PIN_BH + 14)
+  #define SNW_PIN_KW      36
+  #define SNW_PIN_KH      24
+  #define SNW_PIN_KG      4
+  #define SNW_PIN_BTN_Y   (SNW_PIN_KBD_Y + 2*(SNW_PIN_KH + 4))
+#else
+  #define SNW_PIN_BOX_Y   (SNW_VELD_Y + 62)
+  #define SNW_PIN_BW      44
+  #define SNW_PIN_BH      52
+  #define SNW_PIN_BG      12
+  #define SNW_PIN_KBD_Y   (SNW_PIN_BOX_Y + SNW_PIN_BH + 22)
+  #define SNW_PIN_KW      70
+  #define SNW_PIN_KH      46
+  #define SNW_PIN_KG      8
+  #define SNW_PIN_BTN_Y   (SNW_PIN_KBD_Y + 2*(SNW_PIN_KH + 6))
+#endif
+
+// krow_x: horizontaal begin van toetsenrij (5 toetsen gecentreerd)
+static inline int _snw_pin_krow_x() {
+    return (TFT_W - 5*SNW_PIN_KW - 4*SNW_PIN_KG) / 2;
+}
+// bx: begin van 4 PIN-vakjes gecentreerd
+static inline int _snw_pin_bx() {
+    return (TFT_W - (4*SNW_PIN_BW + 3*SNW_PIN_BG)) / 2;
+}
+
+static void _snw_pin_teken(int peer_idx) {
+    if (peer_idx < 0 || peer_idx >= net_peers_cnt) return;
+    const char* naam = net_peers[peer_idx].naam;
+
+    // Header
+#if SCREEN_SMALL
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(10, SNW_VELD_Y + 8);
+    tft.print("Verbindingsverzoek: ");
+    tft.setTextColor(C_AMBER); tft.print(naam);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(10, SNW_VELD_Y + 18); tft.print("Voer de PIN in van de slave:");
+#else
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(14, SNW_VELD_Y + 10); tft.print("Verbindingsverzoek van:");
+    tft.setTextSize(2); tft.setTextColor(C_AMBER);
+    tft.setCursor(14, SNW_VELD_Y + 22); tft.print(naam);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(14, SNW_VELD_Y + 46); tft.print("Voer de 4-cijferige PIN in van de slave module:");
+#endif
+
+    // PIN-invoervakjes
+    int bx = _snw_pin_bx();
+    for (int d = 0; d < 4; d++) {
+        int vx = bx + d * (SNW_PIN_BW + SNW_PIN_BG);
+        bool gevuld = (d < snw_pin_len);
+        uint16_t bc  = gevuld ? C_SURFACE2 : C_SURFACE;
+        uint16_t bord = snw_pin_fout ? C_RED_BRIGHT :
+                        (d == snw_pin_len ? C_CYAN : C_SURFACE3);
+        tft.fillRoundRect(vx, SNW_PIN_BOX_Y, SNW_PIN_BW, SNW_PIN_BH, 4, bc);
+        tft.drawRoundRect(vx, SNW_PIN_BOX_Y, SNW_PIN_BW, SNW_PIN_BH, 4, bord);
+        if (gevuld) {
+            tft.setTextSize(2); tft.setTextColor(C_TEXT);
+            tft.setCursor(vx + (SNW_PIN_BW - 12) / 2, SNW_PIN_BOX_Y + (SNW_PIN_BH - 16) / 2);
+            tft.print((char)snw_pin_buf[d]);
+        }
+    }
+
+    // Foutmelding in gereserveerde ruimte onder de vakjes
+    if (snw_pin_fout) {
+        tft.setTextSize(1); tft.setTextColor(C_RED_BRIGHT);
+        int ey = SNW_PIN_BOX_Y + SNW_PIN_BH + 4;
+        tft.setCursor(bx, ey); tft.print("Onjuiste PIN — probeer opnieuw");
+    }
+
+    // Numeriek toetsenbord: rij 1 = 1..5, rij 2 = 6..0
+    int krow_x = _snw_pin_krow_x();
+#if SCREEN_SMALL
+    int row_gap = 4;
+#else
+    int row_gap = 6;
+#endif
+    for (int d = 1; d <= 10; d++) {
+        int n = (d == 10) ? 0 : d;
+        int col = (d - 1) % 5, row = (d - 1) / 5;
+        int kx = krow_x + col * (SNW_PIN_KW + SNW_PIN_KG);
+        int ky = SNW_PIN_KBD_Y + row * (SNW_PIN_KH + row_gap);
+        char buf[2] = {(char)('0' + n), '\0'};
+        ui_knop(kx, ky, SNW_PIN_KW, SNW_PIN_KH, buf, C_SURFACE2, C_TEXT);
+    }
+
+    // WISSEN + WEIGER (elk halve toetsenbordbreed)
+    int hw = (5 * SNW_PIN_KW + 4 * SNW_PIN_KG) / 2 - 4;
+    ui_knop(krow_x,              SNW_PIN_BTN_Y, hw, SNW_PIN_KH, "< WISSEN", C_SURFACE2, C_TEXT_DIM);
+    ui_knop(krow_x + hw + 8,     SNW_PIN_BTN_Y, hw, SNW_PIN_KH, "WEIGER",   C_RED_BRIGHT, C_TEXT);
+}
+
+// Touch handler voor PIN-invoer; geeft true terug als de aanraking verwerkt is
+static bool _snw_pin_touch(int x, int y, int peer_idx) {
+    int krow_x = _snw_pin_krow_x();
+#if SCREEN_SMALL
+    int row_gap = 4;
+#else
+    int row_gap = 6;
+#endif
+
+    // Numerieke toetsen
+    for (int d = 1; d <= 10; d++) {
+        int n = (d == 10) ? 0 : d;
+        int col = (d - 1) % 5, row = (d - 1) / 5;
+        int kx = krow_x + col * (SNW_PIN_KW + SNW_PIN_KG);
+        int ky = SNW_PIN_KBD_Y + row * (SNW_PIN_KH + row_gap);
+        if (x >= kx && x < kx + SNW_PIN_KW && y >= ky && y < ky + SNW_PIN_KH) {
+            if (snw_pin_len < 4) {
+                snw_pin_buf[snw_pin_len++] = '0' + n;
+                snw_pin_fout = false;
+                if (snw_pin_len == 4) {
+                    snw_pin_buf[4] = '\0';
+                    // Vergelijk met intern opgeslagen PIN van de slave
+                    if (memcmp(snw_pin_buf, net_peers[peer_idx].pin, 4) == 0) {
+                        net_pair_bevestigen(peer_idx);
+                        _snw_pin_reset();
+                    } else {
+                        snw_pin_fout = true;
+                        snw_pin_len  = 0;
+                    }
+                }
+                scherm_bouwen = true;
+            }
+            return true;
+        }
+    }
+
+    // WISSEN / WEIGER knoppen
+    int hw = (5 * SNW_PIN_KW + 4 * SNW_PIN_KG) / 2 - 4;
+    if (y >= SNW_PIN_BTN_Y && y < SNW_PIN_BTN_Y + SNW_PIN_KH) {
+        if (x >= krow_x && x < krow_x + hw) {
+            if (snw_pin_len > 0) { snw_pin_len--; snw_pin_fout = false; }
+            scherm_bouwen = true;
+            return true;
+        }
+        if (x >= krow_x + hw + 8 && x < krow_x + 2*hw + 8) {
+            net_pair_weigeren(peer_idx);
+            _snw_pin_reset();
+            return true;
+        }
+    }
+    return false;
+}
+
 // ─── APPARATEN tab ────────────────────────────────────────────────────────────
 static void _snw_apparaten_tab_teken() {
+    // Pending pair: toon PIN-invoer in plaats van normale lijst
+    if (net_modus == NET_MASTER && net_pair_pending >= 0 && net_pair_pending < net_peers_cnt) {
+        _snw_pin_teken(net_pair_pending);
+        return;
+    }
+
     int fy = SNW_VELD_Y;
 
     // Kolomheader
@@ -143,58 +310,27 @@ static void _snw_apparaten_tab_teken() {
     }
     for (int i = 0; i < zichtbaar; i++) {
         NetPeer& p = net_peers[i];
-        bool pending = (net_modus == NET_MASTER && !p.bevestigd);
-        tft.fillRect(0, fy, TFT_W, SNW_PEER_H, pending ? C_SURFACE2 : (i%2==0 ? C_SURFACE : C_BG));
-
+        tft.fillRect(0, fy, TFT_W, SNW_PEER_H, i%2==0 ? C_SURFACE : C_BG);
 #if SCREEN_SMALL
-        // Naam + modus gestapeld links
-        tft.setTextSize(1); tft.setTextColor(pending ? C_AMBER : C_TEXT);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT);
         tft.setCursor(12, fy + 6); tft.print(p.naam);
         tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(12, fy + 18); tft.print(net_modus_naam(p.modus));
-        // Status / PIN rechts
-        if (pending && strlen(p.pin) == 4) {
-            tft.setTextColor(C_AMBER);
-            tft.setCursor(TFT_W-100, fy + 6); tft.print("PIN:"); tft.print(p.pin);
-            ui_knop(TFT_W-88, fy+4+12, 40, SNW_PEER_H-8-12, "JA",  C_GREEN,      C_BG);
-            ui_knop(TFT_W-44, fy+4+12, 40, SNW_PEER_H-8-12, "NEE", C_RED_BRIGHT, C_BG);
-        } else if (pending) {
-            ui_knop(TFT_W-88, fy+4, 40, SNW_PEER_H-8, "JA",  C_GREEN,      C_BG);
-            ui_knop(TFT_W-44, fy+4, 40, SNW_PEER_H-8, "NEE", C_RED_BRIGHT, C_BG);
-        } else {
-            uint16_t sk = p.actief ? C_GREEN : C_TEXT_DIM;
-            tft.setTextColor(sk);
-            tft.setCursor(TFT_W-52, fy + 14);
-            tft.print(p.actief ? "online" : "offline");
-            // X verwijder knop
-            if (net_modus == NET_MASTER)
-                ui_knop(TFT_W-36, fy+4, 30, SNW_PEER_H-8, "X", C_RED_BRIGHT, C_TEXT);
-        }
+        uint16_t sk = p.actief ? C_GREEN : C_TEXT_DIM;
+        tft.setTextColor(sk);
+        tft.setCursor(TFT_W-88, fy + 14); tft.print(p.actief ? "online" : "offline");
+        if (net_modus == NET_MASTER)
+            ui_knop(TFT_W-36, fy+4, 30, SNW_PEER_H-8, "X", C_RED_BRIGHT, C_TEXT);
 #else
-        uint16_t nk = pending ? C_AMBER : C_TEXT;
-        tft.setTextSize(2); tft.setTextColor(nk);
+        tft.setTextSize(2); tft.setTextColor(C_TEXT);
         tft.setCursor(12, fy+12); tft.print(p.naam);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(220, fy+18); tft.print(net_modus_naam(p.modus));
-        if (pending) {
-            // Toon PIN als beschikbaar
-            if (strlen(p.pin) == 4) {
-                tft.setTextColor(C_AMBER);
-                tft.setCursor(400, fy+10); tft.print("PIN:");
-                tft.setTextSize(2); tft.setCursor(430, fy+6); tft.print(p.pin);
-                tft.setTextSize(1);
-            }
-            ui_knop(TFT_W-220, fy+6, 100, 30, "ACCEPTEER", C_GREEN,      C_BG);
-            ui_knop(TFT_W-112, fy+6, 100, 30, "WEIGER",    C_RED_BRIGHT, C_BG);
-        } else {
-            uint16_t sk = p.actief ? C_GREEN : C_TEXT_DIM;
-            tft.setTextColor(sk);
-            tft.setCursor(400, fy+18);
-            tft.print(p.actief ? "online" : "offline");
-            // X verwijder knop (master only)
-            if (net_modus == NET_MASTER)
-                ui_knop(TFT_W-50, fy+7, 38, 28, "X", C_RED_BRIGHT, C_TEXT);
-        }
+        uint16_t sk = p.actief ? C_GREEN : C_TEXT_DIM;
+        tft.setTextColor(sk);
+        tft.setCursor(400, fy+18); tft.print(p.actief ? "online" : "offline");
+        if (net_modus == NET_MASTER)
+            ui_knop(TFT_W-50, fy+7, 38, 28, "X", C_RED_BRIGHT, C_TEXT);
 #endif
         fy += SNW_PEER_H;
     }
@@ -218,7 +354,6 @@ static void _snw_status_tab_teken() {
         tft.fillRect(4, fy, TFT_W-8, SNW_INFO_H-2, idx%2==0 ? C_SURFACE : C_BG);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
 #if SCREEN_SMALL
-        // Gestapeld: label bovenaan, waarde eronder (past altijd in breedte)
         tft.setCursor(10, fy + 4); tft.print(lbl);
         tft.setTextColor(kleur);
         tft.setCursor(10, fy + SNW_INFO_H/2 + 2); tft.print(val);
@@ -246,7 +381,6 @@ static void _snw_status_tab_teken() {
 
     _rij("Status", net_status.c_str(), net_gepaard ? C_GREEN : C_AMBER);
 
-    // Naam bewerken + pairen knoppen
     fy += 4;
     ui_knop(12, fy, 180, 34, "NAAM WIJZIGEN", C_SURFACE2, C_TEXT_DIM);
     if (net_modus != NET_STANDALONE && !net_gepaard)
@@ -255,6 +389,11 @@ static void _snw_status_tab_teken() {
 
 // ─── Hoofdfuncties ────────────────────────────────────────────────────────────
 void screen_netwerk_teken() {
+    // Reset PIN-invoer als het pending apparaat is veranderd
+    if (net_pair_pending != snw_last_pending) {
+        _snw_pin_reset();
+        snw_last_pending = net_pair_pending;
+    }
     tft.fillScreen(C_BG);
     sb_scherm_teken("NETWERK", C_CYAN);
     _snw_tabs_teken();
@@ -290,7 +429,6 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
     if (snw_tab == 0) {
         int fy = SNW_VELD_Y;
 
-        // Selecteer modus via rijklik (3 modi)
         int rij = (y - fy) / SNW_MODUS_H;
         if (rij >= 0 && rij < 3) {
             const uint8_t modi_waarden[3] = { NET_STANDALONE, NET_MASTER, NET_SLAVE };
@@ -300,7 +438,6 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
             return;
         }
 
-        // Auto-verbinden toggle
         int toggle_y = SNW_VELD_Y + 3 * SNW_MODUS_H + 4;
         if (y >= toggle_y && y < toggle_y + 30) {
             net_auto_verbinden = !net_auto_verbinden;
@@ -309,18 +446,15 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
             return;
         }
 
-        // OPSLAAN / HERSTART knoppen
         int knop_y = toggle_y + 34;
         if (y >= knop_y && y < knop_y + 36) {
             if (snw_opgeslagen_modus != 0xFF) {
-                // HERSTART NU
 #if SCREEN_SMALL
                 if (x >= TFT_W - 90) { net_opslaan(); PLATFORM_REBOOT(); }
 #else
                 if (x >= TFT_W - 180) { net_opslaan(); PLATFORM_REBOOT(); }
 #endif
             } else {
-                // OPSLAAN
                 if (x >= TFT_W/2 - 80 && x < TFT_W/2 + 80) {
                     snw_opgeslagen_modus = net_modus;
                     net_opslaan();
@@ -333,23 +467,19 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
 
     // ── APPARATEN tab ───────────────────────────────────────────────────────
     if (snw_tab == 1) {
+        // Pending pair: verwerk PIN-invoer aanraking
+        if (net_modus == NET_MASTER && net_pair_pending >= 0 && net_pair_pending < net_peers_cnt) {
+            _snw_pin_touch(x, y, net_pair_pending);
+            return;
+        }
+
         int rij_start_y = SNW_VELD_Y + 24;
         int zichtbaar   = min(net_peers_cnt, 6);
 
         for (int i = 0; i < zichtbaar; i++) {
             int ry = rij_start_y + i * SNW_PEER_H;
             if (y < ry || y >= ry + SNW_PEER_H) continue;
-            if (!net_peers[i].bevestigd && net_modus == NET_MASTER) {
-                // Pending: ACCEPTEER / WEIGER knoppen
-#if SCREEN_SMALL
-                if (x >= TFT_W - 88 && x < TFT_W - 44) { net_pair_bevestigen(i); scherm_bouwen = true; return; }
-                if (x >= TFT_W - 44)                    { net_pair_weigeren(i);  scherm_bouwen = true; return; }
-#else
-                if (x >= TFT_W - 220 && x < TFT_W - 112) { net_pair_bevestigen(i); scherm_bouwen = true; return; }
-                if (x >= TFT_W - 112 && x < TFT_W - 10)  { net_pair_weigeren(i);  scherm_bouwen = true; return; }
-#endif
-            } else if (net_modus == NET_MASTER) {
-                // Bevestigd: X verwijder knop
+            if (net_modus == NET_MASTER) {
 #if SCREEN_SMALL
                 if (x >= TFT_W - 36) { net_peer_verwijder(i); return; }
 #else

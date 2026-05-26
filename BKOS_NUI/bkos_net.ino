@@ -33,11 +33,12 @@ bool     net_auto_verbinden = true;
 #define NET_PEERS_BESTAND "/net_peers.csv"
 
 #if PLATFORM_ESP32
-static unsigned long _last_hb        = 0;
-static unsigned long _last_pair_req  = 0;
-static unsigned long _last_io_sync   = 0;
-static bool          _espnow_ok      = false;
-static bool          _io_sync_reset  = false;  // forceer volgende net_io_sturen() ongeacht snapshot
+static unsigned long _last_hb          = 0;
+static unsigned long _last_pair_req    = 0;
+static unsigned long _last_io_sync     = 0;
+static unsigned long _last_master_hb   = 0;   // slave: laatste heartbeat ontvangen van master
+static bool          _espnow_ok        = false;
+static bool          _io_sync_reset    = false;  // forceer volgende net_io_sturen() ongeacht snapshot
 
 // Boot-sync: master neemt staat over van peer met langste uptime na herstart
 #define BOOT_SYNC_MS  6000UL
@@ -285,6 +286,17 @@ void net_pair_weigeren(int idx) {
 
 void net_peer_verwijder(int idx) {
     if (idx < 0 || idx >= net_peers_cnt) return;
+#if PLATFORM_ESP32
+    // Stuur ONTKOPPEL aan bevestigde peers zodat zij weten dat ze verwijderd zijn
+    if (_espnow_ok && net_peers[idx].bevestigd) {
+        NetPaket pkt = {};
+        pkt.versie = NET_PROTOCOL_VERSIE;
+        pkt.type   = NET_MSG_ONTKOPPEL;
+        pkt.modus  = NET_MASTER;
+        strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+        _stuur(net_peers[idx].mac, pkt, 0);
+    }
+#endif
     for (int i = idx; i < net_peers_cnt - 1; i++) net_peers[i] = net_peers[i + 1];
     net_peers_cnt--;
     if (net_pair_pending == idx) net_pair_pending = -1;
@@ -352,33 +364,34 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             if (net_peers_cnt >= NET_MAX_PEERS) return;
             idx = net_peers_cnt++;
             memcpy(net_peers[idx].mac, mac, 6);
-            net_peers[idx].bevestigd  = false;
-            net_peers[idx].actief     = true;
+            net_peers[idx].bevestigd    = false;
+            net_peers[idx].actief       = true;
             net_peers[idx].laast_gezien = millis();
-            net_peers[idx].pin[0] = '\0';
+            net_peers[idx].io_modules   = 0;
+            net_peers[idx].io_kanalen   = 0;
+            net_peers[idx].pin[0]       = '\0';
         }
         net_peers[idx].modus = pkt.modus;
         strncpy(net_peers[idx].naam, pkt.naam, NET_NAAM_LEN - 1);
+        memcpy(net_peers[idx].pin, req_pin, 5);
+        net_peers[idx].laast_gezien = millis();
+
         if (pkt.modus == NET_HEADLESS) {
             // Headless: direct accepteren zonder PIN-controle
-            memcpy(net_peers[idx].pin, req_pin, 5);
             net_pair_bevestigen(idx);
         } else if (net_peers[idx].bevestigd) {
-            // Al gepaard: valideer PIN
-            if (strlen(net_peers[idx].pin) == 4 && memcmp(req_pin, net_peers[idx].pin, 4) == 0) {
-                net_pair_bevestigen(idx);  // PIN correct: auto-accept
+            // Al gepaard + zelfde PIN → auto-accepteren (herverbinding na herstart)
+            if (strlen(req_pin) == 4 && memcmp(req_pin, net_peers[idx].pin, 4) == 0) {
+                net_pair_bevestigen(idx);
             } else {
-                // PIN klopt niet: vraag opnieuw goedkeuring
-                memcpy(net_peers[idx].pin, req_pin, 5);
+                // PIN gewijzigd: verwijder bevestiging en toon in beschikbare lijst
                 net_peers[idx].bevestigd = false;
-                net_pair_pending = idx;
                 scherm_bouwen = true;
             }
         } else {
-            // Nieuw apparaat: sla PIN op en wacht op goedkeuring
-            memcpy(net_peers[idx].pin, req_pin, 5);
-            net_pair_pending = idx;
-            scherm_bouwen    = true;
+            // Nieuw apparaat of eerder geweigerd: toon in "BESCHIKBAAR" lijst.
+            // net_pair_pending wordt NIET automatisch gezet — gebruiker klikt KOPPELEN.
+            scherm_bouwen = true;
         }
         break;
     }
@@ -399,7 +412,22 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         net_status     = "Pairing geweigerd";
         break;
 
+    case NET_MSG_ONTKOPPEL:
+        // Slave: master heeft ons actief verwijderd
+        if (net_modus == NET_MASTER) return;
+        if (!_mac_gelijk(mac, net_master_mac)) return;  // alleen van onze eigen master
+        net_gepaard    = false;
+        net_pair_wacht = false;
+        _last_master_hb = 0;
+        memset(net_master_mac, 0, 6);
+        net_opslaan();
+        net_status = "Ontkoppeld door master";
+        scherm_bouwen  = true;
+        break;
+
     case NET_MSG_HEARTBEAT:
+        // Slave: registreer ontvangst voor heartbeat-timeout detectie
+        if (net_modus != NET_MASTER) _last_master_hb = millis();
         if (idx >= 0 && _espnow_ok) {
             NetPaket ack = {};
             ack.versie = NET_PROTOCOL_VERSIE;
@@ -1077,6 +1105,15 @@ void net_loop() {
     // De snapshot in net_io_sturen() bepaalt of er echt iets verstuurd wordt.
     if (net_modus == NET_MASTER) {
         net_io_sturen();  // no-op als niets veranderd en <30s geleden verstuurd
+    }
+
+    // Slave: heartbeat-timeout — als master te lang zwijgt, beschouw als ontkoppeld
+    if (net_modus != NET_MASTER && net_gepaard && _last_master_hb > 0 &&
+        nu - _last_master_hb > NET_TIMEOUT_MS) {
+        net_gepaard     = false;
+        _last_master_hb = 0;
+        net_status      = "Verbinding verbroken (timeout)";
+        scherm_bouwen   = true;
     }
 
     // Slave/extra/headless: herverbinden als niet gepaard én auto-verbinden aan

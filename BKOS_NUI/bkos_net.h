@@ -13,6 +13,7 @@
 #define NET_MSG_PAIR_REQ    0x01  // slave/headless → broadcast: wil pairen
 #define NET_MSG_PAIR_ACK    0x02  // master → slave: geaccepteerd
 #define NET_MSG_PAIR_REJ    0x03  // master → slave: geweigerd
+#define NET_MSG_ONTKOPPEL   0x04  // master → slave: pairing verbroken (peer verwijderd)
 #define NET_MSG_HEARTBEAT   0x10  // master → gepairde apparaten: leef-signaal
 #define NET_MSG_HB_ACK      0x11  // slave → master: ontvangen
 #define NET_MSG_IO_TOGGLE   0x20  // slave → master: kanaal op index, data[0]=kanaal data[1]=staat(IO_AAN/IO_UIT/0xFF=toggle)

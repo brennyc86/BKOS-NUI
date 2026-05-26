@@ -214,6 +214,10 @@ Recente taken:
 | 137 | Sessie 23 | LuaBKOS naar sketch-local library (BKOS_NUI/libraries/LuaBKOS/) — Lua werkt nu ook bij lokale Arduino IDE compilatie |
 | 138 | Sessie 23 | lua_net_q queue-clearing fix: alleen verwerkte berichten verwijderen, niet de hele queue |
 | 139 | Sessie 23 | OTA verbeteringen: betere foutmeldingen, CYD platform support in releases.json, timeout 20s, HTTPC_FORCE_FOLLOW_REDIRECTS |
+| 140 | Sessie 24 | GETIJ portret 1-kolom tabel + partial redraw scroll + OTA portret VORIGE VERSIES overlay + oriëntatie-wissel CYD40 |
+| 141 | Sessie 24 | PCLK 12MHz + backlight-blanking tijdens hertekenen (PSRAM-bus contention verminderen) |
+| 142 | Sessie 24 | hw_scherm: PCLK 10MHz + vsync_back_porch 23 (minder onderkant-flikkering) |
+| 143 | Sessie 24 | Boot-lamp posities gecorrigeerd (hek→achtersteven x=4, navi→boeg x=108); sectortekening heklicht 120°, stoomlicht 240°, 3kl wit/rood/groen, nav rood/groen; SCREEN_SMALL support |
 
 ---
 

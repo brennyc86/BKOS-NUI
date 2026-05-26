@@ -282,7 +282,6 @@ void hw_loop() {
         licht_auto_ms = millis();
         if (licht_instelling == LICHT_AUTO) {
             io_verlichting_update();
-            if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
         }
     }
 

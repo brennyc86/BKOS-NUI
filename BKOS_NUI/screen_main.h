@@ -28,10 +28,10 @@
 #define BL_STOOM_RY    50
 #define BL_HEK_RX       4   // achtersteven
 #define BL_HEK_RY     148
-#define BL_NAVI_R_RX   90   // rood (BB): boven de romp, wat meer naar achter
-#define BL_NAVI_R_RY  120
-#define BL_NAVI_G_RX   90   // groen (SB): ter hoogte waterlijn
-#define BL_NAVI_G_RY  150
+#define BL_NAVI_R_RX   82   // rood (BB): boven de romp, meer naar achter
+#define BL_NAVI_R_RY  135
+#define BL_NAVI_G_RX   82   // groen (SB): ter hoogte waterlijn
+#define BL_NAVI_G_RY  145
 
 // Vaarmodus knoppen (rechter paneel, 2×2 grid)
 // Breedte: vult CTRL_PANEL_W (schalen mee met TFT_W via UI_SCX)

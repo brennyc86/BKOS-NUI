@@ -295,7 +295,6 @@ void io_loop() {
     if (io_staat_gewijzigd) {
         io_staat_gewijzigd = false;
         io_runned          = true;
-        if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
     }
     {
         static unsigned long zekering_gecheckt = 0;

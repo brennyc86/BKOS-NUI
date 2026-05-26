@@ -251,7 +251,15 @@ static void boot_teken_catamaran() {
     tft.setCursor(BOOT_BX(34), BOOT_BY(20)); tft.print("CATAMARAN");
 }
 
+// Licht teken state — persistent tussen frame-calls
+static bool _licht_force = true;
+static byte _prev_mast   = 0xFF;
+static byte _prev_stoom  = 0xFF;
+static byte _prev_hek    = 0xFF;
+static byte _prev_navi   = 0xFF;
+
 void boot_teken() {
+    _licht_force = true;  // lichtposities volledig hertekenen na boot-redraw
 #if SCREEN_SMALL
     pico_boot_teken();
 #else
@@ -292,8 +300,26 @@ static void _boot_sector(int cx, int cy, int r, int a0, int a1, uint16_t c) {
 #endif
 
 // ─── Licht indicatoren op de boot ───────────────────────────────────
-// Elke aanroep wist de indicatorposities (C_BG), daarna alleen het verlichte
-// segment intekenen — geen donkere ring, geen witte rand.
+// State-based: alleen hertekenen bij wijziging; sector wissen bij AAN→UIT.
+static void _licht_indicator(int cx, int cy, int r, byte staat, uint16_t sec_kleur,
+                              int a0, int a1, byte prev, bool vol_cirkel = false) {
+    int dr = max(2, r / 3);
+    bool was_aan = (prev == LSTATE_ECHT_AAN);
+    bool is_aan  = (staat == LSTATE_ECHT_AAN);
+    if (was_aan && !is_aan)
+        tft.fillCircle(cx, cy, r + 1, C_BG);  // sector wissen bij AAN→UIT
+    if (is_aan) {
+        if (vol_cirkel) tft.fillCircle(cx, cy, r, sec_kleur);
+        else            _boot_sector(cx, cy, r, a0, a1, sec_kleur);
+    } else if (staat == LSTATE_KOELT_AF) {
+        tft.fillCircle(cx, cy, dr, C_LIGHT_COOLING);
+    } else if (staat == LSTATE_GEEN_SIGNAAL) {
+        tft.fillCircle(cx, cy, dr, C_LIGHT_PENDING);
+    } else {
+        tft.fillCircle(cx, cy, dr, C_DARK_GRAY);
+    }
+}
+
 void boot_lichten_teken() {
     int anker_k = -1, stoom_k = -1, driekl_k = -1, navi_k = -1, hek_k = -1;
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
@@ -306,65 +332,84 @@ void boot_lichten_teken() {
 
     int r = BLCHT_R;
 
-    // Wis alle indicatorposities zodat oude sectoren verdwijnen
-    tft.fillCircle(BLCHT_BX(BL_ANKER_RX),  BLCHT_BY(BL_ANKER_RY),  r + 2, C_BG);
-    tft.fillCircle(BLCHT_BX(BL_STOOM_RX),  BLCHT_BY(BL_STOOM_RY),  r + 2, C_BG);
-    tft.fillCircle(BLCHT_BX(BL_HEK_RX),    BLCHT_BY(BL_HEK_RY),    r + 2, C_BG);
-    tft.fillCircle(BLCHT_BX(BL_NAVI_R_RX), BLCHT_BY(BL_NAVI_R_RY), r + 2, C_BG);
-    tft.fillCircle(BLCHT_BX(BL_NAVI_G_RX), BLCHT_BY(BL_NAVI_G_RY), r + 2, C_BG);
-
     byte sa = (anker_k  >= 0) ? io_licht_staat(anker_k)  : LSTATE_ECHT_UIT;
     byte ss = (stoom_k  >= 0) ? io_licht_staat(stoom_k)  : LSTATE_ECHT_UIT;
     byte s3 = (driekl_k >= 0) ? io_licht_staat(driekl_k) : LSTATE_ECHT_UIT;
     byte sh = (hek_k    >= 0) ? io_licht_staat(hek_k)    : LSTATE_ECHT_UIT;
     byte sn = (navi_k   >= 0) ? io_licht_staat(navi_k)   : LSTATE_ECHT_UIT;
 
-    // ── Masttop: 3-kleuren heeft voorrang over ankerlicht ─────────────
-    {
+    // Gecombineerde masttop staat (ankerlicht + 3kl samen op zelfde positie)
+    byte mast_staat = (s3 == LSTATE_ECHT_AAN || sa == LSTATE_ECHT_AAN) ? LSTATE_ECHT_AAN
+                    : (s3 > sa ? s3 : sa);
+
+    // ── Masttop: teken alleen bij wijziging of force ──────────────────
+    if (_licht_force || _prev_mast != (byte)((sa << 4) | s3)) {
+        byte prev_mast_staat = (_prev_mast == 0xFF) ? LSTATE_ECHT_UIT
+                             : ((_prev_mast >> 4) == LSTATE_ECHT_AAN || (_prev_mast & 0xF) == LSTATE_ECHT_AAN)
+                               ? LSTATE_ECHT_AAN : LSTATE_ECHT_UIT;
         int cx = BLCHT_BX(BL_ANKER_RX), cy = BLCHT_BY(BL_ANKER_RY);
+        int dr = max(2, r / 3);
+        bool was_aan = (prev_mast_staat == LSTATE_ECHT_AAN);
+        if (was_aan && mast_staat != LSTATE_ECHT_AAN)
+            tft.fillCircle(cx, cy, r + 1, C_BG);
         if (s3 == LSTATE_ECHT_AAN) {
             _boot_sector(cx, cy, r, 120, 240, C_LIGHT_ON);
             _boot_sector(cx, cy, r, 240, 360, C_LIGHT_ON_RED);
             _boot_sector(cx, cy, r,   0, 120, C_LIGHT_ON_GRN);
         } else if (sa == LSTATE_ECHT_AAN) {
-            tft.fillCircle(cx, cy, r, C_LIGHT_ON);  // ankerlicht = volle cirkel
-        } else if (s3 != LSTATE_ECHT_UIT) {
-            ui_licht_cirkel(cx, cy, r, s3);
-        } else if (sa != LSTATE_ECHT_UIT) {
-            ui_licht_cirkel(cx, cy, r, sa);
+            tft.fillCircle(cx, cy, r, C_LIGHT_ON);
+        } else if (mast_staat == LSTATE_KOELT_AF) {
+            tft.fillCircle(cx, cy, dr, C_LIGHT_COOLING);
+        } else if (mast_staat == LSTATE_GEEN_SIGNAAL) {
+            tft.fillCircle(cx, cy, dr, C_LIGHT_PENDING);
+        } else {
+            tft.fillCircle(cx, cy, dr, C_DARK_GRAY);
         }
+        _prev_mast = (sa << 4) | s3;
     }
 
     // ── Stoomlicht: 240° sector naar voren ────────────────────────────
-    {
-        int cx = BLCHT_BX(BL_STOOM_RX), cy = BLCHT_BY(BL_STOOM_RY);
-        if (ss == LSTATE_ECHT_AAN)
-            _boot_sector(cx, cy, r, 240, 480, C_LIGHT_ON);
-        else if (ss != LSTATE_ECHT_UIT)
-            ui_licht_cirkel(cx, cy, r, ss);
+    if (_licht_force || _prev_stoom != ss) {
+        _licht_indicator(BLCHT_BX(BL_STOOM_RX), BLCHT_BY(BL_STOOM_RY), r,
+                         ss, C_LIGHT_ON, 240, 480, _prev_stoom == 0xFF ? LSTATE_ECHT_UIT : _prev_stoom);
+        _prev_stoom = ss;
     }
 
     // ── Heklicht: 120° sector naar achteren ───────────────────────────
-    {
-        int cx = BLCHT_BX(BL_HEK_RX), cy = BLCHT_BY(BL_HEK_RY);
-        if (sh == LSTATE_ECHT_AAN)
-            _boot_sector(cx, cy, r, 120, 240, C_LIGHT_ON);
-        else if (sh != LSTATE_ECHT_UIT)
-            ui_licht_cirkel(cx, cy, r, sh);
+    if (_licht_force || _prev_hek != sh) {
+        _licht_indicator(BLCHT_BX(BL_HEK_RX), BLCHT_BY(BL_HEK_RY), r,
+                         sh, C_LIGHT_ON, 120, 240, _prev_hek == 0xFF ? LSTATE_ECHT_UIT : _prev_hek);
+        _prev_hek = sh;
     }
 
     // ── Navigatielichten: rood (BB) boven romp, groen (SB) waterlijn ──
-    {
+    if (_licht_force || _prev_navi != sn) {
+        byte prev_sn = _prev_navi == 0xFF ? LSTATE_ECHT_UIT : _prev_navi;
         int rcx = BLCHT_BX(BL_NAVI_R_RX), rcy = BLCHT_BY(BL_NAVI_R_RY);
         int gcx = BLCHT_BX(BL_NAVI_G_RX), gcy = BLCHT_BY(BL_NAVI_G_RY);
+        int dr  = max(2, r / 3);
+        bool was_aan = (prev_sn == LSTATE_ECHT_AAN);
+        if (was_aan && sn != LSTATE_ECHT_AAN) {
+            tft.fillCircle(rcx, rcy, r + 1, C_BG);
+            tft.fillCircle(gcx, gcy, r + 1, C_BG);
+        }
         if (sn == LSTATE_ECHT_AAN) {
             _boot_sector(rcx, rcy, r, 240, 360, C_LIGHT_ON_RED);
             _boot_sector(gcx, gcy, r,   0, 120, C_LIGHT_ON_GRN);
-        } else if (sn != LSTATE_ECHT_UIT) {
-            ui_licht_cirkel(rcx, rcy, r, sn);
-            ui_licht_cirkel(gcx, gcy, r, sn);
+        } else if (sn == LSTATE_KOELT_AF) {
+            tft.fillCircle(rcx, rcy, dr, C_LIGHT_COOLING);
+            tft.fillCircle(gcx, gcy, dr, C_LIGHT_COOLING);
+        } else if (sn == LSTATE_GEEN_SIGNAAL) {
+            tft.fillCircle(rcx, rcy, dr, C_LIGHT_PENDING);
+            tft.fillCircle(gcx, gcy, dr, C_LIGHT_PENDING);
+        } else {
+            tft.fillCircle(rcx, rcy, dr, C_DARK_GRAY);
+            tft.fillCircle(gcx, gcy, dr, C_DARK_GRAY);
         }
+        _prev_navi = sn;
     }
+
+    _licht_force = false;
 }
 
 // ─── Knop helpers ───────────────────────────────────────────────────

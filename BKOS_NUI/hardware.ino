@@ -122,6 +122,9 @@ void hw_loop() {
         // Alleen resetten als er geen aanraking is — anders vuurt de touch opnieuw
         // zodra de (trage SPI-)redraw klaar is terwijl de vinger nog op het scherm ligt
         if (!aanraking) touch_verwerkt = false;
+        // Achtergrondlicht uit tijdens hertekenen: fillScreen schrijft 750KB naar PSRAM
+        // terwijl LCD-DMA simultaan leest → "kratsen". Korte zwarte flits is minder storend.
+        if (tft_actief) tft_helderheid_zet(0);
         // lua_forceer_app heeft voorrang boven scherm-toewijzing
         int app_idx = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                       ? lua_forceer_app
@@ -167,6 +170,8 @@ void hw_loop() {
                     break;
             }
         }
+        // Herstel achtergrondlicht na tekenen
+        if (tft_actief) tft_helderheid_zet(tft_helderheid);
     }
 
     // Nieuwe aanraking: reset verwerkt-vlag + begin lang-druk tracking

@@ -538,42 +538,22 @@ static int _getij_scroll_voor_nu() {
     return min(prev_idx, max_sc);
 }
 
-// ─── GETIJ TAB ────────────────────────────────────────────────────────────
-static void meteo_getij_teken() {
-    tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
+// ─── GETIJ: header-strip hertekenen (knoppen alleen) ─────────────────────
+static void _getij_hdr_teken() {
+    int max_sc = max(0, rws_ext_cnt - GTJ_ROWS_N * GTJ_COLS_N);
+    tft.fillRect(0, PANEL_Y, TFT_W, GTJ_HDR_H, C_BG);
 
-    // Laad RWS data uit SPIFFS als nodig
-    if (rws_geladen_idx != getijdata_station_idx) {
-        getijdata_get(getijdata_station_idx, rws_ext, GETIJ_SCHERM_MAX, &rws_ext_cnt);
-        rws_geladen_idx = getijdata_station_idx;
-    }
-    bool heeft_data = (rws_ext_cnt > 0);
-    int rij_n  = rws_ext_cnt;
-    int max_sc = max(0, rij_n - GTJ_ROWS_N * GTJ_COLS_N);
-
-    // Pre-bereken vorige/volgende extreem
-    time_t nu = time(nullptr);
-    int prev_idx = -1, next_idx = -1;
-    for (int i = 0; i < rij_n; i++) {
-        if (rws_ext[i].tijdstip < nu) prev_idx = i;
-        else if (next_idx < 0) { next_idx = i; break; }
-    }
-
-    // ── Header (knoppen) ─────────────────────────────────────────────────
-    // RAW toggle knop
     ui_knop(TFT_W - 70, PANEL_Y + 2, 62, GTJ_HDR_H - 4, "RAW",
             getij_raw_modus ? C_SURFACE3 : C_SURFACE,
             getij_raw_modus ? C_CYAN     : C_TEXT_DIM);
 
     if (getij_raw_modus) {
-        // OPHALEN knop (alleen in RAW modus)
         bool bezig = getijdata_ophalen_aangevraagd && !getijdata_ophalen_klaar;
         ui_knop(TFT_W - 192, PANEL_Y + 2, 114, GTJ_HDR_H - 4,
                 bezig ? "Ophalen..." : "Ophalen",
                 bezig ? C_SURFACE3 : C_SURFACE2,
                 bezig ? C_TEXT_DIM : C_CYAN);
     } else {
-        // Scroll + actie knoppen
         bool meer_bezig = getijdata_meer_laden_aangevraagd && !getijdata_ophalen_klaar;
         bool voor   = (getij_scroll > 0);
         bool achter = (getij_scroll < max_sc);
@@ -588,53 +568,22 @@ static void meteo_getij_teken() {
         ui_knop(TFT_W - 144, PANEL_Y + 2, 68, GTJ_HDR_H - 4, "VOLG >",
                 achter ? C_SURFACE2 : C_SURFACE, achter ? C_TEXT : C_TEXT_DIM);
     }
+}
 
-    if (getij_raw_modus) {
-        // ── RAW JSON weergave ─────────────────────────────────────────────
-        int raw_y = PANEL_Y + GTJ_HDR_H + 4;
-        tft.fillRect(0, raw_y, TFT_W, PANEL_H - GTJ_HDR_H, C_BG);
+// ─── GETIJ: now-balk + tabel hertekenen (geen full-panel clear nodig) ────
+static void _getij_tabel_teken() {
+    if (rws_geladen_idx != getijdata_station_idx) {
+        getijdata_get(getijdata_station_idx, rws_ext, GETIJ_SCHERM_MAX, &rws_ext_cnt);
+        rws_geladen_idx = getijdata_station_idx;
+    }
+    bool heeft_data = (rws_ext_cnt > 0);
+    int rij_n  = rws_ext_cnt;
 
-        // HTTP code + station info
-        tft.setTextSize(1);
-        tft.setTextColor(getij_debug_http_code == 200 ? C_GREEN : C_RED_BRIGHT);
-        tft.setCursor(6, raw_y);
-        char hdr[48];
-        snprintf(hdr, sizeof(hdr), "HTTP %d", getij_debug_http_code);
-        tft.print(hdr);
-
-        // Ruwe tekst afdrukken, max wat op scherm past
-        int tekst_y  = raw_y + 14;
-        int regel_h  = 9;
-        int max_y    = PANEL_Y + PANEL_H - regel_h;
-        int char_b   = 6;                     // pixels per teken bij textSize 1
-        int max_col  = TFT_W / char_b;        // tekens per regel
-
-        const char* p    = getij_debug_raw;
-        int         col  = 0;
-        int         regel_y = tekst_y;
-
-        tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(6, regel_y);
-
-        while (*p && regel_y < max_y) {
-            char c = *p++;
-            if (c == '\n' || col >= max_col - 1) {
-                regel_y += regel_h;
-                col = 0;
-                if (regel_y >= max_y) break;
-                tft.setCursor(6, regel_y);
-                if (c == '\n') continue;
-            }
-            tft.print(c);
-            col++;
-        }
-        if (*p) {
-            // Meer tekst dan op scherm past — toon ellipsis
-            tft.setTextColor(C_TEXT_DIM);
-            tft.setCursor(6, max_y);
-            tft.print("...");
-        }
-        return;
+    time_t nu = time(nullptr);
+    int prev_idx = -1, next_idx = -1;
+    for (int i = 0; i < rij_n; i++) {
+        if (rws_ext[i].tijdstip < nu) prev_idx = i;
+        else if (next_idx < 0) { next_idx = i; break; }
     }
 
     // ── Actuele info balk: maan | station | waterstand LAT ───────────────
@@ -698,6 +647,7 @@ static void meteo_getij_teken() {
 
     // ── Geen data: toon bericht ───────────────────────────────────────────
     if (!heeft_data) {
+        tft.fillRect(0, GTJ_TABLE_Y, TFT_W, PANEL_H - GTJ_HDR_H - GTJ_NOW_H - 4, C_BG);
         ui_tekst_midden(0, GTJ_TABLE_Y + 30, TFT_W, "Geen getijdata beschikbaar", C_TEXT_DIM, 2);
         ui_tekst_midden(0, GTJ_TABLE_Y + 60, TFT_W,
             wifi_verbonden ? "Data wordt opgehaald..." : "Verbind met WiFi om data op te halen",
@@ -705,7 +655,7 @@ static void meteo_getij_teken() {
         return;
     }
 
-    // ── 2-kolom tabel ─────────────────────────────────────────────────────
+    // ── 2-kolom tabel (elke rij vult eigen achtergrond) ───────────────────
     const char* dag_afk[] = {"Zo","Ma","Di","Wo","Do","Vr","Za"};
     time_t prev_ts = (prev_idx >= 0) ? rws_ext[prev_idx].tijdstip : 0;
     time_t next_ts = (next_idx >= 0) ? rws_ext[next_idx].tijdstip : 0;
@@ -759,14 +709,13 @@ static void meteo_getij_teken() {
             tft.fillRect(bx + 1, ey + 1, GTJ_STRIP_W - 1, GTJ_ROW_H - 3, bg_strip);
             if (markeer) tft.drawRoundRect(bx, ey, GTJ_COL_W - 4, GTJ_ROW_H - 1, 3, C_AMBER);
 
-            // ─ Linker strip: dag (groot) + datum + NAP ───────────────
+            // ─ Linker strip: dag (groot) + datum ─────────────────────
             uint16_t dag_kleur;
             if (verleden)        dag_kleur = C_TEXT_DIM;
             else if (markeer)    dag_kleur = C_AMBER;
             else if (is_weekend) dag_kleur = C_AMBER;
             else                 dag_kleur = hw ? C_CYAN : RGB565(100, 160, 255);
 
-            // Dag afkorting (textSize 3 = 18px per char breed, 24px hoog)
             tft.setTextSize(3); tft.setTextColor(dag_kleur);
             int dag_px = strlen(dag_afk[lt->tm_wday]) * 18;
             tft.setCursor(bx + (GTJ_STRIP_W - dag_px) / 2, ey + 3);
@@ -783,7 +732,6 @@ static void meteo_getij_teken() {
             uint16_t hw_kleur = verleden ? C_TEXT_DIM : (markeer ? C_AMBER : (hw ? C_CYAN : RGB565(80, 150, 255)));
             uint16_t tx_kleur = verleden ? C_TEXT_DIM : (markeer ? C_AMBER : C_TEXT);
 
-            // textSize2=16px + 2px gap + textSize1=8px = 26px totaal
             int main_y = ey + (GTJ_ROW_H - 26) / 2;
             int nap_y  = main_y + 18;
 
@@ -807,6 +755,63 @@ static void meteo_getij_teken() {
             tft.print(nap_str);
         }
     }
+}
+
+// ─── GETIJ TAB — volledig hertekenen ─────────────────────────────────────
+static void meteo_getij_teken() {
+    tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
+
+    if (rws_geladen_idx != getijdata_station_idx) {
+        getijdata_get(getijdata_station_idx, rws_ext, GETIJ_SCHERM_MAX, &rws_ext_cnt);
+        rws_geladen_idx = getijdata_station_idx;
+    }
+
+    _getij_hdr_teken();
+
+    if (getij_raw_modus) {
+        // ── RAW JSON weergave ─────────────────────────────────────────────
+        int raw_y = PANEL_Y + GTJ_HDR_H + 4;
+        tft.setTextSize(1);
+        tft.setTextColor(getij_debug_http_code == 200 ? C_GREEN : C_RED_BRIGHT);
+        tft.setCursor(6, raw_y);
+        char hdr[48];
+        snprintf(hdr, sizeof(hdr), "HTTP %d", getij_debug_http_code);
+        tft.print(hdr);
+
+        int tekst_y  = raw_y + 14;
+        int regel_h  = 9;
+        int max_y    = PANEL_Y + PANEL_H - regel_h;
+        int char_b   = 6;
+        int max_col  = TFT_W / char_b;
+
+        const char* p    = getij_debug_raw;
+        int         col  = 0;
+        int         regel_y = tekst_y;
+
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(6, regel_y);
+
+        while (*p && regel_y < max_y) {
+            char c = *p++;
+            if (c == '\n' || col >= max_col - 1) {
+                regel_y += regel_h;
+                col = 0;
+                if (regel_y >= max_y) break;
+                tft.setCursor(6, regel_y);
+                if (c == '\n') continue;
+            }
+            tft.print(c);
+            col++;
+        }
+        if (*p) {
+            tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(6, max_y);
+            tft.print("...");
+        }
+        return;
+    }
+
+    _getij_tabel_teken();
 }
 
 // ─── LOCATIE TAB ──────────────────────────────────────────────────────────
@@ -1019,33 +1024,36 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                 return;
             }
             if (getij_raw_modus) {
-                // OPHALEN knop
+                // OPHALEN knop — alleen header herschrijven (knop → "Ophalen...")
                 if (x >= TFT_W - 192 && x < TFT_W - 78) {
                     bool bezig = getijdata_ophalen_aangevraagd && !getijdata_ophalen_klaar;
                     if (!bezig) {
                         getijdata_ophalen_aanvragen(getijdata_station_idx);
-                        meteo_getij_teken();  // toon "Ophalen..."
+                        _getij_hdr_teken();
                     }
                     return;
                 }
             } else {
                 int max_sc = max(0, rws_ext_cnt - GTJ_ROWS_N * GTJ_COLS_N);
                 if (x >= TFT_W - 364 && x < TFT_W - 292) {
-                    // MEER — haal uitgebreide data op (4 maanden)
+                    // MEER — knop → "Laden...", tabel ongewijzigd
                     bool bezig = getijdata_meer_laden_aangevraagd && !getijdata_ophalen_klaar;
                     if (!bezig) {
                         getijdata_meer_laden_aanvragen(getijdata_station_idx);
-                        meteo_getij_teken();
+                        _getij_hdr_teken();
                     }
                 } else if (x >= TFT_W - 286 && x < TFT_W - 216 && getij_scroll > 0) {
                     getij_scroll = max(0, getij_scroll - GTJ_ROWS_N);
-                    meteo_getij_teken();
+                    _getij_hdr_teken();
+                    _getij_tabel_teken();
                 } else if (x >= TFT_W - 210 && x < TFT_W - 150) {
                     getij_scroll = _getij_scroll_voor_nu();
-                    meteo_getij_teken();
+                    _getij_hdr_teken();
+                    _getij_tabel_teken();
                 } else if (x >= TFT_W - 144 && x < TFT_W - 76 && getij_scroll < max_sc) {
                     getij_scroll = min(max_sc, getij_scroll + GTJ_ROWS_N);
-                    meteo_getij_teken();
+                    _getij_hdr_teken();
+                    _getij_tabel_teken();
                 }
             }
             return;

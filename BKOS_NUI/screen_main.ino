@@ -302,15 +302,14 @@ static void _boot_sector(int cx, int cy, int r, int a0, int a1, uint16_t c) {
 // ─── Licht indicatoren op de boot ───────────────────────────────────
 // State-based: alleen hertekenen bij wijziging; sector wissen bij AAN→UIT.
 static void _licht_indicator(int cx, int cy, int r, byte staat, uint16_t sec_kleur,
-                              int a0, int a1, byte prev, bool vol_cirkel = false) {
+                              int a0, int a1, byte prev) {
     int dr = max(2, r / 3);
     bool was_aan = (prev == LSTATE_ECHT_AAN);
     bool is_aan  = (staat == LSTATE_ECHT_AAN);
     if (was_aan && !is_aan)
         tft.fillCircle(cx, cy, r + 1, C_BG);  // sector wissen bij AAN→UIT
     if (is_aan) {
-        if (vol_cirkel) tft.fillCircle(cx, cy, r, sec_kleur);
-        else            _boot_sector(cx, cy, r, a0, a1, sec_kleur);
+        _boot_sector(cx, cy, r, a0, a1, sec_kleur);
     } else if (staat == LSTATE_KOELT_AF) {
         tft.fillCircle(cx, cy, dr, C_LIGHT_COOLING);
     } else if (staat == LSTATE_GEEN_SIGNAAL) {

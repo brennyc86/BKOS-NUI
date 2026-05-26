@@ -265,58 +265,103 @@ void boot_teken() {
 #endif
 }
 
+// ─── Boot licht sector hulpfunctie ──────────────────────────────────
+// Vult een taartsector; 0°=boeg(rechts), 90°=onder, 180°=hek(links), 270°=boven
+// a1 mag >360 zijn om via 0° te wikkelen (bijv. 240→480 voor stoomlicht)
+static void _boot_sector(int cx, int cy, int r, int a0, int a1, uint16_t c) {
+    int n = max(3, (a1 - a0) / 12);
+    float da = (float)(a1 - a0) / n;
+    for (int i = 0; i < n; i++) {
+        float f0 = (a0 + i * da) * (PI / 180.0f);
+        float f1 = (a0 + (i + 1) * da) * (PI / 180.0f);
+        tft.fillTriangle(cx, cy,
+            cx + (int)(r * cosf(f0)), cy + (int)(r * sinf(f0)),
+            cx + (int)(r * cosf(f1)), cy + (int)(r * sinf(f1)), c);
+    }
+}
+
+// Coördinaatmacro's voor lichtindicatoren — werken op beide oriëntaties
+#if SCREEN_SMALL
+  #define BLCHT_BX(x)  PICO_BOOT_BX(x)
+  #define BLCHT_BY(y)  PICO_BOOT_BY(y)
+  #define BLCHT_R      (max(3, PICO_BOOT_SCALE * 3))
+#else
+  #define BLCHT_BX(x)  BOOT_BX(x)
+  #define BLCHT_BY(y)  BOOT_BY(y)
+  #define BLCHT_R      BOOT_LICHT_R
+#endif
+
 // ─── Licht indicatoren op de boot ───────────────────────────────────
 void boot_lichten_teken() {
-    int anker_k = -1, stoom_k = -1, navi_k = -1, hek_k = -1;
-
+    int anker_k = -1, stoom_k = -1, driekl_k = -1, navi_k = -1, hek_k = -1;
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
-        if      (io_naam_is(i, "**L_anker")) anker_k = i;
-        else if (io_naam_is(i, "**L_stoom")) stoom_k = i;
-        else if (io_naam_is(i, "**L_3kl"))   navi_k  = i;
-        else if (io_naam_is(i, "**L_navi"))  { if (navi_k < 0) navi_k = i; }
-        else if (io_naam_is(i, "**L_hek"))   hek_k   = i;
+        if      (io_naam_is(i, "**L_anker")) anker_k  = i;
+        else if (io_naam_is(i, "**L_stoom")) stoom_k  = i;
+        else if (io_naam_is(i, "**L_3kl"))   driekl_k = i;
+        else if (io_naam_is(i, "**L_navi"))  navi_k   = i;
+        else if (io_naam_is(i, "**L_hek"))   hek_k    = i;
     }
 
+    int r = BLCHT_R;
     byte staat;
 
-    // Ankerlicht (masttop, wit)
+    // ── Ankerlicht (masttop, volle witte cirkel — 360°) ───────────────
     staat = (anker_k >= 0) ? io_licht_staat(anker_k) : LSTATE_ECHT_UIT;
-    ui_licht_cirkel(BOOT_BX(BL_ANKER_RX), BOOT_BY(BL_ANKER_RY), BOOT_LICHT_R, staat);
-    if (staat == LSTATE_ECHT_AAN)
-        ui_glow(BOOT_BX(BL_ANKER_RX), BOOT_BY(BL_ANKER_RY), BOOT_LICHT_R, C_LIGHT_ON, 3);
+    ui_licht_cirkel(BLCHT_BX(BL_ANKER_RX), BLCHT_BY(BL_ANKER_RY), r, staat);
 
-    // Stoomlicht (halverwege de mast)
-    staat = (stoom_k >= 0) ? io_licht_staat(stoom_k) : LSTATE_ECHT_UIT;
-    ui_licht_cirkel(BOOT_BX(BL_STOOM_RX), BOOT_BY(BL_STOOM_RY), BOOT_LICHT_R, staat);
-    if (staat == LSTATE_ECHT_AAN)
-        ui_glow(BOOT_BX(BL_STOOM_RX), BOOT_BY(BL_STOOM_RY), BOOT_LICHT_R, C_LIGHT_ON, 3);
-
-    // Navigatielicht boeg (rood BB / groen SB, gesplitste cirkel)
-    staat = (navi_k >= 0) ? io_licht_staat(navi_k) : LSTATE_ECHT_UIT;
-    int nav_cx = BOOT_BX(BL_NAVI_RX);
-    int nav_cy = BOOT_BY(BL_NAVI_RY);
-    int nav_r  = BOOT_LICHT_R;
-    if (staat == LSTATE_ECHT_AAN) {
-        // Linker helft rood, rechter helft groen
-        tft.fillCircle(nav_cx, nav_cy, nav_r, C_LIGHT_ON_RED);
-        tft.fillRect(nav_cx, nav_cy - nav_r, nav_r + 1, nav_r * 2 + 1, C_LIGHT_ON_GRN);
-        ui_glow(nav_cx, nav_cy, nav_r, C_LIGHT_ON_RED, 2);
-    } else if (staat == LSTATE_KOELT_AF) {
-        tft.fillCircle(nav_cx, nav_cy, nav_r, C_LIGHT_COOLING);
-        tft.drawCircle(nav_cx, nav_cy, nav_r, C_AMBER);
-    } else if (staat == LSTATE_GEEN_SIGNAAL) {
-        tft.fillCircle(nav_cx, nav_cy, nav_r, C_LIGHT_PENDING);
-        tft.drawCircle(nav_cx, nav_cy, nav_r, C_ORANGE);
-    } else {
-        tft.fillCircle(nav_cx, nav_cy, nav_r, C_LIGHT_OFF);
-        tft.drawCircle(nav_cx, nav_cy, nav_r, C_DARK_GRAY);
+    // ── 3-kleuren licht (masttop, zelfde positie als anker) ───────────
+    // Wit 120°-240° (achter), Rood 240°-360° (boven-voor/BB), Groen 0°-120° (onder-voor/SB)
+    staat = (driekl_k >= 0) ? io_licht_staat(driekl_k) : LSTATE_ECHT_UIT;
+    if (staat != LSTATE_ECHT_UIT) {
+        int cx = BLCHT_BX(BL_ANKER_RX), cy = BLCHT_BY(BL_ANKER_RY);
+        if (staat == LSTATE_ECHT_AAN) {
+            tft.fillCircle(cx, cy, r, C_LIGHT_OFF);
+            _boot_sector(cx, cy, r, 120, 240, C_LIGHT_ON);
+            _boot_sector(cx, cy, r, 240, 360, C_LIGHT_ON_RED);
+            _boot_sector(cx, cy, r,   0, 120, C_LIGHT_ON_GRN);
+        } else {
+            ui_licht_cirkel(cx, cy, r, staat);
+        }
     }
 
-    // Heklicht (achtersteven, wit)
+    // ── Stoomlicht (halverwege mast, 240° sector naar voren) ──────────
+    staat = (stoom_k >= 0) ? io_licht_staat(stoom_k) : LSTATE_ECHT_UIT;
+    {
+        int cx = BLCHT_BX(BL_STOOM_RX), cy = BLCHT_BY(BL_STOOM_RY);
+        if (staat == LSTATE_ECHT_AAN) {
+            tft.fillCircle(cx, cy, r, C_LIGHT_OFF);
+            _boot_sector(cx, cy, r, 240, 480, C_LIGHT_ON);  // 240° naar voren via 0°
+            ui_glow(cx, cy, r, C_LIGHT_ON, 2);
+        } else {
+            ui_licht_cirkel(cx, cy, r, staat);
+        }
+    }
+
+    // ── Heklicht (achtersteven, 120° sector naar achteren) ────────────
     staat = (hek_k >= 0) ? io_licht_staat(hek_k) : LSTATE_ECHT_UIT;
-    ui_licht_cirkel(BOOT_BX(BL_HEK_RX), BOOT_BY(BL_HEK_RY), BOOT_LICHT_R, staat);
-    if (staat == LSTATE_ECHT_AAN)
-        ui_glow(BOOT_BX(BL_HEK_RX), BOOT_BY(BL_HEK_RY), BOOT_LICHT_R, C_LIGHT_ON, 3);
+    {
+        int cx = BLCHT_BX(BL_HEK_RX), cy = BLCHT_BY(BL_HEK_RY);
+        if (staat == LSTATE_ECHT_AAN) {
+            tft.fillCircle(cx, cy, r, C_LIGHT_OFF);
+            _boot_sector(cx, cy, r, 120, 240, C_LIGHT_ON);
+            ui_glow(cx, cy, r, C_LIGHT_ON, 2);
+        } else {
+            ui_licht_cirkel(cx, cy, r, staat);
+        }
+    }
+
+    // ── Navigatielichten (boeg: rood BB boven dek, groen SB onder dek) ─
+    staat = (navi_k >= 0) ? io_licht_staat(navi_k) : LSTATE_ECHT_UIT;
+    {
+        int cx = BLCHT_BX(BL_NAVI_RX), cy = BLCHT_BY(BL_NAVI_RY);
+        if (staat == LSTATE_ECHT_AAN) {
+            tft.fillCircle(cx, cy, r, C_LIGHT_OFF);
+            _boot_sector(cx, cy, r, 240, 360, C_LIGHT_ON_RED);  // rood boven-voor (BB)
+            _boot_sector(cx, cy, r,   0, 120, C_LIGHT_ON_GRN);  // groen onder-voor (SB)
+        } else {
+            ui_licht_cirkel(cx, cy, r, staat);
+        }
+    }
 }
 
 // ─── Knop helpers ───────────────────────────────────────────────────
@@ -707,6 +752,7 @@ static void pico_boot_teken() {
             pico_boot_seg_teken(BOOT_RAAM3,  sizeof(BOOT_RAAM3) /sizeof(BOOT_RAAM3[0]),  C_CYAN);
             break;
     }
+    boot_lichten_teken();
 }
 
 // Vaarmodus knop: 52px breed, icoon boven — naam onder (past in 38px hoogte)
@@ -840,6 +886,7 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
     if (!aanraking) {
         if (io_runned) {
             pico_apparaten_teken();
+            boot_lichten_teken();
             io_runned = false;
         }
         return;

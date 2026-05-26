@@ -21,14 +21,15 @@
 #define BOOT_LICHT_R  (BOOT_SCALE_N > 5 ? 8 : 5)
 
 // Licht indicator posities (ruwe bootcoördinaten — schaling via BOOT_BX/BY)
+// x=0 = achtersteven (links), x=120 = boeg (rechts); y=0 = masttop
 #define BL_ANKER_RX  67
 #define BL_ANKER_RY   2
 #define BL_STOOM_RX  67
 #define BL_STOOM_RY  50
-#define BL_NAVI_RX    2
-#define BL_NAVI_RY  148
-#define BL_HEK_RX   113
-#define BL_HEK_RY   142
+#define BL_NAVI_RX  108   // boeg-zijde, wat meer naar achter dan de boegpunt
+#define BL_NAVI_RY  145
+#define BL_HEK_RX     4   // achtersteven
+#define BL_HEK_RY   148
 
 // Vaarmodus knoppen (rechter paneel, 2×2 grid)
 // Breedte: vult CTRL_PANEL_W (schalen mee met TFT_W via UI_SCX)

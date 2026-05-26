@@ -23,9 +23,9 @@ void tft_setup() {
         14, 21, 47, 48, 45,               // R0–R4
         9, 46, 3, 8, 16, 1,               // G0–G5
         15, 7, 6, 5, 4,                   // B0–B4
-        0, 210, 30, 16, 0, 22, 13, 10, 1, 12000000);
-    // 12MHz: WiFi-radio (ESP-NOW) en LCD-DMA delen de PSRAM-bus (Octal SPI).
-    // Lagere pixelklok = minder DMA-bandbreedte = minder conflicten in netwerkmodus.
+        0, 210, 30, 16, 0, 22, 13, 23, 1, 10000000);
+    // 10MHz + vsync_back_porch=23: minder PSRAM-bus conflicten (WiFi deelt Octal SPI).
+    // Lagere pclk = minder DMA-bandbreedte; grotere BP geeft onderkant meer settle-tijd.
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
 #elif PLATFORM_WROOM

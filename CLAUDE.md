@@ -152,6 +152,7 @@ meteo.h/.ino        ← weer + getij module: locatie (ip-api.com), Open-Meteo AP
 
 provider.h/.ino     ← lichtgewicht achtergrond-scheduler (alleen actief als tft_actief)
 victron_ble.h/.ino  ← passieve Victron BLE scan + AES-128-CTR decryptie + Preferences opslag
+slaap.h/.ino        ← ESP32 slaapstand: GEEN/LIGHT(~2mA)/DEEP(~10µA), timer+GPIO wake, ATtiny SLP
 screen_victron.h/.ino ← Victron scherm: DATA tab + CONFIG tab (discovery + hex-toetsenbord)
 ```
 
@@ -218,6 +219,9 @@ Recente taken:
 | 141 | Sessie 24 | PCLK 12MHz + backlight-blanking tijdens hertekenen (PSRAM-bus contention verminderen) |
 | 142 | Sessie 24 | hw_scherm: PCLK 10MHz + vsync_back_porch 23 (minder onderkant-flikkering) |
 | 143 | Sessie 24 | Boot-lamp posities gecorrigeerd (hek→achtersteven x=4, navi→boeg x=108); sectortekening heklicht 120°, stoomlicht 240°, 3kl wit/rood/groen, nav rood/groen; SCREEN_SMALL support |
+| 144 | Sessie 25 | Zeeslag v2.0: flat arrays voor CYD40V, computer-missers zichtbaar (blauw), gezonken schip groot kruis |
+| 145 | Sessie 25 | Zeeslag v3.0: grafische schepen (boeg/hek/details), handmatig plaatsen met validatie, ongeldige schepen rood |
+| 146 | Sessie 25 | ESP32 slaapstand: GEEN/LIGHT(~2mA)/DEEP(~10µA), timer+GPIO wake, ATtiny SLP, configuratie UI instellingen-tab |
 
 ---
 

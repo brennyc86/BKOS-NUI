@@ -1,0 +1,131 @@
+#include "slaap.h"
+#include "app_state.h"
+#include "hw_scherm.h"
+#include "hw_io.h"
+#include "io.h"
+
+uint8_t       slaap_modus    = SLAAP_GEEN;
+uint32_t      slaap_tijd     = 60;    // standaard 60s na scherm-uit
+uint32_t      slaap_interval = 30;    // standaard elke 30s IO cyclus uitvoeren
+bool          slaap_attiny   = false;
+volatile bool slaap_actief   = false;
+
+// ─── ESP32-specifieke implementatie ───────────────────────────────────────────
+#if PLATFORM_ESP32
+#include "esp_sleep.h"
+#include "esp_system.h"
+
+// RTC geheugen blijft behouden bij deep sleep (niet bij gewone herstart)
+RTC_DATA_ATTR static bool _rtc_deep_wake = false;
+
+// Touch IRQ GPIO als wake source (XPT2046 TIRQ = LOW bij aanraking)
+#if PLATFORM_CYD28
+  #define SLAAP_WAKE_GPIO GPIO_NUM_36   // CYD28_TS_IRQ
+#elif PLATFORM_CYD40H || PLATFORM_CYD40V
+  #define SLAAP_WAKE_GPIO GPIO_NUM_36   // CYD40_TS_IRQ
+#elif PLATFORM_WROOM
+  #define SLAAP_WAKE_GPIO GPIO_NUM_21   // WROOM_TS_IRQ
+#else
+  #define SLAAP_WAKE_GPIO GPIO_NUM_MAX  // ESP32-S3 GT911: geen XPT2046 IRQ → alleen timer wake
+#endif
+
+static void _wake_sources_instellen() {
+    esp_sleep_enable_timer_wakeup((uint64_t)slaap_interval * 1000000ULL);
+    // Touch IRQ als extra wake source (XPT2046 platformen)
+#if SLAAP_WAKE_GPIO != GPIO_NUM_MAX
+    esp_sleep_enable_ext0_wakeup(SLAAP_WAKE_GPIO, 0);  // wake bij LOW (aanraking)
+#endif
+}
+
+static void _scherm_wekken() {
+    slaap_actief      = false;
+    tft_actief        = true;
+    tft_bijna_uit     = false;
+    scherm_net_gewekt = true;
+    scherm_touched    = millis();  // reset dim-timer zodat scherm niet meteen weer uitgaat
+    tft_helderheid_zet(tft_helderheid);
+}
+
+#endif  // PLATFORM_ESP32
+
+void slaap_setup() {
+#if PLATFORM_ESP32
+    if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
+        _rtc_deep_wake = true;
+    }
+#endif
+}
+
+bool slaap_was_deep_wake() {
+#if PLATFORM_ESP32
+    return _rtc_deep_wake;
+#else
+    return false;
+#endif
+}
+
+void slaap_loop() {
+#if PLATFORM_ESP32
+    if (slaap_modus == SLAAP_GEEN || slaap_tijd == 0) return;
+
+    // Bijhouden wanneer scherm volledig zwart werd (fase 2: 0%, na fase 1 met 3%)
+    static unsigned long scherm_uit_ms = 0;
+    static bool scherm_was_aan = true;
+
+    if (tft_actief || tft_bijna_uit) {
+        // Scherm (deels) aan: geen slaap, reset tracking
+        scherm_was_aan = true;
+        slaap_actief   = false;
+        return;
+    }
+
+    // Scherm is volledig zwart (fase 2)
+    if (scherm_was_aan) {
+        scherm_uit_ms  = millis();
+        scherm_was_aan = false;
+    }
+
+    // Wachten tot slaap_tijd verstreken is na scherm-uit
+    if ((millis() - scherm_uit_ms) < (uint32_t)slaap_tijd * 1000UL) return;
+
+    // ATtiny slapen sturen (wekt automatisch op eerste UART activiteit)
+    if (slaap_attiny && bkoss_actief) {
+        IO_SERIAL.print("SLP\n");
+        delay(20);
+    }
+
+    slaap_actief = true;
+
+    if (slaap_modus == SLAAP_LIGHT) {
+        // ─── Light sleep ──────────────────────────────────────────────────────
+        // Alle FreeRTOS taken pauzeren; RAM en WiFi-verbinding behouden.
+        // Hervatten exact waar gestopt na wake.
+        _wake_sources_instellen();
+        esp_light_sleep_start();  // blokkeert tot wake
+
+        esp_sleep_wakeup_cause_t reden = esp_sleep_get_wakeup_cause();
+
+        if (reden == ESP_SLEEP_WAKEUP_TIMER) {
+            // Timer wake: achtergrond IO cyclus uitvoeren, daarna terugslapen
+            io_direct_aanvraag = true;
+            // slaap_actief blijft true → volgende aanroep slaapt opnieuw
+        } else {
+            // GPIO (touch) of andere reden: volledig wekken
+            if (slaap_attiny && bkoss_actief) {
+                delay(50);  // wachten op ATtiny wake na eerste UART activiteit
+            }
+            _scherm_wekken();
+        }
+
+    } else if (slaap_modus == SLAAP_DEEP) {
+        // ─── Deep sleep ───────────────────────────────────────────────────────
+        // ESP32 volledig uitschakelen. Herstart op wake (hardware.ino detecteert dit).
+        // Staat opslaan zodat na herstart direct naar werkscherm gegaan kan worden.
+        _rtc_deep_wake = true;
+        state_save();
+        _wake_sources_instellen();
+        esp_deep_sleep_start();
+        // Hier komt code nooit aan — ESP32 herstart op wake
+    }
+#endif
+}

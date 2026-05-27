@@ -4,6 +4,7 @@
 #include "fout_log.h"
 #include "platform_fs.h"
 #include "bkos_net.h"    // net_eigen_naam, NET_NAAM_LEN, net_opslaan()
+#include "slaap.h"
 
 // ─── PIN code helpers ────────────────────────────────────────────────────
 static void pin_lezen(char* buf, int len) {
@@ -118,7 +119,7 @@ static const char* cfg_chips_r2[] = {
 #if SCREEN_SMALL
 
 // Totale virtuele inhoudshoogte instellingen (som van alle y += stappen + 26px laatste rij)
-#define PICO_CFG_INS_H  282  // +30 voor open netwerken toggle
+#define PICO_CFG_INS_H  (282 + (PLATFORM_ESP32 ? 90 : 0))  // +90 voor slaap-rijen (ESP32)
 static int pico_cfg_scroll_y = 0;  // pixels omhoog verschoven
 
 // PIN overlay voor 240×320
@@ -486,6 +487,85 @@ static void pico_cfg_instellingen_teken() {
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
     y += 30;
 
+#if PLATFORM_ESP32
+    // Slaap modus (compact: 3 knoppen in één rij)
+    {
+        tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(8, y + (26 - 8) / 2); tft.print("SLP:");
+        const char* modi[] = {"GEEN", "LIGHT", "DEEP"};
+        uint16_t mkl[] = {C_TEXT_DIM, C_CYAN, C_AMBER};
+        int mw = (TFT_W - 8 - 34 - 6) / 3;
+        for (int i = 0; i < 3; i++) {
+            bool sel = (slaap_modus == i);
+            uint16_t mfg = sel ? mkl[i] : C_SURFACE3;
+            uint16_t mbg = sel ? (i == 0 ? C_SURFACE2 : (i == 1 ? RGB565(0, 14, 24) : RGB565(24, 10, 0))) : C_SURFACE;
+            tft.fillRoundRect(36 + i * (mw + 2), y + 3, mw, 20, 3, mbg);
+            if (sel) tft.drawRoundRect(36 + i * (mw + 2), y + 3, mw, 20, 3, mfg);
+            tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
+            int tw = strlen(modi[i]) * 6;
+            tft.setCursor(36 + i * (mw + 2) + (mw - tw) / 2, y + 3 + (20 - 8) / 2);
+            tft.print(modi[i]);
+        }
+    }
+    y += 30;
+    // Slaap na + interval (combinatierij)
+    {
+        bool dis = (slaap_modus == SLAAP_GEEN);
+        tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
+        tft.setCursor(8, y + (26 - 8) / 2); tft.print("NA:");
+        const uint32_t stps[] = {0, 30, 60, 300, 600};
+        const char* slbls[]   = {"UIT", "30s", "1m", "5m", "10m"};
+        int sw2 = (TFT_W - 8 - 30 - 8) / 5;
+        for (int i = 0; i < 5; i++) {
+            bool sel = (slaap_tijd == stps[i]);
+            uint16_t sfg = (sel && !dis) ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
+            tft.fillRoundRect(34 + i * (sw2 + 2), y + 3, sw2, 20, 3, (sel && !dis) ? RGB565(0, 14, 24) : C_SURFACE);
+            if (sel && !dis) tft.drawRoundRect(34 + i * (sw2 + 2), y + 3, sw2, 20, 3, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(sfg);
+            int tw = strlen(slbls[i]) * 6;
+            tft.setCursor(34 + i * (sw2 + 2) + (sw2 - tw) / 2, y + 3 + (20 - 8) / 2);
+            tft.print(slbls[i]);
+        }
+    }
+    y += 30;
+    // Interval + ATtiny
+    {
+        bool dis = (slaap_modus == SLAAP_GEEN);
+        tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
+        tft.setCursor(8, y + (26 - 8) / 2); tft.print("INT:");
+        const uint32_t ivals[] = {10, 30, 60, 300};
+        const char* ilbls[]    = {"10s", "30s", "1m", "5m"};
+        int iw = 30;
+        for (int i = 0; i < 4; i++) {
+            bool sel = (slaap_interval == ivals[i]);
+            uint16_t ifg = (sel && !dis) ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
+            tft.fillRoundRect(36 + i * (iw + 2), y + 3, iw, 20, 3, (sel && !dis) ? RGB565(0, 14, 24) : C_SURFACE);
+            if (sel && !dis) tft.drawRoundRect(36 + i * (iw + 2), y + 3, iw, 20, 3, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(ifg);
+            int tw = strlen(ilbls[i]) * 6;
+            tft.setCursor(36 + i * (iw + 2) + (iw - tw) / 2, y + 3 + (20 - 8) / 2);
+            tft.print(ilbls[i]);
+        }
+        if (bkoss_actief) {
+            bool at_dis = dis;
+            uint16_t afg = (!at_dis && slaap_attiny) ? C_CYAN : (at_dis ? C_DARK_GRAY : C_SURFACE3);
+            int atx = 36 + 4 * (iw + 2) + 2;
+            int atw = TFT_W - 12 - atx;
+            tft.fillRoundRect(atx, y + 3, atw, 20, 3, (!at_dis && slaap_attiny) ? RGB565(0, 14, 24) : C_SURFACE);
+            if (!at_dis && slaap_attiny) tft.drawRoundRect(atx, y + 3, atw, 20, 3, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(afg);
+            const char* albl = slaap_attiny ? "ATT:AAN" : "ATT:UIT";
+            int tw = strlen(albl) * 6;
+            tft.setCursor(atx + (atw - tw) / 2, y + 3 + (20 - 8) / 2);
+            tft.print(albl);
+        }
+    }
+    y += 30;
+#endif  // PLATFORM_ESP32
+
     // Open netwerken toggle (PIN vereist)
     {
         uint16_t obg  = (ontg && wifi_open_auto) ? RGB565(20, 4, 0) : C_SURFACE2;
@@ -598,6 +678,38 @@ static void pico_cfg_instellingen_run(int x, int y) {
         actief_scherm = SCREEN_OTA; scherm_bouwen = true; return;
     }
     y0 += 30;
+#if PLATFORM_ESP32
+    // Slaap modus
+    if (y >= y0 && y < y0 + 26) {
+        int mw = (TFT_W - 8 - 34 - 6) / 3;
+        int idx = (x - 36) / (mw + 2);
+        if (idx >= 0 && idx < 3) { slaap_modus = (uint8_t)idx; state_save(); pico_cfg_instellingen_teken(); }
+        return;
+    }
+    y0 += 30;
+    // Slaap na
+    if (y >= y0 && y < y0 + 26 && slaap_modus != SLAAP_GEEN) {
+        const uint32_t stps[] = {0, 30, 60, 300, 600};
+        int sw2 = (TFT_W - 8 - 30 - 8) / 5;
+        int idx = (x - 34) / (sw2 + 2);
+        if (idx >= 0 && idx < 5) { slaap_tijd = stps[idx]; state_save(); pico_cfg_instellingen_teken(); }
+        return;
+    }
+    y0 += 30;
+    // Interval + ATtiny
+    if (y >= y0 && y < y0 + 26 && slaap_modus != SLAAP_GEEN) {
+        int iw = 30;
+        if (x < 36 + 4 * (iw + 2)) {
+            const uint32_t ivals[] = {10, 30, 60, 300};
+            int idx = (x - 36) / (iw + 2);
+            if (idx >= 0 && idx < 4) { slaap_interval = ivals[idx]; state_save(); pico_cfg_instellingen_teken(); }
+        } else if (bkoss_actief) {
+            slaap_attiny = !slaap_attiny; state_save(); pico_cfg_instellingen_teken();
+        }
+        return;
+    }
+    y0 += 30;
+#endif  // PLATFORM_ESP32
     // Open netwerken toggle (PIN vereist)
     if (y >= y0 && y < y0 + 26) {
         if (!ontg) { pin_vereist_tonen(); return; }
@@ -1119,8 +1231,90 @@ static void cfg_instellingen_teken() {
     tft.setCursor(138, ay + 4 + (32 - 16) / 2);
     tft.print(ontg ? (heeft_naam ? net_eigen_naam : "(tik om naam in te stellen)") : "***");
 
+    // Slaap instellingen (3 rijen — geen PIN vereist, testfunctie)
+    int sly  = ay + 44;
+    int sly2 = sly  + 44;
+    int sly3 = sly2 + 44;
+
+    // Row 1: slaap modus (GEEN / LIGHT / DEEP)
+    {
+        tft.fillRoundRect(8, sly, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, sly + (40 - 8) / 2); tft.print("SLAAP");
+        const char* modi[]    = {"GEEN", "LIGHT", "DEEP"};
+        const char* uitleg[]  = {"", " CPU pauze, RAM behouden  (~2mA, WiFi actief)", " Volledige uitschakeling  (~10uA, herstart bij wake)"};
+        uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN, C_AMBER};
+        for (int i = 0; i < 3; i++) {
+            bool sel = (slaap_modus == i);
+            uint16_t mfg = sel ? mkleuren[i] : C_SURFACE3;
+            uint16_t mbg = sel ? (i == 0 ? C_SURFACE2 : (i == 1 ? RGB565(0, 14, 24) : RGB565(24, 10, 0))) : C_SURFACE;
+            tft.fillRoundRect(90 + i * 134, sly + 4, 128, 32, 5, mbg);
+            if (sel) tft.drawRoundRect(90 + i * 134, sly + 4, 128, 32, 5, mfg);
+            tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
+            int tw = strlen(modi[i]) * 6;
+            tft.setCursor(90 + i * 134 + (128 - tw) / 2, sly + 4 + (32 - 8) / 2);
+            tft.print(modi[i]);
+        }
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(492, sly + (40 - 8) / 2);
+        tft.print(uitleg[slaap_modus]);
+    }
+    // Row 2: slaap na (tijd na scherm-uit)
+    {
+        bool dis = (slaap_modus == SLAAP_GEEN);
+        tft.fillRoundRect(8, sly2, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
+        tft.setCursor(18, sly2 + (40 - 8) / 2); tft.print("SLAAP NA");
+        const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
+        const char* slbls[]   = {"NOOIT", "30s", "1 min", "2 min", "5 min", "10 min"};
+        for (int i = 0; i < 6; i++) {
+            bool sel = (slaap_tijd == stps[i]);
+            uint16_t sfg = sel && !dis ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
+            uint16_t sbg = sel && !dis ? RGB565(0, 14, 24) : C_SURFACE;
+            tft.fillRoundRect(100 + i * 96, sly2 + 5, 90, 30, 4, sbg);
+            if (sel && !dis) tft.drawRoundRect(100 + i * 96, sly2 + 5, 90, 30, 4, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(sfg);
+            int tw = strlen(slbls[i]) * 6;
+            tft.setCursor(100 + i * 96 + (90 - tw) / 2, sly2 + 5 + (30 - 8) / 2);
+            tft.print(slbls[i]);
+        }
+    }
+    // Row 3: interval (achtergrond wake) + ATtiny toggle
+    {
+        bool dis = (slaap_modus == SLAAP_GEEN);
+        tft.fillRoundRect(8, sly3, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
+        tft.setCursor(18, sly3 + (40 - 8) / 2); tft.print("INTERVAL");
+        const uint32_t ivals[] = {10, 30, 60, 300};
+        const char* ilbls[]    = {"10s", "30s", "1 min", "5 min"};
+        for (int i = 0; i < 4; i++) {
+            bool sel = (slaap_interval == ivals[i]);
+            uint16_t ifg = sel && !dis ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
+            uint16_t ibg = sel && !dis ? RGB565(0, 14, 24) : C_SURFACE;
+            tft.fillRoundRect(100 + i * 96, sly3 + 5, 90, 30, 4, ibg);
+            if (sel && !dis) tft.drawRoundRect(100 + i * 96, sly3 + 5, 90, 30, 4, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(ifg);
+            int tw = strlen(ilbls[i]) * 6;
+            tft.setCursor(100 + i * 96 + (90 - tw) / 2, sly3 + 5 + (30 - 8) / 2);
+            tft.print(ilbls[i]);
+        }
+        // ATtiny toggle (alleen als module aanwezig)
+        {
+            bool at_dis = dis || !bkoss_actief;
+            uint16_t abg = (!at_dis && slaap_attiny) ? RGB565(0, 14, 24) : C_SURFACE;
+            uint16_t afg = (!at_dis && slaap_attiny) ? C_CYAN : (at_dis ? C_DARK_GRAY : C_SURFACE3);
+            tft.fillRoundRect(498, sly3 + 5, 200, 30, 4, abg);
+            if (!at_dis && slaap_attiny) tft.drawRoundRect(498, sly3 + 5, 200, 30, 4, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(afg);
+            const char* albl = (!at_dis && slaap_attiny) ? "ATTINY  AAN" : (bkoss_actief ? "ATTINY  UIT" : "ATTINY  N/B");
+            int atw = strlen(albl) * 6;
+            tft.setCursor(498 + (200 - atw) / 2, sly3 + 5 + (30 - 8) / 2);
+            tft.print(albl);
+        }
+    }
+
     // IO Configuratie [+ Touch Kalibreren voor XPT2046, IO Hartslag voor S3]
-    int iy = ay + 44;
+    int iy = sly3 + 44;
 #if PLATFORM_XPT2046
     ui_knop(10, iy + 4, UI_SCX(488), 38, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
@@ -1172,7 +1366,7 @@ static void cfg_instellingen_teken() {
     helderheid_balk_teken();
     int _cfg_sb_y = HLD_Y + HLD_H + 4;
     ui_scrollbar(TFT_W - UI_SB_W, _cfg_sb_y, NAV_Y - _cfg_sb_y, cfg_ins_scroll_y,
-                 max(0, 414 + (int)UI_SCY(40) - CONTENT_H));
+                 max(0, 546 + (int)UI_SCY(40) - CONTENT_H));
 }
 
 static void cfg_instellingen_run(int x, int y) {
@@ -1201,7 +1395,7 @@ static void cfg_instellingen_run(int x, int y) {
     }
 
     {
-        int max_scroll = max(0, 414 + (int)UI_SCY(40) - CONTENT_H);
+        int max_scroll = max(0, 546 + (int)UI_SCY(40) - CONTENT_H);
         if (max_scroll > 0) {
             int sb_y_pos = HLD_Y + HLD_H + 4;
             int klik = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, sb_y_pos, NAV_Y - sb_y_pos);
@@ -1214,12 +1408,15 @@ static void cfg_instellingen_run(int x, int y) {
     }
 
     int wow_y = HLD_Y + HLD_H + 4 - cfg_ins_scroll_y;
-    int ow_y  = wow_y + 38 + 2;   // open netwerken toggle
+    int ow_y  = wow_y + 38 + 2;
     int sy    = ow_y + 30 + 4;
     int by    = sy + 62;
     int zy    = by + 44;
     int ay    = zy + 44;
-    int iy    = ay + 44;
+    int sly   = ay   + 44;   // slaap modus
+    int sly2  = sly  + 44;   // slaap tijd
+    int sly3  = sly2 + 44;   // slaap interval + attiny
+    int iy    = sly3 + 44;
     int uy    = iy + 46;
     int py    = uy + 46;
 
@@ -1312,6 +1509,32 @@ static void cfg_instellingen_run(int x, int y) {
         kb_sym = false;
         cfg_toetsenbord_actief = true;
         screen_config_toetsenbord_teken();
+        return;
+    }
+
+    // Slaap modus keuze (geen PIN vereist)
+    if (y >= sly && y < sly + 40 && x >= 90) {
+        int idx = (x - 90) / 134;
+        if (idx >= 0 && idx < 3) { slaap_modus = (uint8_t)idx; state_save(); cfg_instellingen_teken(); }
+        return;
+    }
+    // Slaap tijd (alleen actief als modus != GEEN)
+    if (y >= sly2 && y < sly2 + 40 && x >= 100 && slaap_modus != SLAAP_GEEN) {
+        const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
+        int idx = (x - 100) / 96;
+        if (idx >= 0 && idx < 6) { slaap_tijd = stps[idx]; state_save(); cfg_instellingen_teken(); }
+        return;
+    }
+    // Slaap interval + ATtiny (alleen actief als modus != GEEN)
+    if (y >= sly3 && y < sly3 + 40 && slaap_modus != SLAAP_GEEN) {
+        if (x >= 100 && x < 484) {
+            const uint32_t ivals[] = {10, 30, 60, 300};
+            int idx = (x - 100) / 96;
+            if (idx >= 0 && idx < 4) { slaap_interval = ivals[idx]; state_save(); cfg_instellingen_teken(); }
+        } else if (x >= 498 && bkoss_actief) {
+            slaap_attiny = !slaap_attiny;
+            state_save(); cfg_instellingen_teken();
+        }
         return;
     }
 

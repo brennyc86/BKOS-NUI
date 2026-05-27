@@ -590,3 +590,17 @@ void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
         default: break;
     }
 }
+
+void io_attiny_slaap(bool aan) {
+    // Stuur slaap/wake commando naar ATtiny3217 via UART.
+    // ATtiny wekt automatisch op eerste UART byte bij terugkeer.
+#if !PLATFORM_PICO && !PLATFORM_WROOM
+    if (!bkoss_actief) return;
+    if (aan) {
+        IO_SERIAL.print("SLP\n");
+    } else {
+        IO_SERIAL.print("WUP\n");
+    }
+    delay(10);
+#endif
+}

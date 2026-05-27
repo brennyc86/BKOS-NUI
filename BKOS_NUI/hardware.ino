@@ -1,4 +1,5 @@
 #include "hardware.h"
+#include "slaap.h"
 #include "getijdata.h"
 #include "screen_main.h"
 #include "screen_io.h"
@@ -217,10 +218,13 @@ void hw_setup() {
     ts_setup();
     hw_io_setup();
     state_load();
+    slaap_setup();  // deep sleep wake detectie (na state_load)
     palette_toepassen(kleurenschema);
     tft_helderheid_zet(tft_helderheid);
 
-    // Splash scherm
+    // Splash scherm (overgeslagen bij deep sleep wake voor snellere herstart)
+    bool splash = !slaap_was_deep_wake();
+    if (splash) {
     tft.fillScreen(C_BG);
     tft_logo(TFT_W / 2 - 100, TFT_H / 2 - 50, 1, C_CYAN);
     tft.setTextSize(2);
@@ -232,6 +236,7 @@ void hw_setup() {
     tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(TFT_W / 2 - 80, TFT_H / 2 + 62);
     tft.print("Opstarten...");
+    }
 
     info_laden();       // boot naam en eigenaar uit SPIFFS (voor status bar)
     data_setup();       // gestructureerde data-opslag laden
@@ -245,21 +250,23 @@ void hw_setup() {
     app_setup();            // app-manifesten laden + Lua runtime initialiseren
 
     // Splash: BKOSS status tonen
-    tft.setTextSize(1);
-    if (bkoss_actief) {
-        tft.setTextColor(C_GREEN);
-        tft.setCursor(TFT_W / 2 - 80, TFT_H / 2 + 80);
-        tft.print("BKOSS ");
-        tft.print(bkoss_versie);
-        tft.print(" — ");
-        tft.print(io_aparaten_cnt);
-        tft.print(" module(s), ");
-        tft.print(io_kanalen_cnt);
-        tft.print(" kanalen");
-    } else {
-        tft.setTextColor(C_RED_BRIGHT);
-        tft.setCursor(TFT_W / 2 - 100, TFT_H / 2 + 80);
-        tft.print("! BKOSS module niet gevonden");
+    if (splash) {
+        tft.setTextSize(1);
+        if (bkoss_actief) {
+            tft.setTextColor(C_GREEN);
+            tft.setCursor(TFT_W / 2 - 80, TFT_H / 2 + 80);
+            tft.print("BKOSS ");
+            tft.print(bkoss_versie);
+            tft.print(" — ");
+            tft.print(io_aparaten_cnt);
+            tft.print(" module(s), ");
+            tft.print(io_kanalen_cnt);
+            tft.print(" kanalen");
+        } else {
+            tft.setTextColor(C_RED_BRIGHT);
+            tft.setCursor(TFT_W / 2 - 100, TFT_H / 2 + 80);
+            tft.print("! BKOSS module niet gevonden");
+        }
     }
 
     // Start netwerk taak op Core 0 (niet-blokkerend)
@@ -267,7 +274,7 @@ void hw_setup() {
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
 
-    delay(1000);     // splash tonen
+    if (splash) delay(1000);     // splash tonen
 
     scherm_bouwen = true;
     actief_scherm = SCREEN_MAIN;
@@ -325,6 +332,9 @@ void hw_loop() {
         licht_auto_ms = millis();
         if (licht_instelling == LICHT_AUTO) io_verlichting_update();
     }
+
+    // Energie-besparende slaapstand (alleen als scherm volledig uit)
+    slaap_loop();
 
     // Yield zodat _gui_taak (prioriteit 4) kans krijgt te preempten
     delay(10);

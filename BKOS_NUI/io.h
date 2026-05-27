@@ -21,5 +21,6 @@ void  io_zekering_check();
 byte  io_apparaat_staat3(const char* prefix);  // 0=all off, 1=mix, 2=all on
 void  io_apparaat_toggle(const char* prefix);
 void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
+void  io_attiny_slaap(bool aan);   // ATtiny slaap/wake commando via UART
 int         io_zichtbaar();
 const char* io_module_naam(byte id);

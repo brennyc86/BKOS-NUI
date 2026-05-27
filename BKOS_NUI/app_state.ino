@@ -1,6 +1,7 @@
 #include "app_state.h"
 #include "hw_io.h"
 #include "platform_fs.h"
+#include "slaap.h"
 
 // Forward declarations voor OTA state (gedeclareerd in ota.ino)
 extern bool ota_beta_kanal;
@@ -48,6 +49,10 @@ void state_save() {
     f.printf("ota_int=%d\n",  ota_check_interval_min);
     f.printf("ota_tijd=%d\n", ota_check_tijd_uur);
     f.printf("wifi_open=%d\n", (int)wifi_open_auto);
+    f.printf("slaap_m=%d\n",  (int)slaap_modus);
+    f.printf("slaap_t=%lu\n", (unsigned long)slaap_tijd);
+    f.printf("slaap_i=%lu\n", (unsigned long)slaap_interval);
+    f.printf("slaap_a=%d\n",  (int)slaap_attiny);
     f.close();
 }
 
@@ -97,6 +102,10 @@ void state_load() {
         if (key == "ota_int")   ota_check_interval_min = val.toInt();
         if (key == "ota_tijd")  ota_check_tijd_uur     = val.toInt();
         if (key == "wifi_open") wifi_open_auto         = (val.toInt() != 0);
+        if (key == "slaap_m")  slaap_modus    = (uint8_t)constrain(val.toInt(), 0, 2);
+        if (key == "slaap_t")  slaap_tijd     = (uint32_t)val.toInt();
+        if (key == "slaap_i")  slaap_interval = max(10UL, (uint32_t)val.toInt());
+        if (key == "slaap_a")  slaap_attiny   = (val.toInt() != 0);
     }
     f.close();
 

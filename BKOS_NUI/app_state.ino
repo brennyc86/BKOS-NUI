@@ -104,7 +104,7 @@ void state_load() {
         if (key == "wifi_open") wifi_open_auto         = (val.toInt() != 0);
         if (key == "slaap_m")  slaap_modus    = (uint8_t)constrain(val.toInt(), 0, 2);
         if (key == "slaap_t")  slaap_tijd     = (uint32_t)val.toInt();
-        if (key == "slaap_i")  slaap_interval = max(10UL, (uint32_t)val.toInt());
+        if (key == "slaap_i")  slaap_interval = max((uint32_t)10, (uint32_t)val.toInt());
         if (key == "slaap_a")  slaap_attiny   = (val.toInt() != 0);
     }
     f.close();

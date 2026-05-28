@@ -89,10 +89,7 @@ void slaap_loop() {
     if ((millis() - scherm_uit_ms) < (uint32_t)slaap_tijd * 1000UL) return;
 
     // ATtiny slapen sturen (wekt automatisch op eerste UART activiteit)
-    if (slaap_attiny && bkoss_actief) {
-        IO_SERIAL.print("SLP\n");
-        delay(20);
-    }
+    if (slaap_attiny) io_attiny_slaap(true);
 
     slaap_actief = true;
 
@@ -111,18 +108,18 @@ void slaap_loop() {
             // slaap_actief blijft true → volgende aanroep slaapt opnieuw
         } else {
             // GPIO (touch) of andere reden: volledig wekken
-            if (slaap_attiny && bkoss_actief) {
-                delay(50);  // wachten op ATtiny wake na eerste UART activiteit
-            }
+            if (slaap_attiny) io_attiny_slaap(false);  // "WAKKER" sturen
             _scherm_wekken();
         }
 
     } else if (slaap_modus == SLAAP_DEEP) {
         // ─── Deep sleep ───────────────────────────────────────────────────────
         // ESP32 volledig uitschakelen. Herstart op wake (hardware.ino detecteert dit).
-        // Staat opslaan zodat na herstart direct naar werkscherm gegaan kan worden.
+        // ATtiny slaapt mee — wekt automatisch zodra IO-commando's binnenkomen na herstart.
         _rtc_deep_wake = true;
         state_save();
+        // ATtiny sturen voor slaap (stuurt "AT SLAAP" — wekt op UART activiteit na herstart)
+        if (slaap_attiny) io_attiny_slaap(true);
         _wake_sources_instellen();
         esp_deep_sleep_start();
         // Hier komt code nooit aan — ESP32 herstart op wake

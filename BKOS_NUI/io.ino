@@ -592,15 +592,20 @@ void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
 }
 
 void io_attiny_slaap(bool aan) {
-    // Stuur slaap/wake commando naar ATtiny3217 via UART.
-    // ATtiny wekt automatisch op eerste UART byte bij terugkeer.
+    // Slaap: "AT SLAAP" → ATtiny gaat naar STANDBY (v0.4, eerste poging).
+    // Wake:  "WAKKER"   → ATtiny antwoordt "GEREED"/"LETS GO".
+    // ATtiny wekt ook automatisch op elke inkomende UART byte.
 #if !PLATFORM_PICO && !PLATFORM_WROOM
     if (!bkoss_actief) return;
+    while (IO_SERIAL.available()) IO_SERIAL.read();  // buffer leegmaken
     if (aan) {
-        IO_SERIAL.print("SLP\n");
+        IO_SERIAL.print("AT SLAAP\n");
+        delay(50);
+        while (IO_SERIAL.available()) IO_SERIAL.read();  // versie-respons weggooien
     } else {
-        IO_SERIAL.print("WUP\n");
+        IO_SERIAL.print("WAKKER\n");
+        delay(50);
+        while (IO_SERIAL.available()) IO_SERIAL.read();  // "GEREED"/"LETS GO" weggooien
     }
-    delay(10);
 #endif
 }

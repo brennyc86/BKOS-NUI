@@ -149,11 +149,24 @@ screen_info.h/.ino  ← device informatie scherm
 screen_wifi.h/.ino  ← WiFi configuratie scherm
 
 meteo.h/.ino        ← weer + getij module: locatie (ip-api.com), Open-Meteo API, harmonische getijberekening
+getijdata.cpp/h     ← Rijkswaterstaat getijextremen API module (aparte HTTP-opvrager)
 
 provider.h/.ino     ← lichtgewicht achtergrond-scheduler (alleen actief als tft_actief)
 victron_ble.h/.ino  ← passieve Victron BLE scan + AES-128-CTR decryptie + Preferences opslag
 slaap.h/.ino        ← ESP32 slaapstand: GEEN/LIGHT(~2mA)/DEEP(~10µA), timer+GPIO wake, ATtiny SLP
 screen_victron.h/.ino ← Victron scherm: DATA tab + CONFIG tab (discovery + hex-toetsenbord)
+
+bkos_net.h/.ino     ← ESP-NOW multi-device: master/slave rollen, mesh routing, tijdsync (NET_MSG_TIJD), state-sync (NET_MSG_STATE_REQ), achtergrond-router op Core 0
+data_store.cpp/h    ← gestructureerde persistente JSON-opslag in SPIFFS (/bkos_data.json), key-value + tijdstempel, door Lua leesbaar via bkos.data.*
+fout_log.cpp/h/.ino ← foutlog naar GitHub Issues API (repo: brennyc86/BKOS-NUI-logs)
+app_manager.cpp/h   ← Lua app-beheer: installeren/activeren/deactiveren, leest manifest.json + main.lua uit SPIFFS /apps/<id>/
+lua_runtime.cpp/h   ← Lua 5.4 runtime met volledige BKOS API bindings (scherm, IO, data, systeem)
+platform.h          ← één plek voor alle platform-afhankelijke defines (ESP32-S3, WROOM, CYD28, CYD40H, CYD40V, Pico)
+platform_fs.h       ← platform-afhankelijke filesystem-bindings (SPIFFS vs LittleFS per platform)
+
+screen_calibratie.h/.ino ← 5-punts affiene touch-kalibratie, apart opgeslagen per oriëntatie
+screen_netwerk.h/.ino    ← Netwerk scherm: verbonden peers, IP/MAC info, SCREEN_SMALL layout, refresh elke 60s
+screen_apps.h/.ino       ← Apps scherm: Lua app-lijst, installeren/starten/stoppen vanuit app store of SPIFFS
 ```
 
 ### Scherm-dispatch patroon
@@ -222,6 +235,7 @@ Recente taken:
 | 144 | Sessie 25 | Zeeslag v2.0: flat arrays voor CYD40V, computer-missers zichtbaar (blauw), gezonken schip groot kruis |
 | 145 | Sessie 25 | Zeeslag v3.0: grafische schepen (boeg/hek/details), handmatig plaatsen met validatie, ongeldige schepen rood |
 | 146 | Sessie 25 | ESP32 slaapstand: GEEN/LIGHT(~2mA)/DEEP(~10µA), timer+GPIO wake, ATtiny SLP, configuratie UI instellingen-tab |
+| 147 | Sessie 26 | Compilatiefout opgelost: `max(10UL, (uint32_t)val)` → `max((uint32_t)10, (uint32_t)val)` in app_state.ino — ESP32 core 2.x template type deduction vereist identieke types (`unsigned long` ≠ `uint32_t`) |
 
 ---
 
@@ -308,7 +322,7 @@ De LuaBKOS library staat in `BKOS_NUI/libraries/LuaBKOS/`. Arduino IDE detecteer
 - **Taal in code**: Nederlands (variabelen, functies, commentaar)
 - **Naamgeving**: `screen_X_teken()` / `screen_X_run()` voor schermen; `hw_` prefix voor hardware drivers; `io_` voor IO logica
 - **Geen Serial.print** in productie tenzij achter `#ifdef DEBUG`
-- **Versienummer formaat**: `major.typeJJMMDD` (bv. `5.N250426` = versie 5, Claude-build, 26 april 2025)
+- **Versienummer formaat**: `MAJOR.MINOR.YYMMDD.I` (bv. `0.1.260528.2` = 28 mei 2026, iteratie 2)
 - Compileer altijd met 8MB partitie schema, ook op 16MB hardware
 - Push nooit zonder bijgewerkte `versie.txt` en geëxporteerde `firmware.bin`
 

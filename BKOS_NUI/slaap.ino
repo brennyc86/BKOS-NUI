@@ -19,21 +19,25 @@ volatile bool slaap_actief   = false;
 RTC_DATA_ATTR static bool _rtc_deep_wake = false;
 
 // Touch IRQ GPIO als wake source (XPT2046 TIRQ = LOW bij aanraking)
+// Gebruik een aparte vlag — GPIO_NUM_* zijn enum-waarden, geen preprocessor-constanten.
 #if PLATFORM_CYD28
-  #define SLAAP_WAKE_GPIO GPIO_NUM_36   // CYD28_TS_IRQ
+  #define SLAAP_WAKE_PIN  36    // CYD28_TS_IRQ (GPIO36)
+  #define SLAAP_WAKE_BESCHIKBAAR 1
 #elif PLATFORM_CYD40H || PLATFORM_CYD40V
-  #define SLAAP_WAKE_GPIO GPIO_NUM_36   // CYD40_TS_IRQ
+  #define SLAAP_WAKE_PIN  36    // CYD40_TS_IRQ (GPIO36)
+  #define SLAAP_WAKE_BESCHIKBAAR 1
 #elif PLATFORM_WROOM
-  #define SLAAP_WAKE_GPIO GPIO_NUM_21   // WROOM_TS_IRQ
+  #define SLAAP_WAKE_PIN  21    // WROOM_TS_IRQ (GPIO21)
+  #define SLAAP_WAKE_BESCHIKBAAR 1
 #else
-  #define SLAAP_WAKE_GPIO GPIO_NUM_MAX  // ESP32-S3 GT911: geen XPT2046 IRQ → alleen timer wake
+  #define SLAAP_WAKE_BESCHIKBAAR 0  // ESP32-S3 GT911: geen XPT2046 IRQ → alleen timer wake
 #endif
 
 static void _wake_sources_instellen() {
     esp_sleep_enable_timer_wakeup((uint64_t)slaap_interval * 1000000ULL);
-    // Touch IRQ als extra wake source (XPT2046 platformen)
-#if SLAAP_WAKE_GPIO != GPIO_NUM_MAX
-    esp_sleep_enable_ext0_wakeup(SLAAP_WAKE_GPIO, 0);  // wake bij LOW (aanraking)
+    // Touch IRQ als extra wake source (XPT2046 platformen met gedefinieerde IRQ pin)
+#if SLAAP_WAKE_BESCHIKBAAR
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_WAKE_PIN, 0);  // wake bij LOW (aanraking)
 #endif
 }
 

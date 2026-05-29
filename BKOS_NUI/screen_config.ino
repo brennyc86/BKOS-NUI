@@ -48,6 +48,7 @@ char cfg_kb_label[24]           = "Naam:";
 static unsigned long cfg_kb_sloot = 0;
 static bool cfg_preset_menu     = false;
 static int  cfg_ins_scroll_y    = 0;
+static int  cfg_deelscherm      = 0;  // 0=hoofd, 1=boot, 2=weergave, 3=update
 
 // Wachtwoord-display: alle tekens behalve het laatste als '*'
 static void kb_wachtwoord_print(const char* s) {
@@ -1127,22 +1128,25 @@ static void palette_swatches_teken(int sy) {
     }
 }
 
-// Totale hoogte van scrollbare inhoud (BOOT + WEERGAVE & ENERGIE + UPDATE)
-// BOOT: 24(hdr)+44+44+44+50 = 206  |  WE: 24(hdr)+62+34+42+44+44+44 = 294  |  UPD: 24(hdr)+50+50 = 124
-// Categorie-gaps: 2×8 = 16  →  Totaal: 206+8+294+8+124 = 640
-#define CFG_INS_CONTENT_H  640
+// Sub-scherm header hoogte + content-start
+#define CFG_SUB_HDR_H  32
+#define CFG_SUB_Y0     (CFG_CONT_Y + CFG_SUB_HDR_H + 4)
 
-// fr_y = HLD_Y+HLD_H+4;  y0 = fr_y+38+4 (scrollable start)
-#define CFG_INS_FR_Y       (HLD_Y + HLD_H + 4)
-#define CFG_INS_Y0         (CFG_INS_FR_Y + 38 + 4)
-#define CFG_INS_MAX_SCROLL max(0, CFG_INS_CONTENT_H - (NAV_Y - CFG_INS_Y0))
+static void cfg_sub_header(const char* titel) {
+    tft.fillRect(0, CFG_CONT_Y, TFT_W, CFG_SUB_HDR_H, C_SURFACE2);
+    ui_knop(8, CFG_CONT_Y + 2, 90, 28, "< TERUG", C_SURFACE3, C_TEXT);
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    int tw = strlen(titel) * 12;
+    tft.setCursor((TFT_W - tw) / 2, CFG_CONT_Y + (CFG_SUB_HDR_H - 16) / 2);
+    tft.print(titel);
+}
 
-static void cfg_instellingen_teken() {
-    tft.fillRect(0, CFG_CONT_Y, TFT_W, TFT_H - SB_H - NAV_H - CFG_TAB_H, C_BG);
+static void cfg_hoofd_teken() {
+    tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
+    helderheid_balk_teken();
+
     bool ontg = config_ontgrendeld;
-
-    // ── Vaste rij: WiFi + ONTGRENDELEN (boven scroll, altijd toegankelijk) ───
-    int fr_y = CFG_INS_FR_Y;
+    int fr_y = HLD_Y + HLD_H + 4;
     tft.fillRoundRect(8, fr_y + 2, 394, 34, 6, C_SURFACE);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
@@ -1150,14 +1154,24 @@ static void cfg_instellingen_teken() {
             ontg ? "VERGRENDELEN" : "ONTGRENDELEN",
             C_SURFACE2, ontg ? C_AMBER : C_TEXT);
 
-    // ── Scrollbare categorieën ────────────────────────────────────────────────
-    int y = CFG_INS_Y0 - cfg_ins_scroll_y;
+    int cat_y = fr_y + 44;
+    int cat_h = 64, cat_gap = 8;
+    const char* cats[] = {"BOOT  >", "WEERGAVE & ENERGIE  >", "UPDATE  >"};
+    for (int i = 0; i < 3; i++) {
+        int cy = cat_y + i * (cat_h + cat_gap);
+        tft.fillRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE);
+        tft.drawRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE3);
+        tft.setTextSize(2); tft.setTextColor(C_CYAN);
+        tft.setCursor(24, cy + (cat_h - 16) / 2);
+        tft.print(cats[i]);
+    }
+}
 
-    // ══ BOOT ══════════════════════════════════════════════════════════════════
-    tft.fillRect(0, y, TFT_W, 20, C_SURFACE2);
-    tft.setTextSize(1); tft.setTextColor(C_CYAN);
-    tft.setCursor(12, y + 6); tft.print(">> BOOT");
-    y += 24;
+static void cfg_boot_teken() {
+    tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
+    cfg_sub_header("BOOT");
+    bool ontg = config_ontgrendeld;
+    int y = CFG_SUB_Y0;
 
     // Boot type
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
@@ -1236,14 +1250,13 @@ static void cfg_instellingen_teken() {
         if (ontg) { ui_knop(684, y + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, y + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
     }
 #endif
-    y += 50;
+}
 
-    // ══ WEERGAVE & ENERGIE ════════════════════════════════════════════════════
-    y += 8;
-    tft.fillRect(0, y, TFT_W, 20, C_SURFACE2);
-    tft.setTextSize(1); tft.setTextColor(C_CYAN);
-    tft.setCursor(12, y + 6); tft.print(">> WEERGAVE & ENERGIE");
-    y += 24;
+static void cfg_we_teken() {
+    tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
+    cfg_sub_header("WEERGAVE & ENERGIE");
+    bool ontg = config_ontgrendeld;
+    int y = CFG_SUB_Y0;
 
     // Kleurpaletten (PIN vereist)
     palette_swatches_teken(y);
@@ -1372,14 +1385,13 @@ static void cfg_instellingen_teken() {
             tft.setCursor(498 + (200 - (int)strlen(albl) * 6) / 2, y + 5 + (30 - 8) / 2); tft.print(albl);
         }
     }
-    y += 44;
+}
 
-    // ══ UPDATE ════════════════════════════════════════════════════════════════
-    y += 8;
-    tft.fillRect(0, y, TFT_W, 20, C_SURFACE2);
-    tft.setTextSize(1); tft.setTextColor(C_CYAN);
-    tft.setCursor(12, y + 6); tft.print(">> UPDATE");
-    y += 24;
+static void cfg_update_teken() {
+    tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
+    cfg_sub_header("UPDATE");
+    bool ontg = config_ontgrendeld;
+    int y = CFG_SUB_Y0;
 
     ui_knop(10, y + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
@@ -1398,12 +1410,16 @@ static void cfg_instellingen_teken() {
                     tok ? C_CYAN    : C_AMBER);
         }
     }
-
-    helderheid_balk_teken();
-    ui_scrollbar(TFT_W - UI_SB_W, CFG_INS_Y0, NAV_Y - CFG_INS_Y0, cfg_ins_scroll_y, CFG_INS_MAX_SCROLL);
 }
 
-static void cfg_instellingen_run(int x, int y) {
+static void cfg_instellingen_teken() {
+    if      (cfg_deelscherm == 1) cfg_boot_teken();
+    else if (cfg_deelscherm == 2) cfg_we_teken();
+    else if (cfg_deelscherm == 3) cfg_update_teken();
+    else                          cfg_hoofd_teken();
+}
+
+static void cfg_hoofd_run(int x, int y) {
     bool ontg = config_ontgrendeld;
 
     // Helderheid (altijd vrij)
@@ -1428,8 +1444,8 @@ static void cfg_instellingen_run(int x, int y) {
         }
     }
 
-    // Vaste rij: WiFi + ONTGRENDELEN
-    int fr_y = CFG_INS_FR_Y;
+    // WiFi + ONTGRENDELEN row
+    int fr_y = HLD_Y + HLD_H + 4;
     if (y >= fr_y && y < fr_y + 38) {
         if (x < 408) {
             actief_scherm = SCREEN_WIFI; scherm_bouwen = true;
@@ -1440,53 +1456,40 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // Swipe + scrollbar
-    {
-        int ms = CFG_INS_MAX_SCROLL;
-        if (ms > 0 && abs(hw_touch_drag_dy) >= 35) {
-            cfg_ins_scroll_y = constrain(cfg_ins_scroll_y - hw_touch_drag_dy, 0, ms);
-            cfg_instellingen_teken(); return;
-        }
-        if (ms > 0) {
-            int klik = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_INS_Y0, NAV_Y - CFG_INS_Y0);
-            if (klik != 0) {
-                if (klik == -1) cfg_ins_scroll_y = max(0, cfg_ins_scroll_y - 50);
-                else            cfg_ins_scroll_y = min(ms, cfg_ins_scroll_y + 50);
-                cfg_instellingen_teken(); return;
-            }
+    // Categorieknopen → deelscherm openen
+    int cat_y = fr_y + 44;
+    int cat_h = 64, cat_gap = 8;
+    for (int i = 0; i < 3; i++) {
+        int cy = cat_y + i * (cat_h + cat_gap);
+        if (y >= cy && y < cy + cat_h) {
+            cfg_deelscherm = i + 1;
+            cfg_instellingen_teken();
+            return;
         }
     }
+}
 
-    // Herbereken y-posities (identiek aan teken)
-    int cy = CFG_INS_Y0 - cfg_ins_scroll_y;
-    cy += 24;  // BOOT header
+static void cfg_boot_run(int x, int y) {
+    bool ontg = config_ontgrendeld;
+
+    if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
+        cfg_deelscherm = 0; cfg_instellingen_teken(); return;
+    }
+
+    int cy = CFG_SUB_Y0;
     int boot_y = cy; cy += 44;
     int zl_y   = cy; cy += 44;
     int nm_y   = cy; cy += 44;
-    int io_y   = cy; cy += 50;
-    cy += 8;   // categorie gap
-    cy += 24;  // WE header
-    int pal_y  = cy; cy += 62;
-    int ow_y   = cy; cy += 34;
-    int fr2_y  = cy; cy += 42;
-    int sly    = cy; cy += 44;
-    int sly2   = cy; cy += 44;
-    int sly3   = cy; cy += 44;
-    cy += 8;   // categorie gap
-    cy += 24;  // UPDATE header
-    int upd_y  = cy; cy += 50;
-    int pin_y  = cy;
+    int io_y   = cy;
 
-    // Boot type (PIN vereist)
     if (y >= boot_y && y < boot_y + 40) {
         if (!ontg) { pin_vereist_tonen(); return; }
         int bw = 148, bx_off = 90;
         int idx = (x - bx_off) / (bw + 6);
-        if (idx >= 0 && idx < 4) { boot_type = idx; state_save(); cfg_instellingen_teken(); }
+        if (idx >= 0 && idx < 4) { boot_type = idx; state_save(); cfg_boot_teken(); }
         return;
     }
 
-    // Zeilnummer (PIN vereist)
     if (y >= zl_y && y < zl_y + 40 && x >= 90 && x < 410) {
         if (!ontg) { pin_vereist_tonen(); return; }
         cfg_bewerk_zeilnr = true;
@@ -1499,7 +1502,6 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // Naam module (PIN vereist)
     if (y >= nm_y && y < nm_y + 44 && x >= 130 && x < 430) {
         if (!ontg) { pin_vereist_tonen(); return; }
         cfg_bewerk_apparaatnaam = true;
@@ -1514,7 +1516,6 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // IO Configuratie + [Touch Kalibreren / IO Hartslag]
     if (y >= io_y && y < io_y + 50) {
 #if PLATFORM_XPT2046
         if (x >= UI_SCX(500)) { actief_scherm = SCREEN_CALIBRATIE; scherm_bouwen = true; return; }
@@ -1526,15 +1527,30 @@ static void cfg_instellingen_run(int x, int y) {
             actief_scherm = SCREEN_IO_CFG; scherm_bouwen = true; return;
         }
         if (!ontg) return;
-        if      (x >= 566 && x < 592) { io_heartbeat_aan = max(10, (int)io_heartbeat_aan - 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
-        else if (x >= 592 && x < 618) { io_heartbeat_aan = min(600, (int)io_heartbeat_aan + 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
-        else if (x >= 684 && x < 710) { io_heartbeat_uit = max(30, (int)io_heartbeat_uit - 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
-        else if (x >= 710 && x < 736) { io_heartbeat_uit = min(600, (int)io_heartbeat_uit + 10); hw_io_cfg_opslaan(); cfg_instellingen_teken(); }
+        if      (x >= 566 && x < 592) { io_heartbeat_aan = max(10, (int)io_heartbeat_aan - 10); hw_io_cfg_opslaan(); cfg_boot_teken(); }
+        else if (x >= 592 && x < 618) { io_heartbeat_aan = min(600, (int)io_heartbeat_aan + 10); hw_io_cfg_opslaan(); cfg_boot_teken(); }
+        else if (x >= 684 && x < 710) { io_heartbeat_uit = max(30, (int)io_heartbeat_uit - 10); hw_io_cfg_opslaan(); cfg_boot_teken(); }
+        else if (x >= 710 && x < 736) { io_heartbeat_uit = min(600, (int)io_heartbeat_uit + 10); hw_io_cfg_opslaan(); cfg_boot_teken(); }
 #endif
         return;
     }
+}
 
-    // Kleurpaletten (PIN vereist)
+static void cfg_we_run(int x, int y) {
+    bool ontg = config_ontgrendeld;
+
+    if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
+        cfg_deelscherm = 0; cfg_instellingen_teken(); return;
+    }
+
+    int cy = CFG_SUB_Y0;
+    int pal_y  = cy; cy += 62;
+    int ow_y   = cy; cy += 34;
+    int fr2_y  = cy; cy += 42;
+    int sly    = cy; cy += 44;
+    int sly2   = cy; cy += 44;
+    int sly3   = cy;
+
     if (y >= pal_y && y < pal_y + 58) {
         if (!ontg) { pin_vereist_tonen(); return; }
         int sw = 95, gap = 6, start_x = 80;
@@ -1550,48 +1566,56 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // Open netwerken toggle (PIN vereist)
     if (y >= ow_y && y < ow_y + 34) {
         if (!ontg) { pin_vereist_tonen(); return; }
         wifi_open_auto = !wifi_open_auto;
-        state_save(); cfg_instellingen_teken(); return;
+        state_save(); cfg_we_teken(); return;
     }
 
-    // Foutrapportage | Lichtmodus (PIN vereist)
     if (y >= fr2_y && y < fr2_y + 42) {
         if (!ontg) { pin_vereist_tonen(); return; }
         if (x < 310) { fout_rapportage = !fout_rapportage; }
         else          { onthoud_licht_modus = !onthoud_licht_modus; }
-        state_save(); cfg_instellingen_teken(); return;
+        state_save(); cfg_we_teken(); return;
     }
 
-    // Slaap modus (geen PIN)
     if (y >= sly && y < sly + 40 && x >= 90) {
         int idx = (x - 90) / 100;
-        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); cfg_instellingen_teken(); }
+        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); cfg_we_teken(); }
         return;
     }
-    // Slaap na (geen PIN)
+
     if (y >= sly2 && y < sly2 + 40 && x >= 100 && slaap_modus != SLAAP_GEEN) {
         const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
         int idx = (x - 100) / 96;
-        if (idx >= 0 && idx < 6) { slaap_tijd = stps[idx]; state_save(); cfg_instellingen_teken(); }
+        if (idx >= 0 && idx < 6) { slaap_tijd = stps[idx]; state_save(); cfg_we_teken(); }
         return;
     }
-    // Slaap interval + ATtiny (geen PIN)
+
     if (y >= sly3 && y < sly3 + 40 && slaap_modus != SLAAP_GEEN) {
         if (x >= 100 && x < 484) {
             const uint32_t ivals[] = {10, 30, 60, 300};
             int idx = (x - 100) / 96;
-            if (idx >= 0 && idx < 4) { slaap_interval = ivals[idx]; state_save(); cfg_instellingen_teken(); }
+            if (idx >= 0 && idx < 4) { slaap_interval = ivals[idx]; state_save(); cfg_we_teken(); }
         } else if (x >= 498 && bkoss_actief) {
             slaap_attiny = !slaap_attiny;
-            state_save(); cfg_instellingen_teken();
+            state_save(); cfg_we_teken();
         }
         return;
     }
+}
 
-    // Firmware updaten (PIN vereist)
+static void cfg_update_run(int x, int y) {
+    bool ontg = config_ontgrendeld;
+
+    if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
+        cfg_deelscherm = 0; cfg_instellingen_teken(); return;
+    }
+
+    int cy = CFG_SUB_Y0;
+    int upd_y = cy; cy += 50;
+    int pin_y = cy;
+
     if (y >= upd_y && y < upd_y + 50) {
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_OTA;
@@ -1599,7 +1623,6 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // Pincode + Token (PIN vereist voor PIN wijzigen)
     if (y >= pin_y && y < pin_y + 50) {
         bool heeft_tok_knop = fout_rapportage && ontg;
         if (heeft_tok_knop && x >= TFT_W / 2 + 4) {
@@ -1619,6 +1642,13 @@ static void cfg_instellingen_run(int x, int y) {
             pin_overlay_actief = true; pin_overlay_teken();
         }
     }
+}
+
+static void cfg_instellingen_run(int x, int y) {
+    if      (cfg_deelscherm == 1) cfg_boot_run(x, y);
+    else if (cfg_deelscherm == 2) cfg_we_run(x, y);
+    else if (cfg_deelscherm == 3) cfg_update_run(x, y);
+    else                          cfg_hoofd_run(x, y);
 }
 
 // ─── Tab 1: IO namen (2-kolom compact) ──────────────────────────────────
@@ -2241,6 +2271,7 @@ void screen_config_run(int x, int y, bool aanraking) {
         pin_overlay_actief    = false;
         pin_stap              = 0;
         cfg_ins_scroll_y      = 0;
+        cfg_deelscherm        = 0;
         actief_scherm = nav; scherm_bouwen = true; return;
     }
 

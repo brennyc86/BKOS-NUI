@@ -141,9 +141,9 @@ void slaap_loop() {
         state_save();
         if (slaap_attiny) io_attiny_slaap(true);
         esp_sleep_enable_timer_wakeup((uint64_t)slaap_interval * 1000000ULL);
-        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH,      ESP_PD_OPTION_OFF);
-        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEMORY, ESP_PD_OPTION_OFF);
-        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEMORY, ESP_PD_OPTION_OFF);
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH,   ESP_PD_OPTION_OFF);
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
         esp_deep_sleep_start();
     }
 #endif

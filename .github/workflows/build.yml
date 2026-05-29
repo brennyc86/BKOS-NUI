@@ -32,11 +32,11 @@ jobs:
           arduino-cli config add board_manager.additional_urls \
             https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32@3.1.3
+          arduino-cli core install esp32:esp32@3.3.8
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "GFX Library for Arduino@1.4.4"
+          arduino-cli lib install "GFX Library for Arduino@1.4.9"
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "TAMC_GT911@1.0.2"
           arduino-cli lib install "ArduinoJson"
@@ -52,18 +52,21 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
-          git pull --rebase
           mkdir -p firmware
           cp build_esp32s3/BKOS_NUI.ino.bin firmware/bkos_esp32s3_8048s070.bin
           VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_esp32s3.txt
           git add firmware/bkos_esp32s3_8048s070.bin firmware/versie_esp32s3.txt
-          git diff --staged --quiet || git commit -m "ci: ESP32-S3 firmware $VERSION"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "ci: ESP32-S3 firmware $VERSION"
+          for i in 1 2 3 4 5; do
+            git pull --rebase && git push && break
+            echo "Push poging $i mislukt, opnieuw..."
+            sleep $((RANDOM % 10 + 5))
+          done
 
   build_wroom:
     runs-on: ubuntu-latest
-    needs: build_esp32s3
 
     steps:
       - name: Checkout
@@ -80,11 +83,11 @@ jobs:
           arduino-cli config add board_manager.additional_urls \
             https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32@3.1.3
+          arduino-cli core install esp32:esp32@3.3.8
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "GFX Library for Arduino@1.4.4"
+          arduino-cli lib install "GFX Library for Arduino@1.4.9"
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
@@ -101,18 +104,21 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
-          git pull --rebase
           mkdir -p firmware
           cp build_wroom/BKOS_NUI.ino.bin firmware/bkos_esp32wroom2432.bin
           VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_wroom.txt
           git add firmware/bkos_esp32wroom2432.bin firmware/versie_wroom.txt
-          git diff --staged --quiet || git commit -m "ci: WROOM firmware $VERSION"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "ci: WROOM firmware $VERSION"
+          for i in 1 2 3 4 5; do
+            git pull --rebase && git push && break
+            echo "Push poging $i mislukt, opnieuw..."
+            sleep $((RANDOM % 10 + 5))
+          done
 
   build_cyd28:
     runs-on: ubuntu-latest
-    needs: build_esp32s3
 
     steps:
       - name: Checkout
@@ -129,11 +135,11 @@ jobs:
           arduino-cli config add board_manager.additional_urls \
             https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32@3.1.3
+          arduino-cli core install esp32:esp32@3.3.8
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "GFX Library for Arduino@1.4.4"
+          arduino-cli lib install "GFX Library for Arduino@1.4.9"
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
@@ -150,18 +156,21 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
-          git pull --rebase
           mkdir -p firmware
           cp build_cyd28/BKOS_NUI.ino.bin firmware/bkos_esp32cyd28.bin
           VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_cyd28.txt
           git add firmware/bkos_esp32cyd28.bin firmware/versie_cyd28.txt
-          git diff --staged --quiet || git commit -m "ci: CYD28 firmware $VERSION"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "ci: CYD28 firmware $VERSION"
+          for i in 1 2 3 4 5; do
+            git pull --rebase && git push && break
+            echo "Push poging $i mislukt, opnieuw..."
+            sleep $((RANDOM % 10 + 5))
+          done
 
   build_cyd40h:
     runs-on: ubuntu-latest
-    needs: build_cyd28
 
     steps:
       - name: Checkout
@@ -178,11 +187,11 @@ jobs:
           arduino-cli config add board_manager.additional_urls \
             https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32@3.1.3
+          arduino-cli core install esp32:esp32@3.3.8
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "GFX Library for Arduino@1.4.4"
+          arduino-cli lib install "GFX Library for Arduino@1.4.9"
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
@@ -199,18 +208,21 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
-          git pull --rebase
           mkdir -p firmware
           cp build_cyd40h/BKOS_NUI.ino.bin firmware/bkos_esp32cyd40h.bin
           VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_cyd40h.txt
           git add firmware/bkos_esp32cyd40h.bin firmware/versie_cyd40h.txt
-          git diff --staged --quiet || git commit -m "ci: CYD40H firmware $VERSION"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "ci: CYD40H firmware $VERSION"
+          for i in 1 2 3 4 5; do
+            git pull --rebase && git push && break
+            echo "Push poging $i mislukt, opnieuw..."
+            sleep $((RANDOM % 10 + 5))
+          done
 
   build_cyd40v:
     runs-on: ubuntu-latest
-    needs: build_cyd40h
 
     steps:
       - name: Checkout
@@ -227,11 +239,11 @@ jobs:
           arduino-cli config add board_manager.additional_urls \
             https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32@3.1.3
+          arduino-cli core install esp32:esp32@3.3.8
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "GFX Library for Arduino@1.4.4"
+          arduino-cli lib install "GFX Library for Arduino@1.4.9"
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
@@ -248,18 +260,21 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
-          git pull --rebase
           mkdir -p firmware
           cp build_cyd40v/BKOS_NUI.ino.bin firmware/bkos_esp32cyd40v.bin
           VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_cyd40v.txt
           git add firmware/bkos_esp32cyd40v.bin firmware/versie_cyd40v.txt
-          git diff --staged --quiet || git commit -m "ci: CYD40V firmware $VERSION"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "ci: CYD40V firmware $VERSION"
+          for i in 1 2 3 4 5; do
+            git pull --rebase && git push && break
+            echo "Push poging $i mislukt, opnieuw..."
+            sleep $((RANDOM % 10 + 5))
+          done
 
   build_pico:
     runs-on: ubuntu-latest
-    needs: build_cyd40v
 
     steps:
       - name: Checkout
@@ -280,7 +295,7 @@ jobs:
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "GFX Library for Arduino@1.4.4"
+          arduino-cli lib install "GFX Library for Arduino@1.4.9"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
           arduino-cli lib install "Preferences@2.2.2"
@@ -296,12 +311,16 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
-          git pull --rebase
           mkdir -p firmware
           cp build_pico/BKOS_NUI.ino.bin firmware/bkos_pico1w2432.bin
           cp build_pico/BKOS_NUI.ino.uf2 firmware/bkos_pico1w2432.uf2
           VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_pico.txt
           git add firmware/bkos_pico1w2432.bin firmware/bkos_pico1w2432.uf2 firmware/versie_pico.txt
-          git diff --staged --quiet || git commit -m "ci: Pico firmware $VERSION"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "ci: Pico firmware $VERSION"
+          for i in 1 2 3 4 5; do
+            git pull --rebase && git push && break
+            echo "Push poging $i mislukt, opnieuw..."
+            sleep $((RANDOM % 10 + 5))
+          done

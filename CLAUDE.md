@@ -44,17 +44,21 @@ Wanneer Brendan valideert → officiële release:
 ## Compileren & Uploaden
 
 ### Board & Toolchain
-- **Arduino IDE** met **ESP32 Arduino Core versie 2.x** (bewust NIET versie 3+, wegens schermstabiliteit)
+- **Arduino IDE** met **ESP32 Arduino Core versie 3.x** (IDF 5.x) — vereist voor bounce buffer ondersteuning
 - Board: `ESP32S3 Dev Module` (of ESP32-8048S070C profiel)
 - Partition scheme: **8M Flash (3MB APP / 2MB SPIFFS)** — standaard voor zowel 8MB als 16MB modules
 - Upload speed: 921600
+- Flash mode: **QIO** (aanbevolen voor S3 in core 3.x)
 
-### Verplichte bibliotheken (oudere versies, bewust)
-- `Arduino_GFX_Library` — versie compatibel met ESP32 core 2.x (nieuwere versies geven beeldflikkering)
-- `WiFiManager`
+### Verplichte bibliotheken
+- `Arduino_GFX_Library` **versie 1.4.x** — vereist voor bounce buffer (stabiel scherm zonder PSRAM-conflicten)
+- `WiFiManager` 2.0.17
 - `ArduinoOTA`
 - `HTTPClient` (onderdeel van ESP32 core)
 - `Preferences` (onderdeel van ESP32 core)
+
+### Scherm-stabiliteit (bounce buffer)
+De ESP32-S3 RGB-paneel deelt de Octal SPI bus met PSRAM. Zonder bounce buffer leest de LCD-DMA rechtstreeks uit PSRAM terwijl de CPU ook naar PSRAM schrijft → tearing + crashes. Met `bounce_buffer_size_px=8000` (10 rijen × 800px = 16KB intern SRAM) is er geen bus-conflict meer. Vereist Arduino_GFX 1.4.x + ESP32 core 3.x.
 
 ### OTA via GitHub — twee kanalen
 - **Beta kanaal** (tussenversies, X.Y.YYMMDD.I): `firmware/versie_*.txt` + `firmware/bkos_*.bin`

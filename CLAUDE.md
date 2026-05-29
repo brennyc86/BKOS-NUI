@@ -22,7 +22,9 @@ git commit -m "vX: korte omschrijving"
 git push
 ```
 
-Versienummer verhogen in `ota.h` (`BKOS_NUI_VERSIE`) en `versie.txt` bij elke push.
+Versienummer verhogen in `ota.h` (`BKOS_NUI_VERSIE`) bij elke push.
+
+**NOOIT** `firmware/versie_*.txt` handmatig aanpassen — die worden uitsluitend bijgewerkt door GitHub Actions na een succesvolle compilatie. Handmatig schrijven zorgt dat het apparaat een update ziet die nog niet gecompileerd is.
 
 ### Versienummer formaat: `MAJOR.MINOR.YYMMDD.I`
 

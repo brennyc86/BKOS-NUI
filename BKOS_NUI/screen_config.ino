@@ -1141,29 +1141,66 @@ static void cfg_sub_header(const char* titel) {
     tft.print(titel);
 }
 
+static void _slot_icoon(int cx, int cy, bool dicht, uint16_t k, uint16_t bg) {
+    int x = cx - 9, y = cy - 12;
+    // Romp
+    tft.fillRoundRect(x, y + 12, 18, 12, 3, k);
+    tft.fillCircle(cx, y + 18, 2, bg);
+    tft.fillRect(cx - 1, y + 19, 3, 3, bg);
+    // Beugel gesloten of open
+    if (dicht) {
+        tft.fillRoundRect(x + 2, y, 14, 14, 7, k);
+        tft.fillRect(x + 5, y + 3, 8, 13, bg);
+    } else {
+        tft.fillRoundRect(x + 2, y - 5, 14, 14, 7, k);
+        tft.fillRect(x + 5, y - 2, 8, 13, bg);
+        tft.fillRect(x, y + 4, 8, 10, bg);   // linker poot los
+    }
+}
+
 static void cfg_hoofd_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
     helderheid_balk_teken();
 
     bool ontg = config_ontgrendeld;
+
+    // WiFi row (altijd vrij, volledige breedte)
     int fr_y = HLD_Y + HLD_H + 4;
-    tft.fillRoundRect(8, fr_y + 2, 394, 34, 6, C_SURFACE);
+    tft.fillRoundRect(8, fr_y + 2, TFT_W - 16, 34, 6, C_SURFACE);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
-    ui_knop(408, fr_y + 2, TFT_W - 416, 34,
-            ontg ? "VERGRENDELEN" : "ONTGRENDELEN",
-            C_SURFACE2, ontg ? C_AMBER : C_TEXT);
 
-    int cat_y = fr_y + 44;
-    int cat_h = 64, cat_gap = 8;
-    const char* cats[] = {"BOOT  >", "WEERGAVE & ENERGIE  >", "UPDATE  >"};
-    for (int i = 0; i < 3; i++) {
+    // Slot knop (ONTGRENDELEN / VERGRENDELEN)
+    int lock_y = fr_y + 42;
+    uint16_t lbg = ontg ? RGB565(0, 14, 6)  : RGB565(18, 5, 0);
+    uint16_t lfg = ontg ? C_GREEN           : C_AMBER;
+    tft.fillRoundRect(8, lock_y, TFT_W - 16, 36, 6, lbg);
+    tft.drawRoundRect(8, lock_y, TFT_W - 16, 36, 6, lfg);
+    _slot_icoon(30, lock_y + 18, !ontg, lfg, lbg);
+    tft.setTextSize(1); tft.setTextColor(lfg);
+    const char* ltxt = ontg ? "ONTGRENDELD — tik om te vergrendelen"
+                             : "BEVEILIGD — tik om te ontgrendelen";
+    tft.setCursor(52, lock_y + (36 - 8) / 2); tft.print(ltxt);
+
+    // 4 categorieknoppen
+    int cat_y = lock_y + 44;
+    int cat_h = 60, cat_gap = 8;
+    const char* cats[]    = {"BOOT  >", "WEERGAVE & ENERGIE  >", "UPDATE  >", "PINCODE WIJZIGEN  >"};
+    uint16_t cat_kleur[]  = {C_CYAN, C_CYAN, C_CYAN, C_AMBER};
+    for (int i = 0; i < 4; i++) {
         int cy = cat_y + i * (cat_h + cat_gap);
         tft.fillRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE);
         tft.drawRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE3);
-        tft.setTextSize(2); tft.setTextColor(C_CYAN);
+        tft.setTextSize(2); tft.setTextColor(cat_kleur[i]);
         tft.setCursor(24, cy + (cat_h - 16) / 2);
         tft.print(cats[i]);
+    }
+
+    // Donkere waas over categorieknoppen als vergrendeld
+    if (!ontg) {
+        int waas_h = 4 * cat_h + 3 * cat_gap;
+        for (int dy = cat_y; dy < cat_y + waas_h; dy += 2)
+            tft.drawFastHLine(0, dy, TFT_W, C_BG);
     }
 }
 
@@ -1395,20 +1432,14 @@ static void cfg_update_teken() {
 
     ui_knop(10, y + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
-    y += 50;
 
-    {
-        bool heeft_tok_knop = fout_rapportage && ontg;
-        int  pw = heeft_tok_knop ? (TFT_W / 2 - 14) : (TFT_W - 20);
-        ui_knop(10, y + 4, pw, 38, "PINCODE WIJZIGEN  >",
-                C_SURFACE2, ontg ? C_AMBER : C_TEXT_DIM);
-        if (heeft_tok_knop) {
-            bool tok = fout_log_token_aanwezig();
-            ui_knop(TFT_W / 2 + 4, y + 4, TFT_W / 2 - 14, 38,
-                    tok ? "TOKEN WIJZIGEN  >" : "TOKEN INSTELLEN  >",
-                    tok ? C_SURFACE2 : RGB565(28, 8, 0),
-                    tok ? C_CYAN    : C_AMBER);
-        }
+    if (fout_rapportage && ontg) {
+        y += 50;
+        bool tok = fout_log_token_aanwezig();
+        ui_knop(10, y + 4, TFT_W - 20, 38,
+                tok ? "TOKEN WIJZIGEN  >" : "TOKEN INSTELLEN  >",
+                tok ? C_SURFACE2 : RGB565(28, 8, 0),
+                tok ? C_CYAN : C_AMBER);
     }
 }
 
@@ -1444,26 +1475,35 @@ static void cfg_hoofd_run(int x, int y) {
         }
     }
 
-    // WiFi + ONTGRENDELEN row
+    // WiFi row (altijd vrij)
     int fr_y = HLD_Y + HLD_H + 4;
-    if (y >= fr_y && y < fr_y + 38) {
-        if (x < 408) {
-            actief_scherm = SCREEN_WIFI; scherm_bouwen = true;
-        } else {
-            if (ontg) { config_ontgrendeld = false; scherm_bouwen = true; }
-            else      { pin_vereist_tonen(); }
-        }
+    if (y >= fr_y && y < fr_y + 40) {
+        actief_scherm = SCREEN_WIFI; scherm_bouwen = true; return;
+    }
+
+    // Slot knop
+    int lock_y = fr_y + 42;
+    if (y >= lock_y && y < lock_y + 36) {
+        if (ontg) { config_ontgrendeld = false; cfg_hoofd_teken(); }
+        else      { pin_vereist_tonen(); }
         return;
     }
 
-    // Categorieknopen → deelscherm openen
-    int cat_y = fr_y + 44;
-    int cat_h = 64, cat_gap = 8;
-    for (int i = 0; i < 3; i++) {
+    // Categorieknoppen (alleen als ontgrendeld)
+    if (!ontg) return;
+    int cat_y = lock_y + 44;
+    int cat_h = 60, cat_gap = 8;
+    for (int i = 0; i < 4; i++) {
         int cy = cat_y + i * (cat_h + cat_gap);
         if (y >= cy && y < cy + cat_h) {
-            cfg_deelscherm = i + 1;
-            cfg_instellingen_teken();
+            if (i < 3) {
+                cfg_deelscherm = i + 1;
+                cfg_instellingen_teken();
+            } else {
+                // PINCODE WIJZIGEN
+                pin_stap = 1; pin_invoer[0] = '\0';
+                pin_overlay_actief = true; pin_overlay_teken();
+            }
             return;
         }
     }
@@ -1613,8 +1653,7 @@ static void cfg_update_run(int x, int y) {
     }
 
     int cy = CFG_SUB_Y0;
-    int upd_y = cy; cy += 50;
-    int pin_y = cy;
+    int upd_y = cy;
 
     if (y >= upd_y && y < upd_y + 50) {
         if (!ontg) { pin_vereist_tonen(); return; }
@@ -1623,9 +1662,9 @@ static void cfg_update_run(int x, int y) {
         return;
     }
 
-    if (y >= pin_y && y < pin_y + 50) {
-        bool heeft_tok_knop = fout_rapportage && ontg;
-        if (heeft_tok_knop && x >= TFT_W / 2 + 4) {
+    if (fout_rapportage && ontg) {
+        int tok_y = upd_y + 50;
+        if (y >= tok_y && y < tok_y + 50) {
             cfg_invoer[0] = '\0';
             strncpy(cfg_kb_label, "GitHub Token:", sizeof(cfg_kb_label) - 1);
             cfg_kb_numeriek = false; cfg_kb_info_mode = false;
@@ -1633,13 +1672,6 @@ static void cfg_update_run(int x, int y) {
             cfg_kb_foutlog_token = true;
             cfg_toetsenbord_actief = true;
             screen_config_toetsenbord_teken();
-        } else if (!ontg) {
-            pin_stap = 0; pin_na_unlock_wijzigen = true;
-            pin_invoer[0] = '\0';
-            pin_overlay_actief = true; pin_overlay_teken();
-        } else {
-            pin_stap = 1; pin_invoer[0] = '\0';
-            pin_overlay_actief = true; pin_overlay_teken();
         }
     }
 }

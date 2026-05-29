@@ -1,8 +1,5 @@
 #include "hardware.h"
 #include "slaap.h"
-#if PLATFORM_ESP32
-#include "soc/rtc_cntl_reg.h"  // WRITE_PERI_REG + RTC_CNTL_BROWN_OUT_REG
-#endif
 #include "getijdata.h"
 #include "screen_main.h"
 #include "screen_io.h"
@@ -212,11 +209,6 @@ static void _gui_taak(void*) {
 #endif  // PLATFORM_ESP32
 
 void hw_setup() {
-#if PLATFORM_ESP32
-    // Brown-out detector uitschakelen: vermijdt herstart bij korte spanningsdips
-    // (veelvoorkomend op boten bij motorstart, schakelaar-activering of generator-opstart)
-    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
-#endif
     tft_setup();
     ts_setup();
     hw_io_setup();

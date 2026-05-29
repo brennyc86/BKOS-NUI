@@ -72,6 +72,10 @@ void ts_setup() {
     ts.begin();
     ts.setRotation(0);
     Wire.setTimeout(50);  // GT911 I2C: max 50ms per transactie, voorkomt oneindige blokkering bij busstoring
+    // GT911 INT pin als INPUT_PULLUP: hoog als scherm niet aangeraakt, laag bij aanraking.
+    // TAMC_GT911 gebruikt intPin=-1 (geen adres-selectie via INT), wij gebruiken de pin
+    // alleen als EXT0 wake source. Pull-up voorkomt willekeurige wakeups bij zwevende pin.
+    pinMode(18, INPUT_PULLUP);
 
 #elif PLATFORM_PICO
     SPI.begin();

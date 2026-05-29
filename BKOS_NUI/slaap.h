@@ -12,6 +12,15 @@ extern uint32_t slaap_tijd;      // seconden na scherm-uit voor slapen (0 = nooi
 extern uint32_t slaap_interval;  // wake-interval in seconden voor achtergrondtaken
 extern bool     slaap_attiny;    // ATtiny meeslapen via UART "SLP" commando
 
+// ─── GT911 INT pin (ESP32-S3 8048S070C) ──────────────────────────────────────
+// GPIO18 gaat LOW bij aanraking → EXT0 wake source voor light en deep sleep.
+// Als wake niet werkt: verifieer met Serial.println(digitalRead(18)) bij aanraking.
+// Staat niet in hw_touch.h omdat TAMC_GT911 de pin niet gebruikt (intPin=-1);
+// wij configureren hem zelf als INPUT_PULLUP + EXT0 wake source.
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+  #define SLAAP_S3_INT_PIN 18
+#endif
+
 // ─── Toestand ─────────────────────────────────────────────────────────────────
 extern volatile bool slaap_actief;  // momenteel in slaapstand
 

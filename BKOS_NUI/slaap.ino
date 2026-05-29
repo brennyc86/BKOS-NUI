@@ -39,6 +39,11 @@ static void _wake_sources_instellen() {
 #if SLAAP_WAKE_BESCHIKBAAR
     esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_WAKE_PIN, 0);  // wake bij LOW (aanraking)
 #endif
+    // ESP32-S3 / GT911: INT pin (GPIO18) gaat LOW bij aanraking
+    // GPIO18 is RTC-capable (bereik 0-21) → EXT0 werkt vanuit light én deep sleep
+#if defined(SLAAP_S3_INT_PIN)
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_S3_INT_PIN, 0);
+#endif
 }
 
 static void _scherm_wekken() {

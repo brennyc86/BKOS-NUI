@@ -5,6 +5,7 @@
 #include "platform_fs.h"
 #include "bkos_net.h"    // net_eigen_naam, NET_NAAM_LEN, net_opslaan()
 #include "slaap.h"
+extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
 // ─── PIN code helpers ────────────────────────────────────────────────────
 static void pin_lezen(char* buf, int len) {
@@ -488,18 +489,18 @@ static void pico_cfg_instellingen_teken() {
     y += 30;
 
 #if PLATFORM_ESP32
-    // Slaap modus (compact: 3 knoppen in één rij)
+    // Slaap modus (compact: 4 knoppen in één rij)
     {
         tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(8, y + (26 - 8) / 2); tft.print("SLP:");
-        const char* modi[] = {"GEEN", "LIGHT", "DEEP"};
-        uint16_t mkl[] = {C_TEXT_DIM, C_CYAN, C_AMBER};
-        int mw = (TFT_W - 8 - 34 - 6) / 3;
-        for (int i = 0; i < 3; i++) {
+        const char* modi[] = {"GEEN", "LIGHT", "DEEP", "HIBERN"};
+        uint16_t mkl[] = {C_TEXT_DIM, C_CYAN, C_AMBER, C_RED_BRIGHT};
+        int mw = (TFT_W - 8 - 34 - 8) / 4;
+        for (int i = 0; i < 4; i++) {
             bool sel = (slaap_modus == i);
             uint16_t mfg = sel ? mkl[i] : C_SURFACE3;
-            uint16_t mbg = sel ? (i == 0 ? C_SURFACE2 : (i == 1 ? RGB565(0, 14, 24) : RGB565(24, 10, 0))) : C_SURFACE;
+            uint16_t mbg = sel ? (i == 0 ? C_SURFACE2 : (i == 1 ? RGB565(0, 14, 24) : (i == 2 ? RGB565(24, 10, 0) : RGB565(28, 0, 0)))) : C_SURFACE;
             tft.fillRoundRect(36 + i * (mw + 2), y + 3, mw, 20, 3, mbg);
             if (sel) tft.drawRoundRect(36 + i * (mw + 2), y + 3, mw, 20, 3, mfg);
             tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
@@ -588,6 +589,15 @@ static void pico_cfg_instellingen_teken() {
 }
 
 static void pico_cfg_instellingen_run(int x, int y) {
+    // Swipe scrollen (vóór klik-detectie)
+    {
+        int max_scroll = max(0, CFG_CONT_Y + 2 + PICO_CFG_INS_H - (int)NAV_Y);
+        if (max_scroll > 0 && abs(hw_touch_drag_dy) >= 25) {
+            pico_cfg_scroll_y = constrain(pico_cfg_scroll_y - hw_touch_drag_dy, 0, max_scroll);
+            pico_cfg_instellingen_teken();
+            return;
+        }
+    }
     // Scrollbar pijlen (rechts)
     if (x >= TFT_W - UI_SB_W) {
         int max_scroll = max(0, CFG_CONT_Y + 2 + PICO_CFG_INS_H - (int)NAV_Y);
@@ -681,9 +691,9 @@ static void pico_cfg_instellingen_run(int x, int y) {
 #if PLATFORM_ESP32
     // Slaap modus
     if (y >= y0 && y < y0 + 26) {
-        int mw = (TFT_W - 8 - 34 - 6) / 3;
+        int mw = (TFT_W - 8 - 34 - 8) / 4;
         int idx = (x - 36) / (mw + 2);
-        if (idx >= 0 && idx < 3) { slaap_modus = (uint8_t)idx; state_save(); pico_cfg_instellingen_teken(); }
+        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); pico_cfg_instellingen_teken(); }
         return;
     }
     y0 += 30;
@@ -1236,28 +1246,38 @@ static void cfg_instellingen_teken() {
     int sly2 = sly  + 44;
     int sly3 = sly2 + 44;
 
-    // Row 1: slaap modus (GEEN / LIGHT / DEEP)
+    // Row 1: slaap modus (GEEN / LIGHT / DEEP / HIBERN)
     {
         tft.fillRoundRect(8, sly, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(18, sly + (40 - 8) / 2); tft.print("SLAAP");
-        const char* modi[]    = {"GEEN", "LIGHT", "DEEP"};
-        const char* uitleg[]  = {"", " CPU pauze, RAM behouden  (~2mA, WiFi actief)", " Volledige uitschakeling  (~10uA, herstart bij wake)"};
-        uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN, C_AMBER};
-        for (int i = 0; i < 3; i++) {
+        const char* modi[]    = {"GEEN", "LIGHT", "DEEP", "HIBERN"};
+        const char* uitleg[]  = {"",
+                                  " CPU pauze, RAM ok  (~2mA)  touch wekt",
+                                  " Herstart bij wake  (~10uA)  touch wekt",
+                                  " Koudst  (~5uA)  ALLEEN timer wake"};
+        uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN, C_AMBER, C_RED_BRIGHT};
+        for (int i = 0; i < 4; i++) {
             bool sel = (slaap_modus == i);
             uint16_t mfg = sel ? mkleuren[i] : C_SURFACE3;
-            uint16_t mbg = sel ? (i == 0 ? C_SURFACE2 : (i == 1 ? RGB565(0, 14, 24) : RGB565(24, 10, 0))) : C_SURFACE;
-            tft.fillRoundRect(90 + i * 134, sly + 4, 128, 32, 5, mbg);
-            if (sel) tft.drawRoundRect(90 + i * 134, sly + 4, 128, 32, 5, mfg);
+            uint16_t mbg;
+            if (!sel)      mbg = C_SURFACE;
+            else if (i==0) mbg = C_SURFACE2;
+            else if (i==1) mbg = RGB565(0, 14, 24);
+            else if (i==2) mbg = RGB565(24, 10, 0);
+            else           mbg = RGB565(28, 0, 0);
+            tft.fillRoundRect(90 + i * 100, sly + 4, 94, 32, 5, mbg);
+            if (sel) tft.drawRoundRect(90 + i * 100, sly + 4, 94, 32, 5, mfg);
             tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
             int tw = strlen(modi[i]) * 6;
-            tft.setCursor(90 + i * 134 + (128 - tw) / 2, sly + 4 + (32 - 8) / 2);
+            tft.setCursor(90 + i * 100 + (94 - tw) / 2, sly + 4 + (32 - 8) / 2);
             tft.print(modi[i]);
         }
-        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(492, sly + (40 - 8) / 2);
-        tft.print(uitleg[slaap_modus]);
+        if (slaap_modus > 0) {
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(500, sly + (40 - 8) / 2);
+            tft.print(uitleg[slaap_modus]);
+        }
     }
     // Row 2: slaap na (tijd na scherm-uit)
     {
@@ -1396,12 +1416,18 @@ static void cfg_instellingen_run(int x, int y) {
 
     {
         int max_scroll = max(0, 546 + (int)UI_SCY(40) - CONTENT_H);
+        // Swipe scrollen (vóór klik-detectie — beweging ≥ 35px = swipe, geen klik)
+        if (max_scroll > 0 && abs(hw_touch_drag_dy) >= 35) {
+            cfg_ins_scroll_y = constrain(cfg_ins_scroll_y - hw_touch_drag_dy, 0, max_scroll);
+            cfg_instellingen_teken(); return;
+        }
+        // Scrollbar pijl-knoppen
         if (max_scroll > 0) {
             int sb_y_pos = HLD_Y + HLD_H + 4;
             int klik = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, sb_y_pos, NAV_Y - sb_y_pos);
             if (klik != 0) {
-                if (klik == -1) cfg_ins_scroll_y = max(0, cfg_ins_scroll_y - 20);
-                else if (klik == 1) cfg_ins_scroll_y = min(max_scroll, cfg_ins_scroll_y + 20);
+                if (klik == -1) cfg_ins_scroll_y = max(0, cfg_ins_scroll_y - 50);
+                else if (klik == 1) cfg_ins_scroll_y = min(max_scroll, cfg_ins_scroll_y + 50);
                 cfg_instellingen_teken(); return;
             }
         }
@@ -1514,8 +1540,8 @@ static void cfg_instellingen_run(int x, int y) {
 
     // Slaap modus keuze (geen PIN vereist)
     if (y >= sly && y < sly + 40 && x >= 90) {
-        int idx = (x - 90) / 134;
-        if (idx >= 0 && idx < 3) { slaap_modus = (uint8_t)idx; state_save(); cfg_instellingen_teken(); }
+        int idx = (x - 90) / 100;
+        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); cfg_instellingen_teken(); }
         return;
     }
     // Slaap tijd (alleen actief als modus != GEEN)

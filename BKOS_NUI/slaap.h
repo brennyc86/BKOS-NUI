@@ -4,7 +4,8 @@
 // ─── Slaap modi ───────────────────────────────────────────────────────────────
 #define SLAAP_GEEN   0  // geen slaapstand
 #define SLAAP_LIGHT  1  // light sleep (~2mA, CPU pauze, RAM behouden, WiFi actief)
-#define SLAAP_DEEP   2  // deep sleep (~10µA, volledige herstart bij wake)
+#define SLAAP_DEEP   2  // deep sleep (~10µA, volledige herstart bij wake, touch wekt via EXT0)
+#define SLAAP_HIBERN 3  // hibernation (~5µA, RTC geheugen uit, ALLEEN timer wake)
 
 // ─── Ingestelde waarden (opgeslagen in /bkos_config.csv) ─────────────────────
 extern uint8_t  slaap_modus;     // 0/1/2

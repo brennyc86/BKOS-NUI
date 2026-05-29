@@ -124,14 +124,27 @@ void slaap_loop() {
     } else if (slaap_modus == SLAAP_DEEP) {
         // ─── Deep sleep ───────────────────────────────────────────────────────
         // ESP32 volledig uitschakelen. Herstart op wake (hardware.ino detecteert dit).
-        // ATtiny slaapt mee — wekt automatisch zodra IO-commando's binnenkomen na herstart.
+        // RTC geheugen behouden → _rtc_deep_wake vlag overleeft herstart.
+        // Touch (GPIO18 EXT0) of timer wekt op.
         _rtc_deep_wake = true;
         state_save();
-        // ATtiny sturen voor slaap (stuurt "AT SLAAP" — wekt op UART activiteit na herstart)
         if (slaap_attiny) io_attiny_slaap(true);
         _wake_sources_instellen();
         esp_deep_sleep_start();
         // Hier komt code nooit aan — ESP32 herstart op wake
+
+    } else if (slaap_modus == SLAAP_HIBERN) {
+        // ─── Hibernation ──────────────────────────────────────────────────────
+        // Diepste slaapstand (~5µA): RTC geheugen en peripherals uit.
+        // LET OP: EXT0 touch wake werkt NIET — alleen timer wekt op.
+        // Herstart identiek aan power-on (geen RTC data bewaard).
+        state_save();
+        if (slaap_attiny) io_attiny_slaap(true);
+        esp_sleep_enable_timer_wakeup((uint64_t)slaap_interval * 1000000ULL);
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH,      ESP_PD_OPTION_OFF);
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEMORY, ESP_PD_OPTION_OFF);
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEMORY, ESP_PD_OPTION_OFF);
+        esp_deep_sleep_start();
     }
 #endif
 }

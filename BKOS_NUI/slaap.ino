@@ -1,6 +1,7 @@
 #include "slaap.h"
 #include "app_state.h"
 #include "hw_scherm.h"
+#include "hw_touch.h"
 #include "hw_io.h"
 #include "io.h"
 
@@ -104,22 +105,33 @@ void slaap_loop() {
 
     if (slaap_modus == SLAAP_LIGHT) {
         // ─── Light sleep ──────────────────────────────────────────────────────
-        // Alle FreeRTOS taken pauzeren; RAM en WiFi-verbinding behouden.
-        // Hervatten exact waar gestopt na wake.
-        _wake_sources_instellen();
+        // 250ms timer: na elke wake touch controleren via I2C/SPI.
+        // GT911 INT-pulse duurt 1–5ms — te kort voor level-triggered EXT0.
+        // Door actief te pollen na elke 250ms-wake missen we geen aanraking.
+        static unsigned long _laatste_io_ms = 0;
+
+        esp_sleep_enable_timer_wakeup(250000ULL);  // 250ms touch-check interval
+#if SLAAP_WAKE_BESCHIKBAAR
+        esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_WAKE_PIN, 0);
+#endif
+#if defined(SLAAP_S3_INT_PIN)
+        esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_S3_INT_PIN, 0);
+#endif
         esp_light_sleep_start();  // blokkeert tot wake
 
-        esp_sleep_wakeup_cause_t reden = esp_sleep_get_wakeup_cause();
-
-        if (reden == ESP_SLEEP_WAKEUP_TIMER) {
-            // Timer wake: achtergrond IO cyclus uitvoeren, daarna terugslapen
-            io_direct_aanvraag = true;
-            // slaap_actief blijft true → volgende aanroep slaapt opnieuw
-        } else {
-            // GPIO (touch) of andere reden: volledig wekken
-            if (slaap_attiny) io_attiny_slaap(false);  // "WAKKER" sturen
+        delay(2);  // I2C/SPI bus stabilisatie na wake
+        if (ts_touched()) {
+            if (slaap_attiny) io_attiny_slaap(false);
             _scherm_wekken();
+            return;
         }
+
+        // Geen aanraking: IO cyclus op slaap_interval, daarna terugslapen
+        if (_laatste_io_ms == 0 || (millis() - _laatste_io_ms) >= (uint32_t)slaap_interval * 1000UL) {
+            _laatste_io_ms = millis();
+            io_direct_aanvraag = true;
+        }
+        // slaap_actief blijft true → volgende aanroep slaapt opnieuw
 
     } else if (slaap_modus == SLAAP_DEEP) {
         // ─── Deep sleep ───────────────────────────────────────────────────────

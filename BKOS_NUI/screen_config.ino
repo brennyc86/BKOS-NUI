@@ -1127,226 +1127,100 @@ static void palette_swatches_teken(int sy) {
     }
 }
 
+// Totale hoogte van scrollbare inhoud (BOOT + WEERGAVE & ENERGIE + UPDATE)
+// BOOT: 24(hdr)+44+44+44+50 = 206  |  WE: 24(hdr)+62+34+42+44+44+44 = 294  |  UPD: 24(hdr)+50+50 = 124
+// Categorie-gaps: 2×8 = 16  →  Totaal: 206+8+294+8+124 = 640
+#define CFG_INS_CONTENT_H  640
+
+// fr_y = HLD_Y+HLD_H+4;  y0 = fr_y+38+4 (scrollable start)
+#define CFG_INS_FR_Y       (HLD_Y + HLD_H + 4)
+#define CFG_INS_Y0         (CFG_INS_FR_Y + 38 + 4)
+#define CFG_INS_MAX_SCROLL max(0, CFG_INS_CONTENT_H - (NAV_Y - CFG_INS_Y0))
+
 static void cfg_instellingen_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, TFT_H - SB_H - NAV_H - CFG_TAB_H, C_BG);
-
     bool ontg = config_ontgrendeld;
 
-    // WiFi | Foutrapportage | Ontgrendelen (altijd toegankelijk, 3 knoppen in één rij)
-    int wow_y = HLD_Y + HLD_H + 4 - cfg_ins_scroll_y;
-
-    // WiFi (links)
-    tft.fillRoundRect(8, wow_y + 2, 220, 34, 6, C_SURFACE);
+    // ── Vaste rij: WiFi + ONTGRENDELEN (boven scroll, altijd toegankelijk) ───
+    int fr_y = CFG_INS_FR_Y;
+    tft.fillRoundRect(8, fr_y + 2, 394, 34, 6, C_SURFACE);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(18, wow_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
-
-    // Foutrapportage toggle (midden-links)
-    {
-        bool frap = fout_rapportage;
-        bool tok  = fout_log_token_aanwezig();
-        uint16_t fbg  = frap ? RGB565(0, 22, 8)   : C_SURFACE2;
-        uint16_t facc = frap ? (tok ? C_GREEN : C_AMBER) : C_TEXT_DIM;
-        tft.fillRoundRect(236, wow_y + 2, 130, 34, 6, fbg);
-        tft.drawRoundRect(236, wow_y + 2, 130, 34, 6, facc);
-        tft.setTextSize(1); tft.setTextColor(facc);
-        const char* flbl = frap ? (tok ? "FOUTRAP  AAN" : "FOUTRAP  !") : "FOUTRAP  UIT";
-        int ftw = strlen(flbl) * 6;
-        tft.setCursor(236 + (130 - ftw) / 2, wow_y + 2 + (34 - 8) / 2);
-        tft.print(flbl);
-    }
-
-    // Onthoud lichtmodus toggle (midden-rechts)
-    {
-        uint16_t obg  = onthoud_licht_modus ? RGB565(0, 16, 28) : C_SURFACE2;
-        uint16_t oacc = onthoud_licht_modus ? C_CYAN : C_TEXT_DIM;
-        tft.fillRoundRect(370, wow_y + 2, 134, 34, 6, obg);
-        tft.drawRoundRect(370, wow_y + 2, 134, 34, 6, oacc);
-        tft.setTextSize(1); tft.setTextColor(oacc);
-        const char* olbl = onthoud_licht_modus ? "LICHTMODUS AAN" : "LICHTMODUS UIT";
-        int otw = strlen(olbl) * 6;
-        tft.setCursor(370 + (134 - otw) / 2, wow_y + 2 + (34 - 8) / 2);
-        tft.print(olbl);
-    }
-
-    // Vergrendelen (rechts)
-    ui_knop(508, wow_y + 2, TFT_W - 516, 34,
+    tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
+    ui_knop(408, fr_y + 2, TFT_W - 416, 34,
             ontg ? "VERGRENDELEN" : "ONTGRENDELEN",
             C_SURFACE2, ontg ? C_AMBER : C_TEXT);
 
-    // Open netwerken toggle (PIN vereist — tracking-optie)
-    int ow_y = wow_y + 38 + 2;
-    {
-        uint16_t obg  = wifi_open_auto ? RGB565(20, 4, 0) : C_SURFACE2;
-        uint16_t oacc = wifi_open_auto ? C_AMBER         : C_TEXT_DIM;
-        tft.fillRoundRect(8, ow_y, TFT_W - 16, 30, 6, ontg ? obg : C_SURFACE);
-        tft.drawRoundRect(8, ow_y, TFT_W - 16, 30, 6, ontg ? oacc : C_SURFACE3);
-        tft.setTextSize(1);
-        tft.setTextColor(ontg ? oacc : C_DARK_GRAY);
-        const char* olbl = wifi_open_auto ? "OPEN WIFI AAN  (verbindt automatisch met open netwerken — tracking)"
-                                          : "OPEN WIFI UIT  (verbindt niet automatisch met open netwerken)";
-        tft.setCursor(16, ow_y + (30 - 8) / 2);
-        tft.print(olbl);
-    }
+    // ── Scrollbare categorieën ────────────────────────────────────────────────
+    int y = CFG_INS_Y0 - cfg_ins_scroll_y;
 
-    // Kleurpaletten (achter PIN — gedempt als vergrendeld)
-    int sy = ow_y + 30 + 4;
-    palette_swatches_teken(sy);
-    if (!ontg) {
-        for (int dy = sy; dy < sy + 58; dy += 2)
-            tft.drawFastHLine(0, dy, TFT_W, C_BG);
-    }
+    // ══ BOOT ══════════════════════════════════════════════════════════════════
+    tft.fillRect(0, y, TFT_W, 20, C_SURFACE2);
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    tft.setCursor(12, y + 6); tft.print(">> BOOT");
+    y += 24;
 
     // Boot type
-    int by = sy + 62;
-    tft.fillRoundRect(8, by, TFT_W - 16, 40, 6, C_SURFACE);
+    tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, by + (40 - 8) / 2); tft.print("BOOT");
-    const char* boots[] = {"ZEILBOOT", "KRUIZER", "STRIJKIJZER", "CATAMARAN"};
-    int bw = 148, bx_off = 90;
-    for (int i = 0; i < 4; i++) {
-        bool act = (boot_type == i);
-        int bx_i = bx_off + i * (bw + 6);
-        uint16_t bbg = act ? (ontg ? C_CYAN : C_SURFACE2) : (ontg ? C_SURFACE2 : C_SURFACE);
-        uint16_t bfg = act ? (ontg ? C_TEXT_DARK : C_TEXT_DIM) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
-        tft.fillRoundRect(bx_i, by + 4, bw, 32, 5, bbg);
-        tft.drawRoundRect(bx_i, by + 4, bw, 32, 5, act && ontg ? C_WHITE : C_SURFACE3);
-        tft.setTextSize(1); tft.setTextColor(bfg);
-        tft.setCursor(bx_i + 5, by + 4 + (32 - 8) / 2);
-        tft.print(boots[i]);
-        mini_boot(i, bx_i + bw - 66, by + 7, 60, 22, bfg, act && ontg ? RGB565(0,0,0) : C_SURFACE3);
+    tft.setCursor(18, y + (40 - 8) / 2); tft.print("TYPE");
+    {
+        const char* boots[] = {"ZEILBOOT", "KRUIZER", "STRIJKIJZER", "CATAMARAN"};
+        int bw = 148, bx_off = 90;
+        for (int i = 0; i < 4; i++) {
+            bool act = (boot_type == i);
+            int bx_i = bx_off + i * (bw + 6);
+            uint16_t bbg = act ? (ontg ? C_CYAN : C_SURFACE2) : (ontg ? C_SURFACE2 : C_SURFACE);
+            uint16_t bfg = act ? (ontg ? C_TEXT_DARK : C_TEXT_DIM) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
+            tft.fillRoundRect(bx_i, y + 4, bw, 32, 5, bbg);
+            tft.drawRoundRect(bx_i, y + 4, bw, 32, 5, act && ontg ? C_WHITE : C_SURFACE3);
+            tft.setTextSize(1); tft.setTextColor(bfg);
+            tft.setCursor(bx_i + 5, y + 4 + (32 - 8) / 2);
+            tft.print(boots[i]);
+            mini_boot(i, bx_i + bw - 66, y + 7, 60, 22, bfg, act && ontg ? RGB565(0,0,0) : C_SURFACE3);
+        }
     }
+    y += 44;
 
     // Zeilnummer
-    int zy = by + 44;
-    tft.fillRoundRect(8, zy, TFT_W - 16, 40, 6, C_SURFACE);
+    tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, zy + (40 - 8) / 2); tft.print("ZEILNR");
-    tft.fillRoundRect(90, zy + 4, 320, 32, 5, ontg ? C_SURFACE2 : C_SURFACE);
-    tft.drawRoundRect(90, zy + 4, 320, 32, 5, C_SURFACE3);
+    tft.setCursor(18, y + (40 - 8) / 2); tft.print("ZEILNR");
+    tft.fillRoundRect(90, y + 4, 320, 32, 5, ontg ? C_SURFACE2 : C_SURFACE);
+    tft.drawRoundRect(90, y + 4, 320, 32, 5, C_SURFACE3);
     tft.setTextSize(2);
     tft.setTextColor(ontg ? (strlen(zeilnummer) > 0 ? C_TEXT : C_TEXT_DIM) : C_DARK_GRAY);
-    tft.setCursor(98, zy + 4 + (32 - 16) / 2);
+    tft.setCursor(98, y + 4 + (32 - 16) / 2);
     tft.print(ontg ? (strlen(zeilnummer) > 0 ? zeilnummer : "(tik om in te stellen)") : "***");
+    y += 44;
 
-    // Apparaat naam (ruimtenaam, achter PIN)
-    int ay = zy + 44;
-    tft.fillRoundRect(8, ay, TFT_W - 16, 40, 6, C_SURFACE);
+    // Naam module
+    tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, ay + (40 - 8) / 2); tft.print("NAAM MODULE");
-    tft.fillRoundRect(130, ay + 4, 300, 32, 5, ontg ? C_SURFACE2 : C_SURFACE);
-    tft.drawRoundRect(130, ay + 4, 300, 32, 5, C_SURFACE3);
+    tft.setCursor(18, y + (40 - 8) / 2); tft.print("NAAM MODULE");
+    tft.fillRoundRect(130, y + 4, 300, 32, 5, ontg ? C_SURFACE2 : C_SURFACE);
+    tft.drawRoundRect(130, y + 4, 300, 32, 5, C_SURFACE3);
     tft.setTextSize(2);
-    bool heeft_naam = (strlen(net_eigen_naam) > 0 && strcmp(net_eigen_naam, "BKOS-NUI") != 0);
-    tft.setTextColor(ontg ? (heeft_naam ? C_TEXT : C_TEXT_DIM) : C_DARK_GRAY);
-    tft.setCursor(138, ay + 4 + (32 - 16) / 2);
-    tft.print(ontg ? (heeft_naam ? net_eigen_naam : "(tik om naam in te stellen)") : "***");
-
-    // Slaap instellingen (3 rijen — geen PIN vereist, testfunctie)
-    int sly  = ay + 44;
-    int sly2 = sly  + 44;
-    int sly3 = sly2 + 44;
-
-    // Row 1: slaap modus (GEEN / LIGHT / DEEP / HIBERN)
     {
-        tft.fillRoundRect(8, sly, TFT_W - 16, 40, 6, C_SURFACE);
-        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, sly + (40 - 8) / 2); tft.print("SLAAP");
-        const char* modi[]    = {"GEEN", "LIGHT", "DEEP", "HIBERN"};
-        const char* uitleg[]  = {"",
-                                  " CPU pauze, RAM ok  (~2mA)  touch wekt",
-                                  " Herstart bij wake  (~10uA)  touch wekt",
-                                  " Koudst  (~5uA)  ALLEEN timer wake"};
-        uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN, C_AMBER, C_RED_BRIGHT};
-        for (int i = 0; i < 4; i++) {
-            bool sel = (slaap_modus == i);
-            uint16_t mfg = sel ? mkleuren[i] : C_SURFACE3;
-            uint16_t mbg;
-            if (!sel)      mbg = C_SURFACE;
-            else if (i==0) mbg = C_SURFACE2;
-            else if (i==1) mbg = RGB565(0, 14, 24);
-            else if (i==2) mbg = RGB565(24, 10, 0);
-            else           mbg = RGB565(28, 0, 0);
-            tft.fillRoundRect(90 + i * 100, sly + 4, 94, 32, 5, mbg);
-            if (sel) tft.drawRoundRect(90 + i * 100, sly + 4, 94, 32, 5, mfg);
-            tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
-            int tw = strlen(modi[i]) * 6;
-            tft.setCursor(90 + i * 100 + (94 - tw) / 2, sly + 4 + (32 - 8) / 2);
-            tft.print(modi[i]);
-        }
-        if (slaap_modus > 0) {
-            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-            tft.setCursor(500, sly + (40 - 8) / 2);
-            tft.print(uitleg[slaap_modus]);
-        }
+        bool heeft_naam = (strlen(net_eigen_naam) > 0 && strcmp(net_eigen_naam, "BKOS-NUI") != 0);
+        tft.setTextColor(ontg ? (heeft_naam ? C_TEXT : C_TEXT_DIM) : C_DARK_GRAY);
+        tft.setCursor(138, y + 4 + (32 - 16) / 2);
+        tft.print(ontg ? (heeft_naam ? net_eigen_naam : "(tik om naam in te stellen)") : "***");
     }
-    // Row 2: slaap na (tijd na scherm-uit)
-    {
-        bool dis = (slaap_modus == SLAAP_GEEN);
-        tft.fillRoundRect(8, sly2, TFT_W - 16, 40, 6, C_SURFACE);
-        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
-        tft.setCursor(18, sly2 + (40 - 8) / 2); tft.print("SLAAP NA");
-        const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
-        const char* slbls[]   = {"NOOIT", "30s", "1 min", "2 min", "5 min", "10 min"};
-        for (int i = 0; i < 6; i++) {
-            bool sel = (slaap_tijd == stps[i]);
-            uint16_t sfg = sel && !dis ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
-            uint16_t sbg = sel && !dis ? RGB565(0, 14, 24) : C_SURFACE;
-            tft.fillRoundRect(100 + i * 96, sly2 + 5, 90, 30, 4, sbg);
-            if (sel && !dis) tft.drawRoundRect(100 + i * 96, sly2 + 5, 90, 30, 4, C_CYAN);
-            tft.setTextSize(1); tft.setTextColor(sfg);
-            int tw = strlen(slbls[i]) * 6;
-            tft.setCursor(100 + i * 96 + (90 - tw) / 2, sly2 + 5 + (30 - 8) / 2);
-            tft.print(slbls[i]);
-        }
-    }
-    // Row 3: interval (achtergrond wake) + ATtiny toggle
-    {
-        bool dis = (slaap_modus == SLAAP_GEEN);
-        tft.fillRoundRect(8, sly3, TFT_W - 16, 40, 6, C_SURFACE);
-        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
-        tft.setCursor(18, sly3 + (40 - 8) / 2); tft.print("INTERVAL");
-        const uint32_t ivals[] = {10, 30, 60, 300};
-        const char* ilbls[]    = {"10s", "30s", "1 min", "5 min"};
-        for (int i = 0; i < 4; i++) {
-            bool sel = (slaap_interval == ivals[i]);
-            uint16_t ifg = sel && !dis ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
-            uint16_t ibg = sel && !dis ? RGB565(0, 14, 24) : C_SURFACE;
-            tft.fillRoundRect(100 + i * 96, sly3 + 5, 90, 30, 4, ibg);
-            if (sel && !dis) tft.drawRoundRect(100 + i * 96, sly3 + 5, 90, 30, 4, C_CYAN);
-            tft.setTextSize(1); tft.setTextColor(ifg);
-            int tw = strlen(ilbls[i]) * 6;
-            tft.setCursor(100 + i * 96 + (90 - tw) / 2, sly3 + 5 + (30 - 8) / 2);
-            tft.print(ilbls[i]);
-        }
-        // ATtiny toggle (alleen als module aanwezig)
-        {
-            bool at_dis = dis || !bkoss_actief;
-            uint16_t abg = (!at_dis && slaap_attiny) ? RGB565(0, 14, 24) : C_SURFACE;
-            uint16_t afg = (!at_dis && slaap_attiny) ? C_CYAN : (at_dis ? C_DARK_GRAY : C_SURFACE3);
-            tft.fillRoundRect(498, sly3 + 5, 200, 30, 4, abg);
-            if (!at_dis && slaap_attiny) tft.drawRoundRect(498, sly3 + 5, 200, 30, 4, C_CYAN);
-            tft.setTextSize(1); tft.setTextColor(afg);
-            const char* albl = (!at_dis && slaap_attiny) ? "ATTINY  AAN" : (bkoss_actief ? "ATTINY  UIT" : "ATTINY  N/B");
-            int atw = strlen(albl) * 6;
-            tft.setCursor(498 + (200 - atw) / 2, sly3 + 5 + (30 - 8) / 2);
-            tft.print(albl);
-        }
-    }
+    y += 44;
 
-    // IO Configuratie [+ Touch Kalibreren voor XPT2046, IO Hartslag voor S3]
-    int iy = sly3 + 44;
+    // IO Configuratie [+ Touch Kalibreren / IO Hartslag]
 #if PLATFORM_XPT2046
-    ui_knop(10, iy + 4, UI_SCX(488), 38, "IO CONFIGURATIE  >",
+    ui_knop(10, y + 4, UI_SCX(488), 38, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
-    ui_knop(UI_SCX(500), iy + 4, TFT_W - UI_SCX(504), 38, "TOUCH KAL.  >", C_SURFACE, C_CYAN);
+    ui_knop(UI_SCX(500), y + 4, TFT_W - UI_SCX(504), 38, "TOUCH KAL.  >", C_SURFACE, C_CYAN);
 #else
-    ui_knop(10, iy + 4, 488, 38, "IO CONFIGURATIE  >",
+    ui_knop(10, y + 4, 488, 38, "IO CONFIGURATIE  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
     {
         uint16_t ibg = ontg ? C_SURFACE2 : C_SURFACE;
-        tft.fillRoundRect(502, iy + 4, TFT_W - 512, 38, 6, ibg);
-        tft.drawRoundRect(502, iy + 4, TFT_W - 512, 38, 6, C_SURFACE3);
-        int my = iy + 4 + (38 - 8) / 2;
+        tft.fillRoundRect(502, y + 4, TFT_W - 512, 38, 6, ibg);
+        tft.drawRoundRect(502, y + 4, TFT_W - 512, 38, 6, C_SURFACE3);
+        int my = y + 4 + (38 - 8) / 2;
         char abuf[8]; snprintf(abuf, 8, "%ds", io_heartbeat_aan);
         char ubuf[8]; snprintf(ubuf, 8, "%ds", io_heartbeat_uit);
         tft.setTextSize(1);
@@ -1354,39 +1228,179 @@ static void cfg_instellingen_teken() {
         tft.setCursor(510, my); tft.print("AAN:");
         tft.setTextColor(ontg ? C_CYAN : C_DARK_GRAY);
         tft.setCursor(538, my); tft.print(abuf);
-        if (ontg) { ui_knop(566, iy + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(592, iy + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
+        if (ontg) { ui_knop(566, y + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(592, y + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
         tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
         tft.setCursor(626, my); tft.print("UIT:");
         tft.setTextColor(ontg ? C_CYAN : C_DARK_GRAY);
         tft.setCursor(655, my); tft.print(ubuf);
-        if (ontg) { ui_knop(684, iy + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, iy + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
+        if (ontg) { ui_knop(684, y + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, y + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
     }
 #endif
+    y += 50;
 
-    // Firmware updaten (PIN vereist → OTA scherm)
-    int uy = iy + 46;
-    ui_knop(10, uy + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
+    // ══ WEERGAVE & ENERGIE ════════════════════════════════════════════════════
+    y += 8;
+    tft.fillRect(0, y, TFT_W, 20, C_SURFACE2);
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    tft.setCursor(12, y + 6); tft.print(">> WEERGAVE & ENERGIE");
+    y += 24;
+
+    // Kleurpaletten (PIN vereist)
+    palette_swatches_teken(y);
+    if (!ontg) {
+        for (int dy = y; dy < y + 58; dy += 2)
+            tft.drawFastHLine(0, dy, TFT_W, C_BG);
+    }
+    y += 62;
+
+    // Open netwerken toggle (PIN vereist)
+    {
+        uint16_t obg  = (ontg && wifi_open_auto) ? RGB565(20, 4, 0) : C_SURFACE2;
+        uint16_t oacc = (ontg && wifi_open_auto) ? C_AMBER : C_TEXT_DIM;
+        tft.fillRoundRect(8, y, TFT_W - 16, 30, 6, ontg ? obg : C_SURFACE);
+        tft.drawRoundRect(8, y, TFT_W - 16, 30, 6, ontg ? oacc : C_SURFACE3);
+        tft.setTextSize(1); tft.setTextColor(ontg ? oacc : C_DARK_GRAY);
+        const char* olbl = (ontg && wifi_open_auto)
+            ? "OPEN WIFI AAN  (verbindt automatisch met open netwerken — tracking)"
+            : "OPEN WIFI UIT  (verbindt niet automatisch met open netwerken)";
+        tft.setCursor(16, y + (30 - 8) / 2); tft.print(olbl);
+    }
+    y += 34;
+
+    // Foutrapportage | Lichtmodus (PIN vereist)
+    {
+        bool frap = fout_rapportage;
+        bool tok  = fout_log_token_aanwezig();
+        uint16_t fbg  = (ontg && frap) ? RGB565(0, 22, 8) : C_SURFACE2;
+        uint16_t facc = (ontg && frap) ? (tok ? C_GREEN : C_AMBER) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
+        tft.fillRoundRect(8, y + 2, 294, 34, 6, fbg);
+        tft.drawRoundRect(8, y + 2, 294, 34, 6, ontg ? ((ontg && frap) ? facc : C_SURFACE3) : C_SURFACE3);
+        tft.setTextSize(1); tft.setTextColor(facc);
+        const char* flbl = (ontg && frap) ? (tok ? "FOUTRAP  AAN" : "FOUTRAP  !") : "FOUTRAP  UIT";
+        tft.setCursor(8 + (294 - (int)strlen(flbl) * 6) / 2, y + 2 + (34 - 8) / 2); tft.print(flbl);
+    }
+    {
+        bool olm = onthoud_licht_modus;
+        uint16_t obg  = (ontg && olm) ? RGB565(0, 16, 28) : C_SURFACE2;
+        uint16_t oacc = (ontg && olm) ? C_CYAN : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
+        tft.fillRoundRect(310, y + 2, 294, 34, 6, obg);
+        tft.drawRoundRect(310, y + 2, 294, 34, 6, ontg ? ((ontg && olm) ? oacc : C_SURFACE3) : C_SURFACE3);
+        tft.setTextSize(1); tft.setTextColor(oacc);
+        const char* olbl = (ontg && olm) ? "LICHTMODUS AAN" : "LICHTMODUS UIT";
+        tft.setCursor(310 + (294 - (int)strlen(olbl) * 6) / 2, y + 2 + (34 - 8) / 2); tft.print(olbl);
+    }
+    y += 42;
+
+    // Slaap modus
+    {
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SLAAP");
+        const char* modi[]    = {"GEEN", "LIGHT", "DEEP", "HIBERN"};
+        const char* uitleg[]  = {"", " CPU pauze  (~2mA)  touch wekt",
+                                     " Herstart bij wake  (~10uA)  touch wekt",
+                                     " Koudst  (~5uA)  ALLEEN timer wake"};
+        uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN, C_AMBER, C_RED_BRIGHT};
+        for (int i = 0; i < 4; i++) {
+            bool sel = (slaap_modus == i);
+            uint16_t mfg = sel ? mkleuren[i] : C_SURFACE3;
+            uint16_t mbg = !sel ? C_SURFACE :
+                           i==0 ? C_SURFACE2 :
+                           i==1 ? RGB565(0, 14, 24) :
+                           i==2 ? RGB565(24, 10, 0) : RGB565(28, 0, 0);
+            tft.fillRoundRect(90 + i * 100, y + 4, 94, 32, 5, mbg);
+            if (sel) tft.drawRoundRect(90 + i * 100, y + 4, 94, 32, 5, mfg);
+            tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
+            int tw = strlen(modi[i]) * 6;
+            tft.setCursor(90 + i * 100 + (94 - tw) / 2, y + 4 + (32 - 8) / 2);
+            tft.print(modi[i]);
+        }
+        if (slaap_modus > 0) {
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(500, y + (40 - 8) / 2); tft.print(uitleg[slaap_modus]);
+        }
+    }
+    y += 44;
+
+    // Slaap na
+    {
+        bool dis = (slaap_modus == SLAAP_GEEN);
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SLAAP NA");
+        const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
+        const char* slbls[]   = {"NOOIT", "30s", "1 min", "2 min", "5 min", "10 min"};
+        for (int i = 0; i < 6; i++) {
+            bool sel = (slaap_tijd == stps[i]);
+            uint16_t sfg = sel && !dis ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
+            uint16_t sbg = sel && !dis ? RGB565(0, 14, 24) : C_SURFACE;
+            tft.fillRoundRect(100 + i * 96, y + 5, 90, 30, 4, sbg);
+            if (sel && !dis) tft.drawRoundRect(100 + i * 96, y + 5, 90, 30, 4, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(sfg);
+            int tw = strlen(slbls[i]) * 6;
+            tft.setCursor(100 + i * 96 + (90 - tw) / 2, y + 5 + (30 - 8) / 2); tft.print(slbls[i]);
+        }
+    }
+    y += 44;
+
+    // IO interval + ATtiny
+    {
+        bool dis = (slaap_modus == SLAAP_GEEN);
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("INTERVAL");
+        const uint32_t ivals[] = {10, 30, 60, 300};
+        const char* ilbls[]    = {"10s", "30s", "1 min", "5 min"};
+        for (int i = 0; i < 4; i++) {
+            bool sel = (slaap_interval == ivals[i]);
+            uint16_t ifg = sel && !dis ? C_CYAN : (dis ? C_DARK_GRAY : C_SURFACE3);
+            uint16_t ibg = sel && !dis ? RGB565(0, 14, 24) : C_SURFACE;
+            tft.fillRoundRect(100 + i * 96, y + 5, 90, 30, 4, ibg);
+            if (sel && !dis) tft.drawRoundRect(100 + i * 96, y + 5, 90, 30, 4, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(ifg);
+            int tw = strlen(ilbls[i]) * 6;
+            tft.setCursor(100 + i * 96 + (90 - tw) / 2, y + 5 + (30 - 8) / 2); tft.print(ilbls[i]);
+        }
+        {
+            bool at_dis = dis || !bkoss_actief;
+            uint16_t abg = (!at_dis && slaap_attiny) ? RGB565(0, 14, 24) : C_SURFACE;
+            uint16_t afg = (!at_dis && slaap_attiny) ? C_CYAN : (at_dis ? C_DARK_GRAY : C_SURFACE3);
+            tft.fillRoundRect(498, y + 5, 200, 30, 4, abg);
+            if (!at_dis && slaap_attiny) tft.drawRoundRect(498, y + 5, 200, 30, 4, C_CYAN);
+            tft.setTextSize(1); tft.setTextColor(afg);
+            const char* albl = (!at_dis && slaap_attiny) ? "ATTINY  AAN" : (bkoss_actief ? "ATTINY  UIT" : "ATTINY  N/B");
+            tft.setCursor(498 + (200 - (int)strlen(albl) * 6) / 2, y + 5 + (30 - 8) / 2); tft.print(albl);
+        }
+    }
+    y += 44;
+
+    // ══ UPDATE ════════════════════════════════════════════════════════════════
+    y += 8;
+    tft.fillRect(0, y, TFT_W, 20, C_SURFACE2);
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    tft.setCursor(12, y + 6); tft.print(">> UPDATE");
+    y += 24;
+
+    ui_knop(10, y + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    y += 50;
 
-    // Pincode wijzigen + (als foutrap ON en ontgrendeld) Token instellen
-    int py = uy + 46;
     {
         bool heeft_tok_knop = fout_rapportage && ontg;
         int  pw = heeft_tok_knop ? (TFT_W / 2 - 14) : (TFT_W - 20);
-        ui_knop(10, py + 4, pw, 38, "PINCODE WIJZIGEN  >",
+        ui_knop(10, y + 4, pw, 38, "PINCODE WIJZIGEN  >",
                 C_SURFACE2, ontg ? C_AMBER : C_TEXT_DIM);
         if (heeft_tok_knop) {
             bool tok = fout_log_token_aanwezig();
-            ui_knop(TFT_W / 2 + 4, py + 4, TFT_W / 2 - 14, 38,
+            ui_knop(TFT_W / 2 + 4, y + 4, TFT_W / 2 - 14, 38,
                     tok ? "TOKEN WIJZIGEN  >" : "TOKEN INSTELLEN  >",
                     tok ? C_SURFACE2 : RGB565(28, 8, 0),
                     tok ? C_CYAN    : C_AMBER);
         }
     }
+
     helderheid_balk_teken();
-    int _cfg_sb_y = HLD_Y + HLD_H + 4;
-    ui_scrollbar(TFT_W - UI_SB_W, _cfg_sb_y, NAV_Y - _cfg_sb_y, cfg_ins_scroll_y,
-                 max(0, 546 + (int)UI_SCY(40) - CONTENT_H));
+    ui_scrollbar(TFT_W - UI_SB_W, CFG_INS_Y0, NAV_Y - CFG_INS_Y0, cfg_ins_scroll_y, CFG_INS_MAX_SCROLL);
 }
 
 static void cfg_instellingen_run(int x, int y) {
@@ -1414,101 +1428,66 @@ static void cfg_instellingen_run(int x, int y) {
         }
     }
 
+    // Vaste rij: WiFi + ONTGRENDELEN
+    int fr_y = CFG_INS_FR_Y;
+    if (y >= fr_y && y < fr_y + 38) {
+        if (x < 408) {
+            actief_scherm = SCREEN_WIFI; scherm_bouwen = true;
+        } else {
+            if (ontg) { config_ontgrendeld = false; scherm_bouwen = true; }
+            else      { pin_vereist_tonen(); }
+        }
+        return;
+    }
+
+    // Swipe + scrollbar
     {
-        int max_scroll = max(0, 546 + (int)UI_SCY(40) - CONTENT_H);
-        // Swipe scrollen (vóór klik-detectie — beweging ≥ 35px = swipe, geen klik)
-        if (max_scroll > 0 && abs(hw_touch_drag_dy) >= 35) {
-            cfg_ins_scroll_y = constrain(cfg_ins_scroll_y - hw_touch_drag_dy, 0, max_scroll);
+        int ms = CFG_INS_MAX_SCROLL;
+        if (ms > 0 && abs(hw_touch_drag_dy) >= 35) {
+            cfg_ins_scroll_y = constrain(cfg_ins_scroll_y - hw_touch_drag_dy, 0, ms);
             cfg_instellingen_teken(); return;
         }
-        // Scrollbar pijl-knoppen
-        if (max_scroll > 0) {
-            int sb_y_pos = HLD_Y + HLD_H + 4;
-            int klik = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, sb_y_pos, NAV_Y - sb_y_pos);
+        if (ms > 0) {
+            int klik = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_INS_Y0, NAV_Y - CFG_INS_Y0);
             if (klik != 0) {
                 if (klik == -1) cfg_ins_scroll_y = max(0, cfg_ins_scroll_y - 50);
-                else if (klik == 1) cfg_ins_scroll_y = min(max_scroll, cfg_ins_scroll_y + 50);
+                else            cfg_ins_scroll_y = min(ms, cfg_ins_scroll_y + 50);
                 cfg_instellingen_teken(); return;
             }
         }
     }
 
-    int wow_y = HLD_Y + HLD_H + 4 - cfg_ins_scroll_y;
-    int ow_y  = wow_y + 38 + 2;
-    int sy    = ow_y + 30 + 4;
-    int by    = sy + 62;
-    int zy    = by + 44;
-    int ay    = zy + 44;
-    int sly   = ay   + 44;   // slaap modus
-    int sly2  = sly  + 44;   // slaap tijd
-    int sly3  = sly2 + 44;   // slaap interval + attiny
-    int iy    = sly3 + 44;
-    int uy    = iy + 46;
-    int py    = uy + 46;
+    // Herbereken y-posities (identiek aan teken)
+    int cy = CFG_INS_Y0 - cfg_ins_scroll_y;
+    cy += 24;  // BOOT header
+    int boot_y = cy; cy += 44;
+    int zl_y   = cy; cy += 44;
+    int nm_y   = cy; cy += 44;
+    int io_y   = cy; cy += 50;
+    cy += 8;   // categorie gap
+    cy += 24;  // WE header
+    int pal_y  = cy; cy += 62;
+    int ow_y   = cy; cy += 34;
+    int fr2_y  = cy; cy += 42;
+    int sly    = cy; cy += 44;
+    int sly2   = cy; cy += 44;
+    int sly3   = cy; cy += 44;
+    cy += 8;   // categorie gap
+    cy += 24;  // UPDATE header
+    int upd_y  = cy; cy += 50;
+    int pin_y  = cy;
 
-    // WiFi | Foutrapportage | Lichtmodus onthouden | Ontgrendelen rij (altijd vrij)
-    if (y >= wow_y && y < wow_y + 38) {
-        if (x < 236) {
-            actief_scherm = SCREEN_WIFI; scherm_bouwen = true;
-        } else if (x < 370) {
-            fout_rapportage = !fout_rapportage;
-            state_save();
-            cfg_instellingen_teken();
-        } else if (x < 508) {
-            onthoud_licht_modus = !onthoud_licht_modus;
-            state_save();
-            cfg_instellingen_teken();
-        } else {
-            if (ontg) {
-                config_ontgrendeld = false;
-                scherm_bouwen = true;
-            } else {
-                pin_vereist_tonen();
-            }
-        }
-        return;
-    }
-
-    // Open netwerken toggle — PIN vereist
-    if (y >= ow_y && y < ow_y + 30) {
-        if (!ontg) { pin_vereist_tonen(); return; }
-        wifi_open_auto = !wifi_open_auto;
-        state_save();
-        cfg_instellingen_teken();
-        return;
-    }
-
-    // Kleurpaletten — PIN vereist
-    if (y >= sy && y < sy + 58) {
-        if (!ontg) { pin_vereist_tonen(); return; }
-        int sw = 95, gap = 6, start_x = 80;
-        int idx = (x - start_x) / (sw + gap);
-        if (idx >= 0 && idx < PALETTE_CNT) {
-            int px = start_x + idx * (sw + gap);
-            if (x >= px && x < px + sw) {
-                kleurenschema = idx;
-                palette_toepassen(idx);
-                state_save();
-                scherm_bouwen = true;
-            }
-        }
-        return;
-    }
-
-    // Boot type — PIN vereist
-    if (y >= by && y < by + 40) {
+    // Boot type (PIN vereist)
+    if (y >= boot_y && y < boot_y + 40) {
         if (!ontg) { pin_vereist_tonen(); return; }
         int bw = 148, bx_off = 90;
         int idx = (x - bx_off) / (bw + 6);
-        if (idx >= 0 && idx < 4) {
-            boot_type = idx;
-            state_save(); cfg_instellingen_teken();
-        }
+        if (idx >= 0 && idx < 4) { boot_type = idx; state_save(); cfg_instellingen_teken(); }
         return;
     }
 
-    // Zeilnummer — PIN vereist
-    if (y >= zy && y < zy + 40 && x >= 90 && x < 410) {
+    // Zeilnummer (PIN vereist)
+    if (y >= zl_y && y < zl_y + 40 && x >= 90 && x < 410) {
         if (!ontg) { pin_vereist_tonen(); return; }
         cfg_bewerk_zeilnr = true;
         strncpy(cfg_invoer, zeilnummer, CFG_INVOER_LEN - 1);
@@ -1520,56 +1499,25 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // Apparaat naam — PIN vereist
-    if (y >= ay && y < ay + 44 && x >= 130 && x < 130 + 300) {
+    // Naam module (PIN vereist)
+    if (y >= nm_y && y < nm_y + 44 && x >= 130 && x < 430) {
         if (!ontg) { pin_vereist_tonen(); return; }
         cfg_bewerk_apparaatnaam = true;
         strncpy(cfg_invoer, net_eigen_naam, CFG_INVOER_LEN - 1);
         if (strcmp(cfg_invoer, "BKOS-NUI") == 0) cfg_invoer[0] = '\0';
         cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
         strncpy(cfg_kb_label, "Module naam:", 24);
-        cfg_kb_numeriek = false;
-        cfg_geselecteerd = -1;
-        cfg_kb_info_mode = false;
-        cfg_kb_opgeslagen = false;
-        kb_sym = false;
+        cfg_kb_numeriek = false; cfg_geselecteerd = -1;
+        cfg_kb_info_mode = false; cfg_kb_opgeslagen = false; kb_sym = false;
         cfg_toetsenbord_actief = true;
         screen_config_toetsenbord_teken();
         return;
     }
 
-    // Slaap modus keuze (geen PIN vereist)
-    if (y >= sly && y < sly + 40 && x >= 90) {
-        int idx = (x - 90) / 100;
-        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); cfg_instellingen_teken(); }
-        return;
-    }
-    // Slaap tijd (alleen actief als modus != GEEN)
-    if (y >= sly2 && y < sly2 + 40 && x >= 100 && slaap_modus != SLAAP_GEEN) {
-        const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
-        int idx = (x - 100) / 96;
-        if (idx >= 0 && idx < 6) { slaap_tijd = stps[idx]; state_save(); cfg_instellingen_teken(); }
-        return;
-    }
-    // Slaap interval + ATtiny (alleen actief als modus != GEEN)
-    if (y >= sly3 && y < sly3 + 40 && slaap_modus != SLAAP_GEEN) {
-        if (x >= 100 && x < 484) {
-            const uint32_t ivals[] = {10, 30, 60, 300};
-            int idx = (x - 100) / 96;
-            if (idx >= 0 && idx < 4) { slaap_interval = ivals[idx]; state_save(); cfg_instellingen_teken(); }
-        } else if (x >= 498 && bkoss_actief) {
-            slaap_attiny = !slaap_attiny;
-            state_save(); cfg_instellingen_teken();
-        }
-        return;
-    }
-
-    // IO Configuratie + [Touch Kalibreren / IO Hartslag timing]
-    if (y >= iy && y < iy + 46) {
+    // IO Configuratie + [Touch Kalibreren / IO Hartslag]
+    if (y >= io_y && y < io_y + 50) {
 #if PLATFORM_XPT2046
-        if (x >= UI_SCX(500)) {
-            actief_scherm = SCREEN_CALIBRATIE; scherm_bouwen = true; return;
-        }
+        if (x >= UI_SCX(500)) { actief_scherm = SCREEN_CALIBRATIE; scherm_bouwen = true; return; }
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_IO_CFG; scherm_bouwen = true;
 #else
@@ -1586,39 +1534,89 @@ static void cfg_instellingen_run(int x, int y) {
         return;
     }
 
-    // Firmware updaten (PIN vereist → OTA scherm)
-    if (y >= uy && y < uy + 46) {
+    // Kleurpaletten (PIN vereist)
+    if (y >= pal_y && y < pal_y + 58) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        int sw = 95, gap = 6, start_x = 80;
+        int idx = (x - start_x) / (sw + gap);
+        if (idx >= 0 && idx < PALETTE_CNT) {
+            int px_off = start_x + idx * (sw + gap);
+            if (x >= px_off && x < px_off + sw) {
+                kleurenschema = idx;
+                palette_toepassen(idx);
+                state_save(); scherm_bouwen = true;
+            }
+        }
+        return;
+    }
+
+    // Open netwerken toggle (PIN vereist)
+    if (y >= ow_y && y < ow_y + 34) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        wifi_open_auto = !wifi_open_auto;
+        state_save(); cfg_instellingen_teken(); return;
+    }
+
+    // Foutrapportage | Lichtmodus (PIN vereist)
+    if (y >= fr2_y && y < fr2_y + 42) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        if (x < 310) { fout_rapportage = !fout_rapportage; }
+        else          { onthoud_licht_modus = !onthoud_licht_modus; }
+        state_save(); cfg_instellingen_teken(); return;
+    }
+
+    // Slaap modus (geen PIN)
+    if (y >= sly && y < sly + 40 && x >= 90) {
+        int idx = (x - 90) / 100;
+        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); cfg_instellingen_teken(); }
+        return;
+    }
+    // Slaap na (geen PIN)
+    if (y >= sly2 && y < sly2 + 40 && x >= 100 && slaap_modus != SLAAP_GEEN) {
+        const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
+        int idx = (x - 100) / 96;
+        if (idx >= 0 && idx < 6) { slaap_tijd = stps[idx]; state_save(); cfg_instellingen_teken(); }
+        return;
+    }
+    // Slaap interval + ATtiny (geen PIN)
+    if (y >= sly3 && y < sly3 + 40 && slaap_modus != SLAAP_GEEN) {
+        if (x >= 100 && x < 484) {
+            const uint32_t ivals[] = {10, 30, 60, 300};
+            int idx = (x - 100) / 96;
+            if (idx >= 0 && idx < 4) { slaap_interval = ivals[idx]; state_save(); cfg_instellingen_teken(); }
+        } else if (x >= 498 && bkoss_actief) {
+            slaap_attiny = !slaap_attiny;
+            state_save(); cfg_instellingen_teken();
+        }
+        return;
+    }
+
+    // Firmware updaten (PIN vereist)
+    if (y >= upd_y && y < upd_y + 50) {
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_OTA;
         scherm_bouwen = true;
         return;
     }
 
-    // PIN wijzigen + Token instellen
-    if (y >= py && y < py + 46) {
+    // Pincode + Token (PIN vereist voor PIN wijzigen)
+    if (y >= pin_y && y < pin_y + 50) {
         bool heeft_tok_knop = fout_rapportage && ontg;
         if (heeft_tok_knop && x >= TFT_W / 2 + 4) {
-            // TOKEN INSTELLEN/WIJZIGEN
             cfg_invoer[0] = '\0';
             strncpy(cfg_kb_label, "GitHub Token:", sizeof(cfg_kb_label) - 1);
-            cfg_kb_numeriek      = false;
-            cfg_kb_info_mode     = false;
-            cfg_kb_opgeslagen    = false;
-            cfg_kb_wachtwoord    = false;
+            cfg_kb_numeriek = false; cfg_kb_info_mode = false;
+            cfg_kb_opgeslagen = false; cfg_kb_wachtwoord = false;
             cfg_kb_foutlog_token = true;
             cfg_toetsenbord_actief = true;
             screen_config_toetsenbord_teken();
         } else if (!ontg) {
-            pin_stap = 0;
-            pin_na_unlock_wijzigen = true;
+            pin_stap = 0; pin_na_unlock_wijzigen = true;
             pin_invoer[0] = '\0';
-            pin_overlay_actief = true;
-            pin_overlay_teken();
+            pin_overlay_actief = true; pin_overlay_teken();
         } else {
-            pin_stap = 1;
-            pin_invoer[0] = '\0';
-            pin_overlay_actief = true;
-            pin_overlay_teken();
+            pin_stap = 1; pin_invoer[0] = '\0';
+            pin_overlay_actief = true; pin_overlay_teken();
         }
     }
 }

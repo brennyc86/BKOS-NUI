@@ -1092,7 +1092,7 @@ static void mini_boot(int btype, int x, int y, int w, int h, uint16_t c, uint16_
 
 // ─── Tab 0: Instellingen ────────────────────────────────────────────────
 static const char* palette_names[PALETTE_CNT] = {
-    "WOUD", "OCEAAN", "AMBER", "ROBIJN", "SAFIER", "KRIJT", "NACHT"
+    "NYMBUS", "RAN", "GLORY", "HAVEN", "STORM", "KOMPAS", "NACHT"
 };
 
 static void palette_swatches_teken(int sy) {
@@ -1111,12 +1111,10 @@ static void palette_swatches_teken(int sy) {
         // Achtergrondvlak (donkere kleur)
         tft.fillRoundRect(x, sy + 4, sw, sh, 6, pbg);
         // Diagonale driehoek rechtsonder (lichte tekstkleur)
-        tft.fillTriangle(x + 6,    sy + 4 + sh - 6,   // links-onder (inset)
-                         x + sw-6, sy + 4 + 6,         // rechts-boven (inset)
-                         x + sw-6, sy + 4 + sh - 6,    // rechts-onder (inset)
+        tft.fillTriangle(x + 6,    sy + 4 + sh - 6,
+                         x + sw-6, sy + 4 + 6,
+                         x + sw-6, sy + 4 + sh - 6,
                          ptxt);
-        // Accent stip in het midden
-        tft.fillCircle(x + sw/2, sy + 4 + sh/2, 4, pacc);
         // Rand
         if (act) {
             tft.drawRoundRect(x,   sy + 4, sw,   sh, 6, C_WHITE);
@@ -1124,11 +1122,10 @@ static void palette_swatches_teken(int sy) {
         } else {
             tft.drawRoundRect(x, sy + 4, sw, sh, 6, C_SURFACE3);
         }
-        // Naam (in accent kleur voor zichtbaarheid op beide vlakken)
+        // Naam linksboven op het donkere vlak (lichte tekst voor leesbaarheid)
         tft.setTextSize(1);
-        tft.setTextColor(act ? C_WHITE : pacc);
-        int tw = strlen(palette_names[i]) * 6;
-        tft.setCursor(x + (sw - tw) / 2, sy + 4 + sh - 12);
+        tft.setTextColor(act ? C_WHITE : ptxt);
+        tft.setCursor(x + 5, sy + 4 + 7);
         tft.print(palette_names[i]);
     }
 }
@@ -1175,56 +1172,45 @@ static void cfg_hoofd_teken() {
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
 
+    // ── Categorieknoppen altijd op vaste positie ─────────────────────────
     const char* cats[]   = {"BOOT  >", "WEERGAVE & ENERGIE  >", "UPDATE  >", "PINCODE WIJZIGEN  >"};
     uint16_t cat_kleur[] = {C_CYAN, C_CYAN, C_CYAN, C_AMBER};
+    int cat_y = fr_y + 44;
+    int cat_h = 72, cat_gap = 8;
+    for (int i = 0; i < 4; i++) {
+        int cy = cat_y + i * (cat_h + cat_gap);
+        tft.fillRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE);
+        tft.drawRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE3);
+        tft.setTextSize(2); tft.setTextColor(cat_kleur[i]);
+        tft.setCursor(24, cy + (cat_h - 16) / 2);
+        tft.print(cats[i]);
+    }
 
     if (!ontg) {
-        // ── VERGRENDELD: groot slot-blok boven de gedimde categorieën ────────
-        int lock_y = fr_y + 44;
-        int lock_h = 78;
-        tft.fillRoundRect(8, lock_y, TFT_W - 16, lock_h, 8, RGB565(24, 8, 0));
-        tft.drawRoundRect(8, lock_y, TFT_W - 16, lock_h, 8, C_AMBER);
-        // Groot slot-icoon (links, opgeschaald met extra tekening)
-        int ic_cx = 52, ic_cy = lock_y + lock_h / 2;
-        _slot_icoon(ic_cx, ic_cy, true, C_AMBER, RGB565(24, 8, 0));
-        // Tweede keer geschaald via offset (groter effect)
-        tft.drawRoundRect(ic_cx - 11, ic_cy - 13, 22, 28, 4, C_AMBER);
-        // Tekst
-        tft.setTextSize(2); tft.setTextColor(C_AMBER);
-        tft.setCursor(82, lock_y + (lock_h - 16) / 2 - 10);
-        tft.print("BEVEILIGD");
-        tft.setTextSize(1); tft.setTextColor(RGB565(200, 140, 60));
-        tft.setCursor(82, lock_y + (lock_h - 16) / 2 + 12);
-        tft.print("Tik hier om te ontgrendelen");
-
-        // 4 categorieknoppen (gedimde achtergrond)
-        int cat_y = lock_y + lock_h + 6;
-        int cat_h = 54, cat_gap = 6;
-        for (int i = 0; i < 4; i++) {
-            int cy = cat_y + i * (cat_h + cat_gap);
-            tft.fillRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE);
-            tft.drawRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE2);
-            tft.setTextSize(2); tft.setTextColor(C_SURFACE3);
-            tft.setCursor(24, cy + (cat_h - 16) / 2);
-            tft.print(cats[i]);
-        }
-        // Waas
-        int waas_h = 4 * cat_h + 3 * cat_gap;
-        for (int dy = cat_y; dy < cat_y + waas_h; dy += 2)
+        // ── VERGRENDELD: waas over knoppen + BEVEILIGD-paneel gecentreerd ──
+        int waas_top = cat_y;
+        int waas_bot = cat_y + 4 * cat_h + 3 * cat_gap;
+        for (int dy = waas_top; dy < waas_bot; dy += 2)
             tft.drawFastHLine(0, dy, TFT_W, C_BG);
 
-    } else {
-        // ── ONTGRENDELD: geen slot-knop, grotere categorieknopen ─────────────
-        int cat_y = fr_y + 44;
-        int cat_h = 72, cat_gap = 8;
-        for (int i = 0; i < 4; i++) {
-            int cy = cat_y + i * (cat_h + cat_gap);
-            tft.fillRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE);
-            tft.drawRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE3);
-            tft.setTextSize(2); tft.setTextColor(cat_kleur[i]);
-            tft.setCursor(24, cy + (cat_h - 16) / 2);
-            tft.print(cats[i]);
-        }
+        // Centreer paneel over de knoppen
+        int pan_w = 500, pan_h = 128;
+        int pan_x = (TFT_W - pan_w) / 2;
+        int pan_y = waas_top + (waas_bot - waas_top - pan_h) / 2;
+        tft.fillRoundRect(pan_x, pan_y, pan_w, pan_h, 10, RGB565(22, 7, 0));
+        tft.drawRoundRect(pan_x, pan_y, pan_w, pan_h, 10, C_AMBER);
+        tft.drawRoundRect(pan_x+1, pan_y+1, pan_w-2, pan_h-2, 9, RGB565(120, 70, 0));
+
+        int ic_cx = pan_x + 60, ic_cy = pan_y + pan_h / 2;
+        _slot_icoon(ic_cx, ic_cy, true, C_AMBER, RGB565(22, 7, 0));
+        tft.drawRoundRect(ic_cx - 11, ic_cy - 13, 22, 28, 4, C_AMBER);
+
+        tft.setTextSize(2); tft.setTextColor(C_AMBER);
+        tft.setCursor(pan_x + 96, pan_y + pan_h / 2 - 18);
+        tft.print("BEVEILIGD");
+        tft.setTextSize(1); tft.setTextColor(RGB565(200, 138, 58));
+        tft.setCursor(pan_x + 96, pan_y + pan_h / 2 + 8);
+        tft.print("Tik om te ontgrendelen met pincode");
     }
 }
 
@@ -1505,18 +1491,20 @@ static void cfg_hoofd_run(int x, int y) {
         actief_scherm = SCREEN_WIFI; scherm_bouwen = true; return;
     }
 
+    // Categorieknop-gebied (vergrendeld of niet)
+    int cat_y = fr_y + 44;
+    int cat_h = 72, cat_gap = 8;
+    int cat_bot = cat_y + 4 * cat_h + 3 * cat_gap;
+
     if (!ontg) {
-        // Vergrendeld: slot-blok is de enige interactie
-        int lock_y = fr_y + 44;
-        if (y >= lock_y && y < lock_y + 78) {
+        // Vergrendeld: elk tik in het knopgebied vraagt om pincode
+        if (y >= cat_y && y < cat_bot) {
             pin_vereist_tonen(); return;
         }
         return;
     }
 
     // Ontgrendeld: categorieknoppen
-    int cat_y = fr_y + 44;
-    int cat_h = 72, cat_gap = 8;
     for (int i = 0; i < 4; i++) {
         int cy = cat_y + i * (cat_h + cat_gap);
         if (y >= cy && y < cy + cat_h) {

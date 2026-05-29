@@ -5,13 +5,13 @@
 #define RGB565(r,g,b) ((uint16_t)(((uint16_t)((r) & 0xF8) << 8) | ((uint16_t)((g) & 0xFC) << 3) | ((uint16_t)((b) & 0xF8) >> 3)))
 
 // ─── Paletten (kleurenschema 0..6) ───────────────────────────────────────
-#define PALETTE_MARINE  0  // donker marine blauw (standaard)
-#define PALETTE_ROOD    1  // rood accent
-#define PALETTE_GOUD    2  // goud/amber accent
-#define PALETTE_BLAUW   3  // helder blauw accent
-#define PALETTE_GROEN   4  // groen accent
-#define PALETTE_WIT     5  // licht/wit thema
-#define PALETTE_NACHT   6  // nachtzicht (minimaal rood licht)
+#define PALETTE_WOUD    0  // donker groen + warm beige (standaard)
+#define PALETTE_OCEAAN  1  // diepzee marine + ijs-wit + cyaan
+#define PALETTE_AMBER   2  // donker brons + warm crème
+#define PALETTE_ROBIJN  3  // diep robijnrood + warm roze
+#define PALETTE_SAFIER  4  // diep saffierblauw + elektrisch blauw
+#define PALETTE_KRIJT   5  // krijt-wit + houtskool + staalblauw
+#define PALETTE_NACHT   6  // nachtzicht — puur zwart + dim rood
 #define PALETTE_CNT     7
 
 // ─── Thema-afhankelijke kleuren (runtime variabelen) ─────────────────────

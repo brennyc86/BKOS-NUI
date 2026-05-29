@@ -24,41 +24,41 @@ struct Palette {
 };
 
 static const Palette paletten[PALETTE_CNT] = {
-    // 0: MARINE — donker marine blauw (standaard)
-    { RGB565(8,12,25),    RGB565(18,28,52),   RGB565(28,42,78),   RGB565(40,58,100),
-      RGB565(12,18,38),
-      RGB565(200,220,255), RGB565(100,130,160), RGB565(20,30,55), RGB565(40,50,70),
-      RGB565(0,200,230) },
-    // 1: ROOD — verzadigd donkerrood als overheersende achtergrondkleur
-    { RGB565(72,0,0),     RGB565(110,5,5),    RGB565(148,10,10),  RGB565(180,18,18),
-      RGB565(52,0,0),
-      RGB565(255,210,210), RGB565(200,90,90),  RGB565(80,3,3),    RGB565(120,8,8),
-      RGB565(255,30,30) },
-    // 2: GOUD — donker goud/amber als overheersende achtergrondkleur
-    { RGB565(18,12,2),    RGB565(40,28,5),    RGB565(62,44,8),    RGB565(84,60,12),
-      RGB565(12,8,1),
-      RGB565(255,242,200), RGB565(158,128,55), RGB565(26,18,2),   RGB565(58,38,8),
-      RGB565(255,185,0) },
-    // 3: BLAUW — verzadigd kobaltblauw als overheersende achtergrondkleur
-    { RGB565(0,0,80),     RGB565(5,5,120),    RGB565(10,10,160),  RGB565(15,20,200),
-      RGB565(0,0,58),
-      RGB565(200,215,255), RGB565(100,130,220), RGB565(3,3,90),   RGB565(10,15,130),
-      RGB565(60,140,255) },
-    // 4: GROEN — donker bosgroen als overheersende achtergrondkleur
-    { RGB565(2,12,2),     RGB565(5,28,5),     RGB565(8,44,8),     RGB565(12,60,12),
-      RGB565(1,8,1),
-      RGB565(200,255,205), RGB565(68,150,72),  RGB565(3,20,3),    RGB565(12,45,12),
-      RGB565(0,215,75) },
-    // 5: WIT — licht thema met lichtgrijze achtergrond
-    { RGB565(225,230,240), RGB565(205,213,228), RGB565(182,193,212), RGB565(158,171,196),
-      RGB565(185,196,218),
-      RGB565(18,22,40),  RGB565(78,88,112),   RGB565(205,215,235), RGB565(135,145,170),
-      RGB565(0,88,195) },
-    // 6: NACHT — minimaal rood licht voor nachtzicht
-    { RGB565(0,0,0),      RGB565(14,4,4),     RGB565(26,7,7),     RGB565(38,10,10),
-      RGB565(8,2,2),
-      RGB565(200,55,55), RGB565(115,28,28),   RGB565(10,2,2),    RGB565(24,7,7),
-      RGB565(175,18,18) },
+    // 0: WOUD — donker bosgroen + warm beige (hoog contrast, standaard)
+    { RGB565(6,  24,  8),  RGB565(12, 44, 16), RGB565(20, 64, 24), RGB565(32, 88, 36),
+      RGB565(4,  16,  6),
+      RGB565(235,218,168), RGB565(135,165, 95), RGB565(8,  30, 10), RGB565(55, 80, 45),
+      RGB565(95, 215,105) },
+    // 1: OCEAAN — diepzee marine + ijs-wit + cyaan (3 kleuren)
+    { RGB565(6,  12, 28),  RGB565(14, 26, 54), RGB565(24, 42, 84), RGB565(36, 60,112),
+      RGB565(4,   8, 20),
+      RGB565(205,225,255), RGB565(95, 130,175), RGB565(10, 18, 40), RGB565(42, 58, 96),
+      RGB565(0,  200,230) },
+    // 2: AMBER — donker brons + warm crème + goudgeel accent (3 kleuren)
+    { RGB565(18, 10,  2),  RGB565(36, 22,  4), RGB565(56, 36,  7), RGB565(78, 52, 12),
+      RGB565(12,  7,  1),
+      RGB565(255,240,195), RGB565(165,132, 58), RGB565(22, 12,  2), RGB565(62, 44, 14),
+      RGB565(255,185,  0) },
+    // 3: ROBIJN — diep robijnrood + warm roze crème (2 kleuren)
+    { RGB565(44,  4,  8),  RGB565(72,  8, 14), RGB565(104,14, 20), RGB565(138,22, 28),
+      RGB565(32,  2,  5),
+      RGB565(255,212,212), RGB565(195, 95,105), RGB565(52,  5, 10), RGB565(98, 20, 25),
+      RGB565(255, 85, 95) },
+    // 4: SAFIER — diep saffierblauw + elektrisch blauw + ijsblauw (3 kleuren)
+    { RGB565(2,   4, 50),  RGB565(5,   9, 82), RGB565(9,  16,118), RGB565(15, 26,152),
+      RGB565(1,   3, 36),
+      RGB565(195,212,255), RGB565(96, 126,215), RGB565(4,   8, 58), RGB565(20, 28, 95),
+      RGB565(72, 148,255) },
+    // 5: KRIJT — krijt-wit + houtskool + staalblauw (licht thema)
+    { RGB565(232,236,248), RGB565(215,222,238), RGB565(195,204,225), RGB565(172,184,208),
+      RGB565(192,200,220),
+      RGB565(16,  20, 42), RGB565(78,  90,120), RGB565(212,220,238), RGB565(125,138,165),
+      RGB565(0,   94,205) },
+    // 6: NACHT — puur zwart + dim rood (nachtzicht, minimaal licht)
+    { RGB565(0,   0,  0),  RGB565(15,  4,  4), RGB565(26,  7,  7), RGB565(40, 11, 11),
+      RGB565(8,   2,  2),
+      RGB565(205, 52, 52), RGB565(112, 26, 26), RGB565(10,  2,  2), RGB565(26,  8,  8),
+      RGB565(180, 16, 16) },
 };
 
 uint16_t palette_accent(byte schema) {

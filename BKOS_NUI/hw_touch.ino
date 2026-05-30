@@ -69,9 +69,11 @@ void ts_kalibratie_opslaan() {
 
 void ts_setup() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+    // Wire timeout VOOR ts.begin() zodat GT911-init niet hangt bij verkeerd I2C-adres
+    Wire.begin(TS_SDA, TS_SCK);
+    Wire.setTimeout(50);
     ts.begin();
     ts.setRotation(0);
-    Wire.setTimeout(50);  // GT911 I2C: max 50ms per transactie, voorkomt oneindige blokkering bij busstoring
     // GT911 INT pin als INPUT_PULLUP: hoog als scherm niet aangeraakt, laag bij aanraking.
     // TAMC_GT911 gebruikt intPin=-1 (geen adres-selectie via INT), wij gebruiken de pin
     // alleen als EXT0 wake source. Pull-up voorkomt willekeurige wakeups bij zwevende pin.

@@ -65,11 +65,10 @@ void io_bkoss_check() {
 }
 
 void io_boot() {
-#if !PLATFORM_PICO && !PLATFORM_WROOM
-    IO_SERIAL.flush();
-#endif
     io_bkoss_check();
-    io_detect();
+    // Sla io_detect() over als BKOSS niet gevonden — voorkomt IO_SERIAL.flush() zonder
+    // aangesloten hardware (S3/CYD zonder ATtiny: Serial = USB CDC → flush hangt).
+    if (bkoss_actief) io_detect();
 }
 
 void io_detect() {

@@ -44,7 +44,7 @@ jobs:
       - name: Compile ESP32-S3 firmware
         run: |
           arduino-cli compile \
-            --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,PartitionScheme=default_8MB,FlashSize=16M,FlashMode=qio,PSRAM=opi" \
+            --fqbn "esp32:esp32:esp32s3:CDCOnBoot=default,PartitionScheme=default_8MB,FlashSize=16M,FlashMode=qio,PSRAM=opi" \
             --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_esp32s3/ \
             BKOS_NUI/

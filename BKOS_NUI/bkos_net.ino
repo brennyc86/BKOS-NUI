@@ -200,7 +200,8 @@ static void _stuur(const uint8_t* mac, const NetPaket& pkt, int data_len = 0) {
 }
 
 #if ESP_IDF_VERSION_MAJOR >= 5
-static void _net_ontvangen_cb(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+// IDF 5.x: typedef esp_now_recv_info_t bestaat niet altijd — gebruik struct direct
+static void _net_ontvangen_cb(const struct esp_now_recv_info* info, const uint8_t* data, int len) {
     const uint8_t* mac = info->src_addr;
 #else
 static void _net_ontvangen_cb(const uint8_t* mac, const uint8_t* data, int len) {

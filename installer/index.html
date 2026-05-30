@@ -355,6 +355,11 @@
 const RAW        = 'https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main';
 const RAW_BLANCO = 'https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main';
 
+// OTA-data reset: 8KB van 0xFF → reset boot-selectie naar factory partitie (0x10000)
+// Nodig omdat ESP32 na OTA-update van de ota_0/ota_1 partitie opstart, niet factory.
+// Door otadata (0xE000, 8KB) te wissen boot de bootloader opnieuw van de factory partitie.
+const OTA_RESET_URL = `${RAW}/firmware/reset_otadata.bin`;
+
 // Per platform: nui = reguliere firmware, blanco = leveringsbasis
 // blanco.raw verwijst naar de BKOS-blanco repo; vkey is de bestandsnaam-sleutel daar
 const PLAT = {
@@ -552,7 +557,10 @@ function berekenManifest(chip, ver, url) {
     name: 'BKOS-NUI',
     version: ver,
     new_install_prompt_erase: false,
-    builds: [{ chipFamily: family, parts: [{ path: url, offset: 65536 }] }]
+    builds: [{ chipFamily: family, parts: [
+      { path: OTA_RESET_URL, offset: 57344 },  // 0xE000: wis otadata → boot van factory
+      { path: url,           offset: 65536 }   // 0x10000: app binary
+    ] }]
   };
   const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
   prevManifestUrl = URL.createObjectURL(blob);

@@ -24,10 +24,11 @@ void tft_setup() {
         9, 46, 3, 8, 16, 1,               // G0–G5
         15, 7, 6, 5, 4,                   // B0–B4
         0, 210, 30, 16, 0, 22, 13, 23, 1, // sync parameters + pclk_active_neg
-        10000000,                          // prefer_speed: 10MHz (16→10 vermindert PSRAM bus-contention)
+        16000000,                          // prefer_speed: 16MHz
         false,                             // useBigEndian
         0,                                 // de_idle_high
-        0);                                // pclk_idle_high
+        0,                                 // pclk_idle_high
+        8000);                             // bounce_buffer_size_px: DMA via intern SRAM, geen PSRAM bus-conflict
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
 #elif PLATFORM_WROOM

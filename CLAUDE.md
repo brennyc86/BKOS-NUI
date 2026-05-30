@@ -51,7 +51,7 @@ Wanneer Brendan valideert → officiële release:
 - Flash mode: **QIO** (aanbevolen voor S3 in core 3.x)
 
 ### Verplichte bibliotheken
-- `Arduino_GFX_Library` **versie 1.4.x** — vereist voor bounce buffer (stabiel scherm zonder PSRAM-conflicten)
+- `Arduino_GFX_Library` **versie 1.6.5** — vereist voor bounce buffer op core 3.x (stabiel scherm zonder PSRAM-conflicten)
 - `WiFiManager` 2.0.17
 - `ArduinoOTA`
 - `HTTPClient` (onderdeel van ESP32 core)
@@ -242,6 +242,8 @@ Recente taken:
 | 145 | Sessie 25 | Zeeslag v3.0: grafische schepen (boeg/hek/details), handmatig plaatsen met validatie, ongeldige schepen rood |
 | 146 | Sessie 25 | ESP32 slaapstand: GEEN/LIGHT(~2mA)/DEEP(~10µA), timer+GPIO wake, ATtiny SLP, configuratie UI instellingen-tab |
 | 147 | Sessie 26 | Compilatiefout opgelost: `max(10UL, (uint32_t)val)` → `max((uint32_t)10, (uint32_t)val)` in app_state.ino — ESP32 core 2.x template type deduction vereist identieke types (`unsigned long` ≠ `uint32_t`) |
+| 148 | Sessie 27 | Installerprobeem opgelost: OTA-partitie reset (8KB 0xFF naar 0xE000) voor juiste factory boot bij verse flash |
+| 149 | Sessie 27 | Upgrade naar ESP32 core 3.3.8 + Arduino_GFX 1.6.5 + bounce_buffer_size_px=8000 — elimineert PSRAM bus-conflict op S3 RGB panel |
 
 ---
 

@@ -199,7 +199,12 @@ static void _stuur(const uint8_t* mac, const NetPaket& pkt, int data_len = 0) {
     esp_now_send(mac, (const uint8_t*)&pkt, (size_t)len);
 }
 
+#if ESP_IDF_VERSION_MAJOR >= 5
+static void _net_ontvangen_cb(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+    const uint8_t* mac = info->src_addr;
+#else
 static void _net_ontvangen_cb(const uint8_t* mac, const uint8_t* data, int len) {
+#endif
     if (len < 3 || len > (int)sizeof(NetPaket)) return;
     uint8_t tail = _rx_tail;
     uint8_t next = (tail + 1) % NET_RX_Q;

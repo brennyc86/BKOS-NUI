@@ -27,10 +27,7 @@ void tft_setup() {
         16000000,                          // prefer_speed: 16MHz
         false,                             // useBigEndian
         0,                                 // de_idle_high
-        0,                                 // pclk_idle_high
-        8000);                             // bounce_buffer_size_px: 10 rijen × 800px in intern SRAM
-    // Bounce buffer: LCD-DMA leest uit intern SRAM (niet PSRAM) → geen bus-conflict
-    // met CPU-schrijfacties naar de framebuffer → geen tearing, geen crashes.
+        0);                                // pclk_idle_high
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
 #elif PLATFORM_WROOM

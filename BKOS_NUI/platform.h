@@ -46,6 +46,19 @@
   // WROOM/CYD flags blijven zoals doorgegeven via compiler flag
 #endif
 
+// ─── SPI bus nummers — HSPI/VSPI verwijderd in ESP32 core 3.x ────────────────
+#if !PLATFORM_PICO
+  #ifndef FSPI
+    #define FSPI 1
+  #endif
+  #ifndef HSPI
+    #define HSPI 2
+  #endif
+  #ifndef VSPI
+    #define VSPI 3
+  #endif
+#endif
+
 // ─── Convenience macros ───────────────────────────────────────────────────────
 #define PLATFORM_CYD     (PLATFORM_CYD28 || PLATFORM_CYD40H || PLATFORM_CYD40V)
 #define PLATFORM_XPT2046 (PLATFORM_PICO  || PLATFORM_WROOM  || PLATFORM_CYD)

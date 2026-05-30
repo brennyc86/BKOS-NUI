@@ -134,7 +134,12 @@ static void _ontdekt_bijwerken(const char* mac, const char* naam,
 }
 
 class _VicCallback : public BLEAdvertisedDeviceCallbacks {
+#if ESP_IDF_VERSION_MAJOR >= 5
+    void onResult(BLEAdvertisedDevice* devp) override {
+        BLEAdvertisedDevice& dev = *devp;
+#else
     void onResult(BLEAdvertisedDevice dev) override {
+#endif
         if (!dev.haveManufacturerData()) return;
         std::string mfr = dev.getManufacturerData();
         if ((int)mfr.size() < 7) return;

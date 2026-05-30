@@ -1,9 +1,6 @@
-/home/runner/work/BKOS-NUI/BKOS-NUI/BKOS_NUI/bkos_net.ino:203:37: error: 'esp_now_recv_info_t' does not name a type
-/home/runner/work/BKOS-NUI/BKOS-NUI/BKOS_NUI/slaap.ino:157:29: error: 'ESP_PD_DOMAIN_RTC_FAST_MEM' was not declared in this scope; did you mean 'ESP_PD_DOMAIN_RC_FAST'?
-/home/runner/work/BKOS-NUI/BKOS-NUI/BKOS_NUI/slaap.ino:158:29: error: 'ESP_PD_DOMAIN_RTC_SLOW_MEM' was not declared in this scope; did you mean 'ESP_PD_DOMAIN_RTC_PERIPH'?
 --- LAATSTE 30 REGELS ---
-      |                             ESP_PD_DOMAIN_RTC_PERIPH
-
+Sketch uses 1803310 bytes (53%) of program storage space. Maximum is 3342336 bytes.
+Global variables use 103232 bytes (31%) of dynamic memory, leaving 224448 bytes for local variables. Maximum is 327680 bytes.
 
 [92mUsed library[0m            [92mVersion[0m [90mPath[0m                                                                                     
 [93mGFX Library for Arduino[0m 1.6.5   [90m/home/runner/Arduino/libraries/GFX_Library_for_Arduino[0m                                   
@@ -31,4 +28,3 @@
 
 [92mUsed platform[0m [92mVersion[0m [90mPath[0m                                                       
 [93mesp32:esp32[0m   3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8[0m
-Error during build: exit status 1

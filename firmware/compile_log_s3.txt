@@ -1,0 +1,34 @@
+/home/runner/work/BKOS-NUI/BKOS-NUI/BKOS_NUI/bkos_net.ino:203:37: error: 'esp_now_recv_info_t' does not name a type
+/home/runner/work/BKOS-NUI/BKOS-NUI/BKOS_NUI/slaap.ino:157:29: error: 'ESP_PD_DOMAIN_RTC_FAST_MEM' was not declared in this scope; did you mean 'ESP_PD_DOMAIN_RC_FAST'?
+/home/runner/work/BKOS-NUI/BKOS-NUI/BKOS_NUI/slaap.ino:158:29: error: 'ESP_PD_DOMAIN_RTC_SLOW_MEM' was not declared in this scope; did you mean 'ESP_PD_DOMAIN_RTC_PERIPH'?
+--- LAATSTE 30 REGELS ---
+      |                             ESP_PD_DOMAIN_RTC_PERIPH
+
+
+[92mUsed library[0m            [92mVersion[0m [90mPath[0m                                                                                     
+[93mGFX Library for Arduino[0m 1.6.5   [90m/home/runner/Arduino/libraries/GFX_Library_for_Arduino[0m                                   
+[93mSPI[0m                     3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/SPI[0m                
+[93mWire[0m                    3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/Wire[0m               
+[93mTAMC_GT911[0m              1.0.2   [90m/home/runner/Arduino/libraries/TAMC_GT911[0m                                                
+[93mFS[0m                      3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/FS[0m                 
+[93mSPIFFS[0m                  3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/SPIFFS[0m             
+[93mPreferences[0m             3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/Preferences[0m        
+[93mWiFi[0m                    3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/WiFi[0m               
+[93mNetworking[0m              3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/Network[0m            
+[93mWiFiManager[0m             2.0.17  [90m/home/runner/Arduino/libraries/WiFiManager[0m                                               
+[93mUpdate[0m                  3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/Update[0m             
+[93mWebServer[0m               3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/WebServer[0m          
+[93mDNSServer[0m               3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/DNSServer[0m          
+[93mESP32 Async UDP[0m         3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/AsyncUDP[0m           
+[93mArduinoOTA[0m              3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/ArduinoOTA[0m         
+[93mHTTPClient[0m              3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/HTTPClient[0m         
+[93mNetworkClientSecure[0m     3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/NetworkClientSecure[0m
+[93mArduinoJson[0m             7.4.3   [90m/home/runner/Arduino/libraries/ArduinoJson[0m                                               
+[93mBLE[0m                     3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/BLE[0m                
+[93mSD[0m                      3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/SD[0m                 
+[93mHash[0m                    3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/Hash[0m               
+[93mESPmDNS[0m                 3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8/libraries/ESPmDNS[0m            
+
+[92mUsed platform[0m [92mVersion[0m [90mPath[0m                                                       
+[93mesp32:esp32[0m   3.3.8   [90m/home/runner/.arduino15/packages/esp32/hardware/esp32/3.3.8[0m
+Error during build: exit status 1

@@ -134,17 +134,22 @@ static void _ontdekt_bijwerken(const char* mac, const char* naam,
 }
 
 class _VicCallback : public BLEAdvertisedDeviceCallbacks {
-#if ESP_IDF_VERSION_MAJOR >= 5
-    void onResult(BLEAdvertisedDevice* devp) override {
-        BLEAdvertisedDevice& dev = *devp;
-#else
+    // Core 2.x en 3.x gebruiken beide waarde-parameter (niet pointer)
     void onResult(BLEAdvertisedDevice dev) override {
-#endif
         if (!dev.haveManufacturerData()) return;
-        std::string mfr = dev.getManufacturerData();
-        if ((int)mfr.size() < 7) return;
 
-        const uint8_t* raw = (const uint8_t*)mfr.data();
+        // Core 3.x geeft String terug, core 2.x std::string — normaliseer naar raw bytes
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+        String         mfr_s  = dev.getManufacturerData();
+        int            mfr_sz = (int)mfr_s.length();
+        const uint8_t* raw    = (const uint8_t*)mfr_s.c_str();
+#else
+        std::string    mfr    = dev.getManufacturerData();
+        int            mfr_sz = (int)mfr.size();
+        const uint8_t* raw    = (const uint8_t*)mfr.data();
+#endif
+        if (mfr_sz < 7) return;
+
         if (raw[0] != VICTRON_MFR_ID_LO || raw[1] != VICTRON_MFR_ID_HI) return;
 
         uint8_t        rec_type = raw[2];
@@ -152,7 +157,7 @@ class _VicCallback : public BLEAdvertisedDeviceCallbacks {
         uint8_t        nonce0   = raw[4];
         uint8_t        nonce1   = raw[5];
         const uint8_t* enc      = raw + 6;
-        int            enc_len  = (int)mfr.size() - 6;
+        int            enc_len  = mfr_sz - 6;
         if (enc_len < 8) return;
 
         char mac[18];

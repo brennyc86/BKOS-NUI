@@ -47,7 +47,13 @@ jobs:
             --fqbn "esp32:esp32:esp32s3:CDCOnBoot=default,PartitionScheme=default_8MB,FlashSize=16M,FlashMode=qio,PSRAM=opi" \
             --library BKOS_NUI/libraries/LuaBKOS \
             --output-dir build_esp32s3/ \
-            BKOS_NUI/
+            BKOS_NUI/ 2>&1 | tee /tmp/compile_output.txt; exit ${PIPESTATUS[0]}
+
+      - name: Toon compile fouten (altijd)
+        if: always()
+        run: |
+          echo "=== COMPILE OUTPUT ==="
+          cat /tmp/compile_output.txt 2>/dev/null | grep -A5 "error:\|Error\|warning:" | head -80 || echo "(geen output)"
 
       - name: Commit ESP32-S3 firmware
         run: |

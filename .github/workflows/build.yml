@@ -49,11 +49,18 @@ jobs:
             --output-dir build_esp32s3/ \
             BKOS_NUI/ 2>&1 | tee /tmp/compile_output.txt; exit ${PIPESTATUS[0]}
 
-      - name: Toon compile fouten (altijd)
+      - name: Sla compile log op (altijd)
         if: always()
         run: |
-          echo "=== COMPILE OUTPUT ==="
-          cat /tmp/compile_output.txt 2>/dev/null | grep -A5 "error:\|Error\|warning:" | head -80 || echo "(geen output)"
+          git config user.name  "GitHub Actions"
+          git config user.email "actions@github.com"
+          mkdir -p firmware
+          grep -E "error:|warning:|note:" /tmp/compile_output.txt | head -50 > firmware/compile_log_s3.txt || true
+          echo "--- LAATSTE 30 REGELS ---" >> firmware/compile_log_s3.txt
+          tail -30 /tmp/compile_output.txt >> firmware/compile_log_s3.txt || true
+          git add firmware/compile_log_s3.txt
+          git diff --staged --quiet || git commit -m "ci: compile log S3 (debug)"
+          for i in 1 2 3; do git pull --rebase && git push && break || sleep 5; done
 
       - name: Commit ESP32-S3 firmware
         run: |

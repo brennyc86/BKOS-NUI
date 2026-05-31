@@ -30,6 +30,9 @@ void nav_midden_bouwen() {
     _voeg("METEO",   SCREEN_METEO);
     _voeg("VICTRON", SCREEN_VICTRON);
   #endif
+#else
+    // Landscape 800px: BRUG in scrollbare midden-sectie
+    _voeg("BRUG",    SCREEN_BRUG);
 #endif
 
     // Geïnstalleerde apps met in_balk == true
@@ -41,10 +44,12 @@ void nav_midden_bouwen() {
 #if SCREEN_SMALL
     // Systeem-schermen rechts van de apps (in horizontale volgorde)
   #if TFT_W == 240
+    _voeg("BRUG",    SCREEN_BRUG);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
     _voeg("CONFIG",  SCREEN_CONFIG);
   #else
+    _voeg("BRUG",    SCREEN_BRUG);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
   #endif
@@ -230,6 +235,19 @@ static void _nav_icon_solar(int cx, int cy, uint16_t c) {
     _ic_zon(cx + 7, cy - ph / 2, c, 4);
 }
 
+static void _nav_icon_brug(int cx, int cy, uint16_t c) {
+    // WiFi-golf boven + schakel-pijl naar beneden = brug-icoon
+    for (int r = 1; r <= 3; r++) {
+        int rad = r * 4;
+        tft.drawCircle(cx, cy - 2, rad, (r == 3) ? c : RGB565(50,70,90));
+    }
+    tft.fillCircle(cx, cy - 2, 2, c);
+    // Naar-beneden pijl (Pi)
+    tft.drawFastVLine(cx, cy + 4, 6, c);
+    tft.drawLine(cx - 3, cy + 7, cx, cy + 10, c);
+    tft.drawLine(cx + 3, cy + 7, cx, cy + 10, c);
+}
+
 static void _nav_icon_netwerk(int cx, int cy, uint16_t c) {
     int x1 = cx - 9, y1 = cy - 7;
     int x2 = cx + 9, y2 = cy - 7;
@@ -320,6 +338,7 @@ static void _pnb_item_render(int ai, int cx, int cy, uint16_t kleur, uint16_t bg
             case SCREEN_METEO:   _nav_icon_meteo(cx, cy);             break;
             case SCREEN_VICTRON: _nav_icon_solar(cx, cy, kleur);      break;
             case SCREEN_NETWERK: _nav_icon_netwerk(cx, cy, kleur);    break;
+            case SCREEN_BRUG:    _nav_icon_brug(cx, cy, kleur);       break;
             case SCREEN_APPS:    _nav_icon_store(cx, cy, kleur);      break;
             case SCREEN_CONFIG:  _nav_icon_config(cx, cy, kleur, bg); break;
         }

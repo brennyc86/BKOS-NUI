@@ -57,6 +57,8 @@ extern bool            victron_scan_actief;
 
 void victron_setup();
 void victron_scan_start();
+void victron_scan_pauzeer();    // stop BLE scan tijdelijk (voor brug-verbinding)
+void victron_scan_hervatten();  // herstart BLE scan
 void victron_apparaat_opslaan(int idx);
 void victron_apparaat_laden();
 void victron_apparaat_verwijder(int idx);

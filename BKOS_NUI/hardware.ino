@@ -97,6 +97,7 @@ static void _gui_taak(void*) {
                     case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                     case SCREEN_VICTRON:    screen_victron_teken();     break;
                     case SCREEN_NETWERK:    screen_netwerk_teken();     break;
+                    case SCREEN_BRUG:       screen_brug_teken();        break;
                     case SCREEN_LUA_APP:
                         lua_forceer_app = -1;
                         actief_scherm   = SCREEN_APPS;
@@ -171,6 +172,7 @@ static void _gui_taak(void*) {
                             case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                             case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
                             case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
+                            case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         }
                     }
                 }
@@ -194,6 +196,7 @@ static void _gui_taak(void*) {
                     case SCREEN_OTA:        screen_ota_run(0, 0, false);        break;
                     case SCREEN_CALIBRATIE: screen_calibratie_run(0, 0, false); break;
                     case SCREEN_VICTRON:    screen_victron_run(0, 0, false);    break;
+                    case SCREEN_BRUG:       screen_brug_run(0, 0, false);       break;
                     default: break;
                 }
             }
@@ -239,7 +242,8 @@ void hw_setup() {
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
     ota_setup();        // init OTA (snel)
     fout_log_setup();   // laad foutrapportage token uit Preferences
-    victron_setup();        // laad geconfigureerde Victron apparaten, start evt. BLE scan
+    victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
+    brug_setup();           // laad WiFi-brug instellingen
     io_boot();              // BKOSS check + UART IO discovery
     io_verlichting_update(); // verlichting instellen op basis van opgestart modus
     app_setup();            // app-manifesten laden + Lua runtime initialiseren
@@ -305,6 +309,7 @@ void hw_loop() {
 
     net_loop();        // ESP-NOW queue verwerken + heartbeat
     bkos_client_loop(); // WebSocket server tick + mDNS
+    brug_loop();       // WiFi-brug BLE verbindingscheck
     provider_loop();   // data-provider scheduler
 
     // OTA-modus aan/uit o.b.v. actief scherm (geen TFT-toegang)
@@ -388,6 +393,7 @@ void hw_loop() {
                 case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                 case SCREEN_VICTRON:    screen_victron_teken();     break;
                 case SCREEN_NETWERK:    screen_netwerk_teken();     break;
+                case SCREEN_BRUG:       screen_brug_teken();        break;
                 case SCREEN_LUA_APP:
                     lua_forceer_app = -1;
                     actief_scherm   = SCREEN_APPS;
@@ -460,6 +466,7 @@ void hw_loop() {
                         case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                         case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
                         case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
+                        case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                     }
                 }
             }
@@ -482,6 +489,7 @@ void hw_loop() {
                 case SCREEN_OTA:        screen_ota_run(0, 0, false);        break;
                 case SCREEN_CALIBRATIE: screen_calibratie_run(0, 0, false); break;
                 case SCREEN_VICTRON:    screen_victron_run(0, 0, false);    break;
+                case SCREEN_BRUG:       screen_brug_run(0, 0, false);       break;
                 default: break;
             }
         }

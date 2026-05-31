@@ -25,8 +25,9 @@ VictronOntdekt  victron_ontdekt[VICTRON_MAX_ONTDEKT];
 int             victron_ontdekt_cnt   = 0;
 bool            victron_scan_actief   = false;
 
-static BLEScan*          _scan  = nullptr;
-static SemaphoreHandle_t _mutex = nullptr;
+static BLEScan*          _scan           = nullptr;
+static SemaphoreHandle_t _mutex          = nullptr;
+static volatile bool     _scan_gepauzeerd = false;
 
 // --- Hulpfuncties ---
 
@@ -199,17 +200,22 @@ static _VicCallback _cb;
 // --- FreeRTOS BLE scan taak (Core 0) ---
 
 static void _victron_taak(void*) {
-    BLEDevice::init("BKOS");
+    // BLEDevice::init() is al gedaan in victron_setup() — niet nogmaals aanroepen
     _scan = BLEDevice::getScan();
     _scan->setAdvertisedDeviceCallbacks(&_cb, false);
     _scan->setActiveScan(false);
     _scan->setInterval(200);
     _scan->setWindow(120);
     victron_scan_actief = true;
-    Serial.println("[Victron] BLE scan gestart");
     while (true) {
+        if (_scan_gepauzeerd) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        // Herstel eigen callback na mogelijke overname door brug-scan
+        _scan->setAdvertisedDeviceCallbacks(&_cb, false);
         _scan->start(10, false);
-        _scan->clearResults();
+        if (!_scan_gepauzeerd) _scan->clearResults();
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
@@ -284,6 +290,15 @@ void victron_apparaat_verwijder(int idx) {
     memset(&victron_apparaten[victron_apparaten_cnt], 0, sizeof(VictronApparaat));
 }
 
+void victron_scan_pauzeer() {
+    _scan_gepauzeerd = true;
+    if (_scan) _scan->stop();   // maak blokkerende start() in taak vrij
+}
+
+void victron_scan_hervatten() {
+    _scan_gepauzeerd = false;   // taak-loop herstart scan automatisch
+}
+
 void victron_scan_start() {
     if (victron_scan_actief) return;
     xTaskCreatePinnedToCore(_victron_taak, "vic_ble", 8192, nullptr, 1, nullptr, 0);
@@ -291,6 +306,7 @@ void victron_scan_start() {
 
 void victron_setup() {
     _mutex = xSemaphoreCreateMutex();
+    BLEDevice::init("BKOS");   // BLE altijd initialiseren op S3 (ook zonder Victron-apparaten)
     victron_apparaat_laden();
     if (victron_apparaten_cnt > 0) {
         victron_scan_start();
@@ -308,6 +324,8 @@ bool            victron_scan_actief   = false;
 
 void victron_setup() {}
 void victron_scan_start() {}
+void victron_scan_pauzeer()  {}
+void victron_scan_hervatten() {}
 void victron_apparaat_opslaan(int) {}
 void victron_apparaat_laden() {}
 void victron_apparaat_verwijder(int) {}

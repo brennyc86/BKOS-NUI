@@ -173,6 +173,9 @@ platform_fs.h       ← platform-afhankelijke filesystem-bindings (SPIFFS vs Lit
 screen_calibratie.h/.ino ← 5-punts affiene touch-kalibratie, apart opgeslagen per oriëntatie
 screen_netwerk.h/.ino    ← Netwerk scherm: verbonden peers, IP/MAC info, SCREEN_SMALL layout, refresh elke 60s
 screen_apps.h/.ino       ← Apps scherm: Lua app-lijst, installeren/starten/stoppen vanuit app store of SPIFFS
+
+bkos_brug.h/.ino    ← WiFi-brug via Raspberry Pi Zero 2W: BLE GATT Central, Pi discovery, SSID+wachtwoord overdracht, netwerk-scan, status-notificaties
+screen_brug.h/.ino  ← Brug scherm: status-weergave, netwerkkeuze-lijst, wachtwoord-keyboard overlay
 ```
 
 ### Scherm-dispatch patroon
@@ -245,6 +248,7 @@ Recente taken:
 | 148 | Sessie 27 | Installerprobeem opgelost: OTA-partitie reset (8KB 0xFF naar 0xE000) voor juiste factory boot bij verse flash |
 | 149 | Sessie 27 | Upgrade naar ESP32 core 3.3.8 + Arduino_GFX 1.6.5 + bounce_buffer_size_px=8000 — elimineert PSRAM bus-conflict op S3 RGB panel |
 | 150 | Sessie 27 | IDF 5.x compile fixes: esp_now_recv_info_t → struct esp_now_recv_info, ESP_PD_DOMAIN_RTC_FAST/SLOW_MEM bewaakt met #if IDF < 5, BLE onResult/getManufacturerData core 3.x types |
+| 151 | Sessie 28 | BKOS-Brug integratie: BLE GATT Central voor Pi Zero 2W WiFi-brug, victron_scan_pauzeer/hervatten, bkos_brug + screen_brug modules, BRUG in nav bar |
 
 ---
 

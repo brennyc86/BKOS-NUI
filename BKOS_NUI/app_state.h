@@ -16,6 +16,7 @@
 #define SCREEN_CALIBRATIE 10 // touch kalibratie (alleen XPT2046 resistief)
 #define SCREEN_VICTRON    11 // Victron BLE monitor
 #define SCREEN_NETWERK    12 // Netwerk instellingen (multi-device)
+#define SCREEN_BRUG       13 // WiFi brug (Pi Zero 2W via BLE)
 
 // Vaarmodi
 #define MODE_HAVEN   0

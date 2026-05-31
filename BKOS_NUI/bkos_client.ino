@@ -1,7 +1,5 @@
 // bkos_client.ino — WebSocket server (poort 8080) + mDNS voor BKOS Brug app
-// Vereist bibliotheek: "WebSockets" door Markus Sattler
-//   arduino-cli lib install "WebSockets"
-// Alle variabelenamen zijn geverifieerd tegen de actuele BKOS-NUI broncode
+// Vereist: "WebSockets" bibliotheek (Markus Sattler) — in CI geconfigureerd
 #ifdef ESP32
 
 #include "bkos_client.h"
@@ -22,15 +20,13 @@ static byte _ws_prev_modus = 255;
 static byte _ws_prev_licht = 255;
 static bool _mdns_gestart = false;
 
-// ─── JSON builders ────────────────────────────────────────────────────────────
-
 static String _io_full_json() {
     String s = F("{\"t\":\"io_full\",\"cnt\":");
     s += io_kanalen_cnt;
     s += F(",\"o\":[");
     for (int i = 0; i < io_kanalen_cnt; i++) { if (i) s += ','; s += io_output[i]; }
     s += F("],\"i\":[");
-    for (int i = 0; i < io_kanalen_cnt; i++) { if (i) s += ','; s += io_input[i] ? 1 : 0; }
+    for (int i = 0; i < io_kanalen_cnt; i++) { if (i) s += ','; s += (io_input[i] ? 1 : 0); }
     s += F("],\"n\":[");
     for (int i = 0; i < io_kanalen_cnt; i++) {
         if (i) s += ',';
@@ -67,9 +63,9 @@ static String _info_json() {
     String s = F("{\"t\":\"info\",\"naam\":\"");
     s += net_eigen_naam;
     s += F("\",\"boot\":\"");
-    s += info_boot_naam();       // uit screen_info.h
+    s += info_boot_naam();
     s += F("\",\"ver\":\"");
-    s += BKOS_NUI_VERSIE;        // uit ota.h
+    s += BKOS_NUI_VERSIE;
     s += F("\",\"mac\":\"");
     s += WiFi.macAddress();
     s += F("\",\"net_modus\":");
@@ -78,46 +74,45 @@ static String _info_json() {
     return s;
 }
 
-// ─── Commando verwerking ──────────────────────────────────────────────────────
-
 static void _verwerk_cmd(uint8_t num, const String& t) {
     if (t.indexOf(F("\"io_toggle\"")) >= 0) {
         int idx = t.indexOf(F("\"i\":"));
         if (idx >= 0) net_io_kanaal_toggle(t.substring(idx + 4).toInt());
-
     } else if (t.indexOf(F("\"io_naam\"")) >= 0) {
         int idx = t.indexOf(F("\"n\":\""));
         if (idx >= 0) {
             int s = idx + 5, e = t.indexOf('"', s);
             char buf[IO_NAAM_LEN + 1] = {0};
             t.substring(s, e).toCharArray(buf, sizeof(buf));
-            net_io_naam_toggle(buf, 1);
+            net_io_naam_toggle(buf);
         }
     } else if (t.indexOf(F("\"set_modus\"")) >= 0) {
         int idx = t.indexOf(F("\"m\":"));
-        if (idx >= 0) { vaar_modus = t.substring(idx + 4).toInt(); net_app_state_sync(); }
-
+        if (idx >= 0) { vaar_modus = t.substring(idx + 4).toInt(); net_app_staat_sturen(); }
     } else if (t.indexOf(F("\"set_licht\"")) >= 0) {
         int idx = t.indexOf(F("\"l\":"));
         if (idx >= 0) {
             licht_instelling = t.substring(idx + 4).toInt();
             io_verlichting_update();
-            net_app_state_sync();
+            net_app_staat_sturen();
         }
     } else if (t.indexOf(F("\"ping\"")) >= 0) {
-        _ws.sendTXT(num, F("{\"t\":\"pong\"}"));
+        String pong = F("{\"t\":\"pong\"}");
+        _ws.sendTXT(num, pong);
     }
 }
 
-static void _ws_event(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+// Signature exact gelijk aan WebSocketsServerCore::WebSocketServerEvent
+static void _ws_event(uint8_t num, WStype_t type, uint8_t* payload, unsigned int length) {
     switch (type) {
-        case WStype_CONNECTED:
+        case WStype_CONNECTED: {
             _ws_klanten[num] = true;
-            _ws.sendTXT(num, _io_full_json());
-            _ws.sendTXT(num, _state_json());
-            _ws.sendTXT(num, _net_json());
-            _ws.sendTXT(num, _info_json());
+            String m1 = _io_full_json(); _ws.sendTXT(num, m1);
+            String m2 = _state_json();   _ws.sendTXT(num, m2);
+            String m3 = _net_json();     _ws.sendTXT(num, m3);
+            String m4 = _info_json();    _ws.sendTXT(num, m4);
             break;
+        }
         case WStype_DISCONNECTED:
             _ws_klanten[num] = false;
             break;
@@ -128,74 +123,69 @@ static void _ws_event(uint8_t num, WStype_t type, uint8_t* payload, size_t lengt
     }
 }
 
-// ─── mDNS ─────────────────────────────────────────────────────────────────────
-
 static void _mdns_start() {
-    if (_mdns_gestart) { MDNS.end(); }
-
+    if (_mdns_gestart) MDNS.end();
     String hostnaam = String(net_eigen_naam);
     hostnaam.toLowerCase();
     for (int i = 0; i < (int)hostnaam.length(); i++) {
         char c = hostnaam[i];
         if (!isAlphaNumeric(c) && c != '-') hostnaam[i] = '-';
     }
-    // Verwijder leading/trailing koppeltekens
-    while (hostnaam.length() > 0 && hostnaam[0] == '-') hostnaam = hostnaam.substring(1);
-    while (hostnaam.length() > 0 && hostnaam[hostnaam.length()-1] == '-') hostnaam = hostnaam.substring(0, hostnaam.length()-1);
+    while (hostnaam.length() > 0 && hostnaam[0] == '-')
+        hostnaam = hostnaam.substring(1);
+    while (hostnaam.length() > 0 && hostnaam[hostnaam.length()-1] == '-')
+        hostnaam = hostnaam.substring(0, hostnaam.length()-1);
     if (hostnaam.isEmpty()) hostnaam = "bkos-nui";
 
     if (!MDNS.begin(hostnaam.c_str())) return;
-
     MDNS.addService("bkos", "tcp", BKOS_WS_POORT);
-    MDNS.addServiceTxt("bkos", "tcp", "comp", net_eigen_naam);
+    MDNS.addServiceTxt("bkos", "tcp", "comp", String(net_eigen_naam).c_str());
     MDNS.addServiceTxt("bkos", "tcp", "boot", info_boot_naam());
     MDNS.addServiceTxt("bkos", "tcp", "modus", String(net_modus).c_str());
     _mdns_gestart = true;
 }
 
-// ─── Publieke functies ────────────────────────────────────────────────────────
-
 void bkos_client_setup() {
     memset(_ws_prev_output, 255, sizeof(_ws_prev_output));
     _ws.begin();
-    _ws.onEvent(_ws_event);
-    // mDNS start later in loop zodra WiFi verbonden is
+    _ws.onEvent([](uint8_t num, WStype_t type, uint8_t* payload, unsigned int length) {
+        _ws_event(num, type, payload, length);
+    });
 }
 
 void bkos_client_loop() {
     if (!wifi_verbonden) return;
     _ws.loop();
-
-    // mDNS starten zodra WiFi beschikbaar is
     if (!_mdns_gestart) _mdns_start();
 
-    // Stuur delta's bij gewijzigde IO
     for (int i = 0; i < io_kanalen_cnt; i++) {
-        if (io_output[i] != _ws_prev_output[i] || (bool)io_input[i] != _ws_prev_input[i]) {
+        bool in_nu = (bool)io_input[i];
+        if (io_output[i] != _ws_prev_output[i] || in_nu != _ws_prev_input[i]) {
             String d = F("{\"t\":\"io_delta\",\"ch\":");
             d += i; d += F(",\"o\":"); d += io_output[i];
-            d += F(",\"i\":"); d += io_input[i] ? 1 : 0; d += '}';
+            d += F(",\"i\":"); d += (in_nu ? 1 : 0); d += '}';
             _ws.broadcastTXT(d);
             _ws_prev_output[i] = io_output[i];
-            _ws_prev_input[i] = io_input[i];
+            _ws_prev_input[i] = in_nu;
         }
     }
 
-    // Stuur state delta bij modus/verlichting wijziging
     if (vaar_modus != _ws_prev_modus || licht_instelling != _ws_prev_licht) {
-        _ws.broadcastTXT(_state_json());
+        String st = _state_json();
+        _ws.broadcastTXT(st);
         _ws_prev_modus = vaar_modus;
         _ws_prev_licht = licht_instelling;
     }
 }
 
-void bkos_client_io_full_sturen()  { _ws.broadcastTXT(_io_full_json()); }
-void bkos_client_io_delta(int k)   { 
+void bkos_client_io_full_sturen() { String s = _io_full_json(); _ws.broadcastTXT(s); }
+void bkos_client_io_delta(int k) {
     String d = F("{\"t\":\"io_delta\",\"ch\":"); d += k;
-    d += F(",\"o\":"); d += io_output[k]; d += F(",\"i\":"); d += io_input[k] ? 1 : 0; d += '}';
+    d += F(",\"o\":"); d += io_output[k];
+    d += F(",\"i\":"); d += (io_input[k] ? 1 : 0); d += '}';
     _ws.broadcastTXT(d);
 }
-void bkos_client_state_sturen()    { _ws.broadcastTXT(_state_json()); }
-void bkos_client_net_sturen()      { _ws.broadcastTXT(_net_json()); }
+void bkos_client_state_sturen() { String s = _state_json(); _ws.broadcastTXT(s); }
+void bkos_client_net_sturen()   { String s = _net_json();   _ws.broadcastTXT(s); }
 
 #endif // ESP32

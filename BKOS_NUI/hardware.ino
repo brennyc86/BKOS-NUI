@@ -267,6 +267,7 @@ void hw_setup() {
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
+    bkos_client_setup(); // WebSocket server voor BKOS Brug app
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
 
     if (splash) delay(1000);     // splash tonen
@@ -303,6 +304,7 @@ void hw_loop() {
     // die geen directe schermtoegang nodig hebben.
 
     net_loop();        // ESP-NOW queue verwerken + heartbeat
+    bkos_client_loop(); // WebSocket server tick + mDNS
     provider_loop();   // data-provider scheduler
 
     // OTA-modus aan/uit o.b.v. actief scherm (geen TFT-toegang)
@@ -343,6 +345,7 @@ void hw_loop() {
     ntp_loop();
     ota_loop();
     net_loop();
+    bkos_client_loop(); // WebSocket server tick + mDNS
     provider_loop();
 
     if (scherm_bouwen) {

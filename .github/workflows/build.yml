@@ -40,6 +40,7 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "TAMC_GT911@1.0.2"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "WebSockets"
 
       - name: Compile ESP32-S3 firmware
         run: |
@@ -92,6 +93,7 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "WebSockets"
 
       - name: Compile WROOM firmware
         run: |
@@ -145,6 +147,7 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "WebSockets"
 
       - name: Compile CYD28 firmware
         run: |
@@ -198,6 +201,7 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "WebSockets"
 
       - name: Compile CYD40H firmware
         run: |
@@ -251,6 +255,7 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "WebSockets"
 
       - name: Compile CYD40V firmware
         run: |
@@ -303,6 +308,7 @@ jobs:
           arduino-cli lib install "GFX Library for Arduino@1.4.9"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "WebSockets"
           arduino-cli lib install "Preferences@2.2.2"
 
       - name: Compile Pico W firmware

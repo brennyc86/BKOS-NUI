@@ -23,12 +23,12 @@ void tft_setup() {
         14, 21, 47, 48, 45,               // R0–R4
         9, 46, 3, 8, 16, 1,               // G0–G5
         15, 7, 6, 5, 4,                   // B0–B4
-        0, 210, 30, 16, 0, 22, 13, 23, 1, // sync parameters + pclk_active_neg
+        0, 210, 30, 16, 0, 38, 13, 23, 1, // sync parameters + pclk_active_neg (vsync_front_porch 22→38: meer marge na laatste rij)
         16000000,                          // prefer_speed: 16MHz
         false,                             // useBigEndian
         0,                                 // de_idle_high
         0,                                 // pclk_idle_high
-        8000);                             // bounce_buffer_size_px: DMA via intern SRAM, geen PSRAM bus-conflict
+        16000);                            // bounce_buffer_size_px: 20 rijen (8000→16000) — minder DMA-overgangen, stabielere onderrand
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
 #elif PLATFORM_WROOM

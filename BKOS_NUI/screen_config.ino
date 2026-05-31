@@ -1508,7 +1508,9 @@ static void cfg_hoofd_run(int x, int y) {
     for (int i = 0; i < 4; i++) {
         int cy = cat_y + i * (cat_h + cat_gap);
         if (y >= cy && y < cy + cat_h) {
-            if (i < 3) {
+            if (i == 2) {
+                actief_scherm = SCREEN_OTA; scherm_bouwen = true;  // UPDATE → direct OTA, geen tussenscherm
+            } else if (i < 3) {
                 cfg_deelscherm = i + 1;
                 cfg_instellingen_teken();
             } else {

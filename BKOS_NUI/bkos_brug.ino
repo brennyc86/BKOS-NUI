@@ -93,6 +93,7 @@ static void _on_netwerken(BLERemoteCharacteristic*, uint8_t* data, size_t len, b
 static bool _verbind_pi() {
     if (!_pi_device) return false;
     if (!_client) _client = BLEDevice::createClient();
+    if (!_client) return false;
 
     _client->connect(_pi_device);
     if (!_client->isConnected()) return false;
@@ -176,7 +177,7 @@ void brug_inschakelen() {
     brug_status  = BRUG_ZOEKEN;
     _pi_gevonden = false;
     if (!_zoek_handle) {
-        xTaskCreatePinnedToCore(_brug_zoek_taak, "brug_ble", 8192, nullptr, 2, &_zoek_handle, 0);
+        xTaskCreatePinnedToCore(_brug_zoek_taak, "brug_ble", 12288, nullptr, 2, &_zoek_handle, 0);
     }
 }
 

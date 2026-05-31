@@ -244,6 +244,7 @@ Recente taken:
 | 147 | Sessie 26 | Compilatiefout opgelost: `max(10UL, (uint32_t)val)` → `max((uint32_t)10, (uint32_t)val)` in app_state.ino — ESP32 core 2.x template type deduction vereist identieke types (`unsigned long` ≠ `uint32_t`) |
 | 148 | Sessie 27 | Installerprobeem opgelost: OTA-partitie reset (8KB 0xFF naar 0xE000) voor juiste factory boot bij verse flash |
 | 149 | Sessie 27 | Upgrade naar ESP32 core 3.3.8 + Arduino_GFX 1.6.5 + bounce_buffer_size_px=8000 — elimineert PSRAM bus-conflict op S3 RGB panel |
+| 150 | Sessie 27 | IDF 5.x compile fixes: esp_now_recv_info_t → struct esp_now_recv_info, ESP_PD_DOMAIN_RTC_FAST/SLOW_MEM bewaakt met #if IDF < 5, BLE onResult/getManufacturerData core 3.x types |
 
 ---
 

@@ -271,7 +271,9 @@ void hw_setup() {
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
-    bkos_client_setup(); // WebSocket server voor BKOS Brug app
+#if PLATFORM_ESP32
+    bkos_client_setup(); // WebSocket server voor BKOS Brug app (ESP32-only)
+#endif
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
 
     if (splash) delay(1000);     // splash tonen
@@ -350,7 +352,7 @@ void hw_loop() {
     ntp_loop();
     ota_loop();
     net_loop();
-    bkos_client_loop(); // WebSocket server tick + mDNS
+    // bkos_client (WebSocket server + mDNS) is ESP32-only; niet beschikbaar op Pico
     provider_loop();
 
     if (scherm_bouwen) {

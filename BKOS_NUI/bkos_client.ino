@@ -13,6 +13,12 @@
 #include <WebSocketsServer.h>
 #include <ESPmDNS.h>
 
+// Expliciet prototype met WStype_t: voorkomt dat arduino-cli zijn
+// auto-prototype naar de top van de sketch hijst (vóór de WebSockets-include),
+// wat anders "WStype_t has not been declared" geeft. WStype_t is een plain enum
+// en kan niet forward-gedeclareerd worden, dus dit prototype na de include is nodig.
+static void _ws_event(uint8_t num, WStype_t type, uint8_t* payload, unsigned int length);
+
 static WebSocketsServer _ws(BKOS_WS_POORT);
 static bool _ws_klanten[4] = {false};
 static byte _ws_prev_output[MAX_IO_KANALEN];

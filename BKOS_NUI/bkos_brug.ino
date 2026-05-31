@@ -23,6 +23,12 @@ char        brug_ap_pass[BRUG_PASS_LEN] = {0};
 #include <ArduinoJson.h>
 #include <Preferences.h>
 
+// Expliciete prototypes met BLE-types: voorkomt dat arduino-cli zijn
+// auto-prototypes naar de top van de sketch hijst (vóór de BLE-includes),
+// wat anders "BLERemoteCharacteristic was not declared in this scope" geeft.
+static void _on_status(BLERemoteCharacteristic*, uint8_t* data, size_t len, bool);
+static void _on_netwerken(BLERemoteCharacteristic*, uint8_t* data, size_t len, bool);
+
 // Victron scan coördinatie (gedefinieerd in victron_ble.ino)
 extern void victron_scan_pauzeer();
 extern void victron_scan_hervatten();

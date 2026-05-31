@@ -11,6 +11,7 @@
 #include "screen_io_cfg.h"
 #include "provider.h"
 #include "bkos_net.h"
+#include "bkos_client.h"
 
 void hw_setup();
 void hw_loop();

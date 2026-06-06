@@ -249,6 +249,8 @@ Recente taken:
 | 149 | Sessie 27 | Upgrade naar ESP32 core 3.3.8 + Arduino_GFX 1.6.5 + bounce_buffer_size_px=8000 — elimineert PSRAM bus-conflict op S3 RGB panel |
 | 150 | Sessie 27 | IDF 5.x compile fixes: esp_now_recv_info_t → struct esp_now_recv_info, ESP_PD_DOMAIN_RTC_FAST/SLOW_MEM bewaakt met #if IDF < 5, BLE onResult/getManufacturerData core 3.x types |
 | 151 | Sessie 28 | BKOS-Brug integratie: BLE GATT Central voor Pi Zero 2W WiFi-brug, victron_scan_pauzeer/hervatten, bkos_brug + screen_brug modules, BRUG in nav bar |
+| 152 | Sessie 29 | Compile-fix alle 6 platforms: arduino-cli auto-prototype hoisting (bkos_brug BLE-types + bkos_client WStype_t) + Pico bkos_client guards in hardware.ino |
+| 153 | Sessie 29 | VEILIGHEID: ingangskanaal mag nooit als uitgang aangestuurd worden. Centrale io_drijf_hoog() in io_cyclus() (enig drive-punt, forceert ingang=LAAG); io_verlichting_update/io_apparaat_toggle/io_actie_uitvoeren slaan ingangen over. Bug: "**motor" als ingang kreeg toch stroom in vaarmodus MOTOR |
 
 ---
 

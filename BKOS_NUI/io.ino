@@ -130,6 +130,19 @@ void io_detect() {
 #endif
 }
 
+// ─── Veiligheid: bepaalt of een kanaal fysiek HOOG mag worden aangestuurd ─────
+// Dit is het ENIGE beslispunt voor de uitgangsdrive (zowel HC-register als
+// ATtiny). Een kanaal dat als INGANG is geconfigureerd wordt hier altijd als
+// LAAG behandeld, ongeacht wat io_output[] bevat. Zo kan een ingang nooit per
+// ongeluk stroom krijgen — ook niet als vaarmodus/verlichtingslogica de
+// io_output[] van een ingangskanaal zou zetten. Veiligheid: een ingang mag
+// nooit uitgangsfunctionaliteit krijgen.
+static inline bool io_drijf_hoog(int kanaal) {
+    if (io_richting[kanaal] == IO_RICHTING_IN) return false;
+    byte out = io_output[kanaal];
+    return (out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD);
+}
+
 void io_cyclus() {
     if (io_actief) return;
     io_actief = true;
@@ -148,10 +161,8 @@ void io_cyclus() {
         digitalWrite(HC_SCK, LOW);
         delayMicroseconds(10);
 
-        // Uitgang zetten (omgekeerd)
-        byte out = io_output[i_uit];
-        digitalWrite(HC_UIT,
-            (out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? HIGH : LOW);
+        // Uitgang zetten (omgekeerd) — ingangskanalen worden nooit aangestuurd
+        digitalWrite(HC_UIT, io_drijf_hoog(i_uit) ? HIGH : LOW);
 
         // Ingang lezen (gewone volgorde)
         bool nieuw = digitalRead(HC_IN);
@@ -190,8 +201,8 @@ void io_cyclus() {
     // De ATtiny verwerkt pas per volledige module (8 bits) en stuurt dan de inputs
     // terug — bit-voor-bit interleaven geeft een 1-positie verschuiving.
     for (int i = 0; i < n; i++) {
-        byte out = io_output[n - 1 - i];
-        IO_SERIAL.print((out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD) ? '1' : '0');
+        // Ingangskanalen worden nooit aangestuurd (altijd '0')
+        IO_SERIAL.print(io_drijf_hoog(n - 1 - i) ? '1' : '0');
     }
     IO_SERIAL.flush();
 
@@ -392,6 +403,7 @@ void io_verlichting_update() {
 
     // Modi relais
     for (int i = 0; i < n; i++) {
+        if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: nooit aansturen
         if (io_naam_is(i, "**haven"))  io_output[i] = (vaar_modus == MODE_HAVEN)  ? IO_AAN : IO_UIT;
         if (io_naam_is(i, "**zeilen")) io_output[i] = (vaar_modus == MODE_ZEILEN) ? IO_AAN : IO_UIT;
         if (io_naam_is(i, "**motor"))  io_output[i] = (vaar_modus == MODE_MOTOR)  ? IO_AAN : IO_UIT;
@@ -422,6 +434,7 @@ void io_verlichting_update() {
 
     // Alle navigatielichten eerst uit
     for (int i = 0; i < n; i++) {
+        if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: nooit aansturen
         if (io_naam_is(i, "**L_3kl")   || io_naam_is(i, "**L_navi") ||
             io_naam_is(i, "**L_stoom") || io_naam_is(i, "**L_hek")  ||
             io_naam_is(i, "**L_anker"))
@@ -438,6 +451,7 @@ void io_verlichting_update() {
     // Navigatielichten per modus + configuratie (alleen als nav_licht_ok)
     if (nav_licht_ok) {
         for (int i = 0; i < n; i++) {
+            if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: nooit aansturen
             switch (vaar_modus) {
                 case MODE_ZEILEN:
                     if (licht_cfg_idx == 0) {
@@ -470,6 +484,7 @@ void io_verlichting_update() {
 
     // Interieur verlichting
     for (int i = 0; i < n; i++) {
+        if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: nooit aansturen
         if (io_naam_is(i, "**IL_wit"))  io_output[i] = int_rood ? IO_UIT : IO_AAN;
         if (io_naam_is(i, "**IL_rood")) io_output[i] = int_rood ? IO_AAN : IO_UIT;
     }
@@ -522,6 +537,7 @@ byte io_apparaat_staat3(const char* prefix) {
     int n = io_zichtbaar();
     int gevonden = 0, aan = 0;
     for (int i = 0; i < n; i++) {
+        if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: geen uitgangsapparaat
         if (io_naam_is(i, prefix)) {
             gevonden++;
             if (io_output[i] == IO_AAN || io_output[i] == IO_INV_AAN) aan++;
@@ -537,6 +553,7 @@ void io_apparaat_toggle(const char* prefix) {
     byte nieuw = (s > 0) ? IO_UIT : IO_AAN;
     int  n     = io_zichtbaar();
     for (int i = 0; i < n; i++) {
+        if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: nooit aansturen
         if (io_naam_is(i, prefix)) {
             io_output[i]    = nieuw;
             io_gewijzigd[i] = true;
@@ -575,13 +592,13 @@ void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
         case IO_ACTIE_MODUS_ANKER:
             vaar_modus = MODE_ANKER;  scherm_bouwen = true; break;
         case IO_ACTIE_OUTPUT_AAN:
-            if (param < MAX_IO_KANALEN) {
+            if (param < MAX_IO_KANALEN && io_richting[param] != IO_RICHTING_IN) {
                 io_output[param]    = IO_AAN;
                 io_gewijzigd[param] = true;
             }
             break;
         case IO_ACTIE_OUTPUT_UIT:
-            if (param < MAX_IO_KANALEN) {
+            if (param < MAX_IO_KANALEN && io_richting[param] != IO_RICHTING_IN) {
                 io_output[param]    = IO_UIT;
                 io_gewijzigd[param] = true;
             }

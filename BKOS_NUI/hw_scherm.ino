@@ -18,6 +18,8 @@ byte bkos_logo_200_75[] = { 80, 40, 80, 0, 70, 60, 70, 0, 63, 74, 63, 0, 57, 86,
 void tft_setup() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     // ESP32-S3: RGB panel 800×480
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    // core 3.x / GFX 1.6.5: met bounce buffer (LCD-DMA via intern SRAM, geen PSRAM-bus conflict)
     static Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
         41, 40, 39, 42,                   // DE, VSYNC, HSYNC, PCLK
         14, 21, 47, 48, 45,               // R0–R4
@@ -29,6 +31,16 @@ void tft_setup() {
         0,                                 // de_idle_high
         0,                                 // pclk_idle_high
         16000);                            // bounce_buffer_size_px: 20 rijen (8000→16000) — minder DMA-overgangen, stabielere onderrand
+#else
+    // core 2.x / GFX 1.3.7: geen bounce buffer beschikbaar (29.8-config, pclk 10MHz)
+    static Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
+        41, 40, 39, 42,                   // DE, VSYNC, HSYNC, PCLK
+        14, 21, 47, 48, 45,               // R0–R4
+        9, 46, 3, 8, 16, 1,               // G0–G5
+        15, 7, 6, 5, 4,                   // B0–B4
+        0, 210, 30, 16, 0, 22, 13, 23, 1, // sync parameters + pclk_active_neg
+        10000000);                         // prefer_speed: 10MHz
+#endif
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
 #elif PLATFORM_WROOM

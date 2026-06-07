@@ -55,21 +55,30 @@ door hem geteste beta.
 ## Compileren & Uploaden
 
 ### Board & Toolchain
-- **Arduino IDE** met **ESP32 Arduino Core versie 3.x** (IDF 5.x) — vereist voor bounce buffer ondersteuning
+- **Arduino IDE** met **ESP32 Arduino Core versie 2.0.17** voor ALLE platforms (incl. S3).
+  - Core 3.x werd kort gebruikt voor de bounce buffer, maar brak WiFi/netwerk op de S3
+    (meteo update niet, OTA "GitHub fout -1"). Daarom terug naar core 2.0.17 (Sessie 30).
+  - De code is **dual-compatibel** via `#if ESP_ARDUINO_VERSION_MAJOR >= 3` guards (o.a.
+    de RGB-panel-constructor in `hw_scherm.ino`), zodat core 3.x later weer kan zonder code-surgery.
 - Board: `ESP32S3 Dev Module` (of ESP32-8048S070C profiel)
 - Partition scheme: **8M Flash (3MB APP / 2MB SPIFFS)** — standaard voor zowel 8MB als 16MB modules
 - Upload speed: 921600
-- Flash mode: **QIO** (aanbevolen voor S3 in core 3.x)
+- Flash mode: **DIO** (S3 op core 2.x; QIO gaf instabiliteit bij sommige S3-modules)
 
 ### Verplichte bibliotheken
-- `Arduino_GFX_Library` **versie 1.6.5** — vereist voor bounce buffer op core 3.x (stabiel scherm zonder PSRAM-conflicten)
+- `Arduino_GFX_Library` **versie 1.3.7** (S3 op core 2.x). De RGB-panel-constructor zonder
+  bounce buffer (core 3.x/GFX 1.6.5 met bounce buffer staat achter een version-guard).
 - `WiFiManager` 2.0.17
 - `ArduinoOTA`
 - `HTTPClient` (onderdeel van ESP32 core)
 - `Preferences` (onderdeel van ESP32 core)
 
-### Scherm-stabiliteit (bounce buffer)
-De ESP32-S3 RGB-paneel deelt de Octal SPI bus met PSRAM. Zonder bounce buffer leest de LCD-DMA rechtstreeks uit PSRAM terwijl de CPU ook naar PSRAM schrijft → tearing + crashes. Met `bounce_buffer_size_px=8000` (10 rijen × 800px = 16KB intern SRAM) is er geen bus-conflict meer. Vereist Arduino_GFX 1.4.x + ESP32 core 3.x.
+### Scherm-stabiliteit (S3 RGB paneel)
+De ESP32-S3 RGB-paneel deelt de Octal SPI bus met PSRAM. De **bounce buffer** (LCD-DMA via
+intern SRAM) loste tearing/crashes op, maar vereist core 3.x — en core 3.x brak het netwerk.
+Op core 2.x is er geen bounce buffer; in plaats daarvan PCLK 10MHz + ruime sync-porches om de
+PSRAM-bus contention te beperken (zie de `#else`-tak in `tft_setup()`). Komt de
+scherminstabiliteit terug, dan is dat de afweging om opnieuw te bekijken.
 
 ### OTA via GitHub — twee kanalen
 - **Beta kanaal** (tussenversies, X.Y.YYMMDD.I): `firmware/versie_*.txt` + `firmware/bkos_*.bin`
@@ -275,6 +284,7 @@ Recente taken:
 | 153 | Sessie 29 | VEILIGHEID: ingangskanaal mag nooit als uitgang aangestuurd worden. Centrale io_drijf_hoog() in io_cyclus() (enig drive-punt, forceert ingang=LAAG); io_verlichting_update/io_apparaat_toggle/io_actie_uitvoeren slaan ingangen over. Bug: "**motor" als ingang kreeg toch stroom in vaarmodus MOTOR |
 | 154 | Sessie 30 | Versionerings-/promotieproces vastgelegd voor testers: twee-vormen-regel expliciet, promotie-grondregels (nooit autonoom, code-identiek aan geteste beta, feature-uit-beta-first, tag-ná-CI ivm 404, nooit lager nummer). firmware/beta_historie.json (beta→stabiel link alleen aan betakant). Installer default naar stabiele release |
 | 155 | Sessie 30 | OTA "GitHub fout -1" opgelost: ota_git_check/ota_laad_releases/ota_download_toepassen gebruiken nu een eigen WiFiClientSecure+setInsecure() (zoals meteo http_get) i.p.v. enkelvoudige http.begin(url); de interne TLS-client faalde op de handshake. +setTimeout/useHTTP10 + 1 retry bij verbindingsfout. Vereist eenmalig USB-flash want oude firmware heeft dezelfde OTA-bug |
+| 156 | Sessie 30 | S3 terug naar core 2.0.17: core 3.x brak WiFi/netwerk op S3 (meteo update niet, OTA fout -1; 29.8 was laatste goede = laatste core-2.x). build.yml S3-job → core 2.0.17/GFX 1.3.7/FlashMode dio. hw_scherm RGB-constructor dual-compat via ESP_ARDUINO_VERSION_MAJOR guard (core 2.x = geen bounce buffer, pclk 10MHz). Alle 6 platforms compileren lokaal op core 2.0.17 |
 
 ---
 

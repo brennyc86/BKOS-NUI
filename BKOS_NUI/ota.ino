@@ -1,6 +1,7 @@
 #include "ota.h"
 #include "hw_scherm.h"
 #include "ui_colors.h"
+#include <WiFiClientSecure.h>
 #if PLATFORM_ESP32
 #include <esp_task_wdt.h>
 #endif
@@ -229,24 +230,38 @@ void ota_git_check() {
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
     const char* url = ota_beta_kanal ? OTA_GITHUB_VERSIE_URL : OTA_GITHUB_STABLE_VERSIE_URL;
-    HTTPClient http;
+
+    // Eigen WiFiClientSecure + setInsecure(), net als meteo http_get(). De
+    // enkelvoudige http.begin(url) zette intern een TLS-client op die op dit
+    // toestel "GitHub fout -1" (handshake mislukt) gaf, terwijl HTTPS naar
+    // open-meteo via dit patroon wél werkt. Eén retry bij een verbindingsfout.
+    int code = 0;
+    for (int poging = 0; poging < 2; poging++) {
+        WiFiClientSecure sc;
+        sc.setInsecure();
+        HTTPClient http;
 #if PLATFORM_ESP32
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 #endif
-    http.begin(url);
-    int code = http.GET();
-    if (code == HTTP_CODE_OK) {
-        ota_versie_github = http.getString();
-        ota_versie_github.trim();
-        if (ota_versie_github == BKOS_NUI_VERSIE) {
-            ota_status_tekst = "Up to date (" + ota_versie_github + ")";
-        } else {
-            ota_status_tekst = "Update beschikbaar: " + ota_versie_github;
+        http.setTimeout(15000);
+        http.begin(sc, url);
+        http.useHTTP10(true);   // chunked transfer vermijden
+        code = http.GET();
+        if (code == HTTP_CODE_OK) {
+            ota_versie_github = http.getString();
+            ota_versie_github.trim();
+            http.end();
+            if (ota_versie_github == BKOS_NUI_VERSIE)
+                ota_status_tekst = "Up to date (" + ota_versie_github + ")";
+            else
+                ota_status_tekst = "Update beschikbaar: " + ota_versie_github;
+            return;
         }
-    } else {
-        ota_status_tekst = "GitHub fout " + String(code);
+        http.end();
+        if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
+        delay(300);             // verbindingsfout (<0): nog één poging
     }
-    http.end();
+    ota_status_tekst = "GitHub fout " + String(code);
 }
 
 void ota_git_update() {
@@ -282,9 +297,13 @@ void ota_laad_releases() {
 #if PLATFORM_ESP32
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
+    WiFiClientSecure sc;
+    sc.setInsecure();
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.begin(OTA_GITHUB_RELEASES_URL);
+    http.setTimeout(15000);
+    http.begin(sc, OTA_GITHUB_RELEASES_URL);
+    http.useHTTP10(true);
     int code = http.GET();
     if (code != HTTP_CODE_OK) { http.end(); return; }
     String json = http.getString();
@@ -334,11 +353,15 @@ bool ota_download_toepassen(String url) {
     ota_status_tekst = "OTA downloaden n.v.t. op Pico";
     return false;
 #else
+    // Eigen WiFiClientSecure (zoals meteo) — blijft in scope tijdens de hele
+    // streaming-download. Lost "fout -1" (TLS-handshake) bij OTA op.
+    WiFiClientSecure sc;
+    sc.setInsecure();
     HTTPClient http;
     // STRICT voorkomt twee gelijktijdige TLS-verbindingen (minder RAM-gebruik)
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(20000);
-    http.begin(url);
+    http.begin(sc, url);
     int code = http.GET();
     if (code != HTTP_CODE_OK) {
         ota_status_tekst = "Download fout " + String(code);

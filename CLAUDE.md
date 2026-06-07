@@ -274,6 +274,7 @@ Recente taken:
 | 152 | Sessie 29 | Compile-fix alle 6 platforms: arduino-cli auto-prototype hoisting (bkos_brug BLE-types + bkos_client WStype_t) + Pico bkos_client guards in hardware.ino |
 | 153 | Sessie 29 | VEILIGHEID: ingangskanaal mag nooit als uitgang aangestuurd worden. Centrale io_drijf_hoog() in io_cyclus() (enig drive-punt, forceert ingang=LAAG); io_verlichting_update/io_apparaat_toggle/io_actie_uitvoeren slaan ingangen over. Bug: "**motor" als ingang kreeg toch stroom in vaarmodus MOTOR |
 | 154 | Sessie 30 | Versionerings-/promotieproces vastgelegd voor testers: twee-vormen-regel expliciet, promotie-grondregels (nooit autonoom, code-identiek aan geteste beta, feature-uit-beta-first, tag-ná-CI ivm 404, nooit lager nummer). firmware/beta_historie.json (beta→stabiel link alleen aan betakant). Installer default naar stabiele release |
+| 155 | Sessie 30 | OTA "GitHub fout -1" opgelost: ota_git_check/ota_laad_releases/ota_download_toepassen gebruiken nu een eigen WiFiClientSecure+setInsecure() (zoals meteo http_get) i.p.v. enkelvoudige http.begin(url); de interne TLS-client faalde op de handshake. +setTimeout/useHTTP10 + 1 retry bij verbindingsfout. Vereist eenmalig USB-flash want oude firmware heeft dezelfde OTA-bug |
 
 ---
 

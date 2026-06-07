@@ -26,18 +26,29 @@ Versienummer verhogen in `ota.h` (`BKOS_NUI_VERSIE`) bij elke push.
 
 **NOOIT** `firmware/versie_*.txt` handmatig aanpassen — die worden uitsluitend bijgewerkt door GitHub Actions na een succesvolle compilatie. Handmatig schrijven zorgt dat het apparaat een update ziet die nog niet gecompileerd is.
 
-### Versienummer formaat: `MAJOR.MINOR.YYMMDD.I`
+### Versienummer — twee vormen (kanaaldetectie via aantal punten)
 
-- `MAJOR.MINOR` = release-niveau, start op `0.0`
-- `YYMMDD` = bouwdatum (bijv. `260427` = 27 april 2026)
-- `I` = iteratienummer op die dag, begint bij 1
+De firmware kiest zijn OTA-kanaal op het **aantal punten** in het versienummer. Dit is
+hard in de code (`ota_setup()` telt de punten); het is geen losse afspraak.
 
-Werkversie voorbeeld: `0.0.260427.2`
+| Vorm | Formaat | Punten | Voorbeeld | Kanaal |
+|---|---|---|---|---|
+| **Werkversie (beta)** | `MAJOR.MINOR.JJMMDD.I` | 3 | `0.1.260606.1` | beta |
+| **Stabiele release** | `MAJOR.MINOR.PATCH` | 2 | `0.1.6` | stabiel |
 
-Wanneer Brendan valideert → officiële release:
-- `0.0.x.y → 0.1.1`, daarna: `0.1.YYMMDD.I`
-- Tag bij validatie: `git tag v0.1.1 && git push --tags`
-- Volgende niveaus: `0.1.2`, `0.2.1`, `1.0.1`
+- `MAJOR.MINOR` = release-niveau (nu `0.1`).
+- `JJMMDD` = bouwdatum (bijv. `260606` = 6 juni 2026).
+- `I` = iteratienummer op die dag, begint bij 1.
+- `PATCH` = patch binnen de serie, begint bij `1` (let op: niet semver-`0`).
+
+**Dagelijks ophogen (beta):** bij elke firmware-push alleen `BKOS_NUI_VERSIE` in `ota.h`
+verhogen — zelfde dag `I+1`, nieuwe dag nieuwe datum met `I=1`. CI schrijft daarna
+`firmware/versie_*.txt`. Niet-firmware pushes (docs, installer) krijgen **geen** bump
+(die triggeren de CI niet, dus er is geen nieuwe firmware).
+
+**Stabiel verklaren** is een aparte, bewuste handeling — zie *OTA via GitHub*. Nooit
+autonoom: alleen op expliciete opdracht van Brendan, en altijd code-identiek aan een
+door hem geteste beta.
 
 ---
 
@@ -64,29 +75,40 @@ De ESP32-S3 RGB-paneel deelt de Octal SPI bus met PSRAM. Zonder bounce buffer le
 - **Beta kanaal** (tussenversies, X.Y.YYMMDD.I): `firmware/versie_*.txt` + `firmware/bkos_*.bin`
 - **Stabiel kanaal** (officiële releases, X.Y.Z): `firmware/versie_stable_*.txt` + git-tag URL `v{versie}/firmware/bkos_*.bin`
 - **Release-index**: `firmware/releases.json` — lijst van alle stabiele releases met tag-URL's per platform
+- **Beta-historie**: `firmware/beta_historie.json` — lijst van betaversies; bij promotie krijgt de betaregel het stabiele nummer dat eruit voortkwam (`"gepromoot"`). De link beta→stabiel leeft **alleen hier**.
 - Auto-detectie: 2 punten in versienummer = stabiel, 3 punten = beta → toggle in OTA scherm
-- OTA controle elke 5 minuten via kanaal dat overeenkomt met `ota_beta_kanal`
+- OTA controle op configureerbaar interval (`ota_check_interval_min`); `ota_auto_update` staat standaard **uit** (apparaat flasht niet vanzelf — gebruiker drukt zelf op UPDATE)
 
-**Werkwijze nieuwe stabiele release (bijv. 0.1.2):**
-1. Versie naar `0.1.2` in `ota.h` + `versie.txt` → push → wacht op CI (alle 6 platforms)
-2. Na CI: `git pull && git tag v0.1.2 && git push --tags`
-3. `firmware/versie_stable_*.txt` updaten naar `0.1.2` voor ALLE platforms die gecompileerd zijn:
-   - `versie_stable_esp32s3.txt`, `versie_stable_wroom.txt`, `versie_stable_cyd28.txt`
-   - `versie_stable_cyd40h.txt`, `versie_stable_cyd40v.txt`, `versie_stable_pico.txt`
-4. Entry toevoegen aan `firmware/releases.json` met alle platform-URLs:
+**Grondregels voor promoten (stabiel verklaren) — Brendan's voorwaarden:**
+- **Nooit autonoom.** Promoten gebeurt alleen op expliciete opdracht van Brendan, nadat hij de betaversie zelf getest en goedgekeurd heeft. Liever een bekende bug in de laatste stabiele versie dan een ongeteste promotie.
+- **Code-identiek aan een geteste beta.** De stabiele release is bit-voor-bit dezelfde code als de goedgekeurde beta; het *enige* verschil is het versienummer (van `0.1.JJMMDD.I` → `0.1.6`).
+- **Zit er in de beta iets dat nog niet uit mag?** Dan eerst een nieuwe beta maken waarin die functionaliteit is uitgeschakeld → Brendan test die → pas die beta promoten. Tijdens het promoten zelf wijzigt nooit functionaliteit.
+- **Promoot altijd vanaf de huidige `main`-HEAD** en bevestig met Brendan welke exacte beta + welk doelnummer. Staat er nieuwer (nog niet uit te brengen) werk op `main`, dan geldt de vorige regel.
+- **Nooit een lager nummer in `versie_stable_*.txt`** — de OTA-check is "anders dan", niet "nieuwer dan"; een lager nummer downgradet alle stabiele apparaten.
+
+**Werkwijze nieuwe stabiele release (bijv. promoten van `0.1.260607.3` → `0.1.6`):**
+1. Op de geteste beta (huidige `main`-HEAD): alleen `BKOS_NUI_VERSIE` in `ota.h` op `"0.1.6"` zetten. Verder niets. Push → **wacht op groene CI (alle 6 platforms)**.
+2. **Pas ná de CI-firmware-commit** taggen — anders bevat de tag geen `.bin` en krijgt elk stabiel apparaat **404** bij updaten (de stabiele URL is `…/v0.1.6/firmware/bkos_*.bin`):
+   `git pull && git tag -a v0.1.6 -m "gepromoot van 0.1.260607.3" && git push --tags`
+3. `firmware/versie_stable_*.txt` op `0.1.6` voor alle 6 platforms:
+   `versie_stable_esp32s3.txt`, `_wroom`, `_cyd28`, `_cyd40h`, `_cyd40v`, `_pico`.
+4. Entry toevoegen aan `firmware/releases.json` (nieuwste boven) met alle platform-URLs:
    ```json
-   {"versie":"0.1.2","datum":"YYYY-MM-DD",
-    "url_s3":    "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32s3_8048s070.bin",
-    "url_wroom": "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32wroom2432.bin",
-    "url_cyd28": "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32cyd28.bin",
-    "url_cyd40h":"https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32cyd40h.bin",
-    "url_cyd40v":"https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_esp32cyd40v.bin",
-    "url_pico":  "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.2/firmware/bkos_pico1w2432.uf2"}
+   {"versie":"0.1.6","datum":"JJJJ-MM-DD",
+    "url_s3":    "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_esp32s3_8048s070.bin",
+    "url_wroom": "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_esp32wroom2432.bin",
+    "url_cyd28": "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_esp32cyd28.bin",
+    "url_cyd40h":"https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_esp32cyd40h.bin",
+    "url_cyd40v":"https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_esp32cyd40v.bin",
+    "url_pico":  "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_pico1w2432.bin"}
    ```
-   Laat `url_*` leeg (`""`) voor platforms die niet in deze release zijn opgenomen.
-5. Push → apparaten pikken stabiele update op via CONTROLEREN; installer toont nieuwe versie automatisch
+   Laat `url_*` leeg (`""`) voor platforms die niet in deze release zitten.
+5. **Beta-historie bijwerken**: in `firmware/beta_historie.json` bij de gepromote beta het stabiele nummer invullen: `{"versie":"0.1.260607.3", … ,"gepromoot":"0.1.6"}`. (Het stabiele overzicht / `releases.json` benoemt de onderliggende beta **niet** — de link leeft alleen aan de betakant.)
+6. Push → stabiele apparaten zien de update via CONTROLEREN; installer toont 'm automatisch.
 
-**De installer (`installer/index.html`) hoeft niet apart bijgewerkt te worden** — hij leest `versie_*.txt` en `releases.json` dynamisch van GitHub. De installer is altijd actueel zodra de bovenstaande bestanden zijn bijgewerkt.
+**De installer (`installer/index.html`) hoeft verder niet bijgewerkt** — hij leest `versie_*.txt` en `releases.json` dynamisch. Hij opent standaard op **"Stabiele release"**; "Laatste build (test)" (beta) blijft kiesbaar maar is niet voorgeselecteerd.
+
+**Pico OTA bestaat niet** — `ota_download_toepassen()` geeft op Pico "n.v.t."; Pico updatet altijd handmatig via UF2/installer. ESP32-S3/WROOM/CYD kunnen wél OTA.
 
 **Stabiele releases** worden getagd met `git tag vX.Y.Z` zodat gebruikers altijd kunnen terugkeren naar een goedgekeurde versie.
 
@@ -251,6 +273,7 @@ Recente taken:
 | 151 | Sessie 28 | BKOS-Brug integratie: BLE GATT Central voor Pi Zero 2W WiFi-brug, victron_scan_pauzeer/hervatten, bkos_brug + screen_brug modules, BRUG in nav bar |
 | 152 | Sessie 29 | Compile-fix alle 6 platforms: arduino-cli auto-prototype hoisting (bkos_brug BLE-types + bkos_client WStype_t) + Pico bkos_client guards in hardware.ino |
 | 153 | Sessie 29 | VEILIGHEID: ingangskanaal mag nooit als uitgang aangestuurd worden. Centrale io_drijf_hoog() in io_cyclus() (enig drive-punt, forceert ingang=LAAG); io_verlichting_update/io_apparaat_toggle/io_actie_uitvoeren slaan ingangen over. Bug: "**motor" als ingang kreeg toch stroom in vaarmodus MOTOR |
+| 154 | Sessie 30 | Versionerings-/promotieproces vastgelegd voor testers: twee-vormen-regel expliciet, promotie-grondregels (nooit autonoom, code-identiek aan geteste beta, feature-uit-beta-first, tag-ná-CI ivm 404, nooit lager nummer). firmware/beta_historie.json (beta→stabiel link alleen aan betakant). Installer default naar stabiele release |
 
 ---
 

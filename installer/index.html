@@ -279,8 +279,8 @@
   <div class="step">
     <div class="step-title">Stap 3 — Kies versie</div>
     <div class="channel-row">
-      <button class="ch-btn selected" id="ch-beta"   onclick="kiesKanaal('beta')">Laatste build</button>
-      <button class="ch-btn"          id="ch-stable" onclick="kiesKanaal('stable')">Stabiele release</button>
+      <button class="ch-btn"          id="ch-beta"   onclick="kiesKanaal('beta')">Laatste build (test)</button>
+      <button class="ch-btn selected" id="ch-stable" onclick="kiesKanaal('stable')">Stabiele release</button>
     </div>
 
     <div id="stable-picker">
@@ -397,7 +397,7 @@ const PLAT = {
 
 let platform  = null;
 let firmware  = 'nui';   // 'nui' | 'blanco'
-let kanaal    = 'beta';
+let kanaal    = 'stable';   // standaard: stabiele release (beta = bewuste keuze)
 let releases  = null;    // cache voor releases.json
 let blancRel  = null;    // cache voor blanco_releases.json
 let flashUrl  = null;

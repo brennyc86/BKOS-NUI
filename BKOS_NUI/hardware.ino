@@ -246,8 +246,10 @@ void hw_setup() {
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
     ota_setup();        // init OTA (snel)
     fout_log_setup();   // laad foutrapportage token uit Preferences
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
     victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
-    brug_setup();           // laad WiFi-brug instellingen
+#endif                      // op core 2.x: BLE-init bij boot overslaan (hangt op Bluedroid) — zie Route A
+    brug_setup();           // laad WiFi-brug instellingen (alleen Preferences, geen BLE)
     io_boot();              // BKOSS check + UART IO discovery
     io_verlichting_update(); // verlichting instellen op basis van opgestart modus
     app_setup();            // app-manifesten laden + Lua runtime initialiseren
@@ -277,8 +279,8 @@ void hw_setup() {
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
     paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5)
-#if PLATFORM_ESP32
-    bkos_client_setup(); // WebSocket server voor BKOS Brug app (ESP32-only)
+#if PLATFORM_ESP32 && ESP_ARDUINO_VERSION_MAJOR >= 3
+    bkos_client_setup(); // WebSocket server (core 3.x only; op core 2.x bij boot overslaan)
 #endif
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
 
@@ -316,8 +318,10 @@ void hw_loop() {
     // die geen directe schermtoegang nodig hebben.
 
     net_loop();        // ESP-NOW queue verwerken + heartbeat
-    bkos_client_loop(); // WebSocket server tick + mDNS
-    brug_loop();       // WiFi-brug BLE verbindingscheck
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    bkos_client_loop(); // WebSocket server tick + mDNS (core 3.x only)
+    brug_loop();       // WiFi-brug BLE verbindingscheck (core 3.x only)
+#endif
     provider_loop();   // data-provider scheduler
 
     // OTA-modus aan/uit o.b.v. actief scherm (geen TFT-toegang)

@@ -218,6 +218,7 @@ static void _gui_taak(void*) {
 #endif  // PLATFORM_ESP32
 
 void hw_setup() {
+    SPIFFS_BEGIN();   // vroeg mounten: tft_setup() leest de scherm-PCLK uit SPIFFS
     tft_setup();
     ts_setup();
     hw_io_setup();

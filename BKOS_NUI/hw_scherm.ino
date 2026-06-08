@@ -1,7 +1,7 @@
 #include "hw_scherm.h"
 #include "hw_touch.h"
 #include "ui_colors.h"
-#include <Preferences.h>
+#include "platform_fs.h"   // SPIFFS voor de instelbare scherm-PCLK
 
 Arduino_GFX *tft_p = nullptr;  // aangemaakt in tft_setup()
 
@@ -16,21 +16,31 @@ unsigned long tft_dim_ms        = 0;
 
 byte bkos_logo_200_75[] = { 80, 40, 80, 0, 70, 60, 70, 0, 63, 74, 63, 0, 57, 86, 57, 0, 52, 20, 31, 45, 52, 0, 47, 21, 35, 50, 47, 0, 43, 23, 37, 54, 43, 0, 40, 24, 39, 31, 11, 15, 40, 0, 37, 25, 41, 30, 11, 19, 37, 0, 34, 27, 42, 29, 11, 20, 37, 0, 31, 29, 43, 28, 11, 24, 34, 0, 29, 30, 44, 27, 11, 28, 31, 0, 27, 32, 14, 22, 8, 26, 11, 31, 29, 0, 24, 34, 12, 25, 8, 25, 11, 34, 27, 0, 22, 36, 10, 27, 8, 24, 11, 38, 24, 0, 20, 37, 10, 28, 8, 23, 11, 41, 22, 0, 18, 39, 9, 29, 8, 22, 11, 44, 20, 0, 17, 39, 10, 29, 8, 21, 11, 47, 18, 0, 15, 41, 9, 30, 8, 20, 11, 50, 16, 0, 14, 42, 8, 31, 8, 19, 11, 52, 15, 0, 12, 43, 9, 31, 8, 18, 11, 55, 13, 0, 11, 44, 9, 31, 8, 17, 11, 57, 12, 0, 10, 45, 9, 31, 8, 16, 11, 59, 11, 0, 9, 46, 9, 31, 8, 15, 11, 61, 10, 0, 8, 48, 8, 31, 8, 14, 11, 63, 9, 0, 7, 49, 8, 31, 8, 13, 11, 65, 8, 0, 6, 50, 9, 30, 8, 12, 11, 67, 7, 0, 5, 51, 9, 30, 8, 11, 11, 69, 6, 0, 4, 53, 9, 29, 8, 10, 11, 71, 5, 0, 3, 54, 10, 28, 8, 9, 11, 73, 4, 0, 3, 55, 10, 27, 8, 8, 11, 74, 4, 0, 2, 57, 11, 25, 8, 7, 11, 76, 3, 0, 2, 58, 12, 23, 8, 6, 11, 77, 3, 0, 1, 60, 42, 5, 11, 79, 2, 0, 1, 61, 41, 4, 13, 78, 2, 0, 1, 63, 39, 3, 15, 77, 2, 0, 0, 63, 40, 2, 17, 77, 1, 0, 0, 61, 42, 1, 18, 77, 1, 0, 0, 59, 64, 76, 1, 0, 0, 58, 55, 2, 9, 75, 1, 0, 0, 57, 55, 3, 10, 74, 1, 0, 1, 55, 13, 26, 16, 5, 9, 73, 2, 0, 1, 54, 11, 29, 15, 7, 9, 72, 2, 0, 1, 53, 11, 30, 14, 8, 10, 71, 2, 0, 2, 52, 10, 31, 13, 10, 10, 69, 3, 0, 2, 51, 11, 31, 12, 12, 9, 69, 3, 0, 3, 50, 10, 32, 11, 14, 9, 67, 4, 0, 3, 49, 11, 32, 10, 15, 10, 66, 4, 0, 4, 48, 10, 33, 9, 17, 9, 65, 5, 0, 5, 47, 10, 33, 8, 19, 9, 63, 6, 0, 6, 46, 10, 33, 8, 19, 10, 61, 7, 0, 7, 45, 10, 33, 8, 20, 9, 60, 8, 0, 8, 44, 10, 33, 8, 21, 9, 58, 9, 0, 9, 43, 10, 33, 8, 21, 10, 56, 10, 0, 10, 42, 11, 32, 8, 22, 10, 54, 11, 0, 12, 40, 11, 32, 8, 22, 10, 52, 13, 0, 13, 40, 10, 32, 8, 23, 10, 50, 14, 0, 15, 38, 11, 31, 8, 23, 11, 47, 16, 0, 16, 38, 11, 30, 8, 24, 10, 46, 17, 0, 18, 36, 12, 29, 8, 24, 11, 43, 19, 0, 20, 35, 13, 27, 8, 25, 11, 40, 21, 0, 22, 33, 15, 25, 8, 26, 10, 38, 23, 0, 25, 31, 47, 26, 11, 34, 26, 0, 27, 30, 46, 27, 11, 31, 28, 0, 29, 29, 45, 28, 10, 29, 30, 0, 32, 27, 44, 28, 11, 25, 33, 0, 35, 25, 43, 29, 11, 21, 36, 0, 38, 23, 42, 30, 10, 18, 39, 0, 41, 22, 40, 30, 11, 14, 42, 0, 45, 21, 37, 31, 11, 9, 46, 0, 50, 20, 33, 46, 51, 0, 55, 89, 56, 0, 61, 77, 62, 0, 68, 63, 69, 0, 78, 43, 79, 0 };
 
+// Opslag in SPIFFS (bewezen persistent, i.t.t. de NVS-poging eerder). RAM-cache zodat
+// de UI de keuze meteen toont. SPIFFS wordt in hw_setup() vroeg gemount, vóór tft_setup.
+#define PCLK_BESTAND "/bkos_pclk.txt"
+static int _pclk_ram = -1;
+
 uint8_t scherm_pclk_get() {
-    Preferences sp; sp.begin("scherm", true);
-    uint8_t m = sp.getUChar("pclk_mhz", SCHERM_PCLK_DEFAULT);
-    sp.end();
+    if (_pclk_ram < 0) {
+        _pclk_ram = SCHERM_PCLK_DEFAULT;
+        if (SPIFFS.exists(PCLK_BESTAND)) {
+            File f = SPIFFS.open(PCLK_BESTAND, "r");
+            if (f) { int v = f.parseInt(); if (v > 0) _pclk_ram = v; f.close(); }
+        }
+    }
+    int m = _pclk_ram;
     if (m < SCHERM_PCLK_MIN) m = SCHERM_PCLK_MIN;
     if (m > SCHERM_PCLK_MAX) m = SCHERM_PCLK_MAX;
-    return m;
+    return (uint8_t)m;
 }
 
 void scherm_pclk_set(uint8_t mhz) {
     if (mhz < SCHERM_PCLK_MIN) mhz = SCHERM_PCLK_MIN;
     if (mhz > SCHERM_PCLK_MAX) mhz = SCHERM_PCLK_MAX;
-    Preferences sp; sp.begin("scherm", false);
-    sp.putUChar("pclk_mhz", mhz);
-    sp.end();
+    _pclk_ram = mhz;                       // UI ziet de wijziging meteen
+    File f = SPIFFS.open(PCLK_BESTAND, "w");
+    if (f) { f.print((int)mhz); f.close(); }
 }
 
 void tft_setup() {
@@ -53,11 +63,7 @@ void tft_setup() {
     // core 2.x / GFX 1.3.7: geen bounce buffer. PCLK INSTELBAAR (SCHERM-scherm) om de
     // PSRAM-bus contentie (flikker) te temperen: lager = minder tearing, te laag =
     // refresh-flikker. Opgeslagen in Preferences; wijziging werkt na herstart.
-    Preferences _sp; _sp.begin("scherm", true);
-    uint8_t _pclk_mhz = _sp.getUChar("pclk_mhz", SCHERM_PCLK_DEFAULT);
-    _sp.end();
-    if (_pclk_mhz < SCHERM_PCLK_MIN) _pclk_mhz = SCHERM_PCLK_MIN;
-    if (_pclk_mhz > SCHERM_PCLK_MAX) _pclk_mhz = SCHERM_PCLK_MAX;
+    uint8_t _pclk_mhz = scherm_pclk_get();   // uit SPIFFS (vroeg gemount in hw_setup)
     static Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
         41, 40, 39, 42,                   // DE, VSYNC, HSYNC, PCLK
         14, 21, 47, 48, 45,               // R0–R4

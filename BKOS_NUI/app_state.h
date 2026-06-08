@@ -18,6 +18,7 @@
 #define SCREEN_NETWERK    12 // Netwerk instellingen (multi-device)
 #define SCREEN_BRUG       13 // WiFi brug (Pi Zero 2W via BLE)
 #define SCREEN_MELDING    14 // Meldingen (CallMeBot Signal/WhatsApp)
+#define SCREEN_PANEEL     15 // Configureerbare PANEEL-knoppen
 
 // Vaarmodi
 #define MODE_HAVEN   0

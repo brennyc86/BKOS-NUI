@@ -139,6 +139,17 @@ static void _gui_taak(void*) {
                 touch_verwerkt = true;
                 laatste_touch_ms = millis();
                 {
+                    // Universele navigatiebalk: ELKE tik in de balk-zone navigeert,
+                    // ongeacht het actieve scherm/app. Geen scherm kan dit blokkeren.
+                    if (ts_y >= NAV_Y - 8) {
+                        int nav = nav_bar_klik(ts_x, ts_y);
+                        if (nav >= 0 && (nav != actief_scherm || lua_forceer_app >= 0)) {
+                            lua_app_sluiten();
+                            lua_forceer_app = -1;
+                            actief_scherm   = (nav == SCREEN_LUA_APP) ? SCREEN_APPS : nav;
+                            scherm_bouwen   = true;
+                        }
+                    } else {
                     int app_idx = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                                   ? lua_forceer_app
                                   : app_voor_scherm(actief_scherm);
@@ -180,6 +191,7 @@ static void _gui_taak(void*) {
                             case SCREEN_SCHERM:     screen_scherm_run(ts_x, ts_y, true);    break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         }
+                    }
                     }
                 }
             } else {
@@ -448,6 +460,16 @@ void hw_loop() {
             touch_verwerkt = true;
             laatste_touch_ms = millis();
             {
+                // Universele navigatiebalk (zie landscape): nav werkt op elk scherm/app
+                if (ts_y >= NAV_Y - 8) {
+                    int nav = nav_bar_klik(ts_x, ts_y);
+                    if (nav >= 0 && (nav != actief_scherm || lua_forceer_app >= 0)) {
+                        lua_app_sluiten();
+                        lua_forceer_app = -1;
+                        actief_scherm   = (nav == SCREEN_LUA_APP) ? SCREEN_APPS : nav;
+                        scherm_bouwen   = true;
+                    }
+                } else {
                 int app_idx = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                               ? lua_forceer_app
                               : app_voor_scherm(actief_scherm);
@@ -489,6 +511,7 @@ void hw_loop() {
                         case SCREEN_SCHERM:     screen_scherm_run(ts_x, ts_y, true);    break;
                         case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                     }
+                }
                 }
             }
         } else {

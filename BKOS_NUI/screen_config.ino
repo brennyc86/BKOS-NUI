@@ -1478,9 +1478,9 @@ static void cfg_update_teken() {
                 tok ? C_CYAN : C_AMBER);
     }
 
-    // BRUG + BERICHTEN (vaste posities, los van de optionele TOKEN-knop)
-    ui_knop(10, CFG_SUB_Y0 + 100 + 4, TFT_W - 20, 38, "BRUG  (WiFi-brug)  >",
-            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    // BRUG (voorlopig uitgeschakeld — grijs, niet klikbaar) + BERICHTEN
+    ui_knop(10, CFG_SUB_Y0 + 100 + 4, TFT_W - 20, 38, "BRUG  (uitgeschakeld)",
+            C_SURFACE, C_DARK_GRAY);
     ui_knop(10, CFG_SUB_Y0 + 150 + 4, TFT_W - 20, 38, "BERICHTEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 }
@@ -1725,10 +1725,7 @@ static void cfg_update_run(int x, int y) {
 
     {   // BRUG + BERICHTEN (vaste posities)
         int brug_y = upd_y + 100;
-        if (y >= brug_y && y < brug_y + 50) {
-            if (!ontg) { pin_vereist_tonen(); return; }
-            actief_scherm = SCREEN_BRUG; scherm_bouwen = true; return;
-        }
+        if (y >= brug_y && y < brug_y + 50) { return; }   // BRUG uitgeschakeld (grijs)
         int ber_y = upd_y + 150;
         if (y >= ber_y && y < ber_y + 50) {
             if (!ontg) { pin_vereist_tonen(); return; }

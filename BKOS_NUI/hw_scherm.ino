@@ -42,7 +42,7 @@ void tft_setup() {
         9, 46, 3, 8, 16, 1,               // G0–G5
         15, 7, 6, 5, 4,                   // B0–B4
         0, 210, 30, 16, 0, 22, 13, 23, 1, // sync parameters + pclk_active_neg
-        7000000);                          // prefer_speed: 7MHz
+        6000000);                          // prefer_speed: 6MHz
 #endif
     tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 

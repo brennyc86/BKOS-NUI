@@ -287,6 +287,8 @@ Recente taken:
 | 156 | Sessie 30 | S3 terug naar core 2.0.17: core 3.x brak WiFi/netwerk op S3 (meteo update niet, OTA fout -1; 29.8 was laatste goede = laatste core-2.x). build.yml S3-job → core 2.0.17/GFX 1.3.7/FlashMode dio. hw_scherm RGB-constructor dual-compat via ESP_ARDUINO_VERSION_MAJOR guard (core 2.x = geen bounce buffer, pclk 10MHz). Alle 6 platforms compileren lokaal op core 2.0.17 |
 | 157 | Sessie 30 | Meldingen-engine (CallMeBot Signal/WhatsApp): melding.h/.ino — ontvangers {tel,key,dienst} eigenaar+4 extra, /bkos_melding.csv, niet-blokkerende wachtrij, verzending via gewone HTTP vanuit netwerk-taak. IO-trigger via bestaande io_alert. Hartslag bij opstart + dagelijks/wekelijks. Eigenaar-tel uit info e_tel |
 | 158 | Sessie 30 | MELDINGEN instellingenscherm (screen_melding): scrollbaar, hoofdschakelaar/opstart/hartslag/eigenaar dienst+key/4× extra/TEST/OPSLAAN, hergebruikt config-toetsenbord. SCREEN_MELDING + nav-item "MELD". Deel 1 van meldingen compleet; deel 2 (bericht aan eigenaar) + deel 3 (extern via BT/WiFi) volgen later |
+| 159 | Sessie 30 | Configureerbare PANEEL-knoppen stap 1: paneel.h/.ino (6 namen, /bkos_paneel.csv, default oorspronkelijke 5), screen_main adaptieve layout 1→1/2→2/3→1x3/4→2x2/5→3+2/6→2x3 (landscape + SCREEN_SMALL), draw+hit-test via _paneel_rect, dev_lokaal[6] |
+| 160 | Sessie 30 | Configureerbare PANEEL-knoppen stap 2: screen_paneel — 6 naam-slots via config-toetsenbord (net als IO-namen) + OPSLAAN. SCREEN_PANEEL + nav-item "PANEEL". Knop schakelt alle IO-kanalen met die naam; lege slots verborgen. Bijzondere/afwijkende knopfuncties = later |
 
 ---
 

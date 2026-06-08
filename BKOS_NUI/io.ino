@@ -3,6 +3,7 @@
 #include "meteo.h"
 #include "hw_scherm.h"
 #include "bkos_net.h"
+#include "melding.h"
 
 byte licht_cfg_idx = 0;
 
@@ -170,6 +171,9 @@ void io_cyclus() {
             if (io_richting[i] == IO_RICHTING_IN) {
                 io_actie_uitvoeren(nieuw ? io_actie_aan[i] : io_actie_uit[i],
                                    io_actie_param[i]);
+                if ((nieuw  && (io_alert[i] == IO_ALERT_BIJ_AAN || io_alert[i] == IO_ALERT_BEIDE)) ||
+                    (!nieuw && (io_alert[i] == IO_ALERT_BIJ_UIT || io_alert[i] == IO_ALERT_BEIDE)))
+                    melding_io_trigger(i, nieuw);
             }
             io_input[i] = nieuw;
             io_gewijzigd[i] = true;
@@ -220,6 +224,9 @@ void io_cyclus() {
                 io_actie_uitvoeren(
                     nieuw ? io_actie_aan[i] : io_actie_uit[i],
                     io_actie_param[i]);
+                if ((nieuw  && (io_alert[i] == IO_ALERT_BIJ_AAN || io_alert[i] == IO_ALERT_BEIDE)) ||
+                    (!nieuw && (io_alert[i] == IO_ALERT_BIJ_UIT || io_alert[i] == IO_ALERT_BEIDE)))
+                    melding_io_trigger(i, nieuw);
             }
             io_input[i] = nieuw;
             io_gewijzigd[i] = true;

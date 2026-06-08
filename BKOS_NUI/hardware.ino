@@ -271,6 +271,7 @@ void hw_setup() {
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
+    melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
 #if PLATFORM_ESP32
     bkos_client_setup(); // WebSocket server voor BKOS Brug app (ESP32-only)
 #endif

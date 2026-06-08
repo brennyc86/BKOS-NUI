@@ -7,6 +7,7 @@
 #include "meteo.h"
 #include "getijdata.h"
 #include "bkos_net.h"
+#include "melding.h"
 
 bool wifi_aangesloten     = false;
 volatile bool wifi_ota_modus = false;
@@ -287,7 +288,10 @@ static void netwerk_taak(void* param) {
         if (getij_gevraagd) getijdata_ophalen_aangevraagd    = false;
         if (meer_gevraagd)  getijdata_meer_laden_aangevraagd = false;
 
-        if (!update_nodig && !wifi_ota_modus && !ota_gevraagd && !getij_gevraagd && !meer_gevraagd) continue;
+        melding_hartslag_check();                  // plant hartslagbericht indien het tijd is
+        bool melding_gevraagd = melding_wacht();   // berichten in de wachtrij?
+
+        if (!update_nodig && !wifi_ota_modus && !ota_gevraagd && !getij_gevraagd && !meer_gevraagd && !melding_gevraagd) continue;
 
         if (WiFi.status() != WL_CONNECTED) _wifi_verbinden_intern();
 
@@ -309,6 +313,7 @@ static void netwerk_taak(void* param) {
                 if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
                     ota_nieuwer_beschikbaar = true;
             }
+            melding_netwerk_verwerk();             // verstuur wachtende berichten
         } else if (getij_gevraagd || meer_gevraagd) {
             getijdata_ophalen_klaar = true;
         }

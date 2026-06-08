@@ -14,6 +14,7 @@
 #include "bkos_client.h"
 #include "bkos_brug.h"
 #include "screen_brug.h"
+#include "melding.h"
 
 void hw_setup();
 void hw_loop();

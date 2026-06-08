@@ -1,6 +1,7 @@
 #include "screen_main.h"
 #include "meteo.h"
 #include "nav_bar.h"
+#include "paneel.h"
 #include "screen_info.h"
 #include "victron_ble.h"
 #include "bkos_net.h"
@@ -490,29 +491,53 @@ static void licht_knoppen_teken() {
 }
 
 // ─── Apparaat knoppen ───────────────────────────────────────────────
+// Positie van paneelknop `idx` (0-based, onder de gevulde knoppen) bij `totaal`.
+// Rij-indeling: 1->[1] 2->[2] 3->[3] 4->[2,2] 5->[3,2] 6->[3,3]
+static void _paneel_rect(int idx, int totaal, int* bx, int* by, int* bw, int* bh) {
+    int r0, r1;
+    switch (totaal) {
+        case 1: r0 = 1; r1 = 0; break;
+        case 2: r0 = 2; r1 = 0; break;
+        case 3: r0 = 3; r1 = 0; break;
+        case 4: r0 = 2; r1 = 2; break;
+        case 5: r0 = 3; r1 = 2; break;
+        default: r0 = 3; r1 = 3; break;  // 6
+    }
+    int rij = (idx < r0) ? 0 : 1;
+    int k   = (rij == 0) ? r0 : r1;
+    int pos = (rij == 0) ? idx : idx - r0;
+    *bw = DKNOP_W; *bh = DKNOP_H;
+    int rowW   = k * DKNOP_W + (k - 1) * 6;
+    int startX = CTRL_PANEL_X + (CTRL_PANEL_W - rowW) / 2;
+    *bx = startX + pos * (DKNOP_W + 6);
+    *by = (rij == 0) ? DKNOP_Y1 : DKNOP_Y2;
+}
+
+static void _paneel_knop_teken(int x, int y, int w, int h, const char* label, bool aan, bool mix) {
+    tft.fillRoundRect(x, y, w, h, KNOP_R, aan ? C_SURFACE2 : C_SURFACE);
+    if (aan) { tft.drawRoundRect(x, y, w, h, KNOP_R, C_CYAN); tft.fillRoundRect(x, y, 5, h, 3, C_CYAN); }
+    else     { tft.drawRoundRect(x, y, w, h, KNOP_R, C_SURFACE2); }
+    uint16_t fg = aan ? C_CYAN : C_TEXT_DIM;
+    tft.setTextSize(2); tft.setTextColor(fg);
+    int tw = strlen(label) * 12;
+    tft.setCursor(x + (w - tw) / 2, y + h / 2 - 8);
+    tft.print(label);
+    if (mix) tft.fillRoundRect(x + 4, y + h - 6, w - 8, 4, 2, C_ORANGE);
+}
+
 static void apparaat_knoppen_teken() {
     tft.setTextSize(1);
     tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(DKNOP_X1, DKNOP_Y1 - 12);
     tft.print("APPARATEN");
 
-    struct { const char* label; int icoon; const char* prefix; int x; int y; } ap[5] = {
-        {"USB",      I_USB,      "**USB",   DKNOP_X1,  DKNOP_Y1},
-        {"230V",     I_230V,     "**230",   DKNOP_X2,  DKNOP_Y1},
-        {"TV",       I_TV,       "**tv",    DKNOP_X3,  DKNOP_Y1},
-        {"WATER",    I_WATER,    "**water", DKNOP2_X1, DKNOP_Y2},
-        {"DEKLICHT", I_DEKLICHT, "**E_dek", DKNOP2_X2, DKNOP_Y2},
-    };
-    for (int i = 0; i < 5; i++) {
-        byte staat3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(ap[i].prefix) : (dev_lokaal[i] ? 2 : 0);
-        bool aan = (staat3 == 2);
-        bool mix = (staat3 == 1);
-        schakelaars_knop(ap[i].x, ap[i].y, DKNOP_W, DKNOP_H,
-                         ap[i].label, ap[i].icoon, C_CYAN, aan);
-        if (mix) {
-            // Toon mix-toestand: accent balk onderin knop
-            tft.fillRoundRect(ap[i].x + 4, ap[i].y + DKNOP_H - 6, DKNOP_W - 8, 4, 2, C_ORANGE);
-        }
+    int totaal = paneel_aantal();
+    for (int i = 0; i < totaal; i++) {
+        const char* naam = paneel_knop_naam(i);
+        int bx, by, bw, bh; _paneel_rect(i, totaal, &bx, &by, &bw, &bh);
+        byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
+        char lab[16]; paneel_label(naam, lab, sizeof(lab));
+        _paneel_knop_teken(bx, by, bw, bh, lab, (s3 == 2), (s3 == 1));
     }
 }
 
@@ -875,18 +900,25 @@ static void pico_modus_knoppen_teken() {
 }
 
 static void pico_apparaten_teken() {
-    // 1 rij WATER / TV / USB / 230V over volledige breedte
-    struct { const char* label; int icoon; const char* prefix; } ap[4] = {
-        {"WATER", I_WATER, "**water"},
-        {"TV",    I_TV,    "**tv"},
-        {"USB",   I_USB,   "**USB"},
-        {"230V",  I_230V,  "**230"},
-    };
-    for (int i = 0; i < 4; i++) {
-        byte staat3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(ap[i].prefix)
-                                           : (dev_lokaal[i] ? 2 : 0);
-        pico_apparaat_knop(PICO_DKNOP_X(i), ap[i].label, ap[i].icoon,
-                           staat3 == 2, staat3 == 1);
+    // 1 rij configureerbare apparaat-knoppen over volledige breedte
+    int totaal = paneel_aantal();
+    if (totaal < 1) return;
+    if (totaal > PANEEL_KNOP_MAX) totaal = PANEEL_KNOP_MAX;
+    int gap = 4;
+    int bw  = (TFT_W - 8 - (totaal - 1) * gap) / totaal;
+    for (int i = 0; i < totaal; i++) {
+        int bx = 4 + i * (bw + gap);
+        const char* naam = paneel_knop_naam(i);
+        byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
+        bool aan = (s3 == 2), mix = (s3 == 1);
+        char lab[16]; paneel_label(naam, lab, sizeof(lab));
+        tft.fillRoundRect(bx, PICO_DKNOP_Y, bw, PICO_DKNOP_H, 4, aan ? C_SURFACE2 : C_SURFACE);
+        tft.drawRoundRect(bx, PICO_DKNOP_Y, bw, PICO_DKNOP_H, 4, aan ? C_CYAN : C_SURFACE2);
+        tft.setTextSize(1); tft.setTextColor(aan ? C_CYAN : C_TEXT_DIM);
+        int tw = strlen(lab) * 6;
+        tft.setCursor(bx + (bw - tw) / 2, PICO_DKNOP_Y + PICO_DKNOP_H / 2 - 4);
+        tft.print(lab);
+        if (mix) tft.fillRect(bx + 2, PICO_DKNOP_Y + PICO_DKNOP_H - 4, bw - 4, 3, C_ORANGE);
     }
 }
 
@@ -976,15 +1008,20 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
         gewijzigd = true;
     }
 
-    // Apparaat knoppen (1 rij volle breedte)
-    static const char* ap_prefix[4] = {"**water", "**tv", "**USB", "**230"};
-    if (y >= PICO_DKNOP_Y && y < PICO_DKNOP_Y + PICO_DKNOP_H) {
-        for (int i = 0; i < 4; i++) {
-            int bx = PICO_DKNOP_X(i);
-            if (x >= bx && x < bx + PICO_DKNOP_W) {
-                net_io_apparaat_toggle(ap_prefix[i]);
-                dev_lokaal[i] = !dev_lokaal[i];
-                gewijzigd = true;
+    // Apparaat knoppen (1 rij volle breedte, configureerbaar)
+    {
+        int totaal = paneel_aantal();
+        if (totaal > PANEEL_KNOP_MAX) totaal = PANEEL_KNOP_MAX;
+        if (totaal >= 1 && y >= PICO_DKNOP_Y && y < PICO_DKNOP_Y + PICO_DKNOP_H) {
+            int gap = 4;
+            int bw  = (TFT_W - 8 - (totaal - 1) * gap) / totaal;
+            for (int i = 0; i < totaal; i++) {
+                int bx = 4 + i * (bw + gap);
+                if (x >= bx && x < bx + bw) {
+                    net_io_apparaat_toggle(paneel_knop_naam(i));
+                    dev_lokaal[i] = !dev_lokaal[i];
+                    gewijzigd = true;
+                }
             }
         }
     }
@@ -1248,20 +1285,16 @@ void screen_main_run(int x, int y, bool aanraking) {
         }
     }
 
-    // Apparaat knoppen
-    struct { int x; int y; const char* prefix; } ap[5] = {
-        {DKNOP_X1,  DKNOP_Y1, "**USB"},
-        {DKNOP_X2,  DKNOP_Y1, "**230"},
-        {DKNOP_X3,  DKNOP_Y1, "**tv"},
-        {DKNOP2_X1, DKNOP_Y2, "**water"},
-        {DKNOP2_X2, DKNOP_Y2, "**E_dek"},
-    };
-    for (int i = 0; i < 5; i++) {
-        if (x >= ap[i].x && x < ap[i].x + DKNOP_W &&
-            y >= ap[i].y && y < ap[i].y + DKNOP_H) {
-            net_io_apparaat_toggle(ap[i].prefix);
-            dev_lokaal[i] = !dev_lokaal[i];  // lokale staat bijhouden (toggle)
-            gewijzigd = true;
+    // Apparaat knoppen (configureerbaar, adaptieve layout)
+    {
+        int totaal = paneel_aantal();
+        for (int i = 0; i < totaal; i++) {
+            int bx, by, bw, bh; _paneel_rect(i, totaal, &bx, &by, &bw, &bh);
+            if (x >= bx && x < bx + bw && y >= by && y < by + bh) {
+                net_io_apparaat_toggle(paneel_knop_naam(i));
+                dev_lokaal[i] = !dev_lokaal[i];
+                gewijzigd = true;
+            }
         }
     }
 

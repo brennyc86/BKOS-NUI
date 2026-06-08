@@ -71,7 +71,7 @@ extern volatile bool wifi_verbonden;  // geschreven door Core 0, gelezen door Co
 extern bool wifi_open_auto;           // auto-verbinden met open netwerken (tracking)
 
 // Apparaat lokale staat (fallback als geen IO module)
-extern bool dev_lokaal[5];
+extern bool dev_lokaal[6];
 
 // Weergave-instellingen
 #define ZEILNR_LEN 16

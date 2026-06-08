@@ -16,6 +16,7 @@
 #include "screen_brug.h"
 #include "melding.h"
 #include "screen_melding.h"
+#include "paneel.h"
 
 void hw_setup();
 void hw_loop();

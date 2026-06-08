@@ -34,9 +34,7 @@ void nav_midden_bouwen() {
     // Landscape 800px: BRUG + MELD + PANEEL in scrollbare midden-sectie
     _voeg("BRUG",    SCREEN_BRUG);
     _voeg("MELD",    SCREEN_MELDING);
-    _voeg("PANEEL",  SCREEN_PANEEL);
-    _voeg("SCHERM",  SCREEN_SCHERM);
-#endif
+    _voeg("PANEEL",  SCREEN_PANEEL);#endif
 
     // Geïnstalleerde apps met in_balk == true
     for (int i = 0; i < apps_cnt; i++) {
@@ -49,17 +47,13 @@ void nav_midden_bouwen() {
   #if TFT_W == 240
     _voeg("BRUG",    SCREEN_BRUG);
     _voeg("MELD",    SCREEN_MELDING);
-    _voeg("PANEEL",  SCREEN_PANEEL);
-    _voeg("SCHERM",  SCREEN_SCHERM);
-    _voeg("NETWERK", SCREEN_NETWERK);
+    _voeg("PANEEL",  SCREEN_PANEEL);    _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
     _voeg("CONFIG",  SCREEN_CONFIG);
   #else
     _voeg("BRUG",    SCREEN_BRUG);
     _voeg("MELD",    SCREEN_MELDING);
-    _voeg("PANEEL",  SCREEN_PANEEL);
-    _voeg("SCHERM",  SCREEN_SCHERM);
-    _voeg("NETWERK", SCREEN_NETWERK);
+    _voeg("PANEEL",  SCREEN_PANEEL);    _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
   #endif
 #endif

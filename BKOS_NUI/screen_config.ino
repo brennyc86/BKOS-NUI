@@ -1,5 +1,6 @@
 #include "screen_config.h"
 #include "nav_bar.h"
+#include "hw_scherm.h"   // scherm_pclk_get/set (PCLK-instelling)
 #include "meteo.h"
 #include "fout_log.h"
 #include "platform_fs.h"
@@ -1432,6 +1433,28 @@ static void cfg_we_teken() {
             tft.setCursor(498 + (200 - (int)strlen(albl) * 6) / 2, y + 5 + (30 - 8) / 2); tft.print(albl);
         }
     }
+    y += 44;
+
+    // SCHERM PCLK (S3 RGB-paneel op core 2.x; lager = minder flikker, werkt na HERSTART)
+    {
+        uint8_t pclk = scherm_pclk_get();
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SCHERM PCLK");
+        tft.setTextSize(2); tft.setTextColor(C_CYAN);
+        char pb[12]; snprintf(pb, sizeof(pb), "%d MHz", pclk);
+        tft.setCursor(150, y + (40 - 16) / 2); tft.print(pb);
+        tft.fillRoundRect(280, y + 4, 48, 32, 5, C_SURFACE3);
+        tft.setTextSize(2); tft.setTextColor(C_TEXT);
+        tft.setCursor(280 + 19, y + 4 + (32 - 16) / 2); tft.print("-");
+        tft.fillRoundRect(334, y + 4, 48, 32, 5, C_SURFACE3);
+        tft.setCursor(334 + 19, y + 4 + (32 - 16) / 2); tft.print("+");
+        tft.fillRoundRect(394, y + 4, 150, 32, 5, C_AMBER);
+        tft.setTextSize(1); tft.setTextColor(C_BG);
+        tft.setCursor(394 + (150 - 8 * 6) / 2, y + 4 + (32 - 8) / 2); tft.print("HERSTART");
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(556, y + (40 - 8) / 2); tft.print("lager = minder flikker");
+    }
 }
 
 static void cfg_update_teken() {
@@ -1654,6 +1677,16 @@ static void cfg_we_run(int x, int y) {
             slaap_attiny = !slaap_attiny;
             state_save(); cfg_we_teken();
         }
+        return;
+    }
+
+    // SCHERM PCLK rij (onder INTERVAL)
+    int pclk_y = sly3 + 44;
+    if (y >= pclk_y && y < pclk_y + 40) {
+        uint8_t pclk = scherm_pclk_get();
+        if      (x >= 280 && x < 328) { scherm_pclk_set(pclk - 1); cfg_we_teken(); }
+        else if (x >= 334 && x < 382) { scherm_pclk_set(pclk + 1); cfg_we_teken(); }
+        else if (x >= 394 && x < 544) { PLATFORM_REBOOT(); }
         return;
     }
 }

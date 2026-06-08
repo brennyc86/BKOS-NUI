@@ -31,10 +31,8 @@ void nav_midden_bouwen() {
     _voeg("VICTRON", SCREEN_VICTRON);
   #endif
 #else
-    // Landscape 800px: BRUG + MELD + PANEEL in scrollbare midden-sectie
-    _voeg("BRUG",    SCREEN_BRUG);
-    _voeg("MELD",    SCREEN_MELDING);
-    _voeg("PANEEL",  SCREEN_PANEEL);
+    // Landscape 800px: geen vaste systeem-schermen in het scrollbare midden
+    // (BRUG/BERICHTEN/PANEEL/SCHERM staan nu in CONFIG)
 #endif
 
     // Geïnstalleerde apps met in_balk == true
@@ -46,16 +44,10 @@ void nav_midden_bouwen() {
 #if SCREEN_SMALL
     // Systeem-schermen rechts van de apps (in horizontale volgorde)
   #if TFT_W == 240
-    _voeg("BRUG",    SCREEN_BRUG);
-    _voeg("MELD",    SCREEN_MELDING);
-    _voeg("PANEEL",  SCREEN_PANEEL);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
     _voeg("CONFIG",  SCREEN_CONFIG);
   #else
-    _voeg("BRUG",    SCREEN_BRUG);
-    _voeg("MELD",    SCREEN_MELDING);
-    _voeg("PANEEL",  SCREEN_PANEEL);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
   #endif

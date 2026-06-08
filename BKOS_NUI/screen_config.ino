@@ -1174,7 +1174,7 @@ static void cfg_hoofd_teken() {
     tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
 
     // ── Categorieknoppen altijd op vaste positie ─────────────────────────
-    const char* cats[]   = {"BOOT  >", "WEERGAVE & ENERGIE  >", "UPDATE  >", "PINCODE WIJZIGEN  >"};
+    const char* cats[]   = {"BOOT  >", "WEERGAVE & ENERGIE  >", "VERBINDINGEN  >", "PINCODE WIJZIGEN  >"};
     uint16_t cat_kleur[] = {C_CYAN, C_CYAN, C_CYAN, C_AMBER};
     int cat_y = fr_y + 44;
     int cat_h = 72, cat_gap = 8;
@@ -1298,6 +1298,9 @@ static void cfg_boot_teken() {
         if (ontg) { ui_knop(684, y + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, y + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
     }
 #endif
+    // PANEEL-knoppen instellen (opent het paneel-scherm)
+    ui_knop(10, CFG_SUB_Y0 + 182 + 4, TFT_W - 20, 38, "PANEEL-KNOPPEN  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 }
 
 static void cfg_we_teken() {
@@ -1459,7 +1462,7 @@ static void cfg_we_teken() {
 
 static void cfg_update_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
-    cfg_sub_header("UPDATE");
+    cfg_sub_header("VERBINDINGEN");
     bool ontg = config_ontgrendeld;
     int y = CFG_SUB_Y0;
 
@@ -1474,6 +1477,12 @@ static void cfg_update_teken() {
                 tok ? C_SURFACE2 : RGB565(28, 8, 0),
                 tok ? C_CYAN : C_AMBER);
     }
+
+    // BRUG + BERICHTEN (vaste posities, los van de optionele TOKEN-knop)
+    ui_knop(10, CFG_SUB_Y0 + 100 + 4, TFT_W - 20, 38, "BRUG  (WiFi-brug)  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    ui_knop(10, CFG_SUB_Y0 + 150 + 4, TFT_W - 20, 38, "BERICHTEN  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 }
 
 static void cfg_instellingen_teken() {
@@ -1531,10 +1540,8 @@ static void cfg_hoofd_run(int x, int y) {
     for (int i = 0; i < 4; i++) {
         int cy = cat_y + i * (cat_h + cat_gap);
         if (y >= cy && y < cy + cat_h) {
-            if (i == 2) {
-                actief_scherm = SCREEN_OTA; scherm_bouwen = true;  // UPDATE → direct OTA, geen tussenscherm
-            } else if (i < 3) {
-                cfg_deelscherm = i + 1;
+            if (i < 3) {
+                cfg_deelscherm = i + 1;      // 1=BOOT, 2=WEERGAVE, 3=VERBINDINGEN
                 cfg_instellingen_teken();
             } else {
                 pin_stap = 1; pin_invoer[0] = '\0';
@@ -1608,6 +1615,14 @@ static void cfg_boot_run(int x, int y) {
         else if (x >= 684 && x < 710) { io_heartbeat_uit = max(30, (int)io_heartbeat_uit - 10); hw_io_cfg_opslaan(); cfg_boot_teken(); }
         else if (x >= 710 && x < 736) { io_heartbeat_uit = min(600, (int)io_heartbeat_uit + 10); hw_io_cfg_opslaan(); cfg_boot_teken(); }
 #endif
+        return;
+    }
+
+    // PANEEL-knoppen instellen
+    int paneel_y = io_y + 50;
+    if (y >= paneel_y && y < paneel_y + 44) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_PANEEL; scherm_bouwen = true;
         return;
     }
 }
@@ -1706,6 +1721,19 @@ static void cfg_update_run(int x, int y) {
         actief_scherm = SCREEN_OTA;
         scherm_bouwen = true;
         return;
+    }
+
+    {   // BRUG + BERICHTEN (vaste posities)
+        int brug_y = upd_y + 100;
+        if (y >= brug_y && y < brug_y + 50) {
+            if (!ontg) { pin_vereist_tonen(); return; }
+            actief_scherm = SCREEN_BRUG; scherm_bouwen = true; return;
+        }
+        int ber_y = upd_y + 150;
+        if (y >= ber_y && y < ber_y + 50) {
+            if (!ontg) { pin_vereist_tonen(); return; }
+            actief_scherm = SCREEN_MELDING; scherm_bouwen = true; return;
+        }
     }
 
     if (fout_rapportage && ontg) {

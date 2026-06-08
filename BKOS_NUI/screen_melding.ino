@@ -77,7 +77,7 @@ void screen_melding_teken() {
     // Header met scroll-knoppen
     tft.fillRect(0, CONTENT_Y, TFT_W, MELD_HDR_H, C_SURFACE2);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(10, CONTENT_Y + (MELD_HDR_H - 16) / 2); tft.print("MELDINGEN");
+    tft.setCursor(10, CONTENT_Y + (MELD_HDR_H - 16) / 2); tft.print("BERICHTEN");
     // omhoog / omlaag
     int by = CONTENT_Y + 3, bh = MELD_HDR_H - 6, bw = 40;
     int up_x = TFT_W - 2 * bw - 12, dn_x = TFT_W - bw - 8;

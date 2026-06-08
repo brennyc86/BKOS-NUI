@@ -24,6 +24,13 @@ void tft_loop();
 void tft_helderheid_zet(int pct);
 void tft_schermvullen(uint16_t kleur);
 
+// ─── Instelbare PCLK (S3 RGB paneel op core 2.x; anti-flikker) ────────────────
+#define SCHERM_PCLK_DEFAULT 7
+#define SCHERM_PCLK_MIN     4
+#define SCHERM_PCLK_MAX     14
+uint8_t scherm_pclk_get();        // opgeslagen PCLK in MHz (default SCHERM_PCLK_DEFAULT)
+void    scherm_pclk_set(uint8_t mhz);  // opslaan (toegepast na herstart)
+
 extern byte bkos_logo_200_75[];
 void tft_logo(int32_t x, int32_t y, int schaal, uint16_t kleur);
 

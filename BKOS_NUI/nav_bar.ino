@@ -35,6 +35,7 @@ void nav_midden_bouwen() {
     _voeg("BRUG",    SCREEN_BRUG);
     _voeg("MELD",    SCREEN_MELDING);
     _voeg("PANEEL",  SCREEN_PANEEL);
+    _voeg("SCHERM",  SCREEN_SCHERM);
 #endif
 
     // Geïnstalleerde apps met in_balk == true
@@ -49,6 +50,7 @@ void nav_midden_bouwen() {
     _voeg("BRUG",    SCREEN_BRUG);
     _voeg("MELD",    SCREEN_MELDING);
     _voeg("PANEEL",  SCREEN_PANEEL);
+    _voeg("SCHERM",  SCREEN_SCHERM);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
     _voeg("CONFIG",  SCREEN_CONFIG);
@@ -56,6 +58,7 @@ void nav_midden_bouwen() {
     _voeg("BRUG",    SCREEN_BRUG);
     _voeg("MELD",    SCREEN_MELDING);
     _voeg("PANEEL",  SCREEN_PANEEL);
+    _voeg("SCHERM",  SCREEN_SCHERM);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
   #endif
@@ -355,6 +358,11 @@ static void _pnb_item_render(int ai, int cx, int cy, uint16_t kleur, uint16_t bg
             case SCREEN_PANEEL: {
                 tft.setTextSize(1); tft.setTextColor(kleur);
                 tft.setCursor(cx - 15, cy - 4); tft.print("PANEEL");
+                break;
+            }
+            case SCREEN_SCHERM: {
+                tft.setTextSize(1); tft.setTextColor(kleur);
+                tft.setCursor(cx - 15, cy - 4); tft.print("SCHERM");
                 break;
             }
         }

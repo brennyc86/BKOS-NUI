@@ -15,6 +15,7 @@
 #include "bkos_brug.h"
 #include "screen_brug.h"
 #include "melding.h"
+#include "screen_melding.h"
 
 void hw_setup();
 void hw_loop();

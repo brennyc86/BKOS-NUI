@@ -97,6 +97,7 @@ static void _gui_taak(void*) {
                     case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                     case SCREEN_VICTRON:    screen_victron_teken();     break;
                     case SCREEN_NETWERK:    screen_netwerk_teken();     break;
+                    case SCREEN_MELDING:    screen_melding_teken();     break;
                     case SCREEN_BRUG:       screen_brug_teken();        break;
                     case SCREEN_LUA_APP:
                         lua_forceer_app = -1;
@@ -172,6 +173,7 @@ static void _gui_taak(void*) {
                             case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                             case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
                             case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
+                            case SCREEN_MELDING:    screen_melding_run(ts_x, ts_y, true);   break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         }
                     }
@@ -396,6 +398,7 @@ void hw_loop() {
                 case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                 case SCREEN_VICTRON:    screen_victron_teken();     break;
                 case SCREEN_NETWERK:    screen_netwerk_teken();     break;
+                case SCREEN_MELDING:    screen_melding_teken();     break;
                 case SCREEN_BRUG:       screen_brug_teken();        break;
                 case SCREEN_LUA_APP:
                     lua_forceer_app = -1;
@@ -469,6 +472,7 @@ void hw_loop() {
                         case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                         case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
                         case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
+                        case SCREEN_MELDING:    screen_melding_run(ts_x, ts_y, true);   break;
                         case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                     }
                 }

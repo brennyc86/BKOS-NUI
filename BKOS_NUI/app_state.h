@@ -17,6 +17,7 @@
 #define SCREEN_VICTRON    11 // Victron BLE monitor
 #define SCREEN_NETWERK    12 // Netwerk instellingen (multi-device)
 #define SCREEN_BRUG       13 // WiFi brug (Pi Zero 2W via BLE)
+#define SCREEN_MELDING    14 // Meldingen (CallMeBot Signal/WhatsApp)
 
 // Vaarmodi
 #define MODE_HAVEN   0

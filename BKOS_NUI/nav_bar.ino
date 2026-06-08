@@ -31,8 +31,9 @@ void nav_midden_bouwen() {
     _voeg("VICTRON", SCREEN_VICTRON);
   #endif
 #else
-    // Landscape 800px: BRUG in scrollbare midden-sectie
+    // Landscape 800px: BRUG + MELD in scrollbare midden-sectie
     _voeg("BRUG",    SCREEN_BRUG);
+    _voeg("MELD",    SCREEN_MELDING);
 #endif
 
     // Geïnstalleerde apps met in_balk == true
@@ -45,11 +46,13 @@ void nav_midden_bouwen() {
     // Systeem-schermen rechts van de apps (in horizontale volgorde)
   #if TFT_W == 240
     _voeg("BRUG",    SCREEN_BRUG);
+    _voeg("MELD",    SCREEN_MELDING);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
     _voeg("CONFIG",  SCREEN_CONFIG);
   #else
     _voeg("BRUG",    SCREEN_BRUG);
+    _voeg("MELD",    SCREEN_MELDING);
     _voeg("NETWERK", SCREEN_NETWERK);
     _voeg("APPS",    SCREEN_APPS);
   #endif
@@ -341,6 +344,11 @@ static void _pnb_item_render(int ai, int cx, int cy, uint16_t kleur, uint16_t bg
             case SCREEN_BRUG:    _nav_icon_brug(cx, cy, kleur);       break;
             case SCREEN_APPS:    _nav_icon_store(cx, cy, kleur);      break;
             case SCREEN_CONFIG:  _nav_icon_config(cx, cy, kleur, bg); break;
+            case SCREEN_MELDING: {
+                tft.setTextSize(1); tft.setTextColor(kleur);
+                tft.setCursor(cx - 12, cy - 4); tft.print("MELD");
+                break;
+            }
         }
     }
 }

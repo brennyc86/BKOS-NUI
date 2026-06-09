@@ -67,9 +67,22 @@ void io_bkoss_check() {
 
 void io_boot() {
     io_bkoss_check();
-    // Sla io_detect() over als BKOSS niet gevonden — voorkomt IO_SERIAL.flush() zonder
-    // aangesloten hardware (S3/CYD zonder ATtiny: Serial = USB CDC → flush hangt).
-    if (bkoss_actief) io_detect();
+    // io_detect() ALTIJD uitvoeren. Het heeft eigen timeouts (~0,5s) en breekt
+    // direct af als er geen ATtiny antwoordt — het kan dus niet hangen, ook niet
+    // bij testen zonder IO-hardware. Op de S3-build is IO_SERIAL = hardware UART0
+    // (CDCOnBoot=default), geen USB CDC, dus IO_SERIAL.flush() blokkeert nooit.
+    //
+    // REGRESSIE-FIX (v0.1.5 werkte, latere builds niet): de gate
+    // `if (bkoss_actief) io_detect()` brak ALLE IO zodra de "?"-versiehandshake
+    // faalde (boot-timing of een ATtiny met afwijkend versie-antwoord) terwijl de
+    // ATtiny wél was aangesloten. io_detect() liep dan niet → io_kanalen_cnt bleef
+    // 0 → io_zichtbaar()==0 → io_cyclus() deed niets. In v0.1.5 liep io_detect()
+    // altijd; dit herstelt dat gedrag.
+    io_detect();
+    // Vinden we kanalen, dan is de ATtiny aantoonbaar aanwezig → markeer actief,
+    // ook als de versiestring niet (correct) terugkwam. Zo kloppen IO, splash,
+    // INFO en CONFIG, en werkt io_attiny_slaap().
+    if (io_kanalen_cnt > 0) bkoss_actief = true;
 }
 
 void io_detect() {

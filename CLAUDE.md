@@ -289,6 +289,7 @@ Recente taken:
 | 158 | Sessie 30 | MELDINGEN instellingenscherm (screen_melding): scrollbaar, hoofdschakelaar/opstart/hartslag/eigenaar dienst+key/4× extra/TEST/OPSLAAN, hergebruikt config-toetsenbord. SCREEN_MELDING + nav-item "MELD". Deel 1 van meldingen compleet; deel 2 (bericht aan eigenaar) + deel 3 (extern via BT/WiFi) volgen later |
 | 159 | Sessie 30 | Configureerbare PANEEL-knoppen stap 1: paneel.h/.ino (6 namen, /bkos_paneel.csv, default oorspronkelijke 5), screen_main adaptieve layout 1→1/2→2/3→1x3/4→2x2/5→3+2/6→2x3 (landscape + SCREEN_SMALL), draw+hit-test via _paneel_rect, dev_lokaal[6] |
 | 160 | Sessie 30 | Configureerbare PANEEL-knoppen stap 2: screen_paneel — 6 naam-slots via config-toetsenbord (net als IO-namen) + OPSLAAN. SCREEN_PANEEL + nav-item "PANEEL". Knop schakelt alle IO-kanalen met die naam; lege slots verborgen. Bijzondere/afwijkende knopfuncties = later |
+| 161 | Sessie 31 | IO-REGRESSIE opgelost (werkte op v0.1.5, daarna dood op S3): de gate `if (bkoss_actief) io_detect()` in io_boot() brak alle IO zodra de "?"-versiehandshake faalde terwijl de ATtiny wél aangesloten was → io_kanalen_cnt bleef 0 → io_zichtbaar()==0 → io_cyclus() deed niets. io_detect() loopt nu altijd (eigen timeouts, hangt niet zonder hardware; op S3 is IO_SERIAL hardware UART0 dus flush() blokkeert nooit), en bkoss_actief wordt afgeleid uit io_kanalen_cnt>0 zodat splash/INFO/CONFIG/slaap kloppen ook zonder versiestring |
 
 ---
 

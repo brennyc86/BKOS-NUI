@@ -172,6 +172,24 @@
   #define IO_SERIAL_BEGIN()  Serial.begin(IO_BAUD)
 #endif
 
+// ─── Debug-logging ────────────────────────────────────────────────────────────
+// KRITIEK: op de S3/CYD is de IO-bus (IO_SERIAL) DEZELFDE Serial (UART0) als waar
+// debug-output naartoe zou gaan. Elke Serial.print* stuurt dan ruis naar de
+// ATtiny en verstoort/breekt de IO-aansturing. Daarom staat debug standaard UIT
+// (conform CLAUDE.md: "Geen Serial.print in productie tenzij achter #ifdef DEBUG").
+// Zet BKOS_DEBUG op 1 om logging tijdelijk aan te zetten — NOOIT op hardware met
+// UART-IO (S3/CYD/WROOM).
+#ifndef BKOS_DEBUG
+  #define BKOS_DEBUG 0
+#endif
+#if BKOS_DEBUG
+  #define BKOS_LOGF(...)  Serial.printf(__VA_ARGS__)
+  #define BKOS_LOGLN(x)   Serial.println(x)
+#else
+  #define BKOS_LOGF(...)  do {} while (0)
+  #define BKOS_LOGLN(x)   do {} while (0)
+#endif
+
 // ─── Geheugen allocatie ───────────────────────────────────────────────────────
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
   // Alleen ESP32-S3 heeft PSRAM

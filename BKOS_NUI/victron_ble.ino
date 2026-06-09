@@ -178,15 +178,15 @@ class _VicCallback : public BLEAdvertisedDeviceCallbacks {
             uint8_t plain[32];
             if (_decrypt(victron_apparaten[idx].sleutel, nonce0, nonce1,
                          enc, plain, enc_len)) {
-                Serial.printf("[Victron] MAC=%s type=0x%02X nonce=%02X%02X plain:", mac, rec_type, nonce0, nonce1);
-                for (int _i = 0; _i < min(enc_len, 8); _i++) Serial.printf(" %02X", plain[_i]);
-                Serial.println();
+                BKOS_LOGF("[Victron] MAC=%s type=0x%02X nonce=%02X%02X plain:", mac, rec_type, nonce0, nonce1);
+                for (int _i = 0; _i < min(enc_len, 8); _i++) BKOS_LOGF(" %02X", plain[_i]);
+                BKOS_LOGLN("");
                 switch (rec_type) {
                     case VREC_SOLAR_CHARGER:
                         _parse_solar(idx, plain, enc_len);
                         break;
                     default:
-                        Serial.printf("[Victron] onbekend record type 0x%02X — niet geparsed\n", rec_type);
+                        BKOS_LOGF("[Victron] onbekend record type 0x%02X — niet geparsed\n", rec_type);
                         break;
                 }
             }
@@ -248,7 +248,7 @@ void victron_apparaat_laden() {
 
         victron_apparaten_cnt++;
     }
-    Serial.printf("[Victron] %d apparaat/apparaten geladen\n", victron_apparaten_cnt);
+    BKOS_LOGF("[Victron] %d apparaat/apparaten geladen\n", victron_apparaten_cnt);
 }
 
 void victron_apparaat_opslaan(int idx) {

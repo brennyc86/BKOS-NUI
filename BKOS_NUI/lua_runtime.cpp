@@ -378,7 +378,7 @@ static int l_millis(lua_State* ls) {
 static int l_log(lua_State* ls) {
 #ifdef DEBUG
     const char* s = luaL_checkstring(ls, 1);
-    Serial.println(s);
+    BKOS_LOGLN(s);
 #endif
     return 0;
 }

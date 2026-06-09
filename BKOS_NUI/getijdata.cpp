@@ -129,7 +129,7 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
             GETIJ_API_URL,
             body.c_str(), fout.c_str());
 
-        Serial.printf("[Getij] %s: HTTP %d (%s)\n", loc.naam, httpCode, err);
+        BKOS_LOGF("[Getij] %s: HTTP %d (%s)\n", loc.naam, httpCode, err);
         return false;
     }
 
@@ -196,12 +196,12 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
     getij_debug_raw[GETIJ_DEBUG_LEN - 1] = '\0';
 
     if (err) {
-        Serial.printf("[Getij] %s: JSON fout: %s\n", loc.naam, err.c_str());
+        BKOS_LOGF("[Getij] %s: JSON fout: %s\n", loc.naam, err.c_str());
         return false;
     }
 
     if (n == 0) {
-        Serial.printf("[Getij] %s: Geen metingen in response (%dKB body)\n", loc.naam, content_len/1024);
+        BKOS_LOGF("[Getij] %s: Geen metingen in response (%dKB body)\n", loc.naam, content_len/1024);
         return false;
     }
 
@@ -222,11 +222,11 @@ static bool _getij_haal_op_en_sla_op(const GetijLocatie& loc, int van_h, int tot
     }
 
     File f = SPIFFS.open(loc.bestand, "w");
-    if (!f) { Serial.printf("[Getij] %s: bestand openen mislukt\n", loc.naam); return false; }
+    if (!f) { BKOS_LOGF("[Getij] %s: bestand openen mislukt\n", loc.naam); return false; }
     serializeJson(opslag, f);
     f.close();
 
-    Serial.printf("[Getij] %s: %d extremen opgeslagen\n", loc.naam, metingen_arr.size());
+    BKOS_LOGF("[Getij] %s: %d extremen opgeslagen\n", loc.naam, metingen_arr.size());
     return true;
 }
 
@@ -267,9 +267,9 @@ bool getijdata_meer_ophalen_nu(int locatie_index) {
 
 bool getijdata_update_alle(int eerst_idx) {
     time_t nu = time(nullptr);
-    if (nu < 1000000) { Serial.println("[Getij] Geen NTP sync"); return false; }
+    if (nu < 1000000) { BKOS_LOGLN("[Getij] Geen NTP sync"); return false; }
     if (eerst_idx < 0 || eerst_idx >= GETIJ_AANTAL_LOCATIES) eerst_idx = 0;
-    Serial.printf("[Getij] Update gestart (eerst: %s)\n", GETIJ_LOCATIES[eerst_idx].naam);
+    BKOS_LOGF("[Getij] Update gestart (eerst: %s)\n", GETIJ_LOCATIES[eerst_idx].naam);
 
     bool ok = true;
     if (_getij_haal_op_en_sla_op(GETIJ_LOCATIES[eerst_idx], GETIJ_VAN_UREN, GETIJ_TOT_UREN))
@@ -284,7 +284,7 @@ bool getijdata_update_alle(int eerst_idx) {
         else ok = false;
         delay(500);
     }
-    Serial.printf("[Getij] Update klaar (%s)\n", ok ? "OK" : "deels mislukt");
+    BKOS_LOGF("[Getij] Update klaar (%s)\n", ok ? "OK" : "deels mislukt");
     return ok;
 }
 
@@ -293,7 +293,7 @@ void getijdata_check_update(int locatie_index) {
     time_t nu = time(nullptr);
     if (nu < 1000000) return;
     if (nu - _laatste_update[locatie_index] > (time_t)(GETIJ_CACHE_UREN * 3600)) {
-        Serial.printf("[Getij] %s: verouderd, ophalen...\n", GETIJ_LOCATIES[locatie_index].naam);
+        BKOS_LOGF("[Getij] %s: verouderd, ophalen...\n", GETIJ_LOCATIES[locatie_index].naam);
         if (_getij_haal_op_en_sla_op(GETIJ_LOCATIES[locatie_index], GETIJ_VAN_UREN, GETIJ_TOT_UREN))
             _laatste_update[locatie_index] = nu;
     }
@@ -305,12 +305,12 @@ bool getijdata_get(int locatie_index, GetijExtreme* extremen, int max_aantal, in
 
     const GetijLocatie& loc = GETIJ_LOCATIES[locatie_index];
     File f = SPIFFS.open(loc.bestand, "r");
-    if (!f) { Serial.printf("[Getij] Niet gevonden: %s\n", loc.bestand); return false; }
+    if (!f) { BKOS_LOGF("[Getij] Niet gevonden: %s\n", loc.bestand); return false; }
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, f);
     f.close();
-    if (err) { Serial.printf("[Getij] Leesfout %s: %s\n", loc.bestand, err.c_str()); return false; }
+    if (err) { BKOS_LOGF("[Getij] Leesfout %s: %s\n", loc.bestand, err.c_str()); return false; }
 
     int lat_offset = doc["lat_offset"] | loc.lat_offset_cm;
     JsonArray arr  = doc["metingen"].as<JsonArray>();

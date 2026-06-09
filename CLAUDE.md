@@ -94,14 +94,16 @@ scherminstabiliteit terug, dan is dat de afweging om opnieuw te bekijken.
 - **Zit er in de beta iets dat nog niet uit mag?** Dan eerst een nieuwe beta maken waarin die functionaliteit is uitgeschakeld → Brendan test die → pas die beta promoten. Tijdens het promoten zelf wijzigt nooit functionaliteit.
 - **Promoot altijd vanaf de huidige `main`-HEAD** en bevestig met Brendan welke exacte beta + welk doelnummer. Staat er nieuwer (nog niet uit te brengen) werk op `main`, dan geldt de vorige regel.
 - **Nooit een lager nummer in `versie_stable_*.txt`** — de OTA-check is "anders dan", niet "nieuwer dan"; een lager nummer downgradet alle stabiele apparaten.
+- **Beta op `main` blijft staan.** Promoten verplaatst de beta niet: `BKOS_NUI_VERSIE` en `firmware/versie_*.txt` op `main` blijven het iteratienummer (bv. `0.1.260609.4`). Wie de beta installeert krijgt exact die versie; wie stabiel installeert krijgt `0.1.6`. De stabiele build (versie `0.1.6` ingebakken) leeft **alleen op de git-tag** `v0.1.6`, gebouwd op een aparte release-branch — nooit op `main` (anders zou de CI de beta-binaries overschrijven).
 
-**Werkwijze nieuwe stabiele release (bijv. promoten van `0.1.260607.3` → `0.1.6`):**
-1. Op de geteste beta (huidige `main`-HEAD): alleen `BKOS_NUI_VERSIE` in `ota.h` op `"0.1.6"` zetten. Verder niets. Push → **wacht op groene CI (alle 6 platforms)**.
-2. **Pas ná de CI-firmware-commit** taggen — anders bevat de tag geen `.bin` en krijgt elk stabiel apparaat **404** bij updaten (de stabiele URL is `…/v0.1.6/firmware/bkos_*.bin`):
-   `git pull && git tag -a v0.1.6 -m "gepromoot van 0.1.260607.3" && git push --tags`
-3. `firmware/versie_stable_*.txt` op `0.1.6` voor alle 6 platforms:
-   `versie_stable_esp32s3.txt`, `_wroom`, `_cyd28`, `_cyd40h`, `_cyd40v`, `_pico`.
-4. Entry toevoegen aan `firmware/releases.json` (nieuwste boven) met alle platform-URLs:
+**Werkwijze nieuwe stabiele release (bijv. promoten van `0.1.260609.4` → `0.1.6`) — branch-methode, laat de beta op `main` met rust:**
+1. Release-branch van de geteste `main`-HEAD: `git checkout -b release/0.1.6`.
+2. Op die branch: `BKOS_NUI_VERSIE` in `ota.h` op `"0.1.6"` zetten **én** in `.github/workflows/build.yml` de push-trigger `branches: [main, 'release/**']` maken (zodat de CI op deze branch bouwt en de `0.1.6`-binaries naar de branch terugcommit i.p.v. naar `main`). Commit + push de branch → **wacht op groene CI (alle 6 platforms)**.
+3. **Pas ná de CI-firmware-commits** taggen — anders bevat de tag geen `.bin` en krijgt elk stabiel apparaat **404** (de stabiele URL is `…/v0.1.6/firmware/bkos_*.bin`):
+   `git fetch origin release/0.1.6 && git tag -a v0.1.6 origin/release/0.1.6 -m "gepromoot van 0.1.260609.4" && git push origin v0.1.6`.
+   Verifieer met `git show v0.1.6:firmware/versie_esp32s3.txt` (= `0.1.6`) en een `curl -I` op de raw tag-URL (HTTP 200). Daarna mag de branch weg: `git push origin --delete release/0.1.6` (de tag behoudt de binaries).
+4. Nu op `main` (deze bestanden raken geen `BKOS_NUI/**` of `build.yml`, dus **geen** CI-trigger): `firmware/versie_stable_*.txt` op `0.1.6` voor alle 6 platforms
+   (`versie_stable_esp32s3.txt`, `_wroom`, `_cyd28`, `_cyd40h`, `_cyd40v`, `_pico`) en een entry toevoegen aan `firmware/releases.json` (nieuwste boven) met alle platform-URLs:
    ```json
    {"versie":"0.1.6","datum":"JJJJ-MM-DD",
     "url_s3":    "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_esp32s3_8048s070.bin",
@@ -112,8 +114,8 @@ scherminstabiliteit terug, dan is dat de afweging om opnieuw te bekijken.
     "url_pico":  "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/v0.1.6/firmware/bkos_pico1w2432.bin"}
    ```
    Laat `url_*` leeg (`""`) voor platforms die niet in deze release zitten.
-5. **Beta-historie bijwerken**: in `firmware/beta_historie.json` bij de gepromote beta het stabiele nummer invullen: `{"versie":"0.1.260607.3", … ,"gepromoot":"0.1.6"}`. (Het stabiele overzicht / `releases.json` benoemt de onderliggende beta **niet** — de link leeft alleen aan de betakant.)
-6. Push → stabiele apparaten zien de update via CONTROLEREN; installer toont 'm automatisch.
+5. **Beta-historie bijwerken**: in `firmware/beta_historie.json` bij de gepromote beta het stabiele nummer invullen: `{"versie":"0.1.260609.4", … ,"gepromoot":"0.1.6"}`. (Het stabiele overzicht / `releases.json` benoemt de onderliggende beta **niet** — de link leeft alleen aan de betakant.)
+6. Push naar `main` → stabiele apparaten zien de update via CONTROLEREN; installer toont 'm automatisch. De beta blijft op het iteratienummer staan.
 
 **De installer (`installer/index.html`) hoeft verder niet bijgewerkt** — hij leest `versie_*.txt` en `releases.json` dynamisch. Hij opent standaard op **"Stabiele release"**; "Laatste build (test)" (beta) blijft kiesbaar maar is niet voorgeselecteerd.
 

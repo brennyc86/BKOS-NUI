@@ -8,7 +8,8 @@
 static int  meld_mode    = 0;     // 0 = lijst, 1 = bewerk persoon
 static int  meld_edit_i  = -1;    // welke extra-ontvanger (0..3) in bewerk-modus
 static bool meld_kb_actief = false;
-static int  meld_kb_doel = -1;    // 0=naam 1=tel 2=signalkey 3=whatsappkey 100=eig_sk 101=eig_wk 200=hb_uur
+static int  meld_kb_doel = -1;    // 0=naam 1=tel 2=signalkey 3=whatsappkey 4=signaltel 5=whatsapptel
+                                  // 100=eig_sk 101=eig_wk 102=eig_stel 103=eig_wtel 200=hb_uur
 static unsigned long meld_flits_tot = 0;
 static const char* meld_flits_txt = "";
 
@@ -57,16 +58,21 @@ static void _teken_lijst() {
     _cel(8+2*(W3+6), y, W3, 40, "Dag (wekelijks)", _dag_naam(melding_hartslag_dag), C_CYAN, melding_hartslag != MELDING_HB_WEKELIJKS);
     y += 46;
 
-    // Eigenaar tokens: Signal | WhatsApp
+    // Eigenaar: per dienst een token + optioneel alt nr/code (leeg = nummer uit info)
     int Wh = (TFT_W - 16 - 6) / 2;
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(10, y - 2); tft.print("Eigenaar-tokens (nummer uit info):");
+    tft.setCursor(10, y - 2); tft.print("Eigenaar  (nummer uit info; alt nr/code optioneel):");
     y += 10;
     bool sk = strlen(melding_eigenaar_signal_key) > 0;
     bool wk = strlen(melding_eigenaar_whatsapp_key) > 0;
-    _cel(8,        y, Wh, 38, "Signal",   sk ? "ingesteld" : "(leeg)", sk ? C_GREEN : C_DARK_GRAY, !sk);
-    _cel(8+Wh+6,   y, Wh, 38, "WhatsApp", wk ? "ingesteld" : "(leeg)", wk ? C_GREEN : C_DARK_GRAY, !wk);
-    y += 44;
+    _cel(8,        y, Wh, 38, "Signal-token",   sk ? "ingesteld" : "(leeg)", sk ? C_GREEN : C_DARK_GRAY, !sk);
+    _cel(8+Wh+6,   y, Wh, 38, "WhatsApp-token", wk ? "ingesteld" : "(leeg)", wk ? C_GREEN : C_DARK_GRAY, !wk);
+    y += 40;
+    bool st = strlen(melding_eigenaar_signal_tel) > 0;
+    bool wt = strlen(melding_eigenaar_whatsapp_tel) > 0;
+    _cel(8,        y, Wh, 38, "Signal nr/code",   st ? "ingesteld" : "(uit info)", st ? C_CYAN : C_DARK_GRAY, !st);
+    _cel(8+Wh+6,   y, Wh, 38, "WhatsApp nr/code", wt ? "ingesteld" : "(uit info)", wt ? C_CYAN : C_DARK_GRAY, !wt);
+    y += 42;
 
     // 4 personen-knoppen
     for (int i = 0; i < MELDING_MAX_EXTRA; i++) {
@@ -123,25 +129,27 @@ static void _teken_bewerk() {
     tft.setCursor(TFT_W - 80, CONTENT_Y + (MH_HDR_H - 8) / 2); tft.print("< TERUG");
 
     int y = CONTENT_Y + MH_HDR_H + 6;
-    _veld_rij(y, "Naam",          o.naam,         false, strlen(o.naam) == 0);          y += 42;
-    _veld_rij(y, "Telefoon",      o.tel,          false, strlen(o.tel) == 0);           y += 42;
-    _veld_rij(y, "Signal-token",  o.signal_key,   true,  strlen(o.signal_key) == 0);    y += 42;
-    _veld_rij(y, "WhatsApp-token",o.whatsapp_key, true,  strlen(o.whatsapp_key) == 0);  y += 46;
+    _veld_rij(y, "Naam",             o.naam,         false, strlen(o.naam) == 0);          y += 40;
+    _veld_rij(y, "Telefoon",         o.tel,          false, strlen(o.tel) == 0);           y += 40;
+    _veld_rij(y, "Signal-token",     o.signal_key,   true,  strlen(o.signal_key) == 0);    y += 40;
+    _veld_rij(y, "Signal nr/code",   o.signal_tel,   false, strlen(o.signal_tel) == 0);    y += 40;
+    _veld_rij(y, "WhatsApp-token",   o.whatsapp_key, true,  strlen(o.whatsapp_key) == 0);  y += 40;
+    _veld_rij(y, "WhatsApp nr/code", o.whatsapp_tel, false, strlen(o.whatsapp_tel) == 0);  y += 44;
 
-    // Categorie-vinkjes
+    // Categorie-vinkjes (compact: 36px pitch zodat ze onder NAV_Y blijven)
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(16, y - 2); tft.print("Ontvangt:");
     y += 8;
     for (int c = 0; c < MELDING_CAT_N; c++) {
-        int ry = y + c * 38;
+        int ry = y + c * 36;
         bool aan = o.cat[c];
-        tft.fillRoundRect(8, ry, TFT_W - 16, 34, 5, aan ? RGB565(0, 22, 8) : C_SURFACE);
-        tft.drawRoundRect(8, ry, TFT_W - 16, 34, 5, aan ? C_GREEN : C_SURFACE3);
+        tft.fillRoundRect(8, ry, TFT_W - 16, 32, 5, aan ? RGB565(0, 22, 8) : C_SURFACE);
+        tft.drawRoundRect(8, ry, TFT_W - 16, 32, 5, aan ? C_GREEN : C_SURFACE3);
         // vinkje-vakje
-        tft.drawRect(16, ry + 8, 18, 18, aan ? C_GREEN : C_TEXT_DIM);
-        if (aan) { tft.fillRect(20, ry + 12, 10, 10, C_GREEN); }
+        tft.drawRect(16, ry + 7, 18, 18, aan ? C_GREEN : C_TEXT_DIM);
+        if (aan) { tft.fillRect(20, ry + 11, 10, 10, C_GREEN); }
         tft.setTextSize(2); tft.setTextColor(aan ? C_GREEN : C_TEXT);
-        tft.setCursor(46, ry + 9); tft.print(melding_cat_naam(c));
+        tft.setCursor(46, ry + 8); tft.print(melding_cat_naam(c));
     }
 }
 
@@ -167,6 +175,8 @@ static void _kb_opslaan(const char* val) {
     switch (meld_kb_doel) {
         case 100: strncpy(melding_eigenaar_signal_key,   val, MELDING_KEY_LEN - 1); melding_eigenaar_signal_key[MELDING_KEY_LEN-1]='\0'; break;
         case 101: strncpy(melding_eigenaar_whatsapp_key, val, MELDING_KEY_LEN - 1); melding_eigenaar_whatsapp_key[MELDING_KEY_LEN-1]='\0'; break;
+        case 102: strncpy(melding_eigenaar_signal_tel,   val, MELDING_TEL2_LEN - 1); melding_eigenaar_signal_tel[MELDING_TEL2_LEN-1]='\0'; break;
+        case 103: strncpy(melding_eigenaar_whatsapp_tel, val, MELDING_TEL2_LEN - 1); melding_eigenaar_whatsapp_tel[MELDING_TEL2_LEN-1]='\0'; break;
         case 200: { int u = atoi(val); melding_hartslag_uur = (uint8_t)(u < 0 ? 0 : (u > 23 ? 23 : u)); break; }
         default:
             if (meld_edit_i >= 0 && meld_edit_i < MELDING_MAX_EXTRA) {
@@ -175,6 +185,8 @@ static void _kb_opslaan(const char* val) {
                 else if (meld_kb_doel == 1) { strncpy(o.tel,  val, MELDING_TEL_LEN-1);  o.tel[MELDING_TEL_LEN-1]='\0'; }
                 else if (meld_kb_doel == 2) { strncpy(o.signal_key,   val, MELDING_KEY_LEN-1); o.signal_key[MELDING_KEY_LEN-1]='\0'; }
                 else if (meld_kb_doel == 3) { strncpy(o.whatsapp_key, val, MELDING_KEY_LEN-1); o.whatsapp_key[MELDING_KEY_LEN-1]='\0'; }
+                else if (meld_kb_doel == 4) { strncpy(o.signal_tel,   val, MELDING_TEL2_LEN-1); o.signal_tel[MELDING_TEL2_LEN-1]='\0'; }
+                else if (meld_kb_doel == 5) { strncpy(o.whatsapp_tel, val, MELDING_TEL2_LEN-1); o.whatsapp_tel[MELDING_TEL2_LEN-1]='\0'; }
             }
             break;
     }
@@ -203,16 +215,22 @@ static void _run_lijst(int x, int y) {
         else { melding_hartslag_dag = (melding_hartslag_dag + 1) % 7; melding_opslaan(); scherm_bouwen = true; }
         return;
     }
-    // Eigenaar tokens
-    int yc = y0 + 46 + 46 + 10;
+    // Eigenaar tokens + alt nr/code
+    int yc = y0 + 102;
     int Wh = (TFT_W - 16 - 6) / 2;
     if (y >= yc && y < yc + 38) {
         if (x < 8 + Wh) _open_kb(100, "Eigenaar Signal-token",   melding_eigenaar_signal_key,   false, true);
         else            _open_kb(101, "Eigenaar WhatsApp-token", melding_eigenaar_whatsapp_key, false, true);
         return;
     }
+    int yt = yc + 40;
+    if (y >= yt && y < yt + 38) {
+        if (x < 8 + Wh) _open_kb(102, "Eigenaar Signal nr/code",   melding_eigenaar_signal_tel,   false, false);
+        else            _open_kb(103, "Eigenaar WhatsApp nr/code", melding_eigenaar_whatsapp_tel, false, false);
+        return;
+    }
     // Personen
-    int yp = yc + 44;
+    int yp = yt + 42;
     for (int i = 0; i < MELDING_MAX_EXTRA; i++) {
         int ry = yp + i * 40;
         if (y >= ry && y < ry + 36) { meld_mode = 1; meld_edit_i = i; scherm_bouwen = true; return; }
@@ -226,15 +244,17 @@ static void _run_bewerk(int x, int y) {
     }
     MeldingOntvanger& o = melding_extra[meld_edit_i];
     int y0 = CONTENT_Y + MH_HDR_H + 6;
-    if (y >= y0 && y < y0 + 38)               { _open_kb(0, "Naam", o.naam, false, false); return; }
-    if (y >= y0+42 && y < y0+42+38)           { _open_kb(1, "Telefoon", o.tel, true, false); return; }
-    if (y >= y0+84 && y < y0+84+38)           { _open_kb(2, "Signal-token", o.signal_key, false, true); return; }
-    if (y >= y0+126 && y < y0+126+38)         { _open_kb(3, "WhatsApp-token", o.whatsapp_key, false, true); return; }
-    // Categorie-vinkjes
-    int yc = y0 + 126 + 46 + 8;
+    if (y >= y0     && y < y0+38)     { _open_kb(0, "Naam", o.naam, false, false); return; }
+    if (y >= y0+40  && y < y0+40+38)  { _open_kb(1, "Telefoon", o.tel, true, false); return; }
+    if (y >= y0+80  && y < y0+80+38)  { _open_kb(2, "Signal-token", o.signal_key, false, true); return; }
+    if (y >= y0+120 && y < y0+120+38) { _open_kb(4, "Signal nr/code", o.signal_tel, false, false); return; }
+    if (y >= y0+160 && y < y0+160+38) { _open_kb(3, "WhatsApp-token", o.whatsapp_key, false, true); return; }
+    if (y >= y0+200 && y < y0+200+38) { _open_kb(5, "WhatsApp nr/code", o.whatsapp_tel, false, false); return; }
+    // Categorie-vinkjes (start = y0+244+8, pitch 36)
+    int yc = y0 + 252;
     for (int c = 0; c < MELDING_CAT_N; c++) {
-        int ry = yc + c * 38;
-        if (y >= ry && y < ry + 34) { o.cat[c] = !o.cat[c]; melding_opslaan(); scherm_bouwen = true; return; }
+        int ry = yc + c * 36;
+        if (y >= ry && y < ry + 32) { o.cat[c] = !o.cat[c]; melding_opslaan(); scherm_bouwen = true; return; }
     }
 }
 

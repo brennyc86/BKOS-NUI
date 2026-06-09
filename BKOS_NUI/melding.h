@@ -6,10 +6,17 @@
 // en WhatsApp-token. Eigenaar ontvangt alle categorieen.
 // Extra ontvangers (4): naam, telefoon, Signal-token, WhatsApp-token, en per
 // categorie aan/uit (status updates / alarmen / berichten aan eigenaar).
+//
+// Alternatief telefoon/code per dienst: CallMeBot verwacht soms geen kaal
+// telefoonnummer maar een code met letters/leestekens (bv. een Signal-UUID), en
+// die kan voor Signal en WhatsApp verschillen. Daarom kan naast elke token een
+// optionele alt-waarde worden ingevuld (alfanumeriek). Leeg = val terug op het
+// gewone nummer (eigenaar: e_tel uit info; extra: het tel-veld).
 
 #define MELDING_MAX_EXTRA   4
 #define MELDING_NAAM_LEN    16
 #define MELDING_TEL_LEN     20
+#define MELDING_TEL2_LEN    40   // alt telefoon/code per dienst (past o.a. Signal-UUID van 36)
 #define MELDING_KEY_LEN     28
 #define MELDING_QUEUE_N     6
 #define MELDING_TEKST_LEN   140
@@ -30,6 +37,8 @@ struct MeldingOntvanger {
     char tel[MELDING_TEL_LEN];
     char signal_key[MELDING_KEY_LEN];
     char whatsapp_key[MELDING_KEY_LEN];
+    char signal_tel[MELDING_TEL2_LEN];    // alt telefoon/code Signal (leeg = gebruik tel)
+    char whatsapp_tel[MELDING_TEL2_LEN];  // alt telefoon/code WhatsApp (leeg = gebruik tel)
     bool cat[MELDING_CAT_N];        // ontvangt deze categorie?
 };
 
@@ -41,6 +50,8 @@ extern uint8_t          melding_hartslag_uur;    // 0–23
 extern uint8_t          melding_hartslag_dag;    // 0=ma … 6=zo
 extern char             melding_eigenaar_signal_key[MELDING_KEY_LEN];
 extern char             melding_eigenaar_whatsapp_key[MELDING_KEY_LEN];
+extern char             melding_eigenaar_signal_tel[MELDING_TEL2_LEN];    // alt code Signal (leeg = e_tel)
+extern char             melding_eigenaar_whatsapp_tel[MELDING_TEL2_LEN];  // alt code WhatsApp (leeg = e_tel)
 extern MeldingOntvanger melding_extra[MELDING_MAX_EXTRA];
 
 // ─── API ──────────────────────────────────────────────────────────────────────

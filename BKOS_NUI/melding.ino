@@ -17,6 +17,8 @@ uint8_t          melding_hartslag_uur = 9;
 uint8_t          melding_hartslag_dag = 0;
 char             melding_eigenaar_signal_key[MELDING_KEY_LEN]   = "";
 char             melding_eigenaar_whatsapp_key[MELDING_KEY_LEN] = "";
+char             melding_eigenaar_signal_tel[MELDING_TEL2_LEN]   = "";
+char             melding_eigenaar_whatsapp_tel[MELDING_TEL2_LEN] = "";
 MeldingOntvanger melding_extra[MELDING_MAX_EXTRA];
 
 const char* melding_cat_naam(uint8_t c) {
@@ -60,6 +62,7 @@ void melding_laden() {
     melding_aan = false; melding_bij_opstart = false;
     melding_hartslag = MELDING_HB_UIT; melding_hartslag_uur = 9; melding_hartslag_dag = 0;
     melding_eigenaar_signal_key[0] = '\0'; melding_eigenaar_whatsapp_key[0] = '\0';
+    melding_eigenaar_signal_tel[0] = '\0'; melding_eigenaar_whatsapp_tel[0] = '\0';
     memset(melding_extra, 0, sizeof(melding_extra));
 
     if (!SPIFFS.exists(MELDING_BESTAND)) return;
@@ -78,6 +81,8 @@ void melding_laden() {
         else if (k == "hb_dag")  melding_hartslag_dag = (uint8_t)v.toInt();
         else if (k == "eig_sk")  { strncpy(melding_eigenaar_signal_key,   v.c_str(), MELDING_KEY_LEN-1); }
         else if (k == "eig_wk")  { strncpy(melding_eigenaar_whatsapp_key, v.c_str(), MELDING_KEY_LEN-1); }
+        else if (k == "eig_st")  { strncpy(melding_eigenaar_signal_tel,   v.c_str(), MELDING_TEL2_LEN-1); }
+        else if (k == "eig_wt")  { strncpy(melding_eigenaar_whatsapp_tel, v.c_str(), MELDING_TEL2_LEN-1); }
         else if (k.startsWith("x")) {
             int idx = k.substring(1, 2).toInt();
             if (idx < 0 || idx >= MELDING_MAX_EXTRA) continue;
@@ -87,6 +92,8 @@ void melding_laden() {
             else if (veld == "t")  { strncpy(o.tel,  v.c_str(), MELDING_TEL_LEN-1); }
             else if (veld == "sk") { strncpy(o.signal_key,   v.c_str(), MELDING_KEY_LEN-1); }
             else if (veld == "wk") { strncpy(o.whatsapp_key, v.c_str(), MELDING_KEY_LEN-1); }
+            else if (veld == "st") { strncpy(o.signal_tel,   v.c_str(), MELDING_TEL2_LEN-1); }
+            else if (veld == "wt") { strncpy(o.whatsapp_tel, v.c_str(), MELDING_TEL2_LEN-1); }
             else if (veld == "c0") o.cat[0] = (v.toInt() != 0);
             else if (veld == "c1") o.cat[1] = (v.toInt() != 0);
             else if (veld == "c2") o.cat[2] = (v.toInt() != 0);
@@ -105,12 +112,16 @@ void melding_opslaan() {
     f.printf("hb_dag=%d\n",  melding_hartslag_dag);
     f.printf("eig_sk=%s\n",  melding_eigenaar_signal_key);
     f.printf("eig_wk=%s\n",  melding_eigenaar_whatsapp_key);
+    f.printf("eig_st=%s\n",  melding_eigenaar_signal_tel);
+    f.printf("eig_wt=%s\n",  melding_eigenaar_whatsapp_tel);
     for (int i = 0; i < MELDING_MAX_EXTRA; i++) {
         MeldingOntvanger& o = melding_extra[i];
         f.printf("x%d_n=%s\n",  i, o.naam);
         f.printf("x%d_t=%s\n",  i, o.tel);
         f.printf("x%d_sk=%s\n", i, o.signal_key);
         f.printf("x%d_wk=%s\n", i, o.whatsapp_key);
+        f.printf("x%d_st=%s\n", i, o.signal_tel);
+        f.printf("x%d_wt=%s\n", i, o.whatsapp_tel);
         f.printf("x%d_c0=%d\n", i, o.cat[0] ? 1 : 0);
         f.printf("x%d_c1=%d\n", i, o.cat[1] ? 1 : 0);
         f.printf("x%d_c2=%d\n", i, o.cat[2] ? 1 : 0);
@@ -146,17 +157,23 @@ static void _verstuur(const char* tel, const char* key, bool whatsapp, const Str
     if (http.begin(client, url)) { http.GET(); http.end(); }
 }
 
+// Kies het nummer/de code voor een dienst: alt-waarde indien ingevuld, anders het basisnummer.
+static const char* _kies_tel(const char* alt, const char* basis) {
+    return (alt && alt[0]) ? alt : basis;
+}
+
 static void _verstuur_allen(const String& tekst, uint8_t cat) {
     String enc = _url_encode(tekst);
-    // Eigenaar: nummer uit info, ontvangt ALLE categorieen
+    // Eigenaar: nummer uit info (of alt-code per dienst), ontvangt ALLE categorieen
     const char* otel = info_eigenaar_tel();
-    _verstuur(otel, melding_eigenaar_signal_key,   false, enc);
-    _verstuur(otel, melding_eigenaar_whatsapp_key, true,  enc);
+    _verstuur(_kies_tel(melding_eigenaar_signal_tel,   otel), melding_eigenaar_signal_key,   false, enc);
+    _verstuur(_kies_tel(melding_eigenaar_whatsapp_tel, otel), melding_eigenaar_whatsapp_key, true,  enc);
     // Extra ontvangers: alleen als ingeschreven op deze categorie
     for (int i = 0; i < MELDING_MAX_EXTRA; i++) {
-        if (cat < MELDING_CAT_N && !melding_extra[i].cat[cat]) continue;
-        _verstuur(melding_extra[i].tel, melding_extra[i].signal_key,   false, enc);
-        _verstuur(melding_extra[i].tel, melding_extra[i].whatsapp_key, true,  enc);
+        MeldingOntvanger& o = melding_extra[i];
+        if (cat < MELDING_CAT_N && !o.cat[cat]) continue;
+        _verstuur(_kies_tel(o.signal_tel,   o.tel), o.signal_key,   false, enc);
+        _verstuur(_kies_tel(o.whatsapp_tel, o.tel), o.whatsapp_key, true,  enc);
     }
 }
 

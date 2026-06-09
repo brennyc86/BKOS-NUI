@@ -349,11 +349,6 @@ static void _pnb_item_render(int ai, int cx, int cy, uint16_t kleur, uint16_t bg
                 tft.setCursor(cx - 15, cy - 4); tft.print("PANEEL");
                 break;
             }
-            case SCREEN_SCHERM: {
-                tft.setTextSize(1); tft.setTextColor(kleur);
-                tft.setCursor(cx - 15, cy - 4); tft.print("SCHERM");
-                break;
-            }
         }
     }
 }

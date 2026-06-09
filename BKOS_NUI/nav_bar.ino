@@ -35,6 +35,9 @@ void nav_midden_bouwen() {
     // (BRUG/BERICHTEN/PANEEL/SCHERM staan nu in CONFIG)
 #endif
 
+    // Bericht aan eigenaar — gebruikersfunctie, dus in de balk (niet in CONFIG)
+    _voeg("BERICHT", SCREEN_BERICHT);
+
     // Geïnstalleerde apps met in_balk == true
     for (int i = 0; i < apps_cnt; i++) {
         if (apps[i].actief && apps[i].in_balk)
@@ -347,6 +350,11 @@ static void _pnb_item_render(int ai, int cx, int cy, uint16_t kleur, uint16_t bg
             case SCREEN_PANEEL: {
                 tft.setTextSize(1); tft.setTextColor(kleur);
                 tft.setCursor(cx - 15, cy - 4); tft.print("PANEEL");
+                break;
+            }
+            case SCREEN_BERICHT: {
+                tft.setTextSize(1); tft.setTextColor(kleur);
+                tft.setCursor(cx - 18, cy - 4); tft.print("BERICHT");
                 break;
             }
         }

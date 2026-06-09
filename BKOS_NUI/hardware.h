@@ -18,6 +18,8 @@
 #include "screen_melding.h"
 #include "paneel.h"
 #include "screen_paneel.h"
+#include "bericht.h"
+#include "screen_bericht.h"
 
 void hw_setup();
 void hw_loop();

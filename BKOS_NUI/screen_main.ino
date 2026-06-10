@@ -375,14 +375,35 @@ static void _paneel_rect(int idx, int totaal, int* bx, int* by, int* bw, int* bh
     *by = (rij == 0) ? DKNOP_Y1 : DKNOP_Y2;
 }
 
-static void _paneel_knop_teken(int x, int y, int w, int h, const char* label, bool aan, bool mix) {
+// Herken bekende apparaatnamen → icoon (na strippen van "**"); -1 = geen icoon
+static int paneel_icoon(const char* naam) {
+    char b[20]; int j = 0;
+    const char* s = naam;
+    if (s[0] == '*' && s[1] == '*') s += 2;
+    for (; s[j] && j < 19; j++) { char c = s[j]; if (c >= 'A' && c <= 'Z') c += 32; b[j] = c; }
+    b[j] = '\0';
+    if (strstr(b, "usb"))   return I_USB;
+    if (strstr(b, "230"))   return I_230V;
+    if (strstr(b, "tv"))    return I_TV;
+    if (strstr(b, "water")) return I_WATER;
+    if (strstr(b, "dek"))   return I_DEKLICHT;
+    return -1;
+}
+
+static void _paneel_knop_teken(int x, int y, int w, int h, const char* label,
+                               int icoon, bool aan, bool mix) {
     tft.fillRoundRect(x, y, w, h, KNOP_R, aan ? C_SURFACE2 : C_SURFACE);
     if (aan) { tft.drawRoundRect(x, y, w, h, KNOP_R, C_CYAN); tft.fillRoundRect(x, y, 5, h, 3, C_CYAN); }
     else     { tft.drawRoundRect(x, y, w, h, KNOP_R, C_SURFACE2); }
     uint16_t fg = aan ? C_CYAN : C_TEXT_DIM;
     tft.setTextSize(2); tft.setTextColor(fg);
     int tw = strlen(label) * 12;
-    tft.setCursor(x + (w - tw) / 2, y + h / 2 - 8);
+    if (icoon >= 0) {
+        teken_icoon(icoon, x + w / 2, y + h * 3 / 8, fg);   // icoon boven
+        tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8); // label onder
+    } else {
+        tft.setCursor(x + (w - tw) / 2, y + h / 2 - 8);
+    }
     tft.print(label);
     if (mix) tft.fillRoundRect(x + 4, y + h - 6, w - 8, 4, 2, C_ORANGE);
 }
@@ -399,7 +420,7 @@ static void apparaat_knoppen_teken() {
         int bx, by, bw, bh; _paneel_rect(i, totaal, &bx, &by, &bw, &bh);
         byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
         char lab[16]; paneel_label(naam, lab, sizeof(lab));
-        _paneel_knop_teken(bx, by, bw, bh, lab, (s3 == 2), (s3 == 1));
+        _paneel_knop_teken(bx, by, bw, bh, lab, paneel_icoon(naam), (s3 == 2), (s3 == 1));
     }
 }
 
@@ -727,11 +748,18 @@ static void pico_apparaten_teken() {
         byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
         bool aan = (s3 == 2), mix = (s3 == 1);
         char lab[16]; paneel_label(naam, lab, sizeof(lab));
+        int icoon = paneel_icoon(naam);
         tft.fillRoundRect(bx, PICO_DKNOP_Y, bw, PICO_DKNOP_H, 4, aan ? C_SURFACE2 : C_SURFACE);
         tft.drawRoundRect(bx, PICO_DKNOP_Y, bw, PICO_DKNOP_H, 4, aan ? C_CYAN : C_SURFACE2);
-        tft.setTextSize(1); tft.setTextColor(aan ? C_CYAN : C_TEXT_DIM);
+        uint16_t fg = aan ? C_CYAN : C_TEXT_DIM;
+        tft.setTextSize(1); tft.setTextColor(fg);
         int tw = strlen(lab) * 6;
-        tft.setCursor(bx + (bw - tw) / 2, PICO_DKNOP_Y + PICO_DKNOP_H / 2 - 4);
+        if (icoon >= 0) {
+            teken_icoon(icoon, bx + bw / 2, PICO_DKNOP_Y + 11, fg);
+            tft.setCursor(bx + (bw - tw) / 2, PICO_DKNOP_Y + PICO_DKNOP_H - 9);
+        } else {
+            tft.setCursor(bx + (bw - tw) / 2, PICO_DKNOP_Y + PICO_DKNOP_H / 2 - 4);
+        }
         tft.print(lab);
         if (mix) tft.fillRect(bx + 2, PICO_DKNOP_Y + PICO_DKNOP_H - 4, bw - 4, 3, C_ORANGE);
     }

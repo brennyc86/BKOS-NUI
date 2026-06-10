@@ -1,176 +1,163 @@
 #include "boot_modellen.h"
-#include "app_state.h"     // boot_cat, boot_model
+#include "app_state.h"     // boot_cat, boot_model, vaar_modus, MODE_*
 #include "hw_scherm.h"     // tft
 #include "ui_colors.h"     // C_TEXT_DIM, C_CYAN, RGB565
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  Boot tekendata — bootcoördinaten (x=0 hek links … 120 boeg rechts; y=0 top)
-//  Knooppunt-algoritme: identiek opeenvolgend paar = node (begin/eind segment).
+//  Boot tekendata — schone zij-aanzichten in bootcoördinaten.
+//  x: 0 = hek (links) … 120 = boeg (rechts)   |   y: 0 = masttop … ~167 = kiel
+//  Elke array is één losse polylijn (punt→punt→…). Voor een gesloten vorm staat
+//  het beginpunt ook achteraan. Geen knooppunt-truc → geen verbindingslijnen.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ─── Zeilboot: Westerly (CR 1070) ─────────────────────────────────────────────
-static const int WST_ROMP[][2] = {
-    {0,150},{0,150},{2,165},{100,165},{120,140},
-    {0,150},{2,146},{40,140},{40,125},{49,125},{54,133},{70,133},{72,135},{85,135},{92,142},{92,142},
-    {70,150},{70,150},{105,147},{105,147},
-    {54,133},{54,133},{44,133},{44,137},{44,137},
-    {0,150},{0,150},{63,0},{71,0},{120,141},{120,141},
-    {40,140},{40,140},{49,137},{49,146},{49,146},{25,143},{25,143},{25,148},{25,148}
+#define SEG(a, kl)   { (a), (uint8_t)(sizeof(a) / sizeof((a)[0])), (kl) }
+
+// ─── Zeilboot: Westerly (cruiser, vinkiel + skeg, kajuit, sloeptuig) ───────────
+static const int WST_HULL[][2] = {  // zeeg → boeg → voorsteven → bodem → spiegel
+    {10,131},{45,128},{85,127},{110,129},{117,133},
+    {118,141},{110,150},{70,154},{34,152},{12,150},{10,131}
 };
-static const int WST_ZEILEN[][2] = {
-    {20,120},{20,120},{65,120},{65,119},{20,119},{20,118},{65,118},{65,118},
-    {20,118},{20,118},{65,4},{65,4},
-    {117,137},{117,137},{89,137},{89,137},{52,129},{52,129},{53,120},{53,120}
-};
-static const int WST_MAST[][2] = {
-    {69,133},{69,133},{69,0},{68,0},{68,133},{67,133},{67,0},{66,0},{66,133},{65,133},{65,0},{65,0}
-};
-static const int WST_RAAM1[][2] = { {51,142},{51,142},{58,142},{58,135},{53,135},{51,142},{51,142} };
-static const int WST_RAAM2[][2] = { {61,142},{61,142},{69,142},{67,135},{61,135},{61,142},{61,142} };
-static const int WST_RAAM3[][2] = { {42,131},{42,131},{51,131},{47,127},{42,127},{42,131},{42,131} };
+static const int WST_KIEL[][2]   = { {52,153},{50,167},{64,167},{62,153} };
+static const int WST_ROER[][2]   = { {22,151},{21,162},{27,162},{26,151} };
+static const int WST_KAJUIT[][2] = { {42,128},{46,119},{74,119},{78,128} };
+static const int WST_RAAM1[][2]  = { {50,124},{60,124} };
+static const int WST_RAAM2[][2]  = { {64,124},{72,124} };
+static const int WST_MAST[][2]   = { {60,119},{60,7} };
+static const int WST_GIEK[][2]   = { {60,115},{30,118} };
+static const int WST_GROOT[][2]  = { {60,14},{59,114},{31,117},{60,14} };
+static const int WST_FOK[][2]    = { {61,19},{115,134},{86,132},{61,19} };
 static const BootSeg WST_SEGS[] = {
-    {WST_ZEILEN, 21, BK_ZEIL}, {WST_ROMP, 41, BK_ROMP}, {WST_MAST, 12, BK_MAST},
-    {WST_RAAM1, 7, BK_RAAM}, {WST_RAAM2, 7, BK_RAAM}, {WST_RAAM3, 7, BK_RAAM},
+    SEG(WST_GROOT, BK_ZEIL), SEG(WST_FOK, BK_ZEIL),
+    SEG(WST_HULL, BK_ROMP), SEG(WST_KIEL, BK_ROMP), SEG(WST_ROER, BK_ROMP),
+    SEG(WST_KAJUIT, BK_ROMP), SEG(WST_RAAM1, BK_RAAM), SEG(WST_RAAM2, BK_RAAM),
+    SEG(WST_MAST, BK_MAST), SEG(WST_GIEK, BK_MAST),
 };
-static const BootRaam WST_RAMEN[] = { {75,139,4}, {83,139,4} };
 
-// ─── Zeilboot: Jachtschouw (platbodem, gaffeltuig, zwaard) ─────────────────────
-static const int JS_ROMP[][2] = {
-    {6,120},{6,120},{6,150},{100,150},{118,127},{8,120},{6,120},{6,120}
+// ─── Zeilboot: Jachtschouw (platbodem, gaffeltuig, zwaard, roerblad) ───────────
+static const int JS_HULL[][2] = {  // platte bodem + schuine vlakke stevens
+    {16,131},{40,130},{104,131},{116,132},{116,131},
+    {104,150},{14,150},{12,133},{16,131}
 };
-static const int JS_CABIN[][2] = {
-    {40,120},{40,120},{40,108},{72,108},{72,120},{72,120}
-};
-static const int JS_MAST[][2] = { {64,118},{64,118},{64,14},{63,14},{63,118},{63,118} };
-static const int JS_ZEIL[][2] = {
-    {24,116},{24,116},{64,116},{64,40},{26,20},{24,116},{24,116}
-};
-static const int JS_ZWAARD[][2] = { {52,150},{52,150},{56,166},{62,166},{60,150},{60,150} };
+static const int JS_ZWAARD[][2] = { {60,150},{58,167},{66,167},{64,150} };
+static const int JS_ROER[][2]   = { {10,150},{8,161},{14,161},{13,150} };
+static const int JS_KAJUIT[][2] = { {44,130},{46,122},{70,122},{72,130} };
+static const int JS_MAST[][2]   = { {52,130},{52,12} };
+static const int JS_GIEK[][2]   = { {52,118},{22,122} };
+static const int JS_GAFFEL[][2] = { {52,32},{34,18} };
+static const int JS_GROOT[][2]  = { {34,18},{52,32},{52,118},{22,121},{34,18} };
+static const int JS_FOK[][2]    = { {52,34},{110,131},{80,129},{52,34} };
 static const BootSeg JS_SEGS[] = {
-    {JS_ZEIL, 7, BK_ZEIL}, {JS_ROMP, 8, BK_ROMP}, {JS_CABIN, 6, BK_ROMP},
-    {JS_MAST, 6, BK_MAST}, {JS_ZWAARD, 6, BK_ROMP},
+    SEG(JS_GROOT, BK_ZEIL), SEG(JS_FOK, BK_ZEIL),
+    SEG(JS_HULL, BK_ROMP), SEG(JS_ZWAARD, BK_ROMP), SEG(JS_ROER, BK_ROMP),
+    SEG(JS_KAJUIT, BK_ROMP),
+    SEG(JS_MAST, BK_MAST), SEG(JS_GIEK, BK_MAST), SEG(JS_GAFFEL, BK_MAST),
 };
 
-// ─── Zeilboot: Catamaran ───────────────────────────────────────────────────────
-static const int CAT_HULL1[][2] = {
-    {0,158},{0,158},{2,164},{90,164},{96,158},{88,154},{4,154},{0,158},{0,158}
+// ─── Zeilboot: Catamaran (slanke romp + brugdek + sloeptuig) ───────────────────
+static const int CAT_HULL[][2] = {
+    {8,150},{14,141},{100,140},{112,144},{104,150},{8,150}
 };
-static const int CAT_HULL2[][2] = {
-    {18,145},{18,145},{20,150},{108,150},{114,145},{106,141},{22,141},{18,145},{18,145}
-};
-static const int CAT_BRUG[][2] = {
-    {30,154},{30,154},{30,141},{30,141},{82,154},{82,154},{82,141},{82,141},{30,148},{30,148},{82,148},{82,148}
-};
-static const int CAT_MAST[][2] = { {57,148},{57,148},{57,40},{56,40},{56,148},{55,148},{55,40},{55,40} };
-static const int CAT_ZEIL[][2] = { {22,143},{22,143},{57,45},{57,143},{57,143} };
+static const int CAT_BRUG[][2] = { {28,140},{30,129},{82,129},{82,140} };
+static const int CAT_RAAM[][2] = { {38,134},{74,134} };
+static const int CAT_MAST[][2] = { {56,129},{56,6} };
+static const int CAT_GIEK[][2] = { {56,116},{26,119} };
+static const int CAT_GROOT[][2]= { {56,12},{55,115},{26,118},{56,12} };
+static const int CAT_FOK[][2]  = { {57,18},{110,141},{84,139},{57,18} };
 static const BootSeg CAT_SEGS[] = {
-    {CAT_ZEIL, 5, BK_ZEIL}, {CAT_HULL1, 9, BK_ROMP}, {CAT_HULL2, 9, BK_ROMP},
-    {CAT_BRUG, 12, BK_ROMP}, {CAT_MAST, 8, BK_MAST},
+    SEG(CAT_GROOT, BK_ZEIL), SEG(CAT_FOK, BK_ZEIL),
+    SEG(CAT_HULL, BK_ROMP), SEG(CAT_BRUG, BK_ROMP), SEG(CAT_RAAM, BK_RAAM),
+    SEG(CAT_MAST, BK_MAST), SEG(CAT_GIEK, BK_MAST),
 };
 
-// ─── Motorboot: Kruizer ────────────────────────────────────────────────────────
-static const int MBK_ROMP[][2] = {
-    {0,160},{0,160},{115,160},{115,138},{105,132},{20,132},{8,142},{0,160},{0,160}
+// ─── Motorboot: Kruizer (kajuitkruiser met stuurhut + radarbeugel) ─────────────
+static const int MK_HULL[][2] = {
+    {6,140},{40,136},{116,140},{116,148},{96,158},{14,158},{6,150},{6,140}
 };
-static const int MBK_HUIS[][2] = {
-    {22,132},{22,132},{22,102},{28,96},{70,96},{76,102},{76,132},{76,132},
-    {76,132},{76,132},{76,118},{98,118},{98,132},{98,132}
+static const int MK_OPBOUW[][2] = {  // schuine voorruit → kajuitdak → achterkant
+    {26,138},{34,118},{76,118},{84,138}
 };
-static const int MBK_RAMEN[][2] = {
-    {30,104},{30,104},{30,116},{40,116},{40,104},{40,104},
-    {46,104},{46,104},{46,116},{56,116},{56,104},{56,104},
-    {62,104},{62,104},{62,116},{72,116},{72,104},{72,104}
+static const int MK_RAAM[][2] = { {38,121},{72,121} };
+static const int MK_RAAM_V1[][2] = { {50,118},{50,130} };
+static const int MK_RAAM_V2[][2] = { {62,118},{62,130} };
+static const int MK_BEUGEL[][2] = { {54,118},{54,98} };
+static const int MK_RADAR[][2]  = { {47,100},{61,100} };
+static const BootSeg MK_SEGS[] = {
+    SEG(MK_HULL, BK_ROMP), SEG(MK_OPBOUW, BK_ROMP),
+    SEG(MK_RAAM, BK_RAAM), SEG(MK_RAAM_V1, BK_RAAM), SEG(MK_RAAM_V2, BK_RAAM),
+    SEG(MK_BEUGEL, BK_MAST), SEG(MK_RADAR, BK_MAST),
 };
-static const int MBK_ANT[][2] = { {48,96},{48,96},{48,82},{48,82} };
-static const BootSeg MBK_SEGS[] = {
-    {MBK_ROMP, 9, BK_ROMP}, {MBK_HUIS, 14, BK_ROMP}, {MBK_RAMEN, 18, BK_RAAM}, {MBK_ANT, 4, BK_MAST},
-};
-static const BootRaam MBK_RAMEN_R[] = { {82,147,4}, {92,147,4} };
 
-// ─── Motorboot: Doerak (kajuitkruiser, rondspant) ──────────────────────────────
-static const int DO_ROMP[][2] = {
-    {6,142},{6,142},{4,152},{14,162},{102,162},{116,148},{104,138},{18,138},{6,142},{6,142}
+// ─── Motorboot: Doerak (klassieke stalen kruiser, rondspant, ronde kont) ───────
+static const int DO_HULL[][2] = {
+    {8,140},{20,137},{110,140},{116,150},{100,159},{14,159},{5,150},{8,140}
 };
-static const int DO_HUIS[][2] = {
-    {30,138},{30,138},{30,112},{40,104},{78,104},{82,112},{82,138},{82,138}
-};
-static const int DO_KUIP[][2] = {
-    {82,138},{82,138},{82,128},{108,128},{108,138},{108,138}
-};
-static const int DO_RAMEN[][2] = {
-    {38,112},{38,112},{38,122},{50,122},{50,112},{38,112},{38,112},
-    {56,112},{56,112},{56,122},{74,122},{74,112},{56,112},{56,112}
-};
-static const int DO_ANT[][2] = { {56,104},{56,104},{56,86},{56,86} };
+static const int DO_KAJUIT[][2] = { {32,138},{34,124},{78,124},{80,138} };
+static const int DO_KUIP[][2]   = { {80,138},{80,132},{106,132},{108,138} };
+static const int DO_RAAM1[][2]  = { {40,128},{50,128} };
+static const int DO_RAAM2[][2]  = { {56,128},{72,128} };
+static const int DO_STAAF[][2]  = { {56,124},{56,104} };
 static const BootSeg DO_SEGS[] = {
-    {DO_ROMP, 10, BK_ROMP}, {DO_HUIS, 8, BK_ROMP}, {DO_KUIP, 6, BK_ROMP},
-    {DO_RAMEN, 14, BK_RAAM}, {DO_ANT, 4, BK_MAST},
+    SEG(DO_HULL, BK_ROMP), SEG(DO_KAJUIT, BK_ROMP), SEG(DO_KUIP, BK_ROMP),
+    SEG(DO_RAAM1, BK_RAAM), SEG(DO_RAAM2, BK_RAAM), SEG(DO_STAAF, BK_MAST),
 };
 
-// ─── Kleine zeilboot: Open zeilboot (kajuitloos, enkele witte lamp) ────────────
-static const int OZ_ROMP[][2] = {
-    {8,138},{8,138},{8,150},{102,150},{114,136},{8,138},{8,138},
-    {18,138},{18,138},{96,138},{96,138}
+// ─── Kleine zeilboot: Open zeilboot (open kuip, sloeptuig, één witte lamp) ─────
+static const int OZ_HULL[][2] = {
+    {10,137},{40,135},{90,134},{112,136},{116,138},{110,148},{60,151},{16,148},{10,137}
 };
-static const int OZ_MAST[][2] = { {58,138},{58,138},{58,8},{57,8},{57,138},{57,138} };
-static const int OZ_ZEIL[][2] = { {28,134},{28,134},{58,134},{58,12},{30,132},{28,134},{28,134} };
-static const int OZ_JIB[][2]  = { {108,138},{108,138},{58,16},{72,138},{108,138},{108,138} };
+static const int OZ_KUIP[][2] = { {24,138},{96,137} };   // dekrand/kuiprand
+static const int OZ_MAST[][2] = { {54,137},{54,10} };
+static const int OZ_GIEK[][2] = { {54,126},{24,129} };
+static const int OZ_GROOT[][2]= { {54,16},{53,126},{25,128},{54,16} };
+static const int OZ_FOK[][2]  = { {55,22},{112,138},{86,136},{55,22} };
 static const BootSeg OZ_SEGS[] = {
-    {OZ_ZEIL, 7, BK_ZEIL}, {OZ_JIB, 6, BK_ZEIL}, {OZ_ROMP, 11, BK_ROMP}, {OZ_MAST, 6, BK_MAST},
+    SEG(OZ_GROOT, BK_ZEIL), SEG(OZ_FOK, BK_ZEIL),
+    SEG(OZ_HULL, BK_ROMP), SEG(OZ_KUIP, BK_ROMP),
+    SEG(OZ_MAST, BK_MAST), SEG(OZ_GIEK, BK_MAST),
 };
 
-// ─── Kleine motorboot: Open sloep ──────────────────────────────────────────────
-static const int OS_ROMP[][2] = {
-    {6,138},{6,138},{4,150},{14,158},{100,158},{116,142},{104,136},{6,138},{6,138},
-    {16,138},{16,138},{96,138},{96,138}
+// ─── Kleine motorboot: Open sloep (klassieke open motorsloep) ──────────────────
+static const int OS_HULL[][2] = {
+    {8,138},{40,135},{104,134},{116,142},{102,156},{14,156},{4,148},{8,138}
 };
-static const int OS_CONSOLE[][2] = {
-    {58,136},{58,136},{58,120},{72,120},{72,136},{72,136}
-};
-static const int OS_STAAF[][2] = { {12,138},{12,138},{12,118},{12,118} };
+static const int OS_KUIP[][2]    = { {20,138},{96,137} };
+static const int OS_CONSOLE[][2] = { {58,135},{58,124},{72,124},{72,135} };
+static const int OS_STAAF[][2]   = { {12,136},{12,120} };
 static const BootSeg OS_SEGS[] = {
-    {OS_ROMP, 13, BK_ROMP}, {OS_CONSOLE, 6, BK_ROMP}, {OS_STAAF, 4, BK_MAST},
+    SEG(OS_HULL, BK_ROMP), SEG(OS_KUIP, BK_ROMP),
+    SEG(OS_CONSOLE, BK_ROMP), SEG(OS_STAAF, BK_MAST),
 };
 
-// ─── Kleine motorboot: Speedboat ───────────────────────────────────────────────
-static const int MBS_ROMP[][2] = {
-    {0,155},{0,155},{115,163},{115,140},{15,133},{0,155},{0,155}
+// ─── Kleine motorboot: Speedboot (open glijboot met voorruit) ──────────────────
+static const int SB_HULL[][2] = {
+    {6,146},{16,134},{116,140},{112,154},{8,154},{6,146}
 };
-static const int MBS_HUIS[][2] = {
-    {28,133},{28,133},{24,116},{62,110},{80,116},{80,133},{80,133}
-};
-static const int MBS_RAAM[][2] = { {34,120},{34,120},{36,115},{62,115},{62,120},{34,120},{34,120} };
-static const int MBS_ACHTERDEK[][2] = { {80,133},{80,133},{80,122},{104,122},{104,133},{104,133} };
-static const BootSeg MBS_SEGS[] = {
-    {MBS_ROMP, 7, BK_ROMP}, {MBS_HUIS, 7, BK_ROMP}, {MBS_RAAM, 7, BK_RAAM}, {MBS_ACHTERDEK, 6, BK_ROMP},
+static const int SB_RUIT[][2]  = { {40,134},{46,124},{64,124},{66,132} };
+static const int SB_STAAF[][2] = { {10,134},{10,120} };
+static const BootSeg SB_SEGS[] = {
+    SEG(SB_HULL, BK_ROMP), SEG(SB_RUIT, BK_RAAM), SEG(SB_STAAF, BK_MAST),
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Modellen per categorie
 // ══════════════════════════════════════════════════════════════════════════════
+#define NSEG(segs)  (uint8_t)(sizeof(segs) / sizeof((segs)[0]))
+
 static const BootModel ZEIL_MODELLEN[] = {
-    {"Westerly",   WST_SEGS, 6, WST_RAMEN, 2, BK_RAAM,
-       {67,2, 67,50, 4,148, 82,135, 82,145}},
-    {"Jachtschouw", JS_SEGS, 5, nullptr, 0, BK_RAAM,
-       {64,14, 64,60, 6,135, 100,122, 100,126}},
-    {"Catamaran",  CAT_SEGS, 5, nullptr, 0, BK_RAAM,
-       {56,42, 56,70, 4,158, 96,150, 96,154}},
+    {"Westerly",    WST_SEGS, NSEG(WST_SEGS), nullptr, 0, BK_RAAM, {60,7,  60,52, 10,129, 106,130, 106,135}},
+    {"Jachtschouw", JS_SEGS,  NSEG(JS_SEGS),  nullptr, 0, BK_RAAM, {52,12, 52,55, 13,131, 102,131, 102,135}},
+    {"Catamaran",   CAT_SEGS, NSEG(CAT_SEGS), nullptr, 0, BK_RAAM, {56,6,  56,52,  9,140, 101,141, 101,145}},
 };
 static const BootModel MOTOR_MODELLEN[] = {
-    {"Kruizer", MBK_SEGS, 4, MBK_RAMEN_R, 2, BK_RAAM,
-       {48,80, 48,108, 4,150, 100,138, 100,142}},
-    {"Doerak",  DO_SEGS, 5, nullptr, 0, BK_RAAM,
-       {56,86, 56,112, 6,140, 100,130, 100,134}},
+    {"Kruizer", MK_SEGS, NSEG(MK_SEGS), nullptr, 0, BK_RAAM, {54,98,  54,112, 7,138, 105,137, 105,141}},
+    {"Doerak",  DO_SEGS, NSEG(DO_SEGS), nullptr, 0, BK_RAAM, {56,104, 56,120, 9,138, 103,137, 103,141}},
 };
 static const BootModel KLEIN_ZEIL_MODELLEN[] = {
-    {"Open zeilboot", OZ_SEGS, 4, nullptr, 0, BK_RAAM,
-       {58,8, 58,40, 6,138, 100,140, 100,143}},
+    {"Open zeilboot", OZ_SEGS, NSEG(OZ_SEGS), nullptr, 0, BK_RAAM, {54,10, 54,40, 12,137, 105,137, 105,141}},
 };
 static const BootModel KLEIN_MOTOR_MODELLEN[] = {
-    {"Open sloep", OS_SEGS, 3, nullptr, 0, BK_RAAM,
-       {12,118, 12,130, 6,140, 100,140, 100,143}},
-    {"Speedboat",  MBS_SEGS, 4, nullptr, 0, BK_RAAM,
-       {16,116, 16,126, 4,150, 100,134, 100,138}},
+    {"Open sloep", OS_SEGS, NSEG(OS_SEGS), nullptr, 0, BK_RAAM, {12,120, 12,130, 8,136, 104,135, 104,139}},
+    {"Speedboot",  SB_SEGS, NSEG(SB_SEGS), nullptr, 0, BK_RAAM, {10,120, 10,130, 6,136, 104,139, 104,143}},
 };
 
 const BootCategorie boot_categorien[BCAT_N] = {
@@ -211,47 +198,32 @@ void boot_vaarmodus_herzien() {
 
 static uint16_t _seg_kleur(uint8_t id) {
     switch (id) {
-        case BK_ZEIL: return RGB565(30, 55, 90);
-        case BK_MAST: return RGB565(160, 170, 190);
+        case BK_ZEIL: return RGB565(120, 140, 170);  // licht zeildoek
+        case BK_MAST: return RGB565(160, 170, 190);  // grijs spar
         case BK_RAAM: return C_CYAN;
-        default:      return C_TEXT_DIM;
+        default:      return C_TEXT_DIM;              // romp/opbouw
+    }
+}
+
+// Tekent elk segment als losse polylijn (punt i → punt i+1), geen verbindingen.
+static void _pad(const BootSeg& seg, int ox, int oy, int xn, int xd, int yn, int yd,
+                 uint16_t kleur) {
+    for (uint8_t i = 0; i + 1 < seg.cnt; i++) {
+        int x0 = ox + seg.data[i][0]   * xn / xd, y0 = oy + seg.data[i][1]   * yn / yd;
+        int x1 = ox + seg.data[i+1][0] * xn / xd, y1 = oy + seg.data[i+1][1] * yn / yd;
+        tft.drawLine(x0, y0, x1, y1, kleur);
     }
 }
 
 void boot_model_teken(const BootModel* m, int ox, int oy,
                       int xn, int xd, int yn, int yd, bool met_ramen) {
-    for (uint8_t s = 0; s < m->seg_cnt; s++) {
-        const BootSeg& seg = m->segs[s];
-        uint16_t kleur = _seg_kleur(seg.kleur_id);
-        int px = 0, py = 0; bool has = false; int i = 0;
-        while (i < seg.cnt) {
-            int x = seg.data[i][0], y = seg.data[i][1];
-            bool node = (i + 1 < seg.cnt && seg.data[i+1][0] == x && seg.data[i+1][1] == y);
-            if (has)
-                tft.drawLine(ox + px*xn/xd, oy + py*yn/yd, ox + x*xn/xd, oy + y*yn/yd, kleur);
-            px = x; py = y; has = true;
-            i += node ? 2 : 1;
-        }
-    }
-    if (met_ramen && m->ramen) {
-        uint16_t rk = _seg_kleur(m->raam_kleur_id);
-        for (uint8_t r = 0; r < m->raam_cnt; r++)
-            tft.drawCircle(ox + m->ramen[r].x*xn/xd, oy + m->ramen[r].y*yn/yd, m->ramen[r].r, rk);
-    }
+    (void)met_ramen;
+    for (uint8_t s = 0; s < m->seg_cnt; s++)
+        _pad(m->segs[s], ox, oy, xn, xd, yn, yd, _seg_kleur(m->segs[s].kleur_id));
 }
 
 void boot_model_silhouet(const BootModel* m, int ox, int oy,
                          int xn, int xd, int yn, int yd, uint16_t kleur) {
-    for (uint8_t s = 0; s < m->seg_cnt; s++) {
-        const BootSeg& seg = m->segs[s];
-        int px = 0, py = 0; bool has = false; int i = 0;
-        while (i < seg.cnt) {
-            int x = seg.data[i][0], y = seg.data[i][1];
-            bool node = (i + 1 < seg.cnt && seg.data[i+1][0] == x && seg.data[i+1][1] == y);
-            if (has)
-                tft.drawLine(ox + px*xn/xd, oy + py*yn/yd, ox + x*xn/xd, oy + y*yn/yd, kleur);
-            px = x; py = y; has = true;
-            i += node ? 2 : 1;
-        }
-    }
+    for (uint8_t s = 0; s < m->seg_cnt; s++)
+        _pad(m->segs[s], ox, oy, xn, xd, yn, yd, kleur);
 }

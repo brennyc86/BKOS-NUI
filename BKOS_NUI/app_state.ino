@@ -20,7 +20,8 @@ String klok_tijd       = "--:--";
 volatile bool  wifi_verbonden   = false;
 bool  dev_lokaal[6]    = {false, false, false, false, false, false};
 byte  kleurenschema    = 0;
-byte  boot_type        = 0;
+byte  boot_cat         = 0;
+byte  boot_model       = 0;
 char  zeilnummer[ZEILNR_LEN] = "";
 bool  fout_rapportage       = false;
 int   lua_forceer_app       = -1;
@@ -38,7 +39,8 @@ void state_save() {
     f.printf("helderh=%d\n", tft_helderheid);
     f.printf("timer=%ld\n",  scherm_timer);
     f.printf("schema=%d\n",  (int)kleurenschema);
-    f.printf("btype=%d\n",   (int)boot_type);
+    f.printf("bcat=%d\n",    (int)boot_cat);
+    f.printf("bmodel=%d\n",  (int)boot_model);
     f.printf("zeilnr=%s\n",  zeilnummer);
     f.printf("foutrap=%d\n",  (int)fout_rapportage);
     f.printf("navoff=%d\n",   licht_nav_offset_min);
@@ -62,7 +64,8 @@ void state_load() {
     tft_helderheid        = 75;
     scherm_timer          = 30;
     kleurenschema         = 0;
-    boot_type             = 0;
+    boot_cat              = 0;
+    boot_model            = 0;
     zeilnummer[0]         = '\0';
     licht_nav_offset_min  = 0;
     licht_int_offset_min  = 15;
@@ -88,7 +91,16 @@ void state_load() {
         if (key == "helderh") tft_helderheid    = (int)val.toInt();
         if (key == "timer")   scherm_timer      = val.toInt();
         if (key == "schema")  kleurenschema     = (byte)val.toInt();
-        if (key == "btype")   boot_type         = (byte)val.toInt();
+        if (key == "bcat")    boot_cat          = (byte)val.toInt();
+        if (key == "bmodel")  boot_model        = (byte)val.toInt();
+        if (key == "btype") {   // migratie oude 1-staps keuze → categorie+model
+            switch (val.toInt()) {
+                case 1:  boot_cat = 1; boot_model = 0; break;  // kruizer → motor
+                case 2:  boot_cat = 3; boot_model = 1; break;  // strijkijzer → klein-motor/speedboat
+                case 3:  boot_cat = 0; boot_model = 2; break;  // catamaran → zeil
+                default: boot_cat = 0; boot_model = 0; break;  // zeilboot → zeil/Westerly
+            }
+        }
         if (key == "zeilnr")  {
             strncpy(zeilnummer, val.c_str(), ZEILNR_LEN - 1);
             zeilnummer[ZEILNR_LEN - 1] = '\0';

@@ -1,4 +1,5 @@
 #include "screen_config.h"
+#include "boot_modellen.h"
 #include "nav_bar.h"
 #include "hw_scherm.h"   // scherm_pclk_get/set (PCLK-instelling)
 #include "meteo.h"
@@ -447,21 +448,43 @@ static void pico_cfg_instellingen_teken() {
     }
     y += 34;
 
-    // Boot type
+    // Stap 1 — Categorie
     tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(10, y + (26 - 8) / 2); tft.print("BOOT:");
-    const char* boots[] = {"ZEIL","KRUIZ","SPEEDB","CATA"};
-    int bw = (TFT_W - 50 - 5 * 4) / 4;
-    for (int i = 0; i < 4; i++) {
-        bool act = (boot_type == i);
-        uint16_t bbg = act ? (ontg ? C_CYAN : C_SURFACE2) : C_SURFACE;
-        uint16_t bfg = act ? (ontg ? C_TEXT_DARK : C_TEXT_DIM) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
-        tft.fillRoundRect(50 + i * (bw + 4), y + 3, bw, 20, 3, bbg);
-        tft.setTextSize(1); tft.setTextColor(bfg);
-        int tw = strlen(boots[i]) * 6;
-        tft.setCursor(50 + i * (bw + 4) + (bw - tw) / 2, y + 3 + (20 - 8) / 2);
-        tft.print(boots[i]);
+    tft.setCursor(10, y + (26 - 8) / 2); tft.print("CAT:");
+    {
+        const char* ab[BCAT_N] = {"ZEIL", "MTR", "KZL", "KMTR"};
+        int bw = (TFT_W - 44 - 3 * 4) / 4;
+        for (int i = 0; i < BCAT_N; i++) {
+            bool act = (boot_cat == i);
+            uint16_t bbg = act ? (ontg ? C_CYAN : C_SURFACE2) : C_SURFACE;
+            uint16_t bfg = act ? (ontg ? C_TEXT_DARK : C_TEXT_DIM) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
+            int bx = 44 + i * (bw + 4);
+            tft.fillRoundRect(bx, y + 3, bw, 20, 3, bbg);
+            tft.setTextColor(bfg);
+            tft.setCursor(bx + (bw - (int)strlen(ab[i]) * 6) / 2, y + 3 + (20 - 8) / 2);
+            tft.print(ab[i]);
+        }
+    }
+    y += 30;
+    // Stap 2 — Model
+    tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
+    tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
+    tft.setCursor(10, y + (26 - 8) / 2); tft.print("MOD:");
+    {
+        const BootCategorie& cat = boot_categorien[boot_cat < BCAT_N ? boot_cat : 0];
+        int n = cat.model_cnt;
+        int bw = (n > 0) ? (TFT_W - 44 - (n - 1) * 4) / n : 60;
+        for (int i = 0; i < n; i++) {
+            bool act = (boot_model == i);
+            uint16_t bbg = act ? (ontg ? C_CYAN : C_SURFACE2) : C_SURFACE;
+            uint16_t bfg = act ? (ontg ? C_TEXT_DARK : C_TEXT_DIM) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
+            int bx = 44 + i * (bw + 4);
+            tft.fillRoundRect(bx, y + 3, bw, 20, 3, bbg);
+            tft.setTextColor(bfg);
+            tft.setCursor(bx + 4, y + 3 + (20 - 8) / 2);
+            tft.print(cat.modellen[i].naam);
+        }
     }
     y += 30;
 
@@ -654,12 +677,27 @@ static void pico_cfg_instellingen_run(int x, int y) {
         return;
     }
     y0 += 34;
-    // Boot type
+    // Stap 1 — Categorie
     if (y >= y0 && y < y0 + 26) {
         if (!ontg) { pin_vereist_tonen(); return; }
-        int bw = (TFT_W - 50 - 5 * 4) / 4;
-        int idx = (x - 50) / (bw + 4);
-        if (idx >= 0 && idx < 4) { boot_type = idx; state_save(); pico_cfg_instellingen_teken(); }
+        int bw = (TFT_W - 44 - 3 * 4) / 4;
+        int idx = (x - 44) / (bw + 4);
+        if (idx >= 0 && idx < BCAT_N) {
+            boot_cat = idx; boot_model = 0;
+            boot_vaarmodus_herzien();
+            state_save(); pico_cfg_instellingen_teken();
+        }
+        return;
+    }
+    y0 += 30;
+    // Stap 2 — Model
+    if (y >= y0 && y < y0 + 26) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        const BootCategorie& cat = boot_categorien[boot_cat < BCAT_N ? boot_cat : 0];
+        int n = cat.model_cnt;
+        int bw = (n > 0) ? (TFT_W - 44 - (n - 1) * 4) / n : 60;
+        int idx = (x - 44) / (bw + 4);
+        if (idx >= 0 && idx < n) { boot_model = idx; state_save(); pico_cfg_instellingen_teken(); }
         return;
     }
     y0 += 30;
@@ -1036,59 +1074,9 @@ static void helderheid_balk_teken() {
 }
 
 // ─── Mini boot silhouet voor CONFIG knoppen ──────────────────────────────
-static void mini_boot(int btype, int x, int y, int w, int h, uint16_t c, uint16_t ca) {
-    switch (btype) {
-        case 0: { // Zeilboot
-            int bot = y + h;
-            int mx  = x + w * 2/5;
-            tft.drawLine(x, bot, x + w, bot - h/4, c);
-            tft.drawLine(x + w, bot - h/4, x + w - 5, bot - h/3, c);
-            tft.drawFastHLine(x, bot - h/3, w - 5, c);
-            tft.drawFastVLine(mx, y + 1, bot - h/3 - y - 1, ca);
-            tft.drawLine(mx, y + 1, x + w - 7, bot - h/3 - 1, ca);
-            tft.drawLine(x + w - 7, bot - h/3 - 1, mx, bot - h/3 - 1, ca);
-            break;
-        }
-        case 1: { // Kruizer
-            int ht = y + h / 2;
-            tft.drawFastHLine(x, y + h, w, c);
-            tft.drawLine(x, y + h, x + 2, ht, c);
-            tft.drawLine(x + w - 2, y + h, x + w, ht + h/4, c);
-            tft.drawLine(x + w, ht + h/4, x + w - 4, ht, c);
-            tft.drawFastHLine(x + 2, ht, w - 6, c);
-            int cx = x + w/4, cw = w/2, ch = h/3;
-            tft.drawRect(cx, ht - ch, cw, ch, c);
-            tft.drawFastHLine(cx + 3, ht - ch + 3, 4, ca);
-            tft.drawFastHLine(cx + cw - 7, ht - ch + 3, 4, ca);
-            break;
-        }
-        case 2: { // Strijkijzer / speedboat
-            int hy = y + h * 2/3;
-            tft.drawFastHLine(x + 4, y + h, w - 4, c);
-            tft.drawLine(x, hy, x + 4, y + h, c);
-            tft.drawLine(x + w, y + h, x + w, hy, c);
-            tft.drawFastHLine(x, hy, w, c);
-            tft.drawLine(x + 4, hy, x + w/3, y + h/4, ca);
-            tft.drawLine(x + w/3, y + h/4, x + w*3/4, y + h/4, ca);
-            tft.drawLine(x + w*3/4, y + h/4, x + w, hy, ca);
-            break;
-        }
-        case 3: { // Catamaran
-            int h1 = y + h / 4, h2 = y + h * 3/4 - 3, hh = h/6 + 1;
-            tft.drawFastHLine(x, h1, w - 4, c);
-            tft.drawLine(x + w - 4, h1, x + w, h1 + hh, c);
-            tft.drawFastHLine(x, h1 + hh, w, c);
-            tft.drawFastHLine(x, h2, w - 4, c);
-            tft.drawLine(x + w - 4, h2, x + w, h2 + hh, c);
-            tft.drawFastHLine(x, h2 + hh, w, c);
-            tft.drawFastVLine(x + w/3, h1 + hh, h2 - h1 - hh, c);
-            tft.drawFastVLine(x + w*2/3, h1 + hh, h2 - h1 - hh, c);
-            int mx = x + w/2;
-            tft.drawFastVLine(mx, y + 1, h1 - y - 1, ca);
-            tft.drawLine(mx, y + 1, x + w/3, h1, ca);
-            break;
-        }
-    }
+static void mini_boot(const BootModel* m, int x, int y, int w, int h, uint16_t c) {
+    // Model-silhouet (0..120 breed, 0..170 hoog) geschaald in de box.
+    boot_model_silhouet(m, x, y, w, 120, h, 170, c);
 }
 
 // ─── Tab 0: Instellingen ────────────────────────────────────────────────
@@ -1221,24 +1209,47 @@ static void cfg_boot_teken() {
     bool ontg = config_ontgrendeld;
     int y = CFG_SUB_Y0;
 
-    // Boot type
+    // Stap 1 — Categorie
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, y + (40 - 8) / 2); tft.print("TYPE");
+    tft.setCursor(18, y + (40 - 8) / 2); tft.print("CATEGORIE");
     {
-        const char* boots[] = {"ZEILBOOT", "KRUIZER", "STRIJKIJZER", "CATAMARAN"};
-        int bw = 148, bx_off = 90;
-        for (int i = 0; i < 4; i++) {
-            bool act = (boot_type == i);
+        int bw = 110, bx_off = 116;
+        for (int i = 0; i < BCAT_N; i++) {
+            bool act = (boot_cat == i);
             int bx_i = bx_off + i * (bw + 6);
             uint16_t bbg = act ? (ontg ? C_CYAN : C_SURFACE2) : (ontg ? C_SURFACE2 : C_SURFACE);
             uint16_t bfg = act ? (ontg ? C_TEXT_DARK : C_TEXT_DIM) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
             tft.fillRoundRect(bx_i, y + 4, bw, 32, 5, bbg);
             tft.drawRoundRect(bx_i, y + 4, bw, 32, 5, act && ontg ? C_WHITE : C_SURFACE3);
             tft.setTextSize(1); tft.setTextColor(bfg);
+            const char* nm = boot_categorien[i].korte_naam;
+            tft.setCursor(bx_i + (bw - (int)strlen(nm) * 6) / 2, y + 4 + (32 - 8) / 2);
+            tft.print(nm);
+        }
+    }
+    y += 44;
+
+    // Stap 2 — Model (van de gekozen categorie), met silhouet-preview
+    tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+    tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
+    tft.setCursor(18, y + (40 - 8) / 2); tft.print("MODEL");
+    {
+        const BootCategorie& cat = boot_categorien[boot_cat < BCAT_N ? boot_cat : 0];
+        int n = cat.model_cnt;
+        int bw = (n > 0) ? (TFT_W - 16 - 90 - (n - 1) * 6) / n : 100;
+        if (bw > 168) bw = 168;
+        for (int i = 0; i < n; i++) {
+            bool act = (boot_model == i);
+            int bx_i = 90 + i * (bw + 6);
+            uint16_t bbg = act ? (ontg ? C_CYAN : C_SURFACE2) : (ontg ? C_SURFACE2 : C_SURFACE);
+            uint16_t bfg = act ? (ontg ? C_TEXT_DARK : C_TEXT_DIM) : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
+            tft.fillRoundRect(bx_i, y + 4, bw, 32, 5, bbg);
+            tft.drawRoundRect(bx_i, y + 4, bw, 32, 5, act && ontg ? C_WHITE : C_SURFACE3);
+            tft.setTextSize(1); tft.setTextColor(bfg);
             tft.setCursor(bx_i + 5, y + 4 + (32 - 8) / 2);
-            tft.print(boots[i]);
-            mini_boot(i, bx_i + bw - 66, y + 7, 60, 22, bfg, act && ontg ? RGB565(0,0,0) : C_SURFACE3);
+            tft.print(cat.modellen[i].naam);
+            mini_boot(&cat.modellen[i], bx_i + bw - 50, y + 8, 44, 24, bfg);
         }
     }
     y += 44;
@@ -1560,16 +1571,34 @@ static void cfg_boot_run(int x, int y) {
     }
 
     int cy = CFG_SUB_Y0;
-    int boot_y = cy; cy += 44;
-    int zl_y   = cy; cy += 44;
-    int nm_y   = cy; cy += 44;
-    int io_y   = cy;
+    int cat_y   = cy; cy += 44;
+    int model_y = cy; cy += 44;
+    int zl_y    = cy; cy += 44;
+    int nm_y    = cy; cy += 44;
+    int io_y    = cy;
 
-    if (y >= boot_y && y < boot_y + 40) {
+    // Stap 1 — Categorie
+    if (y >= cat_y && y < cat_y + 40) {
         if (!ontg) { pin_vereist_tonen(); return; }
-        int bw = 148, bx_off = 90;
+        int bw = 110, bx_off = 116;
         int idx = (x - bx_off) / (bw + 6);
-        if (idx >= 0 && idx < 4) { boot_type = idx; state_save(); cfg_boot_teken(); }
+        if (idx >= 0 && idx < BCAT_N) {
+            boot_cat = idx; boot_model = 0;
+            boot_vaarmodus_herzien();
+            state_save(); cfg_boot_teken();
+        }
+        return;
+    }
+
+    // Stap 2 — Model
+    if (y >= model_y && y < model_y + 40) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        const BootCategorie& cat = boot_categorien[boot_cat < BCAT_N ? boot_cat : 0];
+        int n = cat.model_cnt;
+        int bw = (n > 0) ? (TFT_W - 16 - 90 - (n - 1) * 6) / n : 100;
+        if (bw > 168) bw = 168;
+        int idx = (x - 90) / (bw + 6);
+        if (idx >= 0 && idx < n) { boot_model = idx; state_save(); cfg_boot_teken(); }
         return;
     }
 

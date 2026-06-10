@@ -1,4 +1,5 @@
 #include "screen_main.h"
+#include "boot_modellen.h"
 #include "meteo.h"
 #include "nav_bar.h"
 #include "paneel.h"
@@ -97,160 +98,6 @@ static void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
     }
 }
 
-// ─── Boot tekendata (BKOS4 coördinaten, schaal 1:1) ────────────────
-// Algoritme: identieke opeenvolgende paar = knooppunt (begin/einde segment)
-// Lijnen worden getrokken tussen opeenvolgende knooppunten en tussenliggende punten
-
-static const int BOOT_ROMP[][2] = {
-    // Romp + opbouw (verbonden in één pad)
-    {0,150},{0,150},{2,165},{100,165},{120,140},
-    {0,150},{2,146},{40,140},{40,125},{49,125},{54,133},{70,133},{72,135},{85,135},{92,142},{92,142},
-    // Westerly knikje + kajuit buiskap (verbonden via hulplijn)
-    {70,150},{70,150},{105,147},{105,147},
-    {54,133},{54,133},{44,133},{44,137},{44,137},
-    // Verstaging (van boeg naar masttop naar achtersteven)
-    {0,150},{0,150},{63,0},{71,0},{120,141},{120,141},
-    // Kuiprand details
-    {40,140},{40,140},{49,137},{49,146},{49,146},{25,143},{25,143},{25,148},{25,148}
-};
-
-static const int BOOT_ZEILEN[][2] = {
-    // Giek (boom, rechthoekige omtrek)
-    {20,120},{20,120},{65,120},{65,119},{20,119},{20,118},{65,118},{65,118},
-    // Grootzeil achterliek
-    {20,118},{20,118},{65,4},{65,4},
-    // Genua
-    {117,137},{117,137},{89,137},{89,137},{52,129},{52,129},{53,120},{53,120}
-};
-
-static const int BOOT_MAST[][2] = {
-    {69,133},{69,133},{69,0},{68,0},{68,133},{67,133},{67,0},{66,0},{66,133},{65,133},{65,0},{65,0}
-};
-
-static const int BOOT_RAAM1[][2] = {
-    {51,142},{51,142},{58,142},{58,135},{53,135},{51,142},{51,142}
-};
-static const int BOOT_RAAM2[][2] = {
-    {61,142},{61,142},{69,142},{67,135},{61,135},{61,142},{61,142}
-};
-static const int BOOT_RAAM3[][2] = {
-    {42,131},{42,131},{51,131},{47,127},{42,127},{42,131},{42,131}
-};
-
-static void boot_seg_teken(const int data[][2], int cnt, uint16_t kleur) {
-    // Knooppunt-algoritme: identiek opeenvolgend paar = node, overige punten = lijnsegment
-    int px = 0, py = 0;
-    bool has_prev = false;
-    int i = 0;
-    while (i < cnt) {
-        int x = data[i][0], y = data[i][1];
-        bool is_node = (i + 1 < cnt && data[i+1][0] == x && data[i+1][1] == y);
-        if (has_prev)
-            tft.drawLine(BOOT_BX(px), BOOT_BY(py), BOOT_BX(x), BOOT_BY(y), kleur);
-        px = x; py = y;
-        has_prev = true;
-        i += is_node ? 2 : 1;
-    }
-}
-
-// ─── Boot tekening (zij-aanzicht CR 1070) ───────────────────────────
-static void boot_teken_zeilboot() {
-    // Zeilen (subtiele donkere kleur, eerst tekenen)
-    boot_seg_teken(BOOT_ZEILEN, sizeof(BOOT_ZEILEN)/sizeof(BOOT_ZEILEN[0]), RGB565(30,55,90));
-    // Romp, opbouw, verstaging, details
-    boot_seg_teken(BOOT_ROMP, sizeof(BOOT_ROMP)/sizeof(BOOT_ROMP[0]), C_TEXT_DIM);
-    // Mast
-    boot_seg_teken(BOOT_MAST, sizeof(BOOT_MAST)/sizeof(BOOT_MAST[0]), RGB565(160,170,190));
-    // Ramen
-    boot_seg_teken(BOOT_RAAM1, sizeof(BOOT_RAAM1)/sizeof(BOOT_RAAM1[0]), C_CYAN);
-    boot_seg_teken(BOOT_RAAM2, sizeof(BOOT_RAAM2)/sizeof(BOOT_RAAM2[0]), C_CYAN);
-    boot_seg_teken(BOOT_RAAM3, sizeof(BOOT_RAAM3)/sizeof(BOOT_RAAM3[0]), C_CYAN);
-    tft.drawCircle(BOOT_BX(75), BOOT_BY(139), 4, C_CYAN);
-    tft.drawCircle(BOOT_BX(83), BOOT_BY(139), 4, C_CYAN);
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(BOOT_BX(42), BOOT_BY(58)); tft.print("CR");
-    tft.setCursor(BOOT_BX(37), BOOT_BY(68)); tft.print("1070");
-}
-
-// ─── Motorboot kruizer (boot_type=1) ────────────────────────────────
-static const int MBK_ROMP[][2] = {
-    {0,160},{0,160},{115,160},{115,138},{105,132},{20,132},{8,142},{0,160},{0,160}
-};
-static const int MBK_HUIS[][2] = {
-    {22,132},{22,132},{22,102},{28,96},{70,96},{76,102},{76,132},{76,132},
-    {76,132},{76,132},{76,118},{98,118},{98,132},{98,132}
-};
-static const int MBK_RAMEN[][2] = {
-    {30,104},{30,104},{30,116},{40,116},{40,104},{40,104},
-    {46,104},{46,104},{46,116},{56,116},{56,104},{56,104},
-    {62,104},{62,104},{62,116},{72,116},{72,104},{72,104}
-};
-static const int MBK_ANT[][2] = {
-    {48,96},{48,96},{48,82},{48,82}
-};
-
-static void boot_teken_motorboot_kruizer() {
-    boot_seg_teken(MBK_ROMP,  sizeof(MBK_ROMP) /sizeof(MBK_ROMP[0]),  C_TEXT_DIM);
-    boot_seg_teken(MBK_HUIS,  sizeof(MBK_HUIS) /sizeof(MBK_HUIS[0]),  C_TEXT_DIM);
-    boot_seg_teken(MBK_RAMEN, sizeof(MBK_RAMEN)/sizeof(MBK_RAMEN[0]), C_CYAN);
-    boot_seg_teken(MBK_ANT,   sizeof(MBK_ANT)  /sizeof(MBK_ANT[0]),   RGB565(160,170,190));
-    tft.drawCircle(BOOT_BX(82), BOOT_BY(147), 4, C_CYAN);
-    tft.drawCircle(BOOT_BX(92), BOOT_BY(147), 4, C_CYAN);
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(BOOT_BX(30), BOOT_BY(85)); tft.print("KRUIZER");
-}
-
-// ─── Motorboot strijkijzer / speedboat (boot_type=2) ────────────────
-static const int MBS_ROMP[][2] = {
-    {0,155},{0,155},{115,163},{115,140},{15,133},{0,155},{0,155}
-};
-static const int MBS_HUIS[][2] = {
-    {28,133},{28,133},{24,116},{62,110},{80,116},{80,133},{80,133}
-};
-static const int MBS_RAAM[][2] = {
-    {34,120},{34,120},{36,115},{62,115},{62,120},{34,120},{34,120}
-};
-static const int MBS_ACHTERDEK[][2] = {
-    {80,133},{80,133},{80,122},{104,122},{104,133},{104,133}
-};
-
-static void boot_teken_strijkijzer() {
-    boot_seg_teken(MBS_ROMP,     sizeof(MBS_ROMP)    /sizeof(MBS_ROMP[0]),     C_TEXT_DIM);
-    boot_seg_teken(MBS_HUIS,     sizeof(MBS_HUIS)    /sizeof(MBS_HUIS[0]),     C_TEXT_DIM);
-    boot_seg_teken(MBS_RAAM,     sizeof(MBS_RAAM)    /sizeof(MBS_RAAM[0]),     C_CYAN);
-    boot_seg_teken(MBS_ACHTERDEK,sizeof(MBS_ACHTERDEK)/sizeof(MBS_ACHTERDEK[0]),C_TEXT_DIM);
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(BOOT_BX(36), BOOT_BY(100)); tft.print("SPEEDBOAT");
-}
-
-// ─── Catamaran (boot_type=3) ─────────────────────────────────────────
-static const int CAT_HULL1[][2] = {
-    {0,158},{0,158},{2,164},{90,164},{96,158},{88,154},{4,154},{0,158},{0,158}
-};
-static const int CAT_HULL2[][2] = {
-    {18,145},{18,145},{20,150},{108,150},{114,145},{106,141},{22,141},{18,145},{18,145}
-};
-static const int CAT_BRUG[][2] = {
-    {30,154},{30,154},{30,141},{30,141},
-    {82,154},{82,154},{82,141},{82,141},
-    {30,148},{30,148},{82,148},{82,148}
-};
-static const int CAT_MAST[][2] = {
-    {57,148},{57,148},{57,40},{56,40},{56,148},{55,148},{55,40},{55,40}
-};
-static const int CAT_ZEIL[][2] = {
-    {22,143},{22,143},{57,45},{57,143},{57,143}
-};
-
-static void boot_teken_catamaran() {
-    boot_seg_teken(CAT_ZEIL,  sizeof(CAT_ZEIL) /sizeof(CAT_ZEIL[0]),  RGB565(30,55,90));
-    boot_seg_teken(CAT_HULL1, sizeof(CAT_HULL1)/sizeof(CAT_HULL1[0]), C_TEXT_DIM);
-    boot_seg_teken(CAT_HULL2, sizeof(CAT_HULL2)/sizeof(CAT_HULL2[0]), C_TEXT_DIM);
-    boot_seg_teken(CAT_BRUG,  sizeof(CAT_BRUG) /sizeof(CAT_BRUG[0]),  C_TEXT_DIM);
-    boot_seg_teken(CAT_MAST,  sizeof(CAT_MAST) /sizeof(CAT_MAST[0]),  RGB565(160,170,190));
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(BOOT_BX(34), BOOT_BY(20)); tft.print("CATAMARAN");
-}
 
 // Licht teken state — persistent tussen frame-calls
 static bool _licht_force = true;
@@ -265,12 +112,9 @@ void boot_teken() {
     pico_boot_teken();
 #else
     tft.fillRect(BDX, BDY, BDW, BDH, C_BG);
-    switch (boot_type) {
-        case 1:  boot_teken_motorboot_kruizer(); break;
-        case 2:  boot_teken_strijkijzer();       break;
-        case 3:  boot_teken_catamaran();         break;
-        default: boot_teken_zeilboot();          break;
-    }
+    // Actief model via het register; schaal = BOOT_SCALE_N/_D, offset = BOOT_B*_OFF
+    boot_model_teken(boot_actief_model(), BOOT_BX_OFF, BOOT_BY_OFF,
+                     BOOT_SCALE_N, BOOT_SCALE_D, BOOT_SCALE_N, BOOT_SCALE_D, true);
 #endif
 }
 
@@ -330,6 +174,10 @@ void boot_lichten_teken() {
         else if (io_naam_is(i, "**L_hek"))   hek_k    = i;
     }
 
+    // Lamp-posities + welke lampen relevant zijn komen uit het actieve model/categorie
+    const BootLicht& L = boot_actief_model()->licht;
+    uint8_t prof = boot_actieve_cat()->licht_profiel;
+
     int r = BLCHT_R;
 
     byte sa = (anker_k  >= 0) ? io_licht_staat(anker_k)  : LSTATE_ECHT_UIT;
@@ -347,12 +195,12 @@ void boot_lichten_teken() {
         byte prev_mast_staat = (_prev_mast == 0xFF) ? LSTATE_ECHT_UIT
                              : ((_prev_mast >> 4) == LSTATE_ECHT_AAN || (_prev_mast & 0xF) == LSTATE_ECHT_AAN)
                                ? LSTATE_ECHT_AAN : LSTATE_ECHT_UIT;
-        int cx = BLCHT_BX(BL_ANKER_RX), cy = BLCHT_BY(BL_ANKER_RY);
+        int cx = BLCHT_BX(L.anker_x), cy = BLCHT_BY(L.anker_y);
         int dr = max(2, r / 3);
         bool was_aan = (prev_mast_staat == LSTATE_ECHT_AAN);
         if (was_aan && mast_staat != LSTATE_ECHT_AAN)
             tft.fillCircle(cx, cy, r + 1, C_BG);
-        if (s3 == LSTATE_ECHT_AAN) {
+        if ((prof & LP_DRIEKL) && s3 == LSTATE_ECHT_AAN) {
             _boot_sector(cx, cy, r, 120, 240, C_LIGHT_ON);
             _boot_sector(cx, cy, r, 240, 360, C_LIGHT_ON_RED);
             _boot_sector(cx, cy, r,   0, 120, C_LIGHT_ON_GRN);
@@ -369,24 +217,24 @@ void boot_lichten_teken() {
     }
 
     // ── Stoomlicht: 240° sector naar voren ────────────────────────────
-    if (_licht_force || _prev_stoom != ss) {
-        _licht_indicator(BLCHT_BX(BL_STOOM_RX), BLCHT_BY(BL_STOOM_RY), r,
+    if ((prof & LP_STOOM) && (_licht_force || _prev_stoom != ss)) {
+        _licht_indicator(BLCHT_BX(L.stoom_x), BLCHT_BY(L.stoom_y), r,
                          ss, C_LIGHT_ON, 240, 480, _prev_stoom == 0xFF ? LSTATE_ECHT_UIT : _prev_stoom);
         _prev_stoom = ss;
     }
 
     // ── Heklicht: 120° sector naar achteren ───────────────────────────
-    if (_licht_force || _prev_hek != sh) {
-        _licht_indicator(BLCHT_BX(BL_HEK_RX), BLCHT_BY(BL_HEK_RY), r,
+    if ((prof & LP_HEK) && (_licht_force || _prev_hek != sh)) {
+        _licht_indicator(BLCHT_BX(L.hek_x), BLCHT_BY(L.hek_y), r,
                          sh, C_LIGHT_ON, 120, 240, _prev_hek == 0xFF ? LSTATE_ECHT_UIT : _prev_hek);
         _prev_hek = sh;
     }
 
     // ── Navigatielichten: rood (BB) boven romp, groen (SB) waterlijn ──
-    if (_licht_force || _prev_navi != sn) {
+    if ((prof & LP_NAVI) && (_licht_force || _prev_navi != sn)) {
         byte prev_sn = _prev_navi == 0xFF ? LSTATE_ECHT_UIT : _prev_navi;
-        int rcx = BLCHT_BX(BL_NAVI_R_RX), rcy = BLCHT_BY(BL_NAVI_R_RY);
-        int gcx = BLCHT_BX(BL_NAVI_G_RX), gcy = BLCHT_BY(BL_NAVI_G_RY);
+        int rcx = BLCHT_BX(L.navi_r_x), rcy = BLCHT_BY(L.navi_r_y);
+        int gcx = BLCHT_BX(L.navi_g_x), gcy = BLCHT_BY(L.navi_g_y);
         int dr  = max(2, r / 3);
         bool was_aan = (prev_sn == LSTATE_ECHT_AAN);
         if (was_aan && sn != LSTATE_ECHT_AAN) {
@@ -454,22 +302,36 @@ static void schakelaars_knop(int x, int y, int w, int h, const char* label,
 }
 
 // ─── Vaarmodus knoppen ──────────────────────────────────────────────
+// Alle vaarmodi + hun categorie-bit; welke zichtbaar zijn hangt af van het boottype
+struct VmDef { const char* naam; int icoon; uint16_t kleur; byte modus; uint8_t bit; };
+static const VmDef VM_ALLE[4] = {
+    {"HAVEN",  I_HAVEN,  C_HAVEN,  MODE_HAVEN,  VM_HAVEN},
+    {"ZEILEN", I_ZEILEN, C_ZEILEN, MODE_ZEILEN, VM_ZEILEN},
+    {"MOTOR",  I_MOTOR,  C_MOTOR,  MODE_MOTOR,  VM_MOTOR},
+    {"ANKER",  I_ANKER,  C_ANKER,  MODE_ANKER,  VM_ANKER},
+};
+// Vult out[] met de indices in VM_ALLE die zichtbaar zijn voor de actieve categorie.
+static int vaarmodi_zichtbaar(uint8_t out[4]) {
+    uint8_t mask = boot_actieve_cat()->vaarmodi;
+    int n = 0;
+    for (int i = 0; i < 4; i++) if (mask & VM_ALLE[i].bit) out[n++] = i;
+    return n;
+}
+
 static void modus_knoppen_teken() {
     tft.setTextSize(1);
     tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(MKNOP_X1, CONTENT_Y + 2);
     tft.print("VAARMODUS");
 
-    struct { const char* naam; int icoon; uint16_t kleur; byte modus; int x; int y; } modi[4] = {
-        {"HAVEN",  I_HAVEN,  C_HAVEN,  MODE_HAVEN,  MKNOP_X1, MKNOP_Y1},
-        {"ZEILEN", I_ZEILEN, C_ZEILEN, MODE_ZEILEN, MKNOP_X2, MKNOP_Y1},
-        {"MOTOR",  I_MOTOR,  C_MOTOR,  MODE_MOTOR,  MKNOP_X1, MKNOP_Y2},
-        {"ANKER",  I_ANKER,  C_ANKER,  MODE_ANKER,  MKNOP_X2, MKNOP_Y2},
-    };
-    for (int i = 0; i < 4; i++)
-        modus_knop(modi[i].x, modi[i].y, MKNOP_W, MKNOP_H,
-                   modi[i].naam, modi[i].icoon, modi[i].kleur,
-                   vaar_modus == modi[i].modus);
+    const int cx[4] = {MKNOP_X1, MKNOP_X2, MKNOP_X1, MKNOP_X2};
+    const int cy[4] = {MKNOP_Y1, MKNOP_Y1, MKNOP_Y2, MKNOP_Y2};
+    uint8_t vis[4]; int n = vaarmodi_zichtbaar(vis);
+    for (int c = 0; c < n; c++) {
+        const VmDef& m = VM_ALLE[vis[c]];
+        modus_knop(cx[c], cy[c], MKNOP_W, MKNOP_H,
+                   m.naam, m.icoon, m.kleur, vaar_modus == m.modus);
+    }
 }
 
 // ─── Verlichting knoppen ────────────────────────────────────────────
@@ -776,54 +638,11 @@ static void scheidingslijn_teken() {
 // ─── Pico-specifieke implementatie ──────────────────────────────────
 #if SCREEN_SMALL
 
-static void pico_boot_seg_teken(const int data[][2], int cnt, uint16_t kleur) {
-    int px = 0, py = 0;
-    bool has_prev = false;
-    int i = 0;
-    while (i < cnt) {
-        int x = data[i][0], y = data[i][1];
-        bool is_node = (i + 1 < cnt && data[i+1][0] == x && data[i+1][1] == y);
-        if (has_prev)
-            tft.drawLine(PICO_BOOT_BX(px), PICO_BOOT_BY(py),
-                         PICO_BOOT_BX(x),  PICO_BOOT_BY(y),  kleur);
-        px = x; py = y;
-        has_prev = true;
-        i += is_node ? 2 : 1;
-    }
-}
-
 static void pico_boot_teken() {
     // Wis alleen linker paneel boven apparaat-rij
     tft.fillRect(0, CONTENT_Y, PICO_LEFT_W, PICO_DKNOP_Y - CONTENT_Y, C_BG);
-    switch (boot_type) {
-        case 1:
-            pico_boot_seg_teken(MBK_ROMP,  sizeof(MBK_ROMP) /sizeof(MBK_ROMP[0]),  C_TEXT_DIM);
-            pico_boot_seg_teken(MBK_HUIS,  sizeof(MBK_HUIS) /sizeof(MBK_HUIS[0]),  C_TEXT_DIM);
-            pico_boot_seg_teken(MBK_RAMEN, sizeof(MBK_RAMEN)/sizeof(MBK_RAMEN[0]), C_CYAN);
-            pico_boot_seg_teken(MBK_ANT,   sizeof(MBK_ANT)  /sizeof(MBK_ANT[0]),   RGB565(160,170,190));
-            break;
-        case 2:
-            pico_boot_seg_teken(MBS_ROMP,      sizeof(MBS_ROMP)    /sizeof(MBS_ROMP[0]),     C_TEXT_DIM);
-            pico_boot_seg_teken(MBS_HUIS,      sizeof(MBS_HUIS)    /sizeof(MBS_HUIS[0]),     C_TEXT_DIM);
-            pico_boot_seg_teken(MBS_RAAM,      sizeof(MBS_RAAM)    /sizeof(MBS_RAAM[0]),     C_CYAN);
-            pico_boot_seg_teken(MBS_ACHTERDEK, sizeof(MBS_ACHTERDEK)/sizeof(MBS_ACHTERDEK[0]),C_TEXT_DIM);
-            break;
-        case 3:
-            pico_boot_seg_teken(CAT_ZEIL,  sizeof(CAT_ZEIL) /sizeof(CAT_ZEIL[0]),  RGB565(30,55,90));
-            pico_boot_seg_teken(CAT_HULL1, sizeof(CAT_HULL1)/sizeof(CAT_HULL1[0]), C_TEXT_DIM);
-            pico_boot_seg_teken(CAT_HULL2, sizeof(CAT_HULL2)/sizeof(CAT_HULL2[0]), C_TEXT_DIM);
-            pico_boot_seg_teken(CAT_BRUG,  sizeof(CAT_BRUG) /sizeof(CAT_BRUG[0]),  C_TEXT_DIM);
-            pico_boot_seg_teken(CAT_MAST,  sizeof(CAT_MAST) /sizeof(CAT_MAST[0]),  RGB565(160,170,190));
-            break;
-        default:
-            pico_boot_seg_teken(BOOT_ZEILEN, sizeof(BOOT_ZEILEN)/sizeof(BOOT_ZEILEN[0]), RGB565(30,55,90));
-            pico_boot_seg_teken(BOOT_ROMP,   sizeof(BOOT_ROMP)  /sizeof(BOOT_ROMP[0]),   C_TEXT_DIM);
-            pico_boot_seg_teken(BOOT_MAST,   sizeof(BOOT_MAST)  /sizeof(BOOT_MAST[0]),   RGB565(160,170,190));
-            pico_boot_seg_teken(BOOT_RAAM1,  sizeof(BOOT_RAAM1) /sizeof(BOOT_RAAM1[0]),  C_CYAN);
-            pico_boot_seg_teken(BOOT_RAAM2,  sizeof(BOOT_RAAM2) /sizeof(BOOT_RAAM2[0]),  C_CYAN);
-            pico_boot_seg_teken(BOOT_RAAM3,  sizeof(BOOT_RAAM3) /sizeof(BOOT_RAAM3[0]),  C_CYAN);
-            break;
-    }
+    boot_model_teken(boot_actief_model(), PICO_BOOT_BX_OFF, PICO_BOOT_BY_OFF,
+                     PICO_BOOT_SCALE, 1, PICO_BOOT_SCALE, 1, true);
     boot_lichten_teken();
 }
 
@@ -887,16 +706,12 @@ static void pico_apparaat_knop(int bx, const char* label, int icoon,
 }
 
 static void pico_modus_knoppen_teken() {
-    struct { const char* naam; int icoon; uint16_t kleur; byte modus; } modi[4] = {
-        {"HAVEN",  I_HAVEN,  C_HAVEN,  MODE_HAVEN},
-        {"ZEILEN", I_ZEILEN, C_ZEILEN, MODE_ZEILEN},
-        {"MOTOR",  I_MOTOR,  C_MOTOR,  MODE_MOTOR},
-        {"ANKER",  I_ANKER,  C_ANKER,  MODE_ANKER},
-    };
-    for (int i = 0; i < 4; i++)
-        pico_modus_knop(PICO_MKNOP_X, PICO_MKNOP_Y(i),
-                        modi[i].naam, modi[i].icoon, modi[i].kleur,
-                        vaar_modus == modi[i].modus);
+    uint8_t vis[4]; int n = vaarmodi_zichtbaar(vis);
+    for (int c = 0; c < n; c++) {
+        const VmDef& m = VM_ALLE[vis[c]];
+        pico_modus_knop(PICO_MKNOP_X, PICO_MKNOP_Y(c),
+                        m.naam, m.icoon, m.kleur, vaar_modus == m.modus);
+    }
 }
 
 static void pico_apparaten_teken() {
@@ -980,20 +795,23 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
 
     bool gewijzigd = false;
 
-    // Vaarmodus knoppen (rechter kolom)
-    static const byte modi_modus[4] = {MODE_HAVEN, MODE_ZEILEN, MODE_MOTOR, MODE_ANKER};
-    for (int i = 0; i < 4; i++) {
-        if (x >= PICO_MKNOP_X && x < PICO_MKNOP_X + PICO_MKNOP_W &&
-            y >= PICO_MKNOP_Y(i) && y < PICO_MKNOP_Y(i) + PICO_MKNOP_H) {
-            if (vaar_modus == modi_modus[i]) {
-                licht_cfg_idx++;
-            } else {
-                vaar_modus = modi_modus[i];
-                licht_cfg_idx = 0;
+    // Vaarmodus knoppen (rechter kolom) — alleen zichtbare modi voor dit boottype
+    {
+        uint8_t vis[4]; int n = vaarmodi_zichtbaar(vis);
+        for (int c = 0; c < n; c++) {
+            if (x >= PICO_MKNOP_X && x < PICO_MKNOP_X + PICO_MKNOP_W &&
+                y >= PICO_MKNOP_Y(c) && y < PICO_MKNOP_Y(c) + PICO_MKNOP_H) {
+                byte modus = VM_ALLE[vis[c]].modus;
+                if (vaar_modus == modus) {
+                    licht_cfg_idx++;
+                } else {
+                    vaar_modus = modus;
+                    licht_cfg_idx = 0;
+                }
+                io_verlichting_update();
+                net_app_staat_sturen();
+                gewijzigd = true;
             }
-            io_verlichting_update();
-            net_app_staat_sturen();
-            gewijzigd = true;
         }
     }
 
@@ -1245,25 +1063,25 @@ void screen_main_run(int x, int y, bool aanraking) {
 
     bool gewijzigd = false;
 
-    // Vaarmodus knoppen
-    struct { int x; int y; byte modus; } modi[4] = {
-        {MKNOP_X1, MKNOP_Y1, MODE_HAVEN},
-        {MKNOP_X2, MKNOP_Y1, MODE_ZEILEN},
-        {MKNOP_X1, MKNOP_Y2, MODE_MOTOR},
-        {MKNOP_X2, MKNOP_Y2, MODE_ANKER},
-    };
-    for (int i = 0; i < 4; i++) {
-        if (x >= modi[i].x && x < modi[i].x + MKNOP_W &&
-            y >= modi[i].y && y < modi[i].y + MKNOP_H) {
-            if (vaar_modus == modi[i].modus) {
-                licht_cfg_idx++;
-            } else {
-                vaar_modus = modi[i].modus;
-                licht_cfg_idx = 0;
+    // Vaarmodus knoppen — alleen zichtbare modi voor dit boottype
+    {
+        const int cx[4] = {MKNOP_X1, MKNOP_X2, MKNOP_X1, MKNOP_X2};
+        const int cy[4] = {MKNOP_Y1, MKNOP_Y1, MKNOP_Y2, MKNOP_Y2};
+        uint8_t vis[4]; int n = vaarmodi_zichtbaar(vis);
+        for (int c = 0; c < n; c++) {
+            if (x >= cx[c] && x < cx[c] + MKNOP_W &&
+                y >= cy[c] && y < cy[c] + MKNOP_H) {
+                byte modus = VM_ALLE[vis[c]].modus;
+                if (vaar_modus == modus) {
+                    licht_cfg_idx++;
+                } else {
+                    vaar_modus = modus;
+                    licht_cfg_idx = 0;
+                }
+                io_verlichting_update();
+                net_app_staat_sturen();  // slave stuurt nieuwe staat naar master
+                gewijzigd = true;
             }
-            io_verlichting_update();
-            net_app_staat_sturen();  // slave stuurt nieuwe staat naar master
-            gewijzigd = true;
         }
     }
 

@@ -20,18 +20,8 @@
 #define BOOT_BY(y)    (BOOT_BY_OFF + ((y)*BOOT_SCALE_N)/BOOT_SCALE_D)
 #define BOOT_LICHT_R  (BOOT_SCALE_N > 5 ? 12 : 8)
 
-// Licht indicator posities (ruwe bootcoördinaten — schaling via BOOT_BX/BY)
-// x=0 = achtersteven (links), x=120 = boeg (rechts); y=0 = masttop
-#define BL_ANKER_RX    67
-#define BL_ANKER_RY     2
-#define BL_STOOM_RX    67
-#define BL_STOOM_RY    50
-#define BL_HEK_RX       4   // achtersteven
-#define BL_HEK_RY     148
-#define BL_NAVI_R_RX   82   // rood (BB): boven de romp, meer naar achter
-#define BL_NAVI_R_RY  135
-#define BL_NAVI_G_RX   82   // groen (SB): ter hoogte waterlijn
-#define BL_NAVI_G_RY  145
+// Licht-indicatorposities komen per model uit boot_modellen (BootLicht), niet meer
+// uit vaste macro's — zo staan de lampen voor elk model op de juiste plek.
 
 // Vaarmodus knoppen (rechter paneel, 2×2 grid)
 // Breedte: vult CTRL_PANEL_W (schalen mee met TFT_W via UI_SCX)

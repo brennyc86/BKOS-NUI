@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "hw_io.h"   // MAX_IO_KANALEN, IO_NAAM_LEN hier gedefinieerd
+#include "boot_modellen.h"  // BootModel/BootCategorie vroeg zichtbaar (prototype-hoisting)
 
 // Actief scherm
 #define SCREEN_MAIN    0
@@ -78,7 +79,8 @@ extern bool dev_lokaal[6];
 // Weergave-instellingen
 #define ZEILNR_LEN 16
 extern byte kleurenschema;   // 0=donker, 1=licht, 2=nacht
-extern byte boot_type;       // 0=zeilboot, 1=motorboot, 2=catamaran, 3=motorzeiler
+extern byte boot_cat;        // categorie: 0=zeil 1=motor 2=klein-zeil 3=klein-motor
+extern byte boot_model;      // model-index binnen de categorie (zie boot_modellen)
 extern char zeilnummer[];
 
 // Privacy

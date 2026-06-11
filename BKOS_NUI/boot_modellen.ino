@@ -14,28 +14,29 @@
 #define NSEG(s)      (uint8_t)(sizeof(s) / sizeof((s)[0]))
 #define NRAAM(s)     (uint8_t)(sizeof(s) / sizeof((s)[0]))
 
-// ─── Zeilboot: Westerly (originele tekening, deelpaden los — boven water) ──────
-static const int WST_LEECH[][2] = {{20,118},{65,4}};
-static const int WST_GENOA[][2] = {{117,137},{89,137},{52,129},{53,120}};
-static const int WST_GIEK[][2]  = {{20,120},{65,120},{65,119},{20,119},{20,118},{65,118}};
-static const int WST_HULL[][2]  = {{0,150},{2,165},{100,165},{120,140}};
-static const int WST_DEK[][2]   = {{0,150},{2,146},{40,140},{40,125},{49,125},{54,133},{70,133},{72,135},{85,135},{92,142},{105,147},{120,140}};
-static const int WST_KNIK[][2]  = {{54,133},{44,133},{44,137}};
-static const int WST_RIG[][2]   = {{0,150},{67,0},{120,141}};
-static const int WST_KUIP[][2]  = {{40,140},{49,137},{49,146},{25,143},{25,148}};
-static const int WST_M1[][2]    = {{69,133},{69,0}};
-static const int WST_M2[][2]    = {{67,133},{67,0}};
-static const int WST_M3[][2]    = {{65,133},{65,0}};
-static const int WST_R1[][2]    = {{51,142},{58,142},{58,135},{53,135},{51,142}};
-static const int WST_R2[][2]    = {{61,142},{69,142},{67,135},{61,135},{61,142}};
-static const int WST_R3[][2]    = {{42,131},{51,131},{47,127},{42,127},{42,131}};
+// ─── Zeilboot: Westerly (EXACTE BKOS4-tekening, dubbel punt = pen-toggle) ──────
+// Sub-paden uit BKOS4 `teken_boot`, per rol gekleurd; elk sub-pad behoudt de
+// dubbele-punt conventie (pen begint uit, dubbel punt schakelt om) → identiek
+// aan BKOS4, zonder verbindings-/spooklijnen.
+static const int WST_HULL[][2]  = {{0,150},{0,150},{2,165},{100,165},{120,140},{0,150},{2,146},{40,140},{40,125},{49,125},{54,133},{70,133},{72,135},{85,135},{92,142},{92,142}};
+static const int WST_KNIK[][2]  = {{70,150},{70,150},{105,147},{105,147}};
+static const int WST_KAJUIT[][2]= {{54,133},{54,133},{44,133},{44,137},{44,137}};
+static const int WST_RIG[][2]   = {{0,150},{0,150},{63,0},{71,0},{120,141},{120,141}};
+static const int WST_GIEK[][2]  = {{20,120},{20,120},{65,120},{65,119},{20,119},{20,118},{65,118},{65,118}};
+static const int WST_GROOT[][2] = {{20,118},{20,118},{65,4},{65,4}};
+static const int WST_GENUA[][2] = {{117,137},{117,137},{89,137},{89,137},{52,129},{52,129},{53,120},{53,120}};
+static const int WST_MAST[][2]  = {{69,133},{69,133},{69,0},{68,0},{68,133},{67,133},{67,0},{66,0},{66,133},{65,133},{65,0},{65,0}};
+static const int WST_R1[][2]    = {{51,142},{51,142},{58,142},{58,135},{53,135},{51,142},{51,142}};
+static const int WST_R2[][2]    = {{61,142},{61,142},{69,142},{67,135},{61,135},{61,142},{61,142}};
+static const int WST_R3[][2]    = {{42,131},{42,131},{51,131},{47,127},{42,127},{42,131},{42,131}};
+static const int WST_KUIP[][2]  = {{40,140},{40,140},{49,137},{49,146},{49,146},{25,143},{25,143},{25,148},{25,148}};
 static const BootSeg WST_SEGS[] = {
-    SEG(WST_LEECH,BK_ZEIL), SEG(WST_GENOA,BK_ZEIL), SEG(WST_GIEK,BK_ZEIL),
-    SEG(WST_HULL,BK_ROMP), SEG(WST_DEK,BK_ROMP), SEG(WST_KNIK,BK_ROMP),
-    SEG(WST_RIG,BK_ROMP), SEG(WST_KUIP,BK_ROMP),
-    SEG(WST_M1,BK_MAST), SEG(WST_M2,BK_MAST), SEG(WST_M3,BK_MAST),
+    SEG(WST_GROOT,BK_ZEIL), SEG(WST_GENUA,BK_ZEIL),
+    SEG(WST_HULL,BK_ROMP), SEG(WST_KNIK,BK_ROMP), SEG(WST_KAJUIT,BK_ROMP), SEG(WST_KUIP,BK_ROMP),
+    SEG(WST_RIG,BK_MAST), SEG(WST_GIEK,BK_MAST), SEG(WST_MAST,BK_MAST),
     SEG(WST_R1,BK_RAAM), SEG(WST_R2,BK_RAAM), SEG(WST_R3,BK_RAAM),
 };
+static const BootRaam WST_RAMEN[] = {{75,139,2},{83,139,2}};
 
 // ─── Zeilboot: Jachtschouw (platbodem, sprietzeil, zwaard) ─────────────────────
 static const int JS_MAIN[][2]  = {{30,18},{48,28},{48,118},{20,121},{30,18}};
@@ -126,7 +127,7 @@ static const BootSeg SB_SEGS[] = {
 //  Modellen per categorie   (BootLicht = anker, stoom, hek, navi-rood, navi-groen)
 // ══════════════════════════════════════════════════════════════════════════════
 static const BootModel ZEIL_MODELLEN[] = {
-    {"Westerly",    WST_SEGS, NSEG(WST_SEGS), nullptr, 0, BK_RAAM, {66,2,  67,52, 3,150, 106,142, 106,146}},
+    {"Westerly",    WST_SEGS, NSEG(WST_SEGS), WST_RAMEN, NRAAM(WST_RAMEN), BK_RAAM, {66,2,  67,52, 3,150, 106,142, 106,146}},
     {"Jachtschouw", JS_SEGS,  NSEG(JS_SEGS),  nullptr,   0,                BK_RAAM, {48,14, 48,55, 12,139, 108,137, 108,140}},
     {"Catamaran",   CAT_SEGS, NSEG(CAT_SEGS), nullptr,   0,                BK_RAAM, {58,5,  58,52, 10,151, 102,144, 102,148}},
 };
@@ -187,13 +188,26 @@ static uint16_t _seg_kleur(uint8_t id) {
     }
 }
 
-// Tekent elk segment als losse polylijn (punt i → punt i+1), geen verbindingen.
+// Tekent één segment. Begint het segment met een dubbel punt, dan geldt de
+// BKOS4-conventie (pen begint uit, dubbel punt schakelt de pen om — zo wordt de
+// lijn onderbroken). Anders: gewone doorlopende polylijn (punt i → i+1).
 static void _pad(const BootSeg& seg, int ox, int oy, int xn, int xd, int yn, int yd,
                  uint16_t kleur) {
-    for (uint8_t i = 0; i + 1 < seg.cnt; i++) {
-        int x0 = ox + seg.data[i][0]   * xn / xd, y0 = oy + seg.data[i][1]   * yn / yd;
-        int x1 = ox + seg.data[i+1][0] * xn / xd, y1 = oy + seg.data[i+1][1] * yn / yd;
-        tft.drawLine(x0, y0, x1, y1, kleur);
+    bool toggle = (seg.cnt >= 2 &&
+                   seg.data[0][0] == seg.data[1][0] && seg.data[0][1] == seg.data[1][1]);
+    if (toggle) {
+        bool pen = false; int lx = -30000, ly = -30000;
+        for (uint8_t i = 0; i < seg.cnt; i++) {
+            int x = seg.data[i][0], y = seg.data[i][1];
+            if (x == lx && y == ly) pen = !pen;
+            else if (pen)
+                tft.drawLine(ox + lx*xn/xd, oy + ly*yn/yd, ox + x*xn/xd, oy + y*yn/yd, kleur);
+            lx = x; ly = y;
+        }
+    } else {
+        for (uint8_t i = 0; i + 1 < seg.cnt; i++)
+            tft.drawLine(ox + seg.data[i][0]*xn/xd,   oy + seg.data[i][1]*yn/yd,
+                         ox + seg.data[i+1][0]*xn/xd, oy + seg.data[i+1][1]*yn/yd, kleur);
     }
 }
 

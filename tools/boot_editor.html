@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>BKOS Boot-tekening editor</title>
+<style>
+  :root{--bg:#0a1020;--panel:#121a2c;--line:#c8d0e0;--accent:#28c8e6;--dim:#7a88a0;}
+  *{box-sizing:border-box;font-family:Segoe UI,Roboto,Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#dfe6f0;display:flex;height:100vh;}
+  #left{flex:0 0 auto;padding:12px;display:flex;flex-direction:column;gap:8px;}
+  #right{flex:1 1 auto;display:flex;flex-direction:column;padding:12px;gap:8px;min-width:340px;}
+  h1{font-size:15px;margin:0 0 4px;color:var(--accent);}
+  canvas{background:#0a1020;border:1px solid #2a3550;border-radius:6px;cursor:crosshair;}
+  textarea{flex:1;width:100%;background:#0c1426;color:#cfe0f5;border:1px solid #2a3550;
+    border-radius:6px;padding:8px;font-family:Consolas,monospace;font-size:12px;line-height:1.45;resize:none;tab-size:2;}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--dim);}
+  button{background:#1d2942;color:#dfe6f0;border:1px solid #36476a;border-radius:5px;padding:6px 12px;cursor:pointer;font-size:12px;}
+  button:hover{background:#27375a;}
+  .hint{font-size:11px;color:var(--dim);max-width:520px;line-height:1.5;}
+  #info{font-size:12px;color:var(--accent);min-height:16px;}
+  label{font-size:12px;color:var(--dim);display:flex;gap:5px;align-items:center;}
+</style>
+</head>
+<body>
+<div id="left">
+  <h1>BKOS Boot-tekening editor</h1>
+  <canvas id="cv" width="520" height="660"></canvas>
+  <div class="bar">
+    <label><input type="checkbox" id="grid" checked> raster</label>
+    <label><input type="checkbox" id="waterlijn" checked> waterlijn (y150)</label>
+    <label><input type="checkbox" id="punten"> punten</label>
+    <span id="coord">x,y: –</span>
+  </div>
+  <div id="info">Klik op een lijn → springt naar de coördinaten in de code.</div>
+  <div class="hint">Coördinaten: x=0 hek (links) … 120 boeg (rechts); y=0 masttop … ~165 kiel.
+  Een array waarvan de eerste twee punten gelijk zijn gebruikt de <b>pen-toggle</b> (dubbel punt = pen aan/uit),
+  net als BKOS4 <code>tekenItem</code>. Andere arrays = doorlopende lijn.</div>
+</div>
+<div id="right">
+  <div class="bar">
+    <button onclick="render()">Teken (Ctrl+Enter)</button>
+    <button onclick="loadVoorbeeld()">Voorbeeld: Westerly</button>
+    <span class="hint">Plak hier je <code>static const int NAAM[][2] = { … };</code>-arrays (één of meer).</span>
+  </div>
+  <textarea id="code" spellcheck="false"></textarea>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d'), ta=document.getElementById('code'),
+      info=document.getElementById('info'), coordEl=document.getElementById('coord');
+const MARGIN=24, MAXX=120, MAXY=168;
+let SC=1, segs=[], drawn=[];   // drawn: {x1,y1,x2,y2,segIdx,iA,iB,a,b} in boot-coords + screen
+
+// ── kleur per arraynaam (zoals firmware) ──
+function kleurVoor(naam){
+  const n=naam.toUpperCase();
+  if(/ZEIL|GROOT|GENUA|GENOA|FOK|JIB|MAIN|LEECH/.test(n)) return '#6f9ff0';   // zeil
+  if(/MAST|GIEK|BOOM|RIG|STAY|GAFF|SPRIET|RADAR|ANT|VLAG|STAAF/.test(n)) return '#a8b2cc'; // spar
+  if(/RAAM|WIN|RUIT|R1|R2|R3/.test(n)) return '#28c8e6';                      // raam
+  return '#c8d0e0';                                                           // romp
+}
+// ── parse: vind NAAM[][2] = { {x,y},... }; ──
+function parse(text){
+  const out=[]; const hdr=/([A-Za-z_]\w*)\s*\[\]\s*\[\s*2\s*\]\s*=?\s*\{/g; let m;
+  while((m=hdr.exec(text))){
+    const naam=m[1]; let i=m.index+m[0].length, depth=1, start=i;
+    while(i<text.length && depth>0){ if(text[i]==='{')depth++; else if(text[i]==='}')depth--; i++; }
+    const body=text.slice(start,i-1);
+    const pts=[]; const pr=/\{\s*(-?\d+)\s*,\s*(-?\d+)\s*\}/g; let p;
+    while((p=pr.exec(body))){ pts.push({x:+p[1],y:+p[2], off:start+p.index, len:p[0].length}); }
+    if(pts.length) out.push({naam,pts});
+    hdr.lastIndex=i;
+  }
+  if(out.length===0){ // geen header: hele tekst als één array
+    const pts=[]; const pr=/\{\s*(-?\d+)\s*,\s*(-?\d+)\s*\}/g; let p;
+    while((p=pr.exec(text))){ pts.push({x:+p[1],y:+p[2], off:p.index, len:p[0].length}); }
+    if(pts.length) out.push({naam:'(plak)',pts});
+  }
+  return out;
+}
+function tx(x){return MARGIN + x*SC;}
+function ty(y){return MARGIN + y*SC;}
+function render(sel=-1){
+  segs=parse(ta.value); drawn=[];
+  SC=Math.min((cv.width-2*MARGIN)/MAXX,(cv.height-2*MARGIN)/MAXY);
+  ctx.fillStyle='#0a1020'; ctx.fillRect(0,0,cv.width,cv.height);
+  if(document.getElementById('grid').checked){
+    ctx.strokeStyle='#172238'; ctx.lineWidth=1;
+    for(let x=0;x<=120;x+=20){ctx.beginPath();ctx.moveTo(tx(x),ty(0));ctx.lineTo(tx(x),ty(MAXY));ctx.stroke();}
+    for(let y=0;y<=160;y+=20){ctx.beginPath();ctx.moveTo(tx(0),ty(y));ctx.lineTo(tx(120),ty(y));ctx.stroke();}
+  }
+  if(document.getElementById('waterlijn').checked){
+    ctx.strokeStyle='#2a3a5a';ctx.beginPath();ctx.moveTo(tx(0),ty(150));ctx.lineTo(tx(120),ty(150));ctx.stroke();
+  }
+  segs.forEach((s,si)=>{
+    const kleur=kleurVoor(s.naam);
+    const toggle = s.pts.length>=2 && s.pts[0].x===s.pts[1].x && s.pts[0].y===s.pts[1].y;
+    const lijn=(a,b)=>{
+      ctx.strokeStyle=kleur; ctx.lineWidth=2; ctx.beginPath();
+      ctx.moveTo(tx(a.x),ty(a.y)); ctx.lineTo(tx(b.x),ty(b.y)); ctx.stroke();
+      drawn.push({a,b,si,naam:s.naam});
+    };
+    if(toggle){
+      let pen=false,last=null;
+      for(const p of s.pts){
+        if(last && p.x===last.x && p.y===last.y) pen=!pen;
+        else if(pen) lijn(last,p);
+        last=p;
+      }
+    } else {
+      for(let i=0;i+1<s.pts.length;i++) lijn(s.pts[i],s.pts[i+1]);
+    }
+    if(document.getElementById('punten').checked){
+      ctx.fillStyle=kleur; s.pts.forEach(p=>{ctx.beginPath();ctx.arc(tx(p.x),ty(p.y),2,0,7);ctx.fill();});
+    }
+  });
+  // highlight geselecteerde lijn
+  if(sel>=0 && drawn[sel]){
+    const d=drawn[sel];
+    ctx.strokeStyle='#ff5a5a';ctx.lineWidth=3;ctx.beginPath();
+    ctx.moveTo(tx(d.a.x),ty(d.a.y));ctx.lineTo(tx(d.b.x),ty(d.b.y));ctx.stroke();
+    ctx.fillStyle='#ff5a5a';
+    [d.a,d.b].forEach(p=>{ctx.beginPath();ctx.arc(tx(p.x),ty(p.y),3.5,0,7);ctx.fill();});
+  }
+}
+// ── klik: dichtstbijzijnde lijn → selecteer + spring naar coördinaten in tekst ──
+function dist(px,py,a,b){
+  const ax=tx(a.x),ay=ty(a.y),bx=tx(b.x),by=ty(b.y);
+  const dx=bx-ax,dy=by-ay,L=dx*dx+dy*dy;
+  let t=L? ((px-ax)*dx+(py-ay)*dy)/L : 0; t=Math.max(0,Math.min(1,t));
+  const cx=ax+t*dx,cy=ay+t*dy; return Math.hypot(px-cx,py-cy);
+}
+cv.addEventListener('mousemove',e=>{
+  const r=cv.getBoundingClientRect();
+  const bx=Math.round((e.clientX-r.left-MARGIN)/SC), by=Math.round((e.clientY-r.top-MARGIN)/SC);
+  coordEl.textContent=`x,y: ${bx}, ${by}`;
+});
+cv.addEventListener('click',e=>{
+  const r=cv.getBoundingClientRect(); const px=e.clientX-r.left,py=e.clientY-r.top;
+  let best=-1,bd=9;
+  drawn.forEach((d,i)=>{const dd=dist(px,py,d.a,d.b); if(dd<bd){bd=dd;best=i;}});
+  if(best<0){info.textContent='Geen lijn dichtbij — klik dichter op een lijn.';render();return;}
+  const d=drawn[best];
+  info.textContent=`${d.naam}: {${d.a.x},${d.a.y}} → {${d.b.x},${d.b.y}}  (klik staat in de code geselecteerd)`;
+  render(best);
+  // selecteer de twee coördinaten in de textarea
+  const s=Math.min(d.a.off,d.b.off), e2=Math.max(d.a.off+d.a.len,d.b.off+d.b.len);
+  ta.focus(); ta.setSelectionRange(s,e2);
+  // scroll de selectie in beeld
+  const before=ta.value.slice(0,s), line=before.split('\n').length;
+  ta.scrollTop=Math.max(0,(line-4)*ta.scrollHeight/ (ta.value.split('\n').length||1));
+});
+ta.addEventListener('input',()=>render());
+ta.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter')render();});
+function loadVoorbeeld(){ ta.value=VOORBEELD; render(); }
+const VOORBEELD=
+`// Westerly (BKOS4) — dubbel beginpunt = pen-toggle
+static const int WST_GROOT[][2] = {{20,118},{20,118},{65,4},{65,4}};
+static const int WST_GENUA[][2] = {{117,137},{117,137},{89,137},{89,137},{52,129},{52,129},{53,120},{53,120}};
+static const int WST_HULL[][2]  = {{0,150},{0,150},{2,165},{100,165},{120,140},{0,150},{2,146},{40,140},{40,125},{49,125},{54,133},{70,133},{72,135},{85,135},{92,142},{92,142}};
+static const int WST_KNIK[][2]  = {{70,150},{70,150},{105,147},{105,147}};
+static const int WST_KAJUIT[][2]= {{54,133},{54,133},{44,133},{44,137},{44,137}};
+static const int WST_RIG[][2]   = {{0,150},{0,150},{63,0},{71,0},{120,141},{120,141}};
+static const int WST_GIEK[][2]  = {{20,120},{20,120},{65,120},{65,119},{20,119},{20,118},{65,118},{65,118}};
+static const int WST_MAST[][2]  = {{69,133},{69,133},{69,0},{68,0},{68,133},{67,133},{67,0},{66,0},{66,133},{65,133},{65,0},{65,0}};
+static const int WST_R1[][2]    = {{51,142},{51,142},{58,142},{58,135},{53,135},{51,142},{51,142}};
+static const int WST_R2[][2]    = {{61,142},{61,142},{69,142},{67,135},{61,135},{61,142},{61,142}};
+static const int WST_R3[][2]    = {{42,131},{42,131},{51,131},{47,127},{42,127},{42,131},{42,131}};
+static const int WST_KUIP[][2]  = {{40,140},{40,140},{49,137},{49,146},{49,146},{25,143},{25,143},{25,148},{25,148}};`;
+loadVoorbeeld();
+</script>
+</body>
+</html>

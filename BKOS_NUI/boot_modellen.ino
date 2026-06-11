@@ -14,24 +14,28 @@
 #define NSEG(s)      (uint8_t)(sizeof(s) / sizeof((s)[0]))
 #define NRAAM(s)     (uint8_t)(sizeof(s) / sizeof((s)[0]))
 
-// ─── Zeilboot: Westerly Centaur (lage cruiser, lange kajuit, twin kielen) ──────
-static const int WST_MAIN[][2]  = {{64,10},{63,118},{33,121},{64,10}};
-static const int WST_GENOA[][2] = {{65,15},{117,137},{88,135},{65,15}};
-static const int WST_STAY1[][2] = {{8,139},{64,8}};
-static const int WST_STAY2[][2] = {{64,8},{117,137}};
-static const int WST_HULL[][2]  = {{8,139},{30,140},{60,141},{90,139},{110,136},{117,136},{119,146},{112,152},{80,156},{40,156},{14,153},{8,150},{8,139}};
-static const int WST_KIELA[][2] = {{48,156},{46,164},{58,164},{56,156}};
-static const int WST_KIELB[][2] = {{64,156},{63,162},{73,162},{72,156}};
-static const int WST_ROER[][2]  = {{12,151},{10,160},{16,160},{15,151}};
-static const int WST_KAJUIT[][2]= {{32,139},{36,130},{86,130},{90,139}};
-static const int WST_MAST[][2]  = {{64,130},{64,6}};
-static const int WST_GIEK[][2]  = {{64,119},{32,122}};
+// ─── Zeilboot: Westerly (originele tekening, deelpaden los — boven water) ──────
+static const int WST_LEECH[][2] = {{20,118},{65,4}};
+static const int WST_GENOA[][2] = {{117,137},{89,137},{52,129},{53,120}};
+static const int WST_GIEK[][2]  = {{20,120},{65,120},{65,119},{20,119},{20,118},{65,118}};
+static const int WST_HULL[][2]  = {{0,150},{2,165},{100,165},{120,140}};
+static const int WST_DEK[][2]   = {{0,150},{2,146},{40,140},{40,125},{49,125},{54,133},{70,133},{72,135},{85,135},{92,142},{105,147},{120,140}};
+static const int WST_KNIK[][2]  = {{54,133},{44,133},{44,137}};
+static const int WST_RIG[][2]   = {{0,150},{67,0},{120,141}};
+static const int WST_KUIP[][2]  = {{40,140},{49,137},{49,146},{25,143},{25,148}};
+static const int WST_M1[][2]    = {{69,133},{69,0}};
+static const int WST_M2[][2]    = {{67,133},{67,0}};
+static const int WST_M3[][2]    = {{65,133},{65,0}};
+static const int WST_R1[][2]    = {{51,142},{58,142},{58,135},{53,135},{51,142}};
+static const int WST_R2[][2]    = {{61,142},{69,142},{67,135},{61,135},{61,142}};
+static const int WST_R3[][2]    = {{42,131},{51,131},{47,127},{42,127},{42,131}};
 static const BootSeg WST_SEGS[] = {
-    SEG(WST_MAIN,BK_ZEIL), SEG(WST_GENOA,BK_ZEIL), SEG(WST_STAY1,BK_MAST), SEG(WST_STAY2,BK_MAST),
-    SEG(WST_HULL,BK_ROMP), SEG(WST_KIELA,BK_ROMP), SEG(WST_KIELB,BK_ROMP), SEG(WST_ROER,BK_ROMP),
-    SEG(WST_KAJUIT,BK_ROMP), SEG(WST_MAST,BK_MAST), SEG(WST_GIEK,BK_MAST),
+    SEG(WST_LEECH,BK_ZEIL), SEG(WST_GENOA,BK_ZEIL), SEG(WST_GIEK,BK_ZEIL),
+    SEG(WST_HULL,BK_ROMP), SEG(WST_DEK,BK_ROMP), SEG(WST_KNIK,BK_ROMP),
+    SEG(WST_RIG,BK_ROMP), SEG(WST_KUIP,BK_ROMP),
+    SEG(WST_M1,BK_MAST), SEG(WST_M2,BK_MAST), SEG(WST_M3,BK_MAST),
+    SEG(WST_R1,BK_RAAM), SEG(WST_R2,BK_RAAM), SEG(WST_R3,BK_RAAM),
 };
-static const BootRaam WST_RAMEN[] = {{44,134,2},{53,134,2},{62,134,2},{71,134,2}};
 
 // ─── Zeilboot: Jachtschouw (platbodem, sprietzeil, zwaard) ─────────────────────
 static const int JS_MAIN[][2]  = {{30,18},{48,28},{48,118},{20,121},{30,18}};
@@ -39,12 +43,11 @@ static const int JS_FOK[][2]   = {{48,32},{112,137},{84,135},{48,32}};
 static const int JS_SPRIET[][2]= {{48,28},{30,18}};
 static const int JS_HULL[][2]  = {{10,148},{104,148},{116,137},{14,138},{10,148}};
 static const int JS_CABIN[][2] = {{48,138},{50,131},{70,131},{72,138}};
-static const int JS_ZWAARD[][2]= {{58,148},{56,160},{64,160},{62,148}};
 static const int JS_MAST[][2]  = {{48,138},{48,14}};
 static const int JS_GIEK[][2]  = {{48,119},{22,122}};
 static const BootSeg JS_SEGS[] = {
     SEG(JS_MAIN,BK_ZEIL), SEG(JS_FOK,BK_ZEIL), SEG(JS_SPRIET,BK_MAST),
-    SEG(JS_HULL,BK_ROMP), SEG(JS_CABIN,BK_ROMP), SEG(JS_ZWAARD,BK_ROMP),
+    SEG(JS_HULL,BK_ROMP), SEG(JS_CABIN,BK_ROMP),
     SEG(JS_MAST,BK_MAST), SEG(JS_GIEK,BK_MAST),
 };
 
@@ -123,7 +126,7 @@ static const BootSeg SB_SEGS[] = {
 //  Modellen per categorie   (BootLicht = anker, stoom, hek, navi-rood, navi-groen)
 // ══════════════════════════════════════════════════════════════════════════════
 static const BootModel ZEIL_MODELLEN[] = {
-    {"Westerly",    WST_SEGS, NSEG(WST_SEGS), WST_RAMEN, NRAAM(WST_RAMEN), BK_RAAM, {64,6,  64,52, 8,139, 110,137, 110,141}},
+    {"Westerly",    WST_SEGS, NSEG(WST_SEGS), nullptr, 0, BK_RAAM, {66,2,  67,52, 3,150, 106,142, 106,146}},
     {"Jachtschouw", JS_SEGS,  NSEG(JS_SEGS),  nullptr,   0,                BK_RAAM, {48,14, 48,55, 12,139, 108,137, 108,140}},
     {"Catamaran",   CAT_SEGS, NSEG(CAT_SEGS), nullptr,   0,                BK_RAAM, {58,5,  58,52, 10,151, 102,144, 102,148}},
 };

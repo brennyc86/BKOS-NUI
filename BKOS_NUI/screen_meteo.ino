@@ -1,6 +1,7 @@
 #include "screen_meteo.h"
 #include "meteo.h"
 #include "getijdata.h"
+#include "stroming.h"
 #include "nav_bar.h"
 #include "ui_draw.h"
 #include "screen_info.h"
@@ -21,7 +22,7 @@ static int          rws_geladen_idx = -1;
 // ─── Layout (geschaald vanuit S3 800×480 referentie) ──────────────────────
 #define TAB_Y       CONTENT_Y
 #define TAB_H       UI_SCY(38)
-#define TAB_CNT     3
+#define TAB_CNT     4
 #define TAB_W       (TFT_W / TAB_CNT)
 #define PANEL_Y     (TAB_Y + TAB_H + 2)
 #define PANEL_H     (TFT_H - NAV_H - PANEL_Y)
@@ -141,7 +142,7 @@ static void wind_kompas(int cx, int cy, int r, int graden, float ms) {
 
 // ─── Tabs tekenen ─────────────────────────────────────────────────────────
 static void meteo_tabs_teken() {
-    const char* tabs[TAB_CNT] = { "WEER", "GETIJ", "LOCATIE" };
+    const char* tabs[TAB_CNT] = { "WEER", "GETIJ", "LOCATIE", "STROOM" };
     tft.fillRect(0, TAB_Y, TFT_W, TAB_H + 2, C_BG);
     for (int i = 0; i < TAB_CNT; i++) {
         int x = i * TAB_W;
@@ -923,6 +924,220 @@ static void meteo_locatie_teken() {
     }
 }
 
+// ─── STROMING TAB ─────────────────────────────────────────────────────────
+#define STR_SLOTS   64                 // aantal 15-min vertrekmomenten (16 uur)
+
+static int    str_route_idx  = 1;      // default: Scheveningen -> IJmuiden
+static bool   str_omgekeerd  = false;
+static float  str_stw        = 4.0f;   // snelheid door water (kn)
+static int    str_scroll     = 0;
+
+static GetijExtreme str_ext[GETIJ_SCHERM_MAX];
+static int    str_ext_cnt     = 0;
+static int    str_ext_station = -1;
+static time_t str_dep[STR_SLOTS];      // vertrekmoment (unix)
+static float  str_dur[STR_SLOTS];      // vaartijd (uur), <0 = geen getijdata
+static int    str_best        = -1;    // index snelste vertrek
+
+// Layout
+#if SCREEN_SMALL
+  #define STR_SUBROW  UI_SCY(30)
+  #define STR_ROW_H   UI_SCY(30)
+  #define STR_KOL_OFF 0                 // offset-kolom weglaten op smal
+#else
+  #define STR_SUBROW  UI_SCY(34)
+  #define STR_ROW_H   UI_SCY(34)
+  #define STR_KOL_OFF 1
+#endif
+#define STR_CTRL_H   (2 * STR_SUBROW + 4)
+#define STR_INFO_H   UI_SCY(24)
+#define STR_HDR_H    UI_SCY(16)
+#define STR_TABLE_Y  (PANEL_Y + STR_CTRL_H + STR_INFO_H + STR_HDR_H)
+#define STR_TABLE_H  (PANEL_H - STR_CTRL_H - STR_INFO_H - STR_HDR_H)
+#define STR_ROWS_N   (STR_TABLE_H / STR_ROW_H)
+#define STR_TBL_W    (TFT_W - 8 - UI_SB_W)
+
+static void _str_hm(float uur, char* buf, int n) {
+    int m = (int)(uur * 60.0f + 0.5f);
+    snprintf(buf, n, "%du%02d", m / 60, m % 60);
+}
+
+// Vind HW het dichtst bij dep; geef offset (uur, dep - HW) terug.
+static bool _str_naaste_hw(time_t dep, float* off_h) {
+    bool found = false; double bd = 1e18; time_t bestt = 0;
+    for (int i = 0; i < str_ext_cnt; i++) {
+        if (!str_ext[i].is_hoogwater) continue;
+        double d = fabs((double)(dep - str_ext[i].tijdstip));
+        if (d < bd) { bd = d; bestt = str_ext[i].tijdstip; found = true; }
+    }
+    if (!found) return false;
+    *off_h = (float)((double)(dep - bestt) / 3600.0);
+    return true;
+}
+
+static void _str_laad_ijk() {
+    const StromingRoute* r = stroming_route(str_route_idx);
+    if (!r) return;
+    if (str_ext_station != r->ijk_getij_idx) {
+        getijdata_get(r->ijk_getij_idx, str_ext, GETIJ_SCHERM_MAX, &str_ext_cnt);
+        str_ext_station = r->ijk_getij_idx;
+    }
+}
+
+// Reken alle vertrekmomenten door en bepaal het snelste.
+static void _str_bereken() {
+    str_best = -1;
+    const StromingRoute* r = stroming_route(str_route_idx);
+    if (!r) return;
+    _str_laad_ijk();
+    time_t nu     = time(nullptr);
+    time_t eerste = ((nu / 900) + 1) * 900;     // volgend kwartier
+    float  best   = 1e9f;
+    for (int i = 0; i < STR_SLOTS; i++) {
+        time_t dep = eerste + (time_t)i * 900;
+        str_dep[i] = dep;
+        float off;
+        if (str_ext_cnt > 0 && _str_naaste_hw(dep, &off)) {
+            str_dur[i] = stroming_vaartijd_uur(r, str_omgekeerd, str_stw, off);
+            if (str_dur[i] < best) { best = str_dur[i]; str_best = i; }
+        } else {
+            str_dur[i] = -1.0f;
+        }
+    }
+}
+
+// Besturingsstrip (route, omkeer, snelheid) + info + kolomkoppen
+static void _str_kop_teken() {
+    const StromingRoute* r = stroming_route(str_route_idx);
+    tft.fillRect(0, PANEL_Y, TFT_W, STR_CTRL_H + STR_INFO_H + STR_HDR_H, C_BG);
+
+    // ── Rij A: route + omkeer ──────────────────────────────────────────────
+    int yA = PANEL_Y + 2;
+    int omk_w = UI_SCX(96);
+    int route_w = TFT_W - 8 - omk_w - 4;
+    char rlbl[40];
+    const char* a = str_omgekeerd ? r->naar : r->van;
+    const char* b = str_omgekeerd ? r->van  : r->naar;
+    snprintf(rlbl, sizeof(rlbl), "%s > %s", a, b);
+    ui_knop(4, yA, route_w, STR_SUBROW, rlbl, C_SURFACE2, C_CYAN);
+    ui_knop(4 + route_w + 4, yA, omk_w, STR_SUBROW, "OMKEER", C_SURFACE, C_TEXT);
+
+    // ── Rij B: snelheid door water ─────────────────────────────────────────
+    int yB = yA + STR_SUBROW + 2;
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(6, yB + (STR_SUBROW - 8) / 2);
+    tft.print("Snelheid door water:");
+    int bw = UI_SCX(44);
+    int vx = UI_SCX(170);
+    ui_knop(vx, yB, bw, STR_SUBROW, "-", C_SURFACE2, C_TEXT);
+    char sbuf[12]; snprintf(sbuf, sizeof(sbuf), "%.1f kn", str_stw);
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    ui_tekst_midden(vx + bw + 2, yB + (STR_SUBROW - 16) / 2, UI_SCX(72), sbuf, C_TEXT, 2);
+    ui_knop(vx + bw + 4 + UI_SCX(72), yB, bw, STR_SUBROW, "+", C_SURFACE2, C_TEXT);
+
+    // ── Info: ijkstation + volgend HW + afstand ────────────────────────────
+    int yI = PANEL_Y + STR_CTRL_H;
+    tft.fillRect(0, yI, TFT_W, STR_INFO_H, RGB565(8, 18, 36));
+    char ibuf[64];
+    time_t nu = time(nullptr), hw_next = 0;
+    for (int i = 0; i < str_ext_cnt; i++)
+        if (str_ext[i].is_hoogwater && str_ext[i].tijdstip > nu) { hw_next = str_ext[i].tijdstip; break; }
+    if (hw_next > 0) {
+        struct tm* lt = localtime(&hw_next);
+        snprintf(ibuf, sizeof(ibuf), "Ijk: HW %s %02d:%02d   %.0f NM%s",
+                 getijdata_naam(r->ijk_getij_idx), lt->tm_hour, lt->tm_min,
+                 stroming_totaal_nm(r), r->indicatief ? "  (indicatief)" : "");
+    } else {
+        snprintf(ibuf, sizeof(ibuf), "Ijk: %s  -  geen getijdata%s",
+                 getijdata_naam(r->ijk_getij_idx), r->indicatief ? " (indicatief)" : "");
+    }
+    tft.setTextSize(1); tft.setTextColor(r->indicatief ? C_AMBER : C_TEXT_DIM);
+    tft.setCursor(6, yI + (STR_INFO_H - 8) / 2);
+    tft.print(ibuf);
+
+    // ── Kolomkoppen ────────────────────────────────────────────────────────
+    int yH = yI + STR_INFO_H;
+    tft.fillRect(0, yH, TFT_W, STR_HDR_H, C_SURFACE);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(8, yH + 4);                       tft.print("Vertrek");
+#if STR_KOL_OFF
+    tft.setCursor(STR_TBL_W * 30 / 100, yH + 4);    tft.print("t.o.v. HW");
+#endif
+    tft.setCursor(STR_TBL_W * 58 / 100, yH + 4);    tft.print("Vaartijd");
+    tft.setCursor(STR_TBL_W * 80 / 100, yH + 4);    tft.print("Aankomst");
+}
+
+static void _str_tabel_teken() {
+    tft.fillRect(0, STR_TABLE_Y, TFT_W, STR_TABLE_H, C_BG);
+
+    if (str_ext_cnt == 0) {
+        ui_tekst_midden(0, STR_TABLE_Y + 20, TFT_W,
+            "Geen getijdata voor ijkstation", C_TEXT_DIM, 2);
+        ui_tekst_midden(0, STR_TABLE_Y + 48, TFT_W,
+            wifi_verbonden ? "Tik 'Ophalen' om te laden" : "Verbind met WiFi",
+            C_TEXT_DIM, 1);
+        int bw = UI_SCX(140);
+        ui_knop((TFT_W - bw) / 2, STR_TABLE_Y + 72, bw, UI_SCY(30), "Ophalen", C_SURFACE2, C_CYAN);
+        return;
+    }
+
+    time_t nu = time(nullptr);
+    int max_sc = max(0, STR_SLOTS - STR_ROWS_N);
+    if (str_scroll > max_sc) str_scroll = max_sc;
+
+    for (int rij = 0; rij < STR_ROWS_N; rij++) {
+        int i  = str_scroll + rij;
+        int ey = STR_TABLE_Y + rij * STR_ROW_H;
+        if (i >= STR_SLOTS) { tft.fillRect(0, ey, STR_TBL_W, STR_ROW_H, C_BG); continue; }
+
+        bool ideaal = (i == str_best);
+        uint16_t bg = ideaal ? RGB565(0, 60, 40) : ((rij % 2) ? C_SURFACE : C_SURFACE2);
+        tft.fillRect(2, ey, STR_TBL_W - 2, STR_ROW_H - 1, bg);
+        if (ideaal) tft.drawRect(2, ey, STR_TBL_W - 2, STR_ROW_H - 1, C_GREEN);
+
+        struct tm* dt = localtime(&str_dep[i]);
+        char vbuf[8]; snprintf(vbuf, sizeof(vbuf), "%02d:%02d", dt->tm_hour, dt->tm_min);
+        int ty = ey + (STR_ROW_H - 16) / 2;
+        uint16_t fg = ideaal ? C_GREEN : C_TEXT;
+
+        tft.setTextSize(2); tft.setTextColor(fg);
+        tft.setCursor(8, ty); tft.print(vbuf);
+
+        if (str_dur[i] < 0) {
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(STR_TBL_W * 58 / 100, ty + 4); tft.print("-");
+            continue;
+        }
+
+#if STR_KOL_OFF
+        float off; _str_naaste_hw(str_dep[i], &off);
+        int om = (int)(off * 60.0f + (off < 0 ? -0.5f : 0.5f));
+        char obuf[12]; snprintf(obuf, sizeof(obuf), "HW%c%d:%02d", om < 0 ? '-' : '+',
+                                abs(om) / 60, abs(om) % 60);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(STR_TBL_W * 30 / 100, ty + 4); tft.print(obuf);
+#endif
+        char dbuf[8]; _str_hm(str_dur[i], dbuf, sizeof(dbuf));
+        tft.setTextSize(2); tft.setTextColor(fg);
+        tft.setCursor(STR_TBL_W * 58 / 100, ty); tft.print(dbuf);
+
+        time_t aank = str_dep[i] + (time_t)(str_dur[i] * 3600.0f);
+        struct tm* at = localtime(&aank);
+        char abuf[8]; snprintf(abuf, sizeof(abuf), "%02d:%02d", at->tm_hour, at->tm_min);
+        tft.setTextColor(ideaal ? C_GREEN : C_TEXT_DIM);
+        tft.setCursor(STR_TBL_W * 80 / 100, ty); tft.print(abuf);
+    }
+
+    ui_scrollbar(TFT_W - UI_SB_W, STR_TABLE_Y, STR_TABLE_H, str_scroll, max_sc);
+}
+
+static void meteo_stroming_teken() {
+    tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
+    _str_bereken();
+    _str_kop_teken();
+    _str_tabel_teken();
+}
+
 // ─── Hoofdfuncties ────────────────────────────────────────────────────────
 void screen_meteo_teken() {
     tft.fillScreen(C_BG);
@@ -945,12 +1160,21 @@ void screen_meteo_teken() {
             if (meteo_detail_dag >= 0) meteo_detail_teken(meteo_detail_dag);
             else meteo_weer_teken();
             break;
-        case METEO_TAB_GETIJ:   meteo_getij_teken();   break;
-        case METEO_TAB_LOCATIE: meteo_locatie_teken(); break;
+        case METEO_TAB_GETIJ:    meteo_getij_teken();    break;
+        case METEO_TAB_LOCATIE:  meteo_locatie_teken();  break;
+        case METEO_TAB_STROMING: meteo_stroming_teken(); break;
     }
 }
 
 void screen_meteo_run(int x, int y, bool aanraking) {
+    // Auto-refresh stroming zodra getijdata voor ijkstation binnen is
+    if (!aanraking && meteo_tab == METEO_TAB_STROMING && getijdata_ophalen_klaar) {
+        getijdata_ophalen_klaar = false;
+        str_ext_station = -1;
+        meteo_stroming_teken();
+        return;
+    }
+
     // Auto-refresh zodra netwerktaak klaar is (RAW of normale modus)
     if (!aanraking && meteo_tab == METEO_TAB_GETIJ && getijdata_ophalen_klaar) {
         getijdata_ophalen_klaar = false;
@@ -984,9 +1208,10 @@ void screen_meteo_run(int x, int y, bool aanraking) {
             meteo_tabs_teken();
             tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
             switch (meteo_tab) {
-                case METEO_TAB_WEER:    meteo_weer_teken();    break;
-                case METEO_TAB_GETIJ:   meteo_getij_teken();   break;
-                case METEO_TAB_LOCATIE: meteo_locatie_teken(); break;
+                case METEO_TAB_WEER:     meteo_weer_teken();     break;
+                case METEO_TAB_GETIJ:    meteo_getij_teken();    break;
+                case METEO_TAB_LOCATIE:  meteo_locatie_teken();  break;
+                case METEO_TAB_STROMING: meteo_stroming_teken(); break;
             }
         }
         return;
@@ -1155,6 +1380,70 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                 meteo_locatie_teken();
                 return;
             }
+        }
+    }
+
+    // ── STROMING TAB interactie ────────────────────────────────────────────
+    if (meteo_tab == METEO_TAB_STROMING) {
+        int yA      = PANEL_Y + 2;
+        int omk_w   = UI_SCX(96);
+        int route_w = TFT_W - 8 - omk_w - 4;
+
+        // Rij A: route cyclen / richting omkeren
+        if (y >= yA && y < yA + STR_SUBROW) {
+            if (x >= 4 && x < 4 + route_w) {
+                str_route_idx  = (str_route_idx + 1) % stroming_route_count();
+                str_omgekeerd  = false;
+                str_ext_station = -1;
+                str_scroll     = 0;
+                meteo_stroming_teken();
+            } else if (x >= 4 + route_w + 4) {
+                str_omgekeerd = !str_omgekeerd;
+                str_scroll    = 0;
+                meteo_stroming_teken();
+            }
+            return;
+        }
+
+        // Rij B: snelheid door water
+        int yB = yA + STR_SUBROW + 2;
+        if (y >= yB && y < yB + STR_SUBROW) {
+            int bw = UI_SCX(44);
+            int vx = UI_SCX(170);
+            if (x >= vx && x < vx + bw) {
+                str_stw = max(STROMING_STW_MIN, str_stw - STROMING_STW_STAP);
+                meteo_stroming_teken();
+            } else if (x >= vx + bw + 4 + UI_SCX(72) && x < vx + 2 * bw + 4 + UI_SCX(72)) {
+                str_stw = min(STROMING_STW_MAX, str_stw + STROMING_STW_STAP);
+                meteo_stroming_teken();
+            }
+            return;
+        }
+
+        // Geen data: 'Ophalen' knop
+        if (str_ext_cnt == 0) {
+            int bw = UI_SCX(140);
+            int bx = (TFT_W - bw) / 2;
+            if (x >= bx && x < bx + bw && y >= STR_TABLE_Y + 72 && y < STR_TABLE_Y + 72 + UI_SCY(30)) {
+                const StromingRoute* r = stroming_route(str_route_idx);
+                if (r) {
+                    getijdata_ophalen_aanvragen(r->ijk_getij_idx);
+                    if (!wifi_verbonden) wifi_verbind_aanvragen();
+                }
+                return;
+            }
+        }
+
+        // Scrollbar
+        if (x >= TFT_W - UI_SB_W - 6) {
+            int max_sc = max(0, STR_SLOTS - STR_ROWS_N);
+            int k = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, STR_TABLE_Y, STR_TABLE_H);
+            if      (k == -1) str_scroll = max(0, str_scroll - STR_ROWS_N);
+            else if (k ==  1) str_scroll = min(max_sc, str_scroll + STR_ROWS_N);
+            else if (k ==  2) str_scroll = constrain(
+                (y - STR_TABLE_Y) * STR_SLOTS / STR_TABLE_H - STR_ROWS_N / 2, 0, max_sc);
+            _str_tabel_teken();
+            return;
         }
     }
 }

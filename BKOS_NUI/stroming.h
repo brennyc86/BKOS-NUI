@@ -1,56 +1,58 @@
 #pragma once
 #include <Arduino.h>
+#include <time.h>
 
 // ============================================================
-// stroming.h — getijstroom / vaartijd-planner
+// stroming.h — getijstroom / vaartijd-planner (havengraaf)
 // ============================================================
-// Rekent vooraf (offline) de vaartijd tussen NL-havens uit bij een
-// instelbare snelheid-door-water, als functie van de getijfase.
+// Havens (getijwater + stromende rivieren) hangen aan een backbone
+// van vaarwegpunten. Een route van->naar is het pad door de graaf.
+// De vaartijd wordt in blokjes van 5 min geintegreerd:
+//   grondsnelheid = snelheid door water +/- stroom langs koers.
 //
-// Model: getijstroom per traject-leg als sinus rond de getijperiode,
-// geijkt op HW van een RWS-getijstation (getijdata). Vloed langs de
-// NL-kust loopt ~NE (035°), eb ~SW (215°). Vaartijd = integraal in
-// blokjes van 5 min: stroom -> grondsnelheid -> afgelegde afstand.
-//
-// De stroom-amplitudes (A_kn) en kenteringsfase (phi_flood) zijn
-// atlas-richtwaarden en bedoeld om per traject op de praktijk te
-// worden bijgesteld. DONAR-meetdata kan later per leg verfijnen.
+// Stroomwaarden (A_kn, phi_flood) zijn atlas-/ervaringsschattingen,
+// bedoeld om per traject op de praktijk bij te stellen. Er is geen
+// live stroombron (RWS geeft alleen waterstand).
 // ============================================================
 
-// Snelheid-door-water bereik: 2.0 .. 10.0 kn per halve knoop (17 stappen)
 #define STROMING_STW_MIN    2.0f
 #define STROMING_STW_MAX    10.0f
 #define STROMING_STW_STAP   0.5f
+#define STROMING_T_GETIJ    12.4206f     // getijperiode (uur)
+#define STROMING_HAVEN_KN   3.5f         // vaste snelheid in haventoegang (kn)
+#define STROMING_MAX_UUR    16.0f        // routes langer dan dit: niet tonen
+#define STROMING_MAX_LEGS   24           // max legs in een opgebouwde route
 
-// Eén traject-segment
-struct StromingLeg {
-    float lengte_nm;   // leglengte in zeemijl
-    float koers;       // ware koers van->naar (graden)
-    float A_kn;        // gemiddelde piekstroom middentij (knopen)
-    float phi_flood;   // uur t.o.v. HW ijkstation waarop de NE-vloed maximaal is
+enum { STROM_LAND_NL = 0, STROM_LAND_BE = 1, STROM_LAND_FR = 2, STROM_LAND_DE = 3 };
+enum { STROM_ZEE = 0, STROM_HAVEN = 1 };   // leg-modus
+
+// Eén traject-segment (opgebouwd door stroming_bouw_route)
+struct StromLeg {
+    float   lengte_nm;
+    float   koers;       // ware koers in vaarrichting (graden)
+    float   A_kn;        // piekstroom middentij
+    float   phi_flood;   // uur t.o.v. HW eigen ijkstation, NE-vloed maximaal
+    uint8_t ijk;         // getijdata-stationindex voor deze leg
+    uint8_t modus;       // STROM_ZEE of STROM_HAVEN
 };
 
-// Eén route (van -> naar). Omgekeerd varen gaat via de vlag in de aanroep.
-struct StromingRoute {
-    const char*        van;
-    const char*        naar;
-    int                ijk_getij_idx;   // index in GETIJ_LOCATIES (getijdata.h)
-    const StromingLeg* legs;
-    int                n_legs;
-    bool               indicatief;      // true = Wadden/Zeeland: fasering onzeker
-};
+// HW-provider: uur sinds dichtstbijzijnde HW voor station 'ijk' op tijd t.
+typedef float (*StromHwOffset)(uint8_t ijk, time_t t);
 
-// Route-tabel
-int                  stroming_route_count();
-const StromingRoute* stroming_route(int i);
+// ─── Havens ────────────────────────────────────────────────────────────────
+int         stroming_haven_count();
+const char* stroming_haven_naam(int i);
+int         stroming_haven_land(int i);     // STROM_LAND_*
 
-// Totale routeafstand (NM). omgekeerd verandert niets aan de lengte.
-float stroming_totaal_nm(const StromingRoute* r);
+// ─── Route opbouwen ────────────────────────────────────────────────────────
+// Vult 'legs' met het pad van 'van' naar 'naar'; geeft aantal legs (of -1).
+// sluis_min_out = totaal sluis-tijdverlies (minuten) van beide havens.
+int   stroming_bouw_route(int van, int naar, StromLeg* legs, int max, uint16_t* sluis_min_out);
 
-// Vaartijd (uur) voor vertrek op (HW_ijk + vertrek_offset_h).
-// omgekeerd = vaar van 'naar' terug naar 'van' (legs omgedraaid, koers +180).
-float stroming_vaartijd_uur(const StromingRoute* r, bool omgekeerd,
-                            float stw_kn, float vertrek_offset_h);
+// ─── Vaartijd ──────────────────────────────────────────────────────────────
+// Vaartijd (uur) voor vertrek op absoluut tijdstip 'vertrek'.
+float stroming_vaartijd_uur(const StromLeg* legs, int n, uint16_t sluis_min,
+                            time_t vertrek, float stw_kn, StromHwOffset hw);
 
-// Getijperiode (uur) — semidiurnaal M2, ook gebruikt voor HW/LW-wrap.
-#define STROMING_T_GETIJ   12.4206f
+// HW-vertraging van een getijstation t.o.v. Hoek van Holland (uur, +=later).
+float stroming_hwlag(uint8_t ijk);

@@ -1,11 +1,11 @@
 // ============================================================
-// stroming.cpp — getijstroom / vaartijd-planner (havengraaf)
+// stroming.cpp — getijstroom / vaartijd-planner (havengraaf + routekeuze)
 // ============================================================
 #include "stroming.h"
 #include <math.h>
 
-#define FLOOD_AS   35.0f       // ware richting NE-vloed langs de kust (graden)
-#define DT_SEC     300.0       // integratiestap 5 min (seconden)
+#define FLOOD_AS   35.0f
+#define DT_SEC     300.0
 
 // ─── Backbone-knooppunten ───────────────────────────────────────────────────
 enum {
@@ -13,12 +13,26 @@ enum {
     N_ROTTERDAM, N_HARVLIETMOND, N_STELLENDAM, N_HELLEVOET, N_OOSTSCHMOND,
     N_ROOMPOTSLUIS, N_ROOMPOTMAR, N_COLIJNSPL, N_ZIERIKZEE, N_WESTSCHMOND,
     N_VLISSINGEN, N_TERNEUZEN, N_PAAL, N_ANTWERPEN, N_ZEEBRUGGE,
-    N_OOSTENDE, N_NIEUWPOORT, NODE_N
+    N_OOSTENDE, N_NIEUWPOORT,
+    N_GREVMOND, N_GREVMEER, N_BRUINISSE,
+    N_MARSDIEP, N_VLIESTROOM, N_BORNDIEP, N_FRIESEZEEGAT, N_EEMSMOND,
+    N_DENHELDER, N_OUDESCHILD, N_DENOEVER, N_KORNWERDERZAND, N_HARLINGEN,
+    N_WESTTERSCHELLING, N_VLIELAND, N_NES, N_LAUWERSOOG, N_SCHIER, N_DELFZIJL,
+    NODE_N
 };
 
-// ─── Getijstation-indices (zie GETIJ_LOCATIES in getijdata.h) ───────────────
-// 0 Vlissingen 1 Terneuzen 2 Yerseke 3 Hellevoetsluis 4 HoekvHolland
-// 5 Rotterdam 6 IJmuiden 7 DenHelder 9 Harlingen
+static const char* NODE_NAMES[NODE_N] = {
+    "IJmuiden","Scheveningen","Maasmond","Maassluis","Vlaardingen","Rotterdam",
+    "Haringvliet","Stellendam","Hellevoet","Oosterschelde","Roompot","Roompot",
+    "Colijnsplaat","Zierikzee","Westerschelde","Vlissingen","Terneuzen","Paal",
+    "Antwerpen","Zeebrugge","Oostende","Nieuwpoort",
+    "Brouwersdam","Grevelingenmeer","Bruinisse",
+    "Marsdiep","Vliestroom","Borndiep","Friese Zeegat","Eems",
+    "Den Helder","Oudeschild","Den Oever","Kornwerderzand","Harlingen",
+    "Terschelling","Vlieland","Ameland","Lauwersoog","Schier","Delfzijl"
+};
+
+// ─── Getijstation-indices (GETIJ_LOCATIES) ──────────────────────────────────
 #define IJ_VLIS 0
 #define IJ_TERN 1
 #define IJ_YERS 2
@@ -26,54 +40,73 @@ enum {
 #define IJ_HOEK 4
 #define IJ_ROT  5
 #define IJ_IJM  6
+#define IJ_DHLD 7
+#define IJ_KWZ  8
+#define IJ_HARL 9
+#define IJ_TERS 10
+#define IJ_DELF 11
 
-// HW-vertraging per getijstation t.o.v. Hoek van Holland (uur). Schatting.
+// HW-vertraging per getijstation t.o.v. Hoek van Holland (uur, schatting)
 static const float HWLAG[12] = {
-    -1.5f, // 0 Vlissingen
-    -1.0f, // 1 Terneuzen
-    -0.3f, // 2 Yerseke
-    +0.3f, // 3 Hellevoetsluis
-     0.0f, // 4 Hoek van Holland
-    +1.0f, // 5 Rotterdam
-    +0.6f, // 6 IJmuiden
-    +1.2f, // 7 Den Helder
-    +1.6f, // 8 Kornwerderzand
-    +2.5f, // 9 Harlingen
-    +1.8f, // 10 Terschelling
-    +3.0f, // 11 Delfzijl
+    -1.5f, -1.0f, -0.3f, 0.3f, 0.0f, 1.0f, 0.6f, 1.2f, 1.6f, 2.5f, 1.8f, 3.0f
 };
 float stroming_hwlag(uint8_t ijk) { return (ijk < 12) ? HWLAG[ijk] : 0.0f; }
 
 // ─── Backbone-edges (bidirectioneel; koers in a->b richting) ────────────────
-struct Edge { uint8_t a, b; float len, koers, A, phi; uint8_t ijk; };
+struct Edge { uint8_t a, b; float len, koers, A, phi; uint8_t ijk; uint16_t sluis; bool ind; };
 
 static const Edge EDGES[] = {
     // Noordzeekust (noord -> zuid)
-    { N_IJMUIDEN,     N_SCHEVENINGEN, 22, 215, 0.9f, -1.0f, IJ_IJM  },
-    { N_SCHEVENINGEN, N_MAASMOND,     15, 220, 0.9f, -1.0f, IJ_HOEK },
-    { N_MAASMOND,     N_HARVLIETMOND, 15, 205, 0.9f, -1.2f, IJ_HOEK },
-    { N_HARVLIETMOND, N_OOSTSCHMOND,  14, 210, 0.9f, -1.5f, IJ_YERS },
-    { N_OOSTSCHMOND,  N_WESTSCHMOND,  18, 215, 1.0f, -1.5f, IJ_VLIS },
-    { N_WESTSCHMOND,  N_ZEEBRUGGE,    14, 230, 1.0f, -1.8f, IJ_VLIS },
-    { N_ZEEBRUGGE,    N_OOSTENDE,     13, 235, 1.0f, -2.0f, IJ_VLIS },
-    { N_OOSTENDE,     N_NIEUWPOORT,   10, 235, 1.0f, -2.0f, IJ_VLIS },
-    // Nieuwe Waterweg / Nieuwe Maas (rivier, indicatief)
-    { N_MAASMOND,     N_MAASSLUIS,     6, 110, 1.3f,  0.0f, IJ_HOEK },
-    { N_MAASSLUIS,    N_VLAARDINGEN,   4, 100, 1.3f,  0.0f, IJ_ROT  },
-    { N_VLAARDINGEN,  N_ROTTERDAM,     5,  90, 1.2f,  0.0f, IJ_ROT  },
+    { N_IJMUIDEN,     N_SCHEVENINGEN, 22, 215, 0.9f, -1.0f, IJ_IJM,  0, false },
+    { N_SCHEVENINGEN, N_MAASMOND,     15, 220, 0.9f, -1.0f, IJ_HOEK, 0, false },
+    { N_MAASMOND,     N_HARVLIETMOND, 15, 205, 0.9f, -1.2f, IJ_HOEK, 0, false },
+    { N_HARVLIETMOND, N_GREVMOND,      7, 205, 0.9f, -1.3f, IJ_HELL, 0, false },
+    { N_GREVMOND,     N_OOSTSCHMOND,   7, 210, 0.9f, -1.5f, IJ_YERS, 0, false },
+    { N_OOSTSCHMOND,  N_WESTSCHMOND,  18, 215, 1.0f, -1.5f, IJ_VLIS, 0, false },
+    { N_WESTSCHMOND,  N_ZEEBRUGGE,    14, 230, 1.0f, -1.8f, IJ_VLIS, 0, false },
+    { N_ZEEBRUGGE,    N_OOSTENDE,     13, 235, 1.0f, -2.0f, IJ_VLIS, 0, false },
+    { N_OOSTENDE,     N_NIEUWPOORT,   10, 235, 1.0f, -2.0f, IJ_VLIS, 0, false },
+    // Nieuwe Waterweg / Nieuwe Maas (rivier)
+    { N_MAASMOND,     N_MAASSLUIS,     6, 110, 1.3f,  0.0f, IJ_HOEK, 0, false },
+    { N_MAASSLUIS,    N_VLAARDINGEN,   4, 100, 1.3f,  0.0f, IJ_ROT,  0, false },
+    { N_VLAARDINGEN,  N_ROTTERDAM,     5,  90, 1.2f,  0.0f, IJ_ROT,  0, false },
     // Slijkgat / Haringvliet
-    { N_HARVLIETMOND, N_STELLENDAM,    5,  90, 1.0f, -1.0f, IJ_HELL },
-    { N_STELLENDAM,   N_HELLEVOET,     8,  80, 0.3f,  0.0f, IJ_HELL },
-    // Oosterschelde (achter Roompotsluis)
-    { N_OOSTSCHMOND,  N_ROOMPOTSLUIS,  3, 120, 0.8f, -1.0f, IJ_YERS },
-    { N_ROOMPOTSLUIS, N_ROOMPOTMAR,    1, 120, 0.3f,  0.0f, IJ_YERS },
-    { N_ROOMPOTSLUIS, N_COLIJNSPL,     5,  90, 0.8f, -0.5f, IJ_YERS },
-    { N_COLIJNSPL,    N_ZIERIKZEE,     8,  60, 0.7f, -0.5f, IJ_YERS },
-    // Westerschelde (rivier naar Antwerpen, indicatief)
-    { N_WESTSCHMOND,  N_VLISSINGEN,    3, 135, 1.2f, -1.5f, IJ_VLIS },
-    { N_VLISSINGEN,   N_TERNEUZEN,    12, 110, 1.8f, -1.0f, IJ_TERN },
-    { N_TERNEUZEN,    N_PAAL,          8, 130, 1.8f, -1.0f, IJ_TERN },
-    { N_PAAL,         N_ANTWERPEN,    20, 140, 1.8f, -0.5f, IJ_TERN },
+    { N_HARVLIETMOND, N_STELLENDAM,    5,  90, 1.0f, -1.0f, IJ_HELL, 0, false },
+    { N_STELLENDAM,   N_HELLEVOET,     8,  80, 0.3f,  0.0f, IJ_HELL,30, false }, // Haringvlietsluizen
+    // Oosterschelde
+    { N_OOSTSCHMOND,  N_ROOMPOTSLUIS,  3, 120, 0.8f, -1.0f, IJ_YERS, 0, false },
+    { N_ROOMPOTSLUIS, N_ROOMPOTMAR,    1, 120, 0.3f,  0.0f, IJ_YERS,20, false }, // Roompotsluis
+    { N_ROOMPOTSLUIS, N_COLIJNSPL,     5,  90, 0.8f, -0.5f, IJ_YERS, 0, false },
+    { N_COLIJNSPL,    N_ZIERIKZEE,     8,  60, 0.7f, -0.5f, IJ_YERS, 0, false },
+    // Grevelingenmeer / Bruinisse (indicatief)
+    { N_GREVMOND,     N_GREVMEER,      1,  90, 0.2f,  0.0f, IJ_YERS,20, true  }, // Brouwerssluis
+    { N_GREVMEER,     N_BRUINISSE,     8,  90, 0.1f,  0.0f, IJ_YERS, 0, true  }, // meer (geen getij)
+    { N_ZIERIKZEE,    N_BRUINISSE,     3,  40, 0.5f, -0.5f, IJ_YERS,20, true  }, // Grevelingensluis
+    // Westerschelde (rivier)
+    { N_WESTSCHMOND,  N_VLISSINGEN,    3, 135, 1.2f, -1.5f, IJ_VLIS, 0, false },
+    { N_VLISSINGEN,   N_TERNEUZEN,    12, 110, 1.8f, -1.0f, IJ_TERN, 0, false },
+    { N_TERNEUZEN,    N_PAAL,          8, 130, 1.8f, -1.0f, IJ_TERN, 0, false },
+    { N_PAAL,         N_ANTWERPEN,    20, 140, 1.8f, -0.5f, IJ_TERN, 0, false },
+    // Noordzeekust noord (IJmuiden -> Waddenzeegaten)
+    { N_IJMUIDEN,     N_MARSDIEP,     34,  20, 0.9f, -1.0f, IJ_DHLD, 0, false },
+    { N_MARSDIEP,     N_VLIESTROOM,   30,  55, 1.0f, -1.2f, IJ_TERS, 0, true  },
+    { N_VLIESTROOM,   N_BORNDIEP,     18,  75, 1.0f, -1.3f, IJ_TERS, 0, true  },
+    { N_BORNDIEP,     N_FRIESEZEEGAT, 15,  85, 1.0f, -1.5f, IJ_TERS, 0, true  },
+    { N_FRIESEZEEGAT, N_EEMSMOND,     22,  95, 1.0f, -1.5f, IJ_DELF, 0, true  },
+    // Waddenzee zeegaten -> havens + binnenroutes (indicatief)
+    { N_MARSDIEP,     N_DENHELDER,     3,  90, 2.0f, -1.0f, IJ_DHLD, 0, true  },
+    { N_MARSDIEP,     N_OUDESCHILD,    6,  60, 1.5f, -1.0f, IJ_DHLD, 0, true  },
+    { N_MARSDIEP,     N_DENOEVER,     12, 120, 1.5f, -1.0f, IJ_DHLD, 0, true  },
+    { N_DENOEVER,     N_KORNWERDERZAND,12, 60, 1.2f, -1.0f, IJ_KWZ,  0, true  },
+    { N_KORNWERDERZAND,N_HARLINGEN,    8,  20, 1.2f, -1.0f, IJ_HARL, 0, true  },
+    { N_VLIESTROOM,   N_WESTTERSCHELLING,6,120,2.0f,-1.2f, IJ_TERS, 0, true  },
+    { N_VLIESTROOM,   N_VLIELAND,      7, 150, 2.0f, -1.2f, IJ_TERS, 0, true  },
+    { N_VLIESTROOM,   N_HARLINGEN,    18, 120, 1.5f, -1.0f, IJ_HARL, 0, true  },
+    { N_VLIESTROOM,   N_KORNWERDERZAND,20,140, 1.5f, -1.0f, IJ_KWZ,  0, true  },
+    { N_BORNDIEP,     N_NES,           7, 150, 1.8f, -1.2f, IJ_TERS, 0, true  },
+    { N_FRIESEZEEGAT, N_LAUWERSOOG,    8, 150, 1.8f, -1.3f, IJ_HARL, 0, true  },
+    { N_FRIESEZEEGAT, N_SCHIER,        6, 120, 1.8f, -1.3f, IJ_HARL, 0, true  },
+    { N_EEMSMOND,     N_DELFZIJL,     18, 150, 1.5f, -1.0f, IJ_DELF, 0, true  },
 };
 static const int EDGE_N = sizeof(EDGES) / sizeof(EDGES[0]);
 
@@ -81,23 +114,35 @@ static const int EDGE_N = sizeof(EDGES) / sizeof(EDGES[0]);
 struct Haven { const char* naam; uint8_t node; uint8_t land; float spur_nm; uint16_t sluis_min; };
 
 static const Haven HAVENS[] = {
-    { "IJmuiden",       N_IJMUIDEN,    STROM_LAND_NL, 1.0f,  0 },
-    { "Scheveningen",   N_SCHEVENINGEN,STROM_LAND_NL, 0.5f,  0 },
-    { "Maassluis",      N_MAASSLUIS,   STROM_LAND_NL, 0.3f,  0 },
-    { "Vlaardingen",    N_VLAARDINGEN, STROM_LAND_NL, 0.3f,  0 },
-    { "Rotterdam",      N_ROTTERDAM,   STROM_LAND_NL, 0.5f,  0 },
-    { "Stellendam",     N_STELLENDAM,  STROM_LAND_NL, 0.5f,  0 },
-    { "Hellevoetsluis", N_HELLEVOET,   STROM_LAND_NL, 0.5f, 30 },
-    { "Roompot Marina", N_ROOMPOTMAR,  STROM_LAND_NL, 0.3f, 20 },
-    { "Colijnsplaat",   N_COLIJNSPL,   STROM_LAND_NL, 0.3f, 20 },
-    { "Zierikzee",      N_ZIERIKZEE,   STROM_LAND_NL, 1.0f, 20 },
-    { "Vlissingen",     N_VLISSINGEN,  STROM_LAND_NL, 0.3f,  0 },
-    { "Terneuzen",      N_TERNEUZEN,   STROM_LAND_NL, 0.3f, 15 },
-    { "Paal",           N_PAAL,        STROM_LAND_NL, 0.3f,  0 },
-    { "Antwerpen",      N_ANTWERPEN,   STROM_LAND_BE, 1.0f,  0 },
-    { "Zeebrugge",      N_ZEEBRUGGE,   STROM_LAND_BE, 0.5f,  0 },
-    { "Oostende",       N_OOSTENDE,    STROM_LAND_BE, 0.3f,  0 },
-    { "Nieuwpoort",     N_NIEUWPOORT,  STROM_LAND_BE, 0.5f,  0 },
+    { "IJmuiden",         N_IJMUIDEN,       STROM_LAND_NL, 1.0f,  0 },
+    { "Scheveningen",     N_SCHEVENINGEN,   STROM_LAND_NL, 0.5f,  0 },
+    { "Maassluis",        N_MAASSLUIS,      STROM_LAND_NL, 0.3f,  0 },
+    { "Vlaardingen",      N_VLAARDINGEN,    STROM_LAND_NL, 0.3f,  0 },
+    { "Rotterdam",        N_ROTTERDAM,      STROM_LAND_NL, 0.5f,  0 },
+    { "Stellendam",       N_STELLENDAM,     STROM_LAND_NL, 0.5f,  0 },
+    { "Hellevoetsluis",   N_HELLEVOET,      STROM_LAND_NL, 0.5f,  0 },
+    { "Roompot Marina",   N_ROOMPOTMAR,     STROM_LAND_NL, 0.3f,  0 },
+    { "Colijnsplaat",     N_COLIJNSPL,      STROM_LAND_NL, 0.3f,  0 },
+    { "Zierikzee",        N_ZIERIKZEE,      STROM_LAND_NL, 1.0f,  0 },
+    { "Bruinisse",        N_BRUINISSE,      STROM_LAND_NL, 0.3f,  0 },
+    { "Vlissingen",       N_VLISSINGEN,     STROM_LAND_NL, 0.3f,  0 },
+    { "Terneuzen",        N_TERNEUZEN,      STROM_LAND_NL, 0.3f, 15 },
+    { "Paal",             N_PAAL,           STROM_LAND_NL, 0.3f,  0 },
+    { "Antwerpen",        N_ANTWERPEN,      STROM_LAND_BE, 1.0f,  0 },
+    { "Zeebrugge",        N_ZEEBRUGGE,      STROM_LAND_BE, 0.5f,  0 },
+    { "Oostende",         N_OOSTENDE,       STROM_LAND_BE, 0.3f,  0 },
+    { "Nieuwpoort",       N_NIEUWPOORT,     STROM_LAND_BE, 0.5f,  0 },
+    { "Den Helder",       N_DENHELDER,      STROM_LAND_NL, 0.5f,  0 },
+    { "Oudeschild",       N_OUDESCHILD,     STROM_LAND_NL, 0.5f,  0 },
+    { "Den Oever",        N_DENOEVER,       STROM_LAND_NL, 0.3f,  0 },
+    { "Kornwerderzand",   N_KORNWERDERZAND, STROM_LAND_NL, 0.3f,  0 },
+    { "Harlingen",        N_HARLINGEN,      STROM_LAND_NL, 0.5f,  0 },
+    { "W-Terschelling",   N_WESTTERSCHELLING,STROM_LAND_NL,0.5f,  0 },
+    { "Vlieland",         N_VLIELAND,       STROM_LAND_NL, 0.5f,  0 },
+    { "Nes (Ameland)",    N_NES,            STROM_LAND_NL, 0.5f,  0 },
+    { "Lauwersoog",       N_LAUWERSOOG,     STROM_LAND_NL, 0.5f,  0 },
+    { "Schiermonnikoog",  N_SCHIER,         STROM_LAND_NL, 0.5f,  0 },
+    { "Delfzijl",         N_DELFZIJL,       STROM_LAND_NL, 0.5f,  0 },
 };
 static const int HAVEN_N = sizeof(HAVENS) / sizeof(HAVENS[0]);
 
@@ -105,62 +150,88 @@ int         stroming_haven_count()      { return HAVEN_N; }
 const char* stroming_haven_naam(int i)  { return (i >= 0 && i < HAVEN_N) ? HAVENS[i].naam : ""; }
 int         stroming_haven_land(int i)  { return (i >= 0 && i < HAVEN_N) ? HAVENS[i].land : STROM_LAND_NL; }
 
-// ─── Pad zoeken in de graaf (BFS over nodes) ────────────────────────────────
-static int _pad(uint8_t start, uint8_t doel, uint8_t* pad_out, int max) {
-    uint8_t prev[NODE_N]; bool bez[NODE_N];
-    for (int i = 0; i < NODE_N; i++) { prev[i] = 255; bez[i] = false; }
-    uint8_t q[NODE_N]; int qh = 0, qt = 0;
-    q[qt++] = start; bez[start] = true;
-    while (qh < qt) {
-        uint8_t u = q[qh++];
-        if (u == doel) break;
-        for (int e = 0; e < EDGE_N; e++) {
-            uint8_t v = 255;
-            if (EDGES[e].a == u) v = EDGES[e].b;
-            else if (EDGES[e].b == u) v = EDGES[e].a;
-            if (v != 255 && !bez[v]) { bez[v] = true; prev[v] = u; q[qt++] = v; }
-        }
+// ─── Route-enumeratie (DFS simpele paden) ───────────────────────────────────
+struct Cand { uint8_t path[NODE_N]; uint8_t n; float dist; };
+static Cand    g_cand[24];
+static int     g_candn;
+static uint8_t g_to;
+static bool    g_vis[NODE_N];
+
+static void _dfs(uint8_t u, uint8_t* path, int depth, float dist) {
+    if (g_candn >= 24) return;
+    path[depth] = u; depth++;
+    if (u == g_to) {
+        Cand& c = g_cand[g_candn];
+        c.n = depth; c.dist = dist;
+        for (int i = 0; i < depth; i++) c.path[i] = path[i];
+        g_candn++;
+        return;
     }
-    if (!bez[doel]) return -1;
-    // pad terugbouwen
-    uint8_t tmp[NODE_N]; int n = 0;
-    for (uint8_t c = doel; c != 255; c = prev[c]) { tmp[n++] = c; if (c == start) break; }
-    if (n > max) return -1;
-    for (int i = 0; i < n; i++) pad_out[i] = tmp[n - 1 - i];   // omdraaien: start..doel
-    return n;
+    if (depth >= 18) return;
+    for (int e = 0; e < EDGE_N; e++) {
+        uint8_t v = 255;
+        if      (EDGES[e].a == u) v = EDGES[e].b;
+        else if (EDGES[e].b == u) v = EDGES[e].a;
+        if (v == 255 || g_vis[v]) continue;
+        float nd = dist + EDGES[e].len;
+        if (nd > 170.0f) continue;
+        g_vis[v] = true;
+        _dfs(v, path, depth, nd);
+        g_vis[v] = false;
+    }
 }
 
-int stroming_bouw_route(int van, int naar, StromLeg* legs, int max, uint16_t* sluis_min_out) {
-    if (van < 0 || naar < 0 || van >= HAVEN_N || naar >= HAVEN_N || van == naar) return -1;
+static const Edge* _edge(uint8_t u, uint8_t v) {
+    for (int e = 0; e < EDGE_N; e++)
+        if ((EDGES[e].a == u && EDGES[e].b == v) || (EDGES[e].b == u && EDGES[e].a == v))
+            return &EDGES[e];
+    return nullptr;
+}
+
+static void _bouw_uit_pad(int van, int naar, const uint8_t* path, int pn, StromRoute* r) {
     const Haven& hv = HAVENS[van];
     const Haven& hn = HAVENS[naar];
-    uint8_t pad[NODE_N];
-    int pn = _pad(hv.node, hn.node, pad, NODE_N);
-    if (pn < 1) return -1;
+    int L = 0; float dist = 0; uint16_t sluis = hv.sluis_min + hn.sluis_min; bool ind = false;
 
-    int n = 0;
-    // vertrek-spur (langzaam de haven uit)
-    if (hv.spur_nm > 0.01f && n < max)
-        legs[n++] = { hv.spur_nm, 0, 0, 0, hv.node, STROM_HAVEN };
-    // backbone-edges langs het pad
-    for (int i = 0; i + 1 < pn; i++) {
-        uint8_t u = pad[i], v = pad[i + 1];
-        for (int e = 0; e < EDGE_N; e++) {
-            if (EDGES[e].a == u && EDGES[e].b == v) {
-                if (n < max) legs[n++] = { EDGES[e].len, EDGES[e].koers, EDGES[e].A, EDGES[e].phi, EDGES[e].ijk, STROM_ZEE };
-                break;
-            } else if (EDGES[e].b == u && EDGES[e].a == v) {
-                if (n < max) legs[n++] = { EDGES[e].len, EDGES[e].koers + 180.0f, EDGES[e].A, EDGES[e].phi, EDGES[e].ijk, STROM_ZEE };
-                break;
-            }
-        }
+    if (hv.spur_nm > 0.01f && L < STROMING_MAX_LEGS) {
+        r->legs[L++] = { hv.spur_nm, 0, 0, 0, hv.node, STROM_HAVEN }; dist += hv.spur_nm;
     }
-    // aankomst-spur (langzaam de haven in)
-    if (hn.spur_nm > 0.01f && n < max)
-        legs[n++] = { hn.spur_nm, 0, 0, 0, hn.node, STROM_HAVEN };
+    for (int i = 0; i + 1 < pn; i++) {
+        const Edge* e = _edge(path[i], path[i + 1]);
+        if (!e || L >= STROMING_MAX_LEGS) continue;
+        float koers = (e->a == path[i]) ? e->koers : e->koers + 180.0f;
+        r->legs[L++] = { e->len, koers, e->A, e->phi, e->ijk, STROM_ZEE };
+        dist += e->len; sluis += e->sluis; if (e->ind) ind = true;
+    }
+    if (hn.spur_nm > 0.01f && L < STROMING_MAX_LEGS) {
+        r->legs[L++] = { hn.spur_nm, 0, 0, 0, hn.node, STROM_HAVEN }; dist += hn.spur_nm;
+    }
+    r->n = L; r->afstand_nm = dist; r->sluis_min = sluis; r->indicatief = ind;
+    if (pn > 2) snprintf(r->via, sizeof(r->via), "via %s", NODE_NAMES[path[pn / 2]]);
+    else        snprintf(r->via, sizeof(r->via), "direct");
+}
 
-    if (sluis_min_out) *sluis_min_out = hv.sluis_min + hn.sluis_min;
-    return n;
+int stroming_zoek_routes(int van, int naar, StromRoute* out, int max_routes) {
+    if (van < 0 || naar < 0 || van >= HAVEN_N || naar >= HAVEN_N || van == naar) return 0;
+    g_to = HAVENS[naar].node; g_candn = 0;
+    for (int i = 0; i < NODE_N; i++) g_vis[i] = false;
+    uint8_t path[NODE_N];
+    g_vis[HAVENS[van].node] = true;
+    _dfs(HAVENS[van].node, path, 0, 0.0f);
+    if (g_candn == 0) return 0;
+    // sorteer op afstand
+    for (int i = 1; i < g_candn; i++) {
+        Cand t = g_cand[i]; int j = i - 1;
+        while (j >= 0 && g_cand[j].dist > t.dist) { g_cand[j + 1] = g_cand[j]; j--; }
+        g_cand[j + 1] = t;
+    }
+    int outn = 0;
+    for (int i = 0; i < g_candn && outn < max_routes; i++) {
+        if (outn > 0 && (g_cand[i].dist - out[outn - 1].afstand_nm) < 0.6f) continue;
+        _bouw_uit_pad(van, naar, g_cand[i].path, g_cand[i].n, &out[outn]);
+        outn++;
+    }
+    return outn;
 }
 
 // ─── Vaartijd-integratie ────────────────────────────────────────────────────

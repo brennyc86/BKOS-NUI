@@ -925,7 +925,7 @@ static void meteo_locatie_teken() {
 }
 
 // ─── STROMING TAB (vertrek -> aankomst -> [route] -> dag/uur-tabel) ────────
-#define STR_DET_MIN_STAP  (SCREEN_SMALL ? 10 : 5)   // detail: 5 of 10 min
+#define STR_DET_MIN_STAP  10   // detail: elke 10 min (6 stappen passen op het scherm)
 #define STR_MAX_DAG       13                          // dagen vooruit
 
 static int    str_fase       = 0;      // 0=vertrek 1=aankomst 2=route 3=tabel

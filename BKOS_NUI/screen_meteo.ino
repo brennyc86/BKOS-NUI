@@ -992,6 +992,155 @@ static uint16_t _str_heat(float f) {
     return RGB565(r, g, 30);
 }
 
+// ── Astronomische zon-op/onder (werkt ook zonder weerdata) ─────────────────
+static long _days_from_civil(int y, int m, int d) {
+    y -= (m <= 2);
+    long era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400);
+    unsigned doy = (153u * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097L + (long)doe - 719468L;
+}
+static double _sun_ut(double lat, double lng, int N, bool rise) {
+    const double D2R = M_PI / 180.0, R2D = 180.0 / M_PI;
+    double zenith = 90.833 * D2R, lngHour = lng / 15.0;
+    double t = N + ((rise ? 6.0 : 18.0) - lngHour) / 24.0;
+    double M = 0.9856 * t - 3.289, Mr = M * D2R;
+    double L = M + 1.916 * sin(Mr) + 0.020 * sin(2 * Mr) + 282.634;
+    L = fmod(L + 360.0, 360.0); double Lr = L * D2R;
+    double RA = fmod(atan(0.91764 * tan(Lr)) * R2D + 360.0, 360.0);
+    RA += (floor(L / 90.0) * 90.0 - floor(RA / 90.0) * 90.0); RA /= 15.0;
+    double sinDec = 0.39782 * sin(Lr), cosDec = cos(asin(sinDec));
+    double cosH = (cos(zenith) - sinDec * sin(lat * D2R)) / (cosDec * cos(lat * D2R));
+    if (cosH > 1.0 || cosH < -1.0) return -999.0;
+    double H = rise ? (360.0 - acos(cosH) * R2D) : (acos(cosH) * R2D); H /= 15.0;
+    double T = H + RA - 0.06571 * t - 6.622;
+    return fmod(fmod(T - lngHour, 24.0) + 24.0, 24.0);
+}
+static bool _zon_calc(time_t t, time_t* sr, time_t* ss) {
+    if (meteo_lat == 0 && meteo_lon == 0) return false;
+    struct tm lt = *localtime(&t);
+    int N = lt.tm_yday + 1;
+    double us = _sun_ut(meteo_lat, meteo_lon, N, true);
+    double ud = _sun_ut(meteo_lat, meteo_lon, N, false);
+    if (us < -100 || ud < -100) return false;
+    long base = _days_from_civil(lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday) * 86400L;
+    *sr = (time_t)(base + (long)(us * 3600.0));
+    *ss = (time_t)(base + (long)(ud * 3600.0));
+    return true;
+}
+// 0=dag 1=nacht 2=dageraad (voor zonsopkomst) 3=schemer (na zonsondergang)
+static int _str_dagnacht(time_t t) {
+    time_t sr, ss;
+    if (!_zon_calc(t, &sr, &ss)) return 0;
+    long marg = 40 * 60;
+    if (t < sr - marg || t > ss + marg) return 1;
+    if (t < sr) return 2;
+    if (t > ss) return 3;
+    return 0;
+}
+
+// ── Slechtste weer over de overtocht (uit meteo uurdata) ────────────────────
+static int _uur_idx(time_t t) {
+    time_t now = time(nullptr);
+    struct tm n = *localtime(&now);
+    n.tm_hour = 0; n.tm_min = 0; n.tm_sec = 0; n.tm_isdst = -1;
+    time_t d0 = mktime(&n);
+    return (int)((t - d0) / 3600);
+}
+static int _wmo_sev(int c) {
+    if (c >= 95) return 100;
+    if (c == 82) return 92; if (c == 65 || c == 67) return 90;
+    if (c == 63 || c == 81) return 80;
+    if (c == 85 || c == 86) return 76; if (c >= 71 && c <= 77) return 75;
+    if (c == 61 || c == 80 || c == 66) return 70;
+    if (c >= 51 && c <= 57) return 60;
+    if (c == 45 || c == 48) return 40;
+    if (c == 3) return 25; if (c == 2) return 15; if (c == 1) return 6;
+    return 5;
+}
+static int _str_weer_code(time_t dep, time_t aank) {
+    if (!meteo_uur_geladen) return -1;
+    int i0 = _uur_idx(dep), i1 = _uur_idx(aank);
+    if (i0 < 0) i0 = 0; if (i1 > 167) i1 = 167; if (i1 < i0) i1 = i0;
+    int worst = 0, ws = -1;
+    for (int i = i0; i <= i1 && i < 168; i++) {
+        int c = meteo_uur_wcode[i], s = _wmo_sev(c);
+        if (s > ws) { ws = s; worst = c; }
+    }
+    return worst;
+}
+
+// ── Kleine symbolen: weer + maan/zonsop/zonsonder ──────────────────────────
+static bool _str_weersym(int cx, int cy, int r, int code) {
+    if (code < 0) return false;
+    if (code >= 95) {                                   // onweer: bliksem
+        uint16_t cl = RGB565(255, 230, 50);
+        tft.drawLine(cx + r/3, cy - r, cx - r/3, cy, cl);
+        tft.drawLine(cx - r/3, cy, cx + r/4, cy, cl);
+        tft.drawLine(cx + r/4, cy, cx - r/3, cy + r, cl);
+        return true;
+    }
+    bool rain = (code == 66 || (code >= 51 && code <= 67) || (code >= 71 && code <= 77) ||
+                 (code >= 80 && code <= 86));
+    if (rain) {                                         // regen: wolk + druppels
+        uint16_t cc = RGB565(150, 160, 175), cr = RGB565(70, 150, 255);
+        tft.fillRoundRect(cx - r, cy - r/2, 2*r, r, r/2, cc);
+        tft.fillCircle(cx - r/2, cy - r/2, r/2, cc);
+        tft.fillCircle(cx + r/3, cy - r/2 - 1, r/2, cc);
+        int amt = (code==65||code==67||code==82||code==75||code==86) ? 3 :
+                  (code==63||code==81||code==73||code==85) ? 2 : 1;
+        int drops = amt + 1;
+        for (int i = 0; i < drops; i++) {
+            int dx = cx - r + (i + 1) * (2*r) / (drops + 1);
+            tft.drawLine(dx, cy + r/2, dx - 1, cy + r, cr);
+        }
+        return true;
+    }
+    if (code <= 1) {                                    // (bijna) helder: zon
+        uint16_t cz = RGB565(255, 210, 40);
+        tft.fillCircle(cx, cy, r/2 + 1, cz);
+        for (int a = 0; a < 360; a += 45) {
+            double ra = a * M_PI / 180.0;
+            tft.drawLine(cx + (int)((r/2+2)*cos(ra)), cy + (int)((r/2+2)*sin(ra)),
+                         cx + (int)((r+1)*cos(ra)), cy + (int)((r+1)*sin(ra)), cz);
+        }
+        return true;
+    }
+    return false;                                       // bewolkt/mist: niks
+}
+static void _str_zonind(int cx, int cy, int r, int type, uint16_t bg) {
+    if (type == 1) {                                    // maan (halve maan)
+        tft.fillCircle(cx, cy, r, RGB565(225, 225, 175));
+        tft.fillCircle(cx + r/2, cy - r/3, r, bg);
+        return;
+    }
+    uint16_t c = (type == 2) ? RGB565(255, 200, 80) : RGB565(255, 130, 40);
+    int hy = cy + r/2;
+    tft.fillCircle(cx, hy, r/2, c);
+    tft.fillRect(cx - r, hy + 1, 2*r, r/2 + 2, bg);     // horizon 'kapt' zon af
+    tft.drawFastHLine(cx - r, hy, 2*r, c);
+    if (type == 2) { tft.drawLine(cx, cy - r, cx, cy - 1, c);
+                     tft.drawLine(cx, cy - r, cx - 2, cy - r + 3, c);
+                     tft.drawLine(cx, cy - r, cx + 2, cy - r + 3, c); }
+    else           { tft.drawLine(cx, cy - r, cx, cy - 1, c);
+                     tft.drawLine(cx, cy - 1, cx - 2, cy - 4, c);
+                     tft.drawLine(cx, cy - 1, cx + 2, cy - 4, c); }
+}
+// Cluster [vertrek-ind][weer][aankomst-ind], rechts uitgelijnd op x_right
+static void _str_cluster(int x_right, int cy, time_t dep, time_t aank, uint16_t bg) {
+    int r = SCREEN_SMALL ? 6 : 8;
+    int slot = 2*r + 4;
+    int wcode = _str_weer_code(dep, aank);
+    int dnB = _str_dagnacht(dep), dnA = _str_dagnacht(aank);
+    int cx = x_right - r - 2;
+    if (dnA) _str_zonind(cx, cy, r, dnA, bg);
+    cx -= slot;
+    _str_weersym(cx, cy, r, wcode);
+    cx -= slot;
+    if (dnB) _str_zonind(cx, cy, r, dnB, bg);
+}
+
 static void _str_vlag(int x, int y, int land) {
     int w = UI_SCX(18), h = UI_SCY(12);
     if (land == STROM_LAND_BE) {
@@ -1377,6 +1526,11 @@ static void _str_fase_tabel() {
                 snprintf(l2, sizeof(l2), "%s-%s", m1, m2);
                 tft.setTextSize(1); tft.setTextColor(C_TEXT);
                 tft.setCursor(x + 6, y + ch - 12); tft.print(l2);
+                // weer (slechtste) + dag/nacht-indicator voor vertrek h:00
+                time_t wdep = _str_dep_tijd(h, 0);
+                float wdv = _str_vt(wdep);
+                if (wdv >= 0)
+                    _str_cluster(x + cw - 2, y + ch / 2, wdep, wdep + (time_t)(wdv * 3600.0f), _str_heat(frac));
             }
         ui_scrollbar(TFT_W - UI_SB_W, gy, garea_h, str_scroll, max_sc);
         return;
@@ -1435,6 +1589,7 @@ static void _str_fase_tabel() {
         char abuf[8]; snprintf(abuf, sizeof(abuf), "%02d:%02d", at->tm_hour, at->tm_min);
         tft.setTextColor(verleden ? C_TEXT_DIM : (ideaal ? C_GREEN : C_TEXT_DIM));
         tft.setCursor(STR_TBL_W * 75 / 100, ty); tft.print(abuf);
+        _str_cluster(STR_TBL_W - 2, ey + STR_ROW_H / 2, dep, aank, bg);
         rij++;
     }
 }

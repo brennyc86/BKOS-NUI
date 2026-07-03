@@ -166,9 +166,7 @@ static void meteo_sb_teken() {
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(180, (SB_H - 8) / 2);
     if (meteo_geladen) {
-        tft.print(strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad);
-        tft.print("  ~  ");
-        // Toon RWS station als dat geselecteerd is, anders harmonisch
+        // Plaatsnaam staat nu in het weer-scherm zelf; hier alleen getijstation + tijd
         tft.print(getijdata_naam(getijdata_station_idx));
         if (meteo_update_tijd > 0) {
             struct tm* lt = localtime(&meteo_update_tijd);
@@ -217,7 +215,10 @@ static void meteo_weer_teken() {
 
     if (!meteo_geladen) {
         tft.fillRoundRect(6, PANEL_Y + 4, TFT_W - 12, 80, 8, C_SURFACE);
-        ui_tekst_midden(6, PANEL_Y + 36, TFT_W - 12,
+        tft.setTextSize(2); tft.setTextColor(C_CYAN);
+        tft.setCursor(16, PANEL_Y + 10);
+        tft.print(strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad);
+        ui_tekst_midden(6, PANEL_Y + 44, TFT_W - 12,
             wifi_verbonden ? "Weerdata ophalen..." : "Geen WiFi — kan geen weerdata laden",
             C_TEXT_DIM, 2);
         return;
@@ -228,11 +229,16 @@ static void meteo_weer_teken() {
     int lw = 476, lh = 166;
     tft.fillRoundRect(lx, ly, lw, lh, 8, C_SURFACE);
 
+    // Plaatsnaam (weerlocatie) — klikbaar om te wijzigen
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    tft.setCursor(lx + 96, ly + 6);
+    tft.print(strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad);
+
     weer_icon(meteo_weer_code, lx + 44, ly + lh/2, 52, meteo_is_dag);
 
     tft.setTextSize(4); tft.setTextColor(C_TEXT);
     char tbuf[8]; snprintf(tbuf, sizeof(tbuf), "%.1f", meteo_temp);
-    tft.setCursor(lx + 96, ly + 10);
+    tft.setCursor(lx + 96, ly + 30);
     tft.print(tbuf);
     tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
     tft.print(" \xF7""C");
@@ -1156,12 +1162,23 @@ static void _str_cluster(int x_right, int cy, time_t dep, time_t aank, uint16_t 
     int slot = 2*r + 4;
     int wcode = _str_weer_code(dep, aank);
     int dnB = _str_dagnacht(dep), dnA = _str_dagnacht(aank);
-    int cx = x_right - r - 2;
-    if (dnA) _str_zonind(cx, cy, r, dnA, bg);
-    cx -= slot;
-    _str_weersym(cx, cy, r, wcode);
-    cx -= slot;
-    if (dnB) _str_zonind(cx, cy, r, dnB, bg);
+    bool geheel_donker = (dnB == 1 && dnA == 1);
+    bool onweer = (wcode >= 95);
+    bool regen  = (wcode == 66 || (wcode >= 51 && wcode <= 67) ||
+                   (wcode >= 71 && wcode <= 77) || (wcode >= 80 && wcode <= 86));
+    int ax = x_right - r - 2;      // aankomst-indicator
+    int wx = ax - slot;           // weer / hoofdicoon
+    int bx = wx - slot;           // vertrek-indicator
+    bool centrale_maan = false;
+
+    if (onweer || regen)               _str_weersym(wx, cy, r, wcode);   // slecht weer telt altijd
+    else if (geheel_donker)          { _str_zonind(wx, cy, r, 1, bg); centrale_maan = true; }  // maan
+    else if (wcode >= 0 && wcode <= 1) _str_weersym(wx, cy, r, wcode);   // zon (helder overdag)
+    // anders (bewolkt/mist/geen data overdag): niks
+
+    // Zij-indicatoren; maan-kant overslaan als het hoofdicoon al de maan is
+    if (dnA && !(centrale_maan && dnA == 1)) _str_zonind(ax, cy, r, dnA, bg);
+    if (dnB && !(centrale_maan && dnB == 1)) _str_zonind(bx, cy, r, dnB, bg);
 }
 
 static void _str_vlag(int x, int y, int land) {
@@ -1682,8 +1699,9 @@ void screen_meteo_run(int x, int y, bool aanraking) {
 
     if (!aanraking) return;
 
-    // Klik op plaatsnaam in de statusbalk → weerlocatie wijzigen
-    if (y < SB_H && x >= UI_SCX(170) && x < TFT_W - UI_SCX(70)) {
+    // Klik op de plaatsnaam bovenin het WEER-scherm → weerlocatie wijzigen
+    if (meteo_tab == METEO_TAB_WEER && meteo_detail_dag < 0 &&
+        y >= PANEL_Y && y < PANEL_Y + UI_SCY(26) && x >= 10 && x < UI_SCX(380)) {
         strncpy(cfg_invoer, strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad, CFG_INVOER_LEN - 1);
         cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
         strncpy(cfg_kb_label, "Stad:", 24);

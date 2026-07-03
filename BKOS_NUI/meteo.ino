@@ -1,5 +1,6 @@
 #include "meteo.h"
 #include "wifi.h"
+#include "getijdata.h"
 #include <WiFiClientSecure.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
@@ -218,7 +219,7 @@ void meteo_locatie_ophalen() {
         meteo_stad[31] = '\0';
         meteo_weer_stad[31] = '\0';
     }
-    // Dichtstbijzijnde getijstation
+    // Dichtstbijzijnde getijstation (harmonisch + RWS)
     float min_d = 999.0f;
     for (int i = 0; i < GETIJ_STATIONS; i++) {
         float dlat = getij_stations[i].lat - meteo_lat;
@@ -226,6 +227,7 @@ void meteo_locatie_ophalen() {
         float d = dlat*dlat + dlon*dlon;
         if (d < min_d) { min_d = d; meteo_station_idx = i; }
     }
+    getijdata_station_idx = getijdata_dichtstbij(meteo_lat, meteo_lon);
     _meteo_prefs_schrijven();
 }
 
@@ -383,6 +385,15 @@ void meteo_stad_zoeken(const char* naam) {
             strncpy(meteo_weer_stad, gevonden.c_str(), 31);
             meteo_weer_stad[31] = '\0';
         }
+        // Dichtstbijzijnde getijstation meekiezen (harmonisch + RWS)
+        float min_d = 999.0f;
+        for (int i = 0; i < GETIJ_STATIONS; i++) {
+            float dlat = getij_stations[i].lat - meteo_lat;
+            float dlon = getij_stations[i].lon - meteo_lon;
+            float d = dlat*dlat + dlon*dlon;
+            if (d < min_d) { min_d = d; meteo_station_idx = i; }
+        }
+        getijdata_station_idx = getijdata_dichtstbij(meteo_lat, meteo_lon);
         _meteo_prefs_schrijven();
         meteo_laatste_update = 0;  // force refresh
         meteo_weer_ophalen();

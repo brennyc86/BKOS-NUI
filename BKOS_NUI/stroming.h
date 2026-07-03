@@ -57,6 +57,7 @@ int         stroming_haven_count();
 const char* stroming_haven_naam(int i);
 int         stroming_haven_land(int i);
 const char* stroming_haven_prov(int i);   // provincie-afkorting
+void        stroming_haven_latlon(int i, float* lat, float* lon);
 
 // ─── Routes zoeken ─────────────────────────────────────────────────────────
 // Vult 'out' met tot max_routes alternatieve routes (kortste eerst).

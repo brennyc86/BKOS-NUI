@@ -360,6 +360,25 @@ int getijdata_lat_offset(int index) {
 
 int getijdata_aantal_locaties() { return GETIJ_AANTAL_LOCATIES; }
 
+void getijdata_latlon(int index, float* lat, float* lon) {
+    if (index < 0 || index >= GETIJ_AANTAL_LOCATIES) { *lat = 0; *lon = 0; return; }
+    *lat = GETIJ_LOCATIES[index].lat;
+    *lon = GETIJ_LOCATIES[index].lon;
+}
+
+// Index van het dichtstbijzijnde getijstation (equirectangulaire benadering)
+int getijdata_dichtstbij(float lat, float lon) {
+    float clat = cosf(lat * 0.01745329f);
+    int best = 0; float bestd = 1e18f;
+    for (int i = 0; i < GETIJ_AANTAL_LOCATIES; i++) {
+        float dx = (GETIJ_LOCATIES[i].lon - lon) * clat;
+        float dy = (GETIJ_LOCATIES[i].lat - lat);
+        float d = dx * dx + dy * dy;
+        if (d < bestd) { bestd = d; best = i; }
+    }
+    return best;
+}
+
 bool getijdata_beschikbaar(int locatie_index) {
     if (locatie_index < 0 || locatie_index >= GETIJ_AANTAL_LOCATIES) return false;
     return SPIFFS.exists(GETIJ_LOCATIES[locatie_index].bestand);

@@ -866,6 +866,27 @@ static void meteo_getij_teken() {
 #define LOC_WL_H    UI_SCY(56)
 #define LOC_ST_Y    (LOC_WL_Y + LOC_WL_H + 6)
 
+// Getijstations gesorteerd op afstand tot de weerlocatie (dichtstbij eerst)
+static int _loc_sorted[16];
+static int _loc_srt_n = 0;
+static void _loc_sorteer() {
+    int n = getijdata_aantal_locaties();
+    _loc_srt_n = n;
+    static float d2[16];
+    float clat = cosf(meteo_lat * 0.01745329f);
+    for (int i = 0; i < n && i < 16; i++) {
+        _loc_sorted[i] = i;
+        float la, lo; getijdata_latlon(i, &la, &lo);
+        float dx = (lo - meteo_lon) * clat, dy = (la - meteo_lat);
+        d2[i] = dx * dx + dy * dy;
+    }
+    for (int i = 1; i < n && i < 16; i++) {
+        int v = _loc_sorted[i], j = i - 1;
+        while (j >= 0 && d2[_loc_sorted[j]] > d2[v]) { _loc_sorted[j + 1] = _loc_sorted[j]; j--; }
+        _loc_sorted[j + 1] = v;
+    }
+}
+
 static void meteo_locatie_teken() {
     tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
 
@@ -901,21 +922,23 @@ static void meteo_locatie_teken() {
     int sw = (TFT_W - 20 - 12) / 4;
     int sh = 46;
     int n_loc = getijdata_aantal_locaties();
+    _loc_sorteer();
 
     for (int i = 0; i < n_loc; i++) {
+        int idx = _loc_sorted[i];
         int col = i % 4, rij = i / 4;
         int bx = sx + col * (sw + 4);
         int by = sy + rij * (sh + 4);
-        bool actief = (i == getijdata_station_idx);
-        bool heeft_data = getijdata_beschikbaar(i);
+        bool actief = (idx == getijdata_station_idx);
+        bool heeft_data = getijdata_beschikbaar(idx);
         uint16_t bg = actief ? C_SURFACE3 : C_SURFACE;
         uint16_t fg = actief ? C_CYAN : (heeft_data ? C_TEXT : C_TEXT_DIM);
         tft.fillRoundRect(bx, by, sw, sh, 5, bg);
         if (actief) tft.drawRoundRect(bx, by, sw, sh, 5, C_CYAN);
-        ui_tekst_midden(bx, by + 8, sw, getijdata_naam(i), fg, 1);
+        ui_tekst_midden(bx, by + 8, sw, getijdata_naam(idx), fg, 1);
         // LAT offset tonen
         char latbuf[14];
-        snprintf(latbuf, sizeof(latbuf), "LAT %dcm", getijdata_lat_offset(i));
+        snprintf(latbuf, sizeof(latbuf), "LAT %dcm", getijdata_lat_offset(idx));
         ui_tekst_midden(bx, by + 22, sw, latbuf, C_TEXT_DIM, 1);
         // Data beschikbaar indicator
         tft.setTextSize(1);
@@ -1214,20 +1237,24 @@ static bool _str_range(int van, int naar, float* mn, float* mx) {
 }
 
 // Vertrekhavens sorteren op (land, naam) — NL, dan BE, dan DE; elk alfabetisch
-static int _cmp_haven(int a, int b) {
-    int la = stroming_haven_land(a), lb = stroming_haven_land(b);
-    if (la != lb) return la - lb;
-    int p = strcmp(stroming_haven_prov(a), stroming_haven_prov(b));
-    if (p != 0) return p;
-    return strcmp(stroming_haven_naam(a), stroming_haven_naam(b));
+// Kwadratische afstand (graden, cos-lat gecorrigeerd) tot een lat/lon
+static float _str_geo_d2(float la, float lo, float rlat, float rlon) {
+    float clat = cosf(rlat * 0.01745329f);
+    float dx = (lo - rlon) * clat, dy = (la - rlat);
+    return dx * dx + dy * dy;
 }
+static float _str_haven_d2(int i) {
+    float la, lo; stroming_haven_latlon(i, &la, &lo);
+    return _str_geo_d2(la, lo, meteo_lat, meteo_lon);
+}
+// Vertrekhavens sorteren op afstand tot de weerlocatie (dichtstbij eerst)
 static void _str_sorteer_vertrek() {
     int n = stroming_haven_count();
     str_dsortn = n;
     for (int i = 0; i < n && i < 40; i++) str_dsort[i] = i;
     for (int i = 1; i < n && i < 40; i++) {
-        int v = str_dsort[i], j = i - 1;
-        while (j >= 0 && _cmp_haven(str_dsort[j], v) > 0) { str_dsort[j + 1] = str_dsort[j]; j--; }
+        int v = str_dsort[i]; float dv = _str_haven_d2(v); int j = i - 1;
+        while (j >= 0 && _str_haven_d2(str_dsort[j]) > dv) { str_dsort[j + 1] = str_dsort[j]; j--; }
         str_dsort[j + 1] = v;
     }
 }
@@ -1655,6 +1682,19 @@ void screen_meteo_run(int x, int y, bool aanraking) {
 
     if (!aanraking) return;
 
+    // Klik op plaatsnaam in de statusbalk → weerlocatie wijzigen
+    if (y < SB_H && x >= UI_SCX(170) && x < TFT_W - UI_SCX(70)) {
+        strncpy(cfg_invoer, strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad, CFG_INVOER_LEN - 1);
+        cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+        strncpy(cfg_kb_label, "Stad:", 24);
+        cfg_kb_numeriek   = false;
+        cfg_kb_meteo_stad = true;
+        cfg_toetsenbord_actief = true;
+        actief_scherm  = SCREEN_CONFIG;
+        scherm_bouwen  = true;
+        return;
+    }
+
     // Nav bar
     int nav = nav_bar_klik(x, y);
     if (nav >= 0 && nav != actief_scherm) {
@@ -1751,6 +1791,14 @@ void screen_meteo_run(int x, int y, bool aanraking) {
 
     // ── GETIJ TAB: scroll knoppen ─────────────────────────────────────────
     if (meteo_tab == METEO_TAB_GETIJ) {
+        // Klik op de nu-balk (stationnaam) → naar LOCATIE-tab om station te kiezen
+        if (!getij_raw_modus && y >= PANEL_Y + GTJ_HDR_H && y < PANEL_Y + GTJ_HDR_H + GTJ_NOW_H) {
+            meteo_tab = METEO_TAB_LOCATIE;
+            meteo_tabs_teken();
+            tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
+            meteo_locatie_teken();
+            return;
+        }
         if (y >= PANEL_Y && y < PANEL_Y + GTJ_HDR_H) {
             int max_sc = max(0, rws_ext_cnt - GTJ_ROWS_N * GTJ_COLS_VIS);
 #if SCREEN_SMALL
@@ -1830,17 +1878,19 @@ void screen_meteo_run(int x, int y, bool aanraking) {
         int sw = (TFT_W - 20 - 12) / 4;
         int sh = 46;
         int n_loc = getijdata_aantal_locaties();
+        if (_loc_srt_n == 0) _loc_sorteer();
         for (int i = 0; i < n_loc; i++) {
+            int idx = _loc_sorted[i];
             int col = i % 4, rij = i / 4;
             int bx = sx + col * (sw + 4);
             int by = sy + rij * (sh + 4);
             if (x >= bx && x <= bx + sw && y >= by && y <= by + sh) {
-                getijdata_station_idx = i;
+                getijdata_station_idx = idx;
                 rws_geladen_idx = -1;
                 rws_ext_cnt = 0;
                 meteo_inst_opslaan();
                 // Haal data op als nog niet aanwezig
-                if (!getijdata_beschikbaar(i)) wifi_verbind_aanvragen();
+                if (!getijdata_beschikbaar(idx)) wifi_verbind_aanvragen();
                 meteo_locatie_teken();
                 return;
             }

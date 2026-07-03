@@ -49,6 +49,7 @@ struct GetijLocatie {
     const char* code;           // ddapi20 locatiecode
     const char* bestand;        // LittleFS bestandsnaam
     int         lat_offset_cm;  // LAT onder NAP in cm (negatief)
+    float       lat, lon;       // positie (voor "dichtstbij" keuze)
 };
 
 // ------------------------------------------------------------
@@ -58,24 +59,24 @@ struct GetijLocatie {
 
 static const GetijLocatie GETIJ_LOCATIES[] = {
     // Zeeland / Westerschelde
-    { "Vlissingen",      "vlissingen",                          "/getij_vlissingen.json",       -238 },
-    { "Terneuzen",       "terneuzen",                           "/getij_terneuzen.json",         -220 },
-    { "Yerseke",         "yerseke",                             "/getij_yerseke.json",           -210 },
+    { "Vlissingen",      "vlissingen",                          "/getij_vlissingen.json",       -238, 51.44f, 3.60f },
+    { "Terneuzen",       "terneuzen",                           "/getij_terneuzen.json",         -220, 51.34f, 3.83f },
+    { "Yerseke",         "yerseke",                             "/getij_yerseke.json",           -210, 51.49f, 4.05f },
 
     // Rijnmond / Zuid-Holland
-    { "Hellevoetsluis",  "hellevoetsluis",                      "/getij_hellevoetsluis.json",     -85 },
-    { "Hoek v. Holland", "hoekvanholland",                      "/getij_hoekvanholland.json",     -85 },
-    { "Rotterdam",       "rotterdam.nieuwemaas.boerengat",      "/getij_rotterdam.json",          -70 },
+    { "Hellevoetsluis",  "hellevoetsluis",                      "/getij_hellevoetsluis.json",     -85, 51.83f, 4.13f },
+    { "Hoek v. Holland", "hoekvanholland",                      "/getij_hoekvanholland.json",     -85, 51.98f, 4.12f },
+    { "Rotterdam",       "rotterdam.nieuwemaas.boerengat",      "/getij_rotterdam.json",          -70, 51.91f, 4.48f },
 
     // Noordzeekust
-    { "IJmuiden",        "ijmuiden.buitenhaven",                "/getij_ijmuiden.json",           -72 },
-    { "Den Helder",      "denhelder.marsdiep",                  "/getij_denhelder.json",          -68 },
+    { "IJmuiden",        "ijmuiden.buitenhaven",                "/getij_ijmuiden.json",           -72, 52.46f, 4.57f },
+    { "Den Helder",      "denhelder.marsdiep",                  "/getij_denhelder.json",          -68, 52.96f, 4.76f },
 
     // Waddenzee
-    { "Kornwerderzand",  "kornwerderzand.waddenzee.buitenhaven","/getij_kornwerderzand.json",     -95 },
-    { "Harlingen",       "harlingen.waddenzee",                 "/getij_harlingen.json",         -114 },
-    { "Terschelling",    "terschelling.west",                   "/getij_terschelling.json",      -110 },
-    { "Delfzijl",        "delfzijl",                           "/getij_delfzijl.json",          -155 },
+    { "Kornwerderzand",  "kornwerderzand.waddenzee.buitenhaven","/getij_kornwerderzand.json",     -95, 53.07f, 5.34f },
+    { "Harlingen",       "harlingen.waddenzee",                 "/getij_harlingen.json",         -114, 53.18f, 5.41f },
+    { "Terschelling",    "terschelling.west",                   "/getij_terschelling.json",      -110, 53.36f, 5.22f },
+    { "Delfzijl",        "delfzijl",                           "/getij_delfzijl.json",          -155, 53.33f, 6.93f },
 };
 
 static const int GETIJ_AANTAL_LOCATIES = sizeof(GETIJ_LOCATIES) / sizeof(GETIJ_LOCATIES[0]);
@@ -94,6 +95,8 @@ const char* getijdata_naam(int index);
 int         getijdata_lat_offset(int index);
 int         getijdata_aantal_locaties();
 bool        getijdata_beschikbaar(int locatie_index);
+int         getijdata_dichtstbij(float lat, float lon);          // index dichtstbijzijnde station
+void        getijdata_latlon(int index, float* lat, float* lon); // positie van station
 
 // ─── Inter-core signalen (UI → netwerktaak → UI) ─────────────────────────────
 extern volatile bool getijdata_ophalen_aangevraagd;       // UI vraagt fetch aan

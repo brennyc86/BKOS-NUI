@@ -958,6 +958,7 @@ static float  str_uur_mn[24], str_uur_mx[24];
 static int    str_ushow[24];           // te tonen uren (met data)
 static int    str_ushown     = 0;
 static int    str_best_uur   = -1;
+static int    str_worst_uur  = -1;
 static int    str_uur_start  = 0;
 
 #define STR_TOP_H   UI_SCY(30)
@@ -981,6 +982,14 @@ static int    str_uur_start  = 0;
 static void _str_hm(float uur, char* buf, int n) {
     int m = (int)(uur * 60.0f + 0.5f);
     snprintf(buf, n, "%du%02d", m / 60, m % 60);
+}
+
+// Kleur van snel (groen, f=0) naar langzaam (rood, f=1)
+static uint16_t _str_heat(float f) {
+    if (f < 0) f = 0; if (f > 1) f = 1;
+    int r = 20 + (int)(f * 95.0f);
+    int g = 95 - (int)(f * 75.0f);
+    return RGB565(r, g, 30);
 }
 
 static void _str_vlag(int x, int y, int land) {
@@ -1059,6 +1068,8 @@ static bool _str_range(int van, int naar, float* mn, float* mx) {
 static int _cmp_haven(int a, int b) {
     int la = stroming_haven_land(a), lb = stroming_haven_land(b);
     if (la != lb) return la - lb;
+    int p = strcmp(stroming_haven_prov(a), stroming_haven_prov(b));
+    if (p != 0) return p;
     return strcmp(stroming_haven_naam(a), stroming_haven_naam(b));
 }
 static void _str_sorteer_vertrek() {
@@ -1117,13 +1128,13 @@ static void _str_daglabel(char* b, int n) {
 
 // Uur-overzicht doorrekenen (min/max per uur op de gekozen dag)
 static void _str_bereken_overzicht() {
-    str_ushown = 0; str_best_uur = -1;
+    str_ushown = 0; str_best_uur = -1; str_worst_uur = -1;
     for (int h = 0; h < 24; h++) { str_uur_mn[h] = -1; str_uur_mx[h] = -1; }
     if (str_routen <= 0 || str_hwn == 0) return;
     time_t now = time(nullptr);
     struct tm nt = *localtime(&now);
     str_uur_start = (str_dag == 0) ? nt.tm_hour : 0;
-    float best = 1e9f;
+    float best = 1e9f, worst = -1.0f;
     for (int h = str_uur_start; h < 24; h++) {
         float mn = 1e9f, mx = -1.0f;
         for (int m = 0; m < 60; m += 5) {
@@ -1137,7 +1148,8 @@ static void _str_bereken_overzicht() {
         if (mx > 0) {
             str_uur_mn[h] = mn; str_uur_mx[h] = mx;
             if (str_ushown < 24) str_ushow[str_ushown++] = h;
-            if (mn < best) { best = mn; str_best_uur = h; }
+            if (mn < best)  { best = mn;  str_best_uur = h; }
+            if (mn > worst) { worst = mn; str_worst_uur = h; }
         }
     }
 }
@@ -1172,7 +1184,14 @@ static void _str_cel(int x, int y, int w, int h, int hidx, int fase, float mn, f
     bool toon_vlag = (land != STROM_LAND_NL) || intl;
     int tx = x + 6;
     if (toon_vlag) { _str_vlag(x + 6, y + 6, land); tx = x + 6 + UI_SCX(18) + 4; }
-    tft.setTextSize(1); tft.setTextColor(fg);
+    tft.setTextSize(1);
+    if (fase == 0) {   // provincie-afkorting voor de naam
+        const char* pv = stroming_haven_prov(hidx);
+        tft.setTextColor(C_AMBER);
+        tft.setCursor(tx, y + 8); tft.print(pv);
+        tx += (int)strlen(pv) * 6 + 6;
+    }
+    tft.setTextColor(fg);
     tft.setCursor(tx, y + 8);
     tft.print(stroming_haven_naam(hidx));
     if (fase == 1) {
@@ -1262,8 +1281,8 @@ static void _str_fase_route() {
         bool sel = (k == str_route_sel);
         tft.fillRoundRect(4, y, TFT_W - 8, rh, 6, sel ? C_SURFACE3 : C_SURFACE2);
         if (sel) tft.drawRoundRect(4, y, TFT_W - 8, rh, 6, C_CYAN);
-        tft.setTextSize(2); tft.setTextColor(sel ? C_CYAN : C_TEXT);
-        tft.setCursor(12, y + 5); tft.print(r->via);
+        tft.setTextSize(1); tft.setTextColor(sel ? C_CYAN : C_TEXT);
+        tft.setCursor(12, y + 6); tft.print(r->via);
         float mn, mx; _str_route_range(k, &mn, &mx);
         char m1[8], m2[8], b[48];
         _str_hm(mn, m1, 8); _str_hm(mx, m2, 8);
@@ -1341,16 +1360,22 @@ static void _str_fase_tabel() {
                 if (k >= str_ushown) continue;
                 int h = str_ushow[k];
                 int x = 4 + c * (cw + 4), y = gy + rr * (ch + 4);
-                bool best = (h == str_best_uur);
-                tft.fillRoundRect(x, y, cw, ch, 5, best ? RGB565(0, 60, 40) : C_SURFACE2);
-                if (best) tft.drawRoundRect(x, y, cw, ch, 5, C_GREEN);
+                bool isbest = (h == str_best_uur), isworst = (h == str_worst_uur);
+                float frac = 0.0f;
+                if (str_best_uur >= 0 && str_worst_uur >= 0) {
+                    float dmin = str_uur_mn[str_best_uur], dmax = str_uur_mn[str_worst_uur];
+                    if (dmax > dmin) frac = (str_uur_mn[h] - dmin) / (dmax - dmin);
+                }
+                tft.fillRoundRect(x, y, cw, ch, 5, _str_heat(frac));
+                if      (isbest)  tft.drawRoundRect(x, y, cw, ch, 5, C_GREEN);
+                else if (isworst) tft.drawRoundRect(x, y, cw, ch, 5, C_RED_BRIGHT);
                 char l1[10]; snprintf(l1, sizeof(l1), "%02d-%02d", h, h + 1);
-                tft.setTextSize(2); tft.setTextColor(best ? C_GREEN : C_CYAN);
+                tft.setTextSize(2); tft.setTextColor(C_TEXT);
                 tft.setCursor(x + 6, y + 4); tft.print(l1);
                 char m1[8], m2[8], l2[20];
                 _str_hm(str_uur_mn[h], m1, 8); _str_hm(str_uur_mx[h], m2, 8);
                 snprintf(l2, sizeof(l2), "%s-%s", m1, m2);
-                tft.setTextSize(1); tft.setTextColor(best ? C_GREEN : C_TEXT);
+                tft.setTextSize(1); tft.setTextColor(C_TEXT);
                 tft.setCursor(x + 6, y + ch - 12); tft.print(l2);
             }
         ui_scrollbar(TFT_W - UI_SB_W, gy, garea_h, str_scroll, max_sc);

@@ -111,44 +111,45 @@ static const Edge EDGES[] = {
 static const int EDGE_N = sizeof(EDGES) / sizeof(EDGES[0]);
 
 // ─── Havens ─────────────────────────────────────────────────────────────────
-struct Haven { const char* naam; uint8_t node; uint8_t land; float spur_nm; uint16_t sluis_min; };
+struct Haven { const char* naam; const char* prov; uint8_t node; uint8_t land; float spur_nm; uint16_t sluis_min; };
 
 static const Haven HAVENS[] = {
-    { "IJmuiden",         N_IJMUIDEN,       STROM_LAND_NL, 1.0f,  0 },
-    { "Scheveningen",     N_SCHEVENINGEN,   STROM_LAND_NL, 0.5f,  0 },
-    { "Maassluis",        N_MAASSLUIS,      STROM_LAND_NL, 0.3f,  0 },
-    { "Vlaardingen",      N_VLAARDINGEN,    STROM_LAND_NL, 0.3f,  0 },
-    { "Rotterdam",        N_ROTTERDAM,      STROM_LAND_NL, 0.5f,  0 },
-    { "Stellendam",       N_STELLENDAM,     STROM_LAND_NL, 0.5f,  0 },
-    { "Hellevoetsluis",   N_HELLEVOET,      STROM_LAND_NL, 0.5f,  0 },
-    { "Roompot Marina",   N_ROOMPOTMAR,     STROM_LAND_NL, 0.3f,  0 },
-    { "Colijnsplaat",     N_COLIJNSPL,      STROM_LAND_NL, 0.3f,  0 },
-    { "Zierikzee",        N_ZIERIKZEE,      STROM_LAND_NL, 1.0f,  0 },
-    { "Bruinisse",        N_BRUINISSE,      STROM_LAND_NL, 0.3f,  0 },
-    { "Vlissingen",       N_VLISSINGEN,     STROM_LAND_NL, 0.3f,  0 },
-    { "Terneuzen",        N_TERNEUZEN,      STROM_LAND_NL, 0.3f, 15 },
-    { "Paal",             N_PAAL,           STROM_LAND_NL, 0.3f,  0 },
-    { "Antwerpen",        N_ANTWERPEN,      STROM_LAND_BE, 1.0f,  0 },
-    { "Zeebrugge",        N_ZEEBRUGGE,      STROM_LAND_BE, 0.5f,  0 },
-    { "Oostende",         N_OOSTENDE,       STROM_LAND_BE, 0.3f,  0 },
-    { "Nieuwpoort",       N_NIEUWPOORT,     STROM_LAND_BE, 0.5f,  0 },
-    { "Den Helder",       N_DENHELDER,      STROM_LAND_NL, 0.5f,  0 },
-    { "Oudeschild",       N_OUDESCHILD,     STROM_LAND_NL, 0.5f,  0 },
-    { "Den Oever",        N_DENOEVER,       STROM_LAND_NL, 0.3f,  0 },
-    { "Kornwerderzand",   N_KORNWERDERZAND, STROM_LAND_NL, 0.3f,  0 },
-    { "Harlingen",        N_HARLINGEN,      STROM_LAND_NL, 0.5f,  0 },
-    { "W-Terschelling",   N_WESTTERSCHELLING,STROM_LAND_NL,0.5f,  0 },
-    { "Vlieland",         N_VLIELAND,       STROM_LAND_NL, 0.5f,  0 },
-    { "Nes (Ameland)",    N_NES,            STROM_LAND_NL, 0.5f,  0 },
-    { "Lauwersoog",       N_LAUWERSOOG,     STROM_LAND_NL, 0.5f,  0 },
-    { "Schiermonnikoog",  N_SCHIER,         STROM_LAND_NL, 0.5f,  0 },
-    { "Delfzijl",         N_DELFZIJL,       STROM_LAND_NL, 0.5f,  0 },
+    { "IJmuiden",         "NH",  N_IJMUIDEN,       STROM_LAND_NL, 1.0f,  0 },
+    { "Scheveningen",     "ZH",  N_SCHEVENINGEN,   STROM_LAND_NL, 0.5f,  0 },
+    { "Maassluis",        "ZH",  N_MAASSLUIS,      STROM_LAND_NL, 0.3f,  0 },
+    { "Vlaardingen",      "ZH",  N_VLAARDINGEN,    STROM_LAND_NL, 0.3f,  0 },
+    { "Rotterdam",        "ZH",  N_ROTTERDAM,      STROM_LAND_NL, 0.5f,  0 },
+    { "Stellendam",       "ZH",  N_STELLENDAM,     STROM_LAND_NL, 0.5f,  0 },
+    { "Hellevoetsluis",   "ZH",  N_HELLEVOET,      STROM_LAND_NL, 0.5f,  0 },
+    { "Roompot Marina",   "Zld", N_ROOMPOTMAR,     STROM_LAND_NL, 0.3f,  0 },
+    { "Colijnsplaat",     "Zld", N_COLIJNSPL,      STROM_LAND_NL, 0.3f,  0 },
+    { "Zierikzee",        "Zld", N_ZIERIKZEE,      STROM_LAND_NL, 1.0f,  0 },
+    { "Bruinisse",        "Zld", N_BRUINISSE,      STROM_LAND_NL, 0.3f,  0 },
+    { "Vlissingen",       "Zld", N_VLISSINGEN,     STROM_LAND_NL, 0.3f,  0 },
+    { "Terneuzen",        "Zld", N_TERNEUZEN,      STROM_LAND_NL, 0.3f, 15 },
+    { "Paal",             "Zld", N_PAAL,           STROM_LAND_NL, 0.3f,  0 },
+    { "Antwerpen",        "An",  N_ANTWERPEN,      STROM_LAND_BE, 1.0f,  0 },
+    { "Zeebrugge",        "WV",  N_ZEEBRUGGE,      STROM_LAND_BE, 0.5f,  0 },
+    { "Oostende",         "WV",  N_OOSTENDE,       STROM_LAND_BE, 0.3f,  0 },
+    { "Nieuwpoort",       "WV",  N_NIEUWPOORT,     STROM_LAND_BE, 0.5f,  0 },
+    { "Den Helder",       "NH",  N_DENHELDER,      STROM_LAND_NL, 0.5f,  0 },
+    { "Oudeschild",       "NH",  N_OUDESCHILD,     STROM_LAND_NL, 0.5f,  0 },
+    { "Den Oever",        "NH",  N_DENOEVER,       STROM_LAND_NL, 0.3f,  0 },
+    { "Kornwerderzand",   "Fr",  N_KORNWERDERZAND, STROM_LAND_NL, 0.3f,  0 },
+    { "Harlingen",        "Fr",  N_HARLINGEN,      STROM_LAND_NL, 0.5f,  0 },
+    { "W-Terschelling",   "Fr",  N_WESTTERSCHELLING,STROM_LAND_NL,0.5f,  0 },
+    { "Vlieland",         "Fr",  N_VLIELAND,       STROM_LAND_NL, 0.5f,  0 },
+    { "Nes (Ameland)",    "Fr",  N_NES,            STROM_LAND_NL, 0.5f,  0 },
+    { "Lauwersoog",       "Gr",  N_LAUWERSOOG,     STROM_LAND_NL, 0.5f,  0 },
+    { "Schiermonnikoog",  "Fr",  N_SCHIER,         STROM_LAND_NL, 0.5f,  0 },
+    { "Delfzijl",         "Gr",  N_DELFZIJL,       STROM_LAND_NL, 0.5f,  0 },
 };
 static const int HAVEN_N = sizeof(HAVENS) / sizeof(HAVENS[0]);
 
 int         stroming_haven_count()      { return HAVEN_N; }
 const char* stroming_haven_naam(int i)  { return (i >= 0 && i < HAVEN_N) ? HAVENS[i].naam : ""; }
 int         stroming_haven_land(int i)  { return (i >= 0 && i < HAVEN_N) ? HAVENS[i].land : STROM_LAND_NL; }
+const char* stroming_haven_prov(int i)  { return (i >= 0 && i < HAVEN_N) ? HAVENS[i].prov : ""; }
 
 // ─── Route-enumeratie (DFS simpele paden) ───────────────────────────────────
 struct Cand { uint8_t path[NODE_N]; uint8_t n; float dist; };
@@ -207,8 +208,15 @@ static void _bouw_uit_pad(int van, int naar, const uint8_t* path, int pn, StromR
         r->legs[L++] = { hn.spur_nm, 0, 0, 0, hn.node, STROM_HAVEN }; dist += hn.spur_nm;
     }
     r->n = L; r->afstand_nm = dist; r->sluis_min = sluis; r->indicatief = ind;
-    if (pn > 2) snprintf(r->via, sizeof(r->via), "via %s", NODE_NAMES[path[pn / 2]]);
-    else        snprintf(r->via, sizeof(r->via), "direct");
+    // via = alle tussenliggende vaarwegen/plaatsen in volgorde van aandoen
+    r->via[0] = '\0';
+    for (int i = 1; i < pn - 1; i++) {
+        int rem = (int)sizeof(r->via) - (int)strlen(r->via) - 1;
+        if (rem <= 4) break;
+        if (r->via[0]) strncat(r->via, "-", rem);
+        strncat(r->via, NODE_NAMES[path[i]], (int)sizeof(r->via) - (int)strlen(r->via) - 1);
+    }
+    if (!r->via[0]) snprintf(r->via, sizeof(r->via), "direct");
 }
 
 int stroming_zoek_routes(int van, int naar, StromRoute* out, int max_routes) {

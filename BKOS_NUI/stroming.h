@@ -47,7 +47,7 @@ struct StromRoute {
     uint16_t sluis_min;    // totaal sluis-tijdverlies
     float    afstand_nm;
     bool     indicatief;   // Wad/Grevelingen: minder betrouwbaar
-    char     via[18];      // korte omschrijving ("via ...")
+    char     via[64];      // vaarwegen in volgorde van aandoen
 };
 
 typedef float (*StromHwOffset)(uint8_t ijk, time_t t);
@@ -56,6 +56,7 @@ typedef float (*StromHwOffset)(uint8_t ijk, time_t t);
 int         stroming_haven_count();
 const char* stroming_haven_naam(int i);
 int         stroming_haven_land(int i);
+const char* stroming_haven_prov(int i);   // provincie-afkorting
 
 // ─── Routes zoeken ─────────────────────────────────────────────────────────
 // Vult 'out' met tot max_routes alternatieve routes (kortste eerst).

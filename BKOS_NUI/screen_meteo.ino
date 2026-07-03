@@ -924,8 +924,9 @@ static void meteo_locatie_teken() {
     }
 }
 
-// ─── STROMING TAB (vertrek -> aankomst -> [route] -> tabel) ────────────────
-#define STR_SLOTS   64
+// ─── STROMING TAB (vertrek -> aankomst -> [route] -> dag/uur-tabel) ────────
+#define STR_DET_MIN_STAP  (SCREEN_SMALL ? 10 : 5)   // detail: 5 of 10 min
+#define STR_MAX_DAG       13                          // dagen vooruit
 
 static int    str_fase       = 0;      // 0=vertrek 1=aankomst 2=route 3=tabel
 static int    str_van        = -1;
@@ -933,6 +934,8 @@ static int    str_naar       = -1;
 static bool   str_omgekeerd  = false;
 static float  str_stw        = 4.0f;
 static int    str_scroll     = 0;
+static int    str_dag        = 0;      // dag-offset (0=vandaag)
+static int    str_uur_detail = -1;     // -1=uuroverzicht, anders detail-uur
 
 static GetijExtreme str_rex[GETIJ_SCHERM_MAX];
 static int    str_rcnt       = 0;
@@ -941,15 +944,21 @@ static time_t str_hw[176];
 static int    str_hwn        = 0;
 
 static StromRoute str_routes[STROMING_MAX_ROUTES];
-static int        str_routen   = 0;
+static int        str_routen    = 0;
 static int        str_route_sel = 0;
-static time_t     str_dep[STR_SLOTS];
-static float      str_dur[STR_SLOTS];
-static int        str_best     = -1;
 
 static int    str_cand[24];
 static float  str_cmn[24], str_cmx[24];
 static int    str_candn      = 0;
+
+static int    str_dsort[40];           // vertrekhavens gesorteerd (land, naam)
+static int    str_dsortn     = 0;
+
+static float  str_uur_mn[24], str_uur_mx[24];
+static int    str_ushow[24];           // te tonen uren (met data)
+static int    str_ushown     = 0;
+static int    str_best_uur   = -1;
+static int    str_uur_start  = 0;
 
 #define STR_TOP_H   UI_SCY(30)
 #define STR_SUB_H   UI_SCY(20)
@@ -959,11 +968,13 @@ static int    str_candn      = 0;
   #define STR_ROW_H UI_SCY(30)
   #define STR_CELL_H UI_SCY(30)
   #define STR_CELL1_H UI_SCY(38)
+  #define UUR_COLS  2
 #else
   #define HG_COLS   4
   #define STR_ROW_H UI_SCY(34)
   #define STR_CELL_H UI_SCY(42)
   #define STR_CELL1_H UI_SCY(48)
+  #define UUR_COLS  4
 #endif
 #define STR_TBL_W   (TFT_W - 8 - UI_SB_W)
 
@@ -1014,7 +1025,6 @@ static float _str_hw_offset(uint8_t ijk, time_t t) {
     return base - (stroming_hwlag(ijk) - stroming_hwlag((uint8_t)str_rstation));
 }
 
-// Routes (her)zoeken voor huidige van/naar (respecteert omgekeerd)
 static void _str_zoek() {
     int a = str_omgekeerd ? str_naar : str_van;
     int b = str_omgekeerd ? str_van  : str_naar;
@@ -1022,7 +1032,6 @@ static void _str_zoek() {
     if (str_route_sel >= str_routen) str_route_sel = 0;
 }
 
-// Min/max vaartijd van route str_routes[idx] over een getijcyclus
 static void _str_route_range(int idx, float* mn, float* mx) {
     float lo = 1e9f, hi = -1.0f;
     if (str_hwn == 0 || idx < 0 || idx >= str_routen) { *mn = 0; *mx = 0; return; }
@@ -1038,26 +1047,7 @@ static void _str_route_range(int idx, float* mn, float* mx) {
     *mn = lo; *mx = hi;
 }
 
-// Tabel doorrekenen voor de gekozen route
-static void _str_bereken() {
-    str_best = -1;
-    _str_laad_ref();
-    if (str_routen <= 0 || str_route_sel < 0 || str_route_sel >= str_routen || str_hwn == 0) return;
-    const StromRoute* r = &str_routes[str_route_sel];
-    time_t nu = time(nullptr);
-    time_t eerste = ((nu / 900) + 1) * 900;
-    float best = 1e9f;
-    for (int i = 0; i < STR_SLOTS; i++) {
-        time_t dep = eerste + (time_t)i * 900;
-        str_dep[i] = dep;
-        str_dur[i] = stroming_vaartijd_uur(r->legs, r->n, r->sluis_min, dep, str_stw, &_str_hw_offset);
-        if (str_dur[i] < best) { best = str_dur[i]; str_best = i; }
-    }
-}
-
-// Bereik van de kortste route van->naar (voor de aankomstlijst)
 static bool _str_range(int van, int naar, float* mn, float* mx) {
-    // str_routes als scratch — wordt bij haven-selectie opnieuw gevuld via _str_zoek()
     int n = stroming_zoek_routes(van, naar, str_routes, STROMING_MAX_ROUTES);
     if (n <= 0 || str_hwn == 0) return false;
     str_routen = n;
@@ -1065,6 +1055,24 @@ static bool _str_range(int van, int naar, float* mn, float* mx) {
     return true;
 }
 
+// Vertrekhavens sorteren op (land, naam) — NL, dan BE, dan DE; elk alfabetisch
+static int _cmp_haven(int a, int b) {
+    int la = stroming_haven_land(a), lb = stroming_haven_land(b);
+    if (la != lb) return la - lb;
+    return strcmp(stroming_haven_naam(a), stroming_haven_naam(b));
+}
+static void _str_sorteer_vertrek() {
+    int n = stroming_haven_count();
+    str_dsortn = n;
+    for (int i = 0; i < n && i < 40; i++) str_dsort[i] = i;
+    for (int i = 1; i < n && i < 40; i++) {
+        int v = str_dsort[i], j = i - 1;
+        while (j >= 0 && _cmp_haven(str_dsort[j], v) > 0) { str_dsort[j + 1] = str_dsort[j]; j--; }
+        str_dsort[j + 1] = v;
+    }
+}
+
+// Aankomst-kandidaten: bereikbaar (<=16u), gesorteerd op reistijd (kortste eerst)
 static void _str_maak_cand() {
     _str_laad_ref();
     str_candn = 0;
@@ -1074,6 +1082,62 @@ static void _str_maak_cand() {
         if (_str_range(str_van, i, &mn, &mx) && mn <= STROMING_MAX_UUR) {
             str_cand[str_candn] = i; str_cmn[str_candn] = mn; str_cmx[str_candn] = mx;
             str_candn++;
+        }
+    }
+    for (int i = 1; i < str_candn; i++) {   // sorteer op str_cmn
+        int ci = str_cand[i]; float mi = str_cmn[i], ma = str_cmx[i]; int j = i - 1;
+        while (j >= 0 && str_cmn[j] > mi) {
+            str_cand[j+1] = str_cand[j]; str_cmn[j+1] = str_cmn[j]; str_cmx[j+1] = str_cmx[j]; j--;
+        }
+        str_cand[j+1] = ci; str_cmn[j+1] = mi; str_cmx[j+1] = ma;
+    }
+}
+
+// Vertrektijd op geselecteerde dag
+static time_t _str_dep_tijd(int uur, int minuut) {
+    time_t now = time(nullptr);
+    struct tm t = *localtime(&now);
+    t.tm_mday += str_dag; t.tm_hour = uur; t.tm_min = minuut; t.tm_sec = 0; t.tm_isdst = -1;
+    return mktime(&t);
+}
+static float _str_vt(time_t dep) {
+    if (str_routen <= 0 || str_route_sel < 0 || str_route_sel >= str_routen) return -1.0f;
+    const StromRoute* r = &str_routes[str_route_sel];
+    return stroming_vaartijd_uur(r->legs, r->n, r->sluis_min, dep, str_stw, &_str_hw_offset);
+}
+
+static void _str_daglabel(char* b, int n) {
+    time_t d = _str_dep_tijd(12, 0);
+    struct tm t = *localtime(&d);
+    static const char* wd[] = {"Zo","Ma","Di","Wo","Do","Vr","Za"};
+    if      (str_dag == 0) snprintf(b, n, "Vandaag");
+    else if (str_dag == 1) snprintf(b, n, "Morgen");
+    else                   snprintf(b, n, "%s %d-%d", wd[t.tm_wday], t.tm_mday, t.tm_mon + 1);
+}
+
+// Uur-overzicht doorrekenen (min/max per uur op de gekozen dag)
+static void _str_bereken_overzicht() {
+    str_ushown = 0; str_best_uur = -1;
+    for (int h = 0; h < 24; h++) { str_uur_mn[h] = -1; str_uur_mx[h] = -1; }
+    if (str_routen <= 0 || str_hwn == 0) return;
+    time_t now = time(nullptr);
+    struct tm nt = *localtime(&now);
+    str_uur_start = (str_dag == 0) ? nt.tm_hour : 0;
+    float best = 1e9f;
+    for (int h = str_uur_start; h < 24; h++) {
+        float mn = 1e9f, mx = -1.0f;
+        for (int m = 0; m < 60; m += 5) {
+            time_t dep = _str_dep_tijd(h, m);
+            if (str_dag == 0 && dep < now) continue;
+            float d = _str_vt(dep);
+            if (d < 0) continue;
+            if (d < mn) mn = d;
+            if (d > mx) mx = d;
+        }
+        if (mx > 0) {
+            str_uur_mn[h] = mn; str_uur_mx[h] = mx;
+            if (str_ushown < 24) str_ushow[str_ushown++] = h;
+            if (mn < best) { best = mn; str_best_uur = h; }
         }
     }
 }
@@ -1121,34 +1185,35 @@ static void _str_cel(int x, int y, int w, int h, int hidx, int fase, float mn, f
     }
 }
 
-// ── Fase 0: vertrekhaven ────────────────────────────────────────────────────
+// ── Fase 0: vertrekhaven (gesorteerd) ───────────────────────────────────────
 static void _str_fase_vertrek() {
     _str_top_teken("VERTREKHAVEN", false);
+    _str_sorteer_vertrek();
     int gy = PANEL_Y + STR_TOP_H;
     int cw = (TFT_W - UI_SB_W - (HG_COLS + 1) * 4) / HG_COLS;
     int ch = STR_CELL_H;
     int rows_vis = (PANEL_Y + PANEL_H - gy) / (ch + 4);
-    int n = stroming_haven_count();
+    int n = str_dsortn;
     int rows_tot = (n + HG_COLS - 1) / HG_COLS;
     int max_sc = max(0, rows_tot - rows_vis);
     if (str_scroll > max_sc) str_scroll = max_sc;
     tft.fillRect(0, gy, TFT_W, PANEL_Y + PANEL_H - gy, C_BG);
     for (int r = 0; r < rows_vis; r++)
         for (int c = 0; c < HG_COLS; c++) {
-            int idx = (str_scroll + r) * HG_COLS + c;
-            if (idx >= n) continue;
-            _str_cel(4 + c * (cw + 4), gy + r * (ch + 4), cw, ch, idx, 0, 0, 0, false);
+            int k = (str_scroll + r) * HG_COLS + c;
+            if (k >= n) continue;
+            _str_cel(4 + c * (cw + 4), gy + r * (ch + 4), cw, ch, str_dsort[k], 0, 0, 0, false);
         }
     ui_scrollbar(TFT_W - UI_SB_W, gy, PANEL_Y + PANEL_H - gy, str_scroll, max_sc);
 }
 
-// ── Fase 1: aankomsthaven ───────────────────────────────────────────────────
+// ── Fase 1: aankomsthaven (gesorteerd op reistijd) ──────────────────────────
 static void _str_fase_aankomst() {
     _str_top_teken("NAAR...", true);
     int sy = PANEL_Y + STR_TOP_H;
     tft.fillRect(0, sy, TFT_W, STR_SUB_H, RGB565(8, 18, 36));
     char sub[48];
-    snprintf(sub, sizeof(sub), "Vanaf %s  -  bij %.1f kn", stroming_haven_naam(str_van), str_stw);
+    snprintf(sub, sizeof(sub), "Vanaf %s  -  bij %.1f kn (dichtstbij eerst)", stroming_haven_naam(str_van), str_stw);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(6, sy + (STR_SUB_H - 8) / 2); tft.print(sub);
     _str_maak_cand();
@@ -1178,7 +1243,7 @@ static void _str_fase_aankomst() {
     ui_scrollbar(TFT_W - UI_SB_W, gy, PANEL_Y + PANEL_H - gy, str_scroll, max_sc);
 }
 
-// ── Fase 2: route kiezen (alleen bij meerdere) ─────────────────────────────
+// ── Fase 2: route kiezen ────────────────────────────────────────────────────
 static void _str_fase_route() {
     _str_top_teken("ROUTE", true);
     int sy = PANEL_Y + STR_TOP_H;
@@ -1188,7 +1253,6 @@ static void _str_fase_route() {
              stroming_haven_naam(str_van), stroming_haven_naam(str_naar));
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(6, sy + (STR_SUB_H - 8) / 2); tft.print(sub);
-
     int gy = sy + STR_SUB_H + 2;
     int rh = UI_SCY(46);
     tft.fillRect(0, gy, TFT_W, PANEL_Y + PANEL_H - gy, C_BG);
@@ -1196,8 +1260,7 @@ static void _str_fase_route() {
         int y = gy + k * (rh + 4);
         const StromRoute* r = &str_routes[k];
         bool sel = (k == str_route_sel);
-        uint16_t bg = sel ? C_SURFACE3 : C_SURFACE2;
-        tft.fillRoundRect(4, y, TFT_W - 8, rh, 6, bg);
+        tft.fillRoundRect(4, y, TFT_W - 8, rh, 6, sel ? C_SURFACE3 : C_SURFACE2);
         if (sel) tft.drawRoundRect(4, y, TFT_W - 8, rh, 6, C_CYAN);
         tft.setTextSize(2); tft.setTextColor(sel ? C_CYAN : C_TEXT);
         tft.setCursor(12, y + 5); tft.print(r->via);
@@ -1211,7 +1274,7 @@ static void _str_fase_route() {
     }
 }
 
-// ── Fase 3: vaartijd-tabel ──────────────────────────────────────────────────
+// ── Fase 3: dag + uur-overzicht / uur-detail ────────────────────────────────
 static void _str_fase_tabel() {
     int van = str_omgekeerd ? str_naar : str_van;
     int naar = str_omgekeerd ? str_van : str_naar;
@@ -1226,64 +1289,129 @@ static void _str_fase_tabel() {
     char rt[40]; snprintf(rt, sizeof(rt), "%s > %s", stroming_haven_naam(van), stroming_haven_naam(naar));
     tft.print(rt);
 
-    _str_bereken();
+    _str_laad_ref();
 
+    // Sub1: OMKEER + route-info
     int sy = PANEL_Y + STR_TOP_H;
     tft.fillRect(0, sy, TFT_W, STR_SUB_H, RGB565(8, 18, 36));
     ui_knop(4, sy + 1, UI_SCX(80), STR_SUB_H - 2, "OMKEER", C_SURFACE2, C_TEXT);
-    char sub[56];
     const StromRoute* r = (str_routen > 0) ? &str_routes[str_route_sel] : nullptr;
-    if (r && str_hwn > 0)
-        snprintf(sub, sizeof(sub), "%.0f NM  %s%s%s", r->afstand_nm, r->via,
-                 r->sluis_min > 0 ? "  +sluis" : "", r->indicatief ? "  indic." : "");
-    else
-        snprintf(sub, sizeof(sub), "geen getijdata");
+    char sub[56];
+    if (r) snprintf(sub, sizeof(sub), "%.0f NM  %s%s", r->afstand_nm, r->via, r->indicatief ? "  indic." : "");
+    else   snprintf(sub, sizeof(sub), "-");
     tft.setTextSize(1); tft.setTextColor((r && r->indicatief) ? C_AMBER : C_TEXT_DIM);
     tft.setCursor(4 + UI_SCX(80) + 8, sy + (STR_SUB_H - 8) / 2); tft.print(sub);
 
-    int hy = sy + STR_SUB_H;
-    tft.fillRect(0, hy, TFT_W, STR_HDR_H, C_SURFACE);
+    // Sub2: dagkeuze
+    int dy = sy + STR_SUB_H;
+    tft.fillRect(0, dy, TFT_W, STR_SUB_H, C_BG);
+    ui_knop(4, dy + 1, UI_SCX(34), STR_SUB_H - 2, "<", C_SURFACE2, C_CYAN);
+    char dlbl[20]; _str_daglabel(dlbl, sizeof(dlbl));
+    ui_tekst_midden(4 + UI_SCX(34), dy, UI_SCX(150), dlbl, C_TEXT, 2);
+    ui_knop(4 + UI_SCX(34) + UI_SCX(150), dy + 1, UI_SCX(34), STR_SUB_H - 2, ">", C_SURFACE2, C_CYAN);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(8, hy + 4);                    tft.print("Vertrek");
-    tft.setCursor(STR_TBL_W * 45 / 100, hy + 4); tft.print("Vaartijd");
-    tft.setCursor(STR_TBL_W * 75 / 100, hy + 4); tft.print("Aankomst");
+    tft.setCursor(4 + UI_SCX(34)*2 + UI_SCX(150) + 8, dy + (STR_SUB_H - 8)/2);
+    tft.print(str_uur_detail < 0 ? "tik uur voor detail" : "");
 
-    int tbl_y = hy + STR_HDR_H;
-    int tbl_h = PANEL_Y + PANEL_H - tbl_y;
-    int rows_n = tbl_h / STR_ROW_H;
-    tft.fillRect(0, tbl_y, TFT_W, tbl_h, C_BG);
+    int cy = dy + STR_SUB_H;
+    tft.fillRect(0, cy, TFT_W, PANEL_Y + PANEL_H - cy, C_BG);
 
     if (str_hwn == 0) {
-        ui_tekst_midden(0, tbl_y + 20, TFT_W, "Getijdata nodig", C_TEXT_DIM, 2);
+        ui_tekst_midden(0, cy + 20, TFT_W, "Getijdata nodig", C_TEXT_DIM, 2);
         int bw = UI_SCX(140);
-        ui_knop((TFT_W - bw) / 2, tbl_y + 54, bw, UI_SCY(30), "Ophalen", C_SURFACE2, C_CYAN);
+        ui_knop((TFT_W - bw) / 2, cy + 54, bw, UI_SCY(30), "Ophalen", C_SURFACE2, C_CYAN);
         return;
     }
-    int max_sc = max(0, STR_SLOTS - rows_n);
-    if (str_scroll > max_sc) str_scroll = max_sc;
-    for (int rr = 0; rr < rows_n; rr++) {
-        int i = str_scroll + rr;
-        int ey = tbl_y + rr * STR_ROW_H;
-        if (i >= STR_SLOTS) continue;
-        bool ideaal = (i == str_best);
-        uint16_t bg = ideaal ? RGB565(0, 60, 40) : ((rr % 2) ? C_SURFACE : C_SURFACE2);
+
+    _str_bereken_overzicht();
+
+    if (str_uur_detail < 0) {
+        // ── Uur-overzicht (grid, geen precieze tijden) ──────────────────────
+        int gy = cy;
+        int garea_h = PANEL_Y + PANEL_H - gy;
+        int cw = (TFT_W - UI_SB_W - (UUR_COLS + 1) * 4) / UUR_COLS;
+        int ch = UI_SCY(40);
+        int rows_vis = max(1, garea_h / (ch + 4));
+        int rows_tot = (str_ushown + UUR_COLS - 1) / UUR_COLS;
+        int max_sc = max(0, rows_tot - rows_vis);
+        if (str_scroll > max_sc) str_scroll = max_sc;
+        for (int rr = 0; rr < rows_vis; rr++)
+            for (int c = 0; c < UUR_COLS; c++) {
+                int k = (str_scroll + rr) * UUR_COLS + c;
+                if (k >= str_ushown) continue;
+                int h = str_ushow[k];
+                int x = 4 + c * (cw + 4), y = gy + rr * (ch + 4);
+                bool best = (h == str_best_uur);
+                tft.fillRoundRect(x, y, cw, ch, 5, best ? RGB565(0, 60, 40) : C_SURFACE2);
+                if (best) tft.drawRoundRect(x, y, cw, ch, 5, C_GREEN);
+                char l1[10]; snprintf(l1, sizeof(l1), "%02d-%02d", h, h + 1);
+                tft.setTextSize(2); tft.setTextColor(best ? C_GREEN : C_CYAN);
+                tft.setCursor(x + 6, y + 4); tft.print(l1);
+                char m1[8], m2[8], l2[20];
+                _str_hm(str_uur_mn[h], m1, 8); _str_hm(str_uur_mx[h], m2, 8);
+                snprintf(l2, sizeof(l2), "%s-%s", m1, m2);
+                tft.setTextSize(1); tft.setTextColor(best ? C_GREEN : C_TEXT);
+                tft.setCursor(x + 6, y + ch - 12); tft.print(l2);
+            }
+        ui_scrollbar(TFT_W - UI_SB_W, gy, garea_h, str_scroll, max_sc);
+        return;
+    }
+
+    // ── Uur-detail (5/10 min) met vorig/volgend uur ─────────────────────────
+    int H = str_uur_detail;
+    int hy = cy;
+    int nb_h = UI_SCY(24);
+    tft.fillRect(0, hy, TFT_W, nb_h, C_SURFACE);
+    ui_knop(4, hy + 1, UI_SCX(70), nb_h - 2, "< uur", C_SURFACE2, C_CYAN);
+    ui_knop(TFT_W - UI_SCX(74), hy + 1, UI_SCX(70), nb_h - 2, "uur >", C_SURFACE2, C_CYAN);
+    char hlbl[16]; snprintf(hlbl, sizeof(hlbl), "%02d:00 - %02d:00", H, H + 1);
+    ui_tekst_midden(UI_SCX(76), hy + (nb_h - 16) / 2, TFT_W - UI_SCX(150), hlbl, C_TEXT, 2);
+
+    int chy = hy + nb_h;
+    tft.fillRect(0, chy, TFT_W, STR_HDR_H, C_SURFACE2);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(8, chy + 4);                    tft.print("Vertrek");
+    tft.setCursor(STR_TBL_W * 45 / 100, chy + 4); tft.print("Vaartijd");
+    tft.setCursor(STR_TBL_W * 75 / 100, chy + 4); tft.print("Aankomst");
+
+    int ry = chy + STR_HDR_H;
+    time_t now = time(nullptr);
+    int stap = STR_DET_MIN_STAP;
+    // snelste minuut in dit uur bepalen
+    float best = 1e9f; int best_m = -1;
+    for (int m = 0; m < 60; m += stap) {
+        time_t dep = _str_dep_tijd(H, m);
+        if (str_dag == 0 && dep < now) continue;
+        float d = _str_vt(dep); if (d < 0) continue;
+        if (d < best) { best = d; best_m = m; }
+    }
+    int rij = 0;
+    for (int m = 0; m < 60; m += stap) {
+        time_t dep = _str_dep_tijd(H, m);
+        bool verleden = (str_dag == 0 && dep < now);
+        int ey = ry + rij * STR_ROW_H;
+        if (ey + STR_ROW_H > PANEL_Y + PANEL_H) break;
+        bool ideaal = (m == best_m);
+        uint16_t bg = ideaal ? RGB565(0, 60, 40) : ((rij % 2) ? C_SURFACE : C_SURFACE2);
         tft.fillRect(2, ey, STR_TBL_W - 2, STR_ROW_H - 1, bg);
         if (ideaal) tft.drawRect(2, ey, STR_TBL_W - 2, STR_ROW_H - 1, C_GREEN);
-        uint16_t fg = ideaal ? C_GREEN : C_TEXT;
+        uint16_t fg = verleden ? C_TEXT_DIM : (ideaal ? C_GREEN : C_TEXT);
         int ty = ey + (STR_ROW_H - 16) / 2;
-        struct tm* dt = localtime(&str_dep[i]);
+        struct tm* dt = localtime(&dep);
         char vbuf[8]; snprintf(vbuf, sizeof(vbuf), "%02d:%02d", dt->tm_hour, dt->tm_min);
         tft.setTextSize(2); tft.setTextColor(fg);
         tft.setCursor(8, ty); tft.print(vbuf);
-        char dbuf[8]; _str_hm(str_dur[i], dbuf, sizeof(dbuf));
+        float d = _str_vt(dep);
+        if (d < 0) { rij++; continue; }
+        char dbuf[8]; _str_hm(d, dbuf, sizeof(dbuf));
         tft.setCursor(STR_TBL_W * 45 / 100, ty); tft.print(dbuf);
-        time_t aank = str_dep[i] + (time_t)(str_dur[i] * 3600.0f);
+        time_t aank = dep + (time_t)(d * 3600.0f);
         struct tm* at = localtime(&aank);
         char abuf[8]; snprintf(abuf, sizeof(abuf), "%02d:%02d", at->tm_hour, at->tm_min);
-        tft.setTextColor(ideaal ? C_GREEN : C_TEXT_DIM);
+        tft.setTextColor(verleden ? C_TEXT_DIM : (ideaal ? C_GREEN : C_TEXT_DIM));
         tft.setCursor(STR_TBL_W * 75 / 100, ty); tft.print(abuf);
+        rij++;
     }
-    ui_scrollbar(TFT_W - UI_SB_W, tbl_y, tbl_h, str_scroll, max_sc);
 }
 
 static void meteo_stroming_teken() {
@@ -1539,7 +1667,7 @@ void screen_meteo_run(int x, int y, bool aanraking) {
         }
     }
 
-    // ── STROMING TAB interactie (vertrek->aankomst->route->tabel) ───────────
+    // ── STROMING TAB interactie (vertrek->aankomst->route->dag/uur) ─────────
     if (meteo_tab == METEO_TAB_STROMING) {
         int topy = PANEL_Y + 2, toph = STR_TOP_H - 4;
         int sbw = UI_SCX(30);
@@ -1559,25 +1687,17 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                 str_scroll = 0; meteo_stroming_teken(); return;
             }
             if (str_fase > 0 && x >= 4 && x < 4 + UI_SCX(40)) {
-                if (str_fase == 3) str_fase = (str_routen > 1) ? 2 : 1;
-                else               str_fase--;
+                if      (str_fase == 3 && str_uur_detail >= 0) str_uur_detail = -1;
+                else if (str_fase == 3)                        str_fase = (str_routen > 1) ? 2 : 1;
+                else                                           str_fase--;
                 str_scroll = 0; meteo_stroming_teken(); return;
-            }
-        }
-
-        // OMKEER (fase 3 subregel)
-        if (str_fase == 3) {
-            int sy = PANEL_Y + STR_TOP_H;
-            if (y >= sy && y < sy + STR_SUB_H && x >= 4 && x < 4 + UI_SCX(80)) {
-                str_omgekeerd = !str_omgekeerd; str_scroll = 0; _str_zoek();
-                meteo_stroming_teken(); return;
             }
         }
 
         // 'Ophalen' knop bij ontbrekende referentie-getijdata
         if (str_hwn == 0 && (str_fase == 1 || str_fase == 3)) {
             int gy = (str_fase == 1) ? (PANEL_Y + STR_TOP_H + STR_SUB_H)
-                                     : (PANEL_Y + STR_TOP_H + STR_SUB_H + STR_HDR_H);
+                                     : (PANEL_Y + STR_TOP_H + 2 * STR_SUB_H);
             int bw = UI_SCX(140), bx = (TFT_W - bw) / 2, by = gy + 54;
             if (x >= bx && x < bx + bw && y >= by && y < by + UI_SCY(30)) {
                 getijdata_ophalen_aanvragen(4);
@@ -1586,15 +1706,15 @@ void screen_meteo_run(int x, int y, bool aanraking) {
             }
         }
 
-        // Fase 0: vertrekhaven grid
+        // Fase 0: vertrekhaven grid (gesorteerd)
         if (str_fase == 0) {
+            if (str_dsortn == 0) _str_sorteer_vertrek();
             int gy = PANEL_Y + STR_TOP_H;
             int garea_h = PANEL_Y + PANEL_H - gy;
             int cw = (TFT_W - UI_SB_W - (HG_COLS + 1) * 4) / HG_COLS;
             int ch = STR_CELL_H;
             int rows_vis = garea_h / (ch + 4);
-            int n = stroming_haven_count();
-            int rows_tot = (n + HG_COLS - 1) / HG_COLS;
+            int rows_tot = (str_dsortn + HG_COLS - 1) / HG_COLS;
             int max_sc = max(0, rows_tot - rows_vis);
             if (x >= TFT_W - UI_SB_W - 6) {
                 int k = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, gy, garea_h);
@@ -1606,8 +1726,8 @@ void screen_meteo_run(int x, int y, bool aanraking) {
             if (y >= gy) {
                 int r = (y - gy) / (ch + 4), c = (x - 4) / (cw + 4);
                 if (c >= 0 && c < HG_COLS && r >= 0) {
-                    int idx = (str_scroll + r) * HG_COLS + c;
-                    if (idx >= 0 && idx < n) { str_van = idx; str_fase = 1; str_scroll = 0; meteo_stroming_teken(); }
+                    int k = (str_scroll + r) * HG_COLS + c;
+                    if (k >= 0 && k < str_dsortn) { str_van = str_dsort[k]; str_fase = 1; str_scroll = 0; meteo_stroming_teken(); }
                 }
             }
             return;
@@ -1636,7 +1756,7 @@ void screen_meteo_run(int x, int y, bool aanraking) {
                     int k = (str_scroll + r) * HG_COLS + c;
                     if (k >= 0 && k < str_candn) {
                         str_naar = str_cand[k]; str_omgekeerd = false; str_route_sel = 0;
-                        _str_zoek();
+                        str_uur_detail = -1; _str_zoek();
                         str_fase = (str_routen > 1) ? 2 : 3;
                         str_scroll = 0; meteo_stroming_teken();
                     }
@@ -1651,27 +1771,74 @@ void screen_meteo_run(int x, int y, bool aanraking) {
             int rh = UI_SCY(46);
             if (y >= gy) {
                 int k = (y - gy) / (rh + 4);
-                if (k >= 0 && k < str_routen) {
-                    str_route_sel = k; str_fase = 3; str_scroll = 0; meteo_stroming_teken();
-                }
+                if (k >= 0 && k < str_routen) { str_route_sel = k; str_fase = 3; str_uur_detail = -1; str_scroll = 0; meteo_stroming_teken(); }
             }
             return;
         }
 
-        // Fase 3: tabel scrollen
+        // Fase 3: OMKEER + dagkeuze + uur-overzicht/detail
         if (str_fase == 3) {
-            int tbl_y = PANEL_Y + STR_TOP_H + STR_SUB_H + STR_HDR_H;
-            int tbl_h = PANEL_Y + PANEL_H - tbl_y;
-            int rows_n = tbl_h / STR_ROW_H;
-            if (x >= TFT_W - UI_SB_W - 6) {
-                int max_sc = max(0, STR_SLOTS - rows_n);
-                int k = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, tbl_y, tbl_h);
-                if      (k == -1) str_scroll = max(0, str_scroll - rows_n);
-                else if (k ==  1) str_scroll = min(max_sc, str_scroll + rows_n);
-                else if (k ==  2) str_scroll = constrain((y - tbl_y) * STR_SLOTS / tbl_h - rows_n / 2, 0, max_sc);
+            int sy = PANEL_Y + STR_TOP_H;
+            // OMKEER (sub1)
+            if (y >= sy && y < sy + STR_SUB_H && x >= 4 && x < 4 + UI_SCX(80)) {
+                str_omgekeerd = !str_omgekeerd; str_uur_detail = -1; str_scroll = 0; _str_zoek();
                 meteo_stroming_teken(); return;
             }
-            return;
+            // dagkeuze (sub2)
+            int dy = sy + STR_SUB_H;
+            if (y >= dy && y < dy + STR_SUB_H) {
+                if (x >= 4 && x < 4 + UI_SCX(34)) {
+                    if (str_dag > 0) { str_dag--; str_uur_detail = -1; str_scroll = 0; }
+                    meteo_stroming_teken(); return;
+                }
+                int nx = 4 + UI_SCX(34) + UI_SCX(150);
+                if (x >= nx && x < nx + UI_SCX(34)) {
+                    if (str_dag < STR_MAX_DAG) { str_dag++; str_uur_detail = -1; str_scroll = 0; }
+                    meteo_stroming_teken(); return;
+                }
+            }
+            if (str_hwn == 0) return;
+
+            int cy = dy + STR_SUB_H;
+            if (str_uur_detail < 0) {
+                // uur-overzicht grid
+                int gy = cy;
+                int garea_h = PANEL_Y + PANEL_H - gy;
+                int cw = (TFT_W - UI_SB_W - (UUR_COLS + 1) * 4) / UUR_COLS;
+                int ch = UI_SCY(40);
+                int rows_vis = max(1, garea_h / (ch + 4));
+                int rows_tot = (str_ushown + UUR_COLS - 1) / UUR_COLS;
+                int max_sc = max(0, rows_tot - rows_vis);
+                if (x >= TFT_W - UI_SB_W - 6) {
+                    int k = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, gy, garea_h);
+                    if      (k == -1) str_scroll = max(0, str_scroll - rows_vis);
+                    else if (k ==  1) str_scroll = min(max_sc, str_scroll + rows_vis);
+                    else if (k ==  2) str_scroll = constrain((y - gy) * rows_tot / garea_h - rows_vis / 2, 0, max_sc);
+                    meteo_stroming_teken(); return;
+                }
+                if (y >= gy) {
+                    int rr = (y - gy) / (ch + 4), c = (x - 4) / (cw + 4);
+                    if (c >= 0 && c < UUR_COLS && rr >= 0) {
+                        int k = (str_scroll + rr) * UUR_COLS + c;
+                        if (k >= 0 && k < str_ushown) { str_uur_detail = str_ushow[k]; str_scroll = 0; meteo_stroming_teken(); }
+                    }
+                }
+                return;
+            } else {
+                // uur-detail: vorig/volgend uur
+                int hy = cy, nb_h = UI_SCY(24);
+                if (y >= hy && y < hy + nb_h) {
+                    if (x >= 4 && x < 4 + UI_SCX(70)) {
+                        if (str_uur_detail > str_uur_start) str_uur_detail--;
+                        meteo_stroming_teken(); return;
+                    }
+                    if (x >= TFT_W - UI_SCX(74)) {
+                        if (str_uur_detail < 23) str_uur_detail++;
+                        meteo_stroming_teken(); return;
+                    }
+                }
+                return;
+            }
         }
     }
 }

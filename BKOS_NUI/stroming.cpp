@@ -18,6 +18,11 @@ enum {
     N_MARSDIEP, N_VLIESTROOM, N_BORNDIEP, N_FRIESEZEEGAT, N_EEMSMOND,
     N_DENHELDER, N_OUDESCHILD, N_DENOEVER, N_KORNWERDERZAND, N_HARLINGEN,
     N_WESTTERSCHELLING, N_VLIELAND, N_NES, N_LAUWERSOOG, N_SCHIER, N_DELFZIJL,
+    N_NOORDPOLDERZIJL, N_TERMUNTERZIJL,
+    N_EMDEN, N_BORKUM, N_JUIST, N_NORDERNEY, N_NORDDEICH, N_GREETSIEL, N_BALTRUM,
+    N_LANGEOOG, N_BENSERSIEL, N_SPIEKEROOG, N_NEUHARLINGERSIEL, N_HARLESIEL,
+    N_WANGEROOGE, N_JADEMOND, N_HOOKSIEL, N_WILHELMSHAVEN, N_WESERMOND,
+    N_BREMERHAVEN, N_ELBEMOND, N_CUXHAVEN,
     NODE_N
 };
 
@@ -29,7 +34,12 @@ static const char* NODE_NAMES[NODE_N] = {
     "Brouwersdam","Grevelingenmeer","Bruinisse",
     "Marsdiep","Vliestroom","Borndiep","Friese Zeegat","Eems",
     "Den Helder","Oudeschild","Den Oever","Kornwerderzand","Harlingen",
-    "Terschelling","Vlieland","Ameland","Lauwersoog","Schier","Delfzijl"
+    "Terschelling","Vlieland","Ameland","Lauwersoog","Schier","Delfzijl",
+    "Noordpolderzijl","Termunterzijl",
+    "Emden","Borkum","Juist","Norderney","Norddeich","Greetsiel","Baltrum",
+    "Langeoog","Bensersiel","Spiekeroog","Neuharlingersiel","Harlesiel",
+    "Wangerooge","Jade","Hooksiel","Wilhelmshaven","Weser",
+    "Bremerhaven","Elbe","Cuxhaven"
 };
 
 // ─── Getijstation-indices (GETIJ_LOCATIES) ──────────────────────────────────
@@ -107,6 +117,31 @@ static const Edge EDGES[] = {
     { N_FRIESEZEEGAT, N_LAUWERSOOG,    8, 150, 1.8f, -1.3f, IJ_HARL, 0, true  },
     { N_FRIESEZEEGAT, N_SCHIER,        6, 120, 1.8f, -1.3f, IJ_HARL, 0, true  },
     { N_EEMSMOND,     N_DELFZIJL,     18, 150, 1.5f, -1.0f, IJ_DELF, 0, true  },
+    // NL Groningen wad-siels (indicatief)
+    { N_EEMSMOND,     N_NOORDPOLDERZIJL,10,250, 1.0f, -1.0f, IJ_DELF,15, true  },
+    { N_EEMSMOND,     N_TERMUNTERZIJL,  8, 140, 1.0f, -1.0f, IJ_DELF,15, true  },
+    // Eems -> Emden (rivier, sluis)
+    { N_EEMSMOND,     N_EMDEN,        18, 120, 1.2f, -1.0f, IJ_DELF,20, true  },
+    // Duitse Waddenkust (Oost-Friese eilanden), west -> oost — ijk Delfzijl (grof)
+    { N_EEMSMOND,     N_BORKUM,        6,  20, 1.2f, -1.0f, IJ_DELF, 0, true  },
+    { N_BORKUM,       N_JUIST,        10,  80, 1.5f, -1.0f, IJ_DELF, 0, true  },
+    { N_BORKUM,       N_NORDERNEY,    18,  80, 1.5f, -1.0f, IJ_DELF, 0, true  },
+    { N_NORDERNEY,    N_NORDDEICH,     4, 150, 1.2f, -1.0f, IJ_DELF, 0, true  },
+    { N_NORDERNEY,    N_GREETSIEL,    12, 200, 1.2f, -1.0f, IJ_DELF,15, true  },
+    { N_NORDERNEY,    N_BALTRUM,       8,  80, 1.5f, -1.0f, IJ_DELF, 0, true  },
+    { N_BALTRUM,      N_LANGEOOG,      8,  80, 1.5f, -1.0f, IJ_DELF, 0, true  },
+    { N_LANGEOOG,     N_BENSERSIEL,    5, 150, 1.2f, -1.0f, IJ_DELF,15, true  },
+    { N_LANGEOOG,     N_SPIEKEROOG,    7,  80, 1.5f, -0.9f, IJ_DELF, 0, true  },
+    { N_SPIEKEROOG,   N_NEUHARLINGERSIEL,5,150,1.2f, -0.9f, IJ_DELF,15, true  },
+    { N_SPIEKEROOG,   N_WANGEROOGE,    9,  85, 1.5f, -0.9f, IJ_DELF, 0, true  },
+    { N_WANGEROOGE,   N_HARLESIEL,     7, 150, 1.2f, -0.9f, IJ_DELF,15, true  },
+    { N_WANGEROOGE,   N_JADEMOND,      8, 120, 1.6f, -0.8f, IJ_DELF, 0, true  },
+    { N_JADEMOND,     N_HOOKSIEL,      5, 180, 1.4f, -0.8f, IJ_DELF,15, true  },
+    { N_JADEMOND,     N_WILHELMSHAVEN, 8, 170, 1.4f, -0.8f, IJ_DELF, 0, true  },
+    { N_JADEMOND,     N_WESERMOND,    20,  90, 1.4f, -0.6f, IJ_DELF, 0, true  },
+    { N_WESERMOND,    N_BREMERHAVEN,  12, 150, 1.5f, -0.5f, IJ_DELF, 0, true  },
+    { N_WESERMOND,    N_ELBEMOND,     18,  70, 1.4f, -0.4f, IJ_DELF, 0, true  },
+    { N_ELBEMOND,     N_CUXHAVEN,      6, 120, 1.6f, -0.4f, IJ_DELF, 0, true  },
 };
 static const int EDGE_N = sizeof(EDGES) / sizeof(EDGES[0]);
 
@@ -143,6 +178,25 @@ static const Haven HAVENS[] = {
     { "Lauwersoog",       "Gr",  N_LAUWERSOOG,     STROM_LAND_NL, 0.5f,  0, 53.41f, 6.21f },
     { "Schiermonnikoog",  "Fr",  N_SCHIER,         STROM_LAND_NL, 0.5f,  0, 53.47f, 6.20f },
     { "Delfzijl",         "Gr",  N_DELFZIJL,       STROM_LAND_NL, 0.5f,  0, 53.33f, 6.93f },
+    { "Noordpolderzijl",  "Gr",  N_NOORDPOLDERZIJL,STROM_LAND_NL, 0.5f,  0, 53.43f, 6.55f },
+    { "Termunterzijl",    "Gr",  N_TERMUNTERZIJL,  STROM_LAND_NL, 0.5f,  0, 53.30f, 7.03f },
+    { "Borkum",           "OFr", N_BORKUM,         STROM_LAND_DE, 0.5f,  0, 53.57f, 6.75f },
+    { "Juist",            "OFr", N_JUIST,          STROM_LAND_DE, 0.5f,  0, 53.68f, 7.00f },
+    { "Norderney",        "OFr", N_NORDERNEY,      STROM_LAND_DE, 0.5f,  0, 53.70f, 7.16f },
+    { "Norddeich",        "OFr", N_NORDDEICH,      STROM_LAND_DE, 0.3f,  0, 53.61f, 7.16f },
+    { "Greetsiel",        "OFr", N_GREETSIEL,      STROM_LAND_DE, 0.3f,  0, 53.50f, 7.10f },
+    { "Baltrum",          "OFr", N_BALTRUM,        STROM_LAND_DE, 0.5f,  0, 53.73f, 7.37f },
+    { "Langeoog",         "OFr", N_LANGEOOG,       STROM_LAND_DE, 0.5f,  0, 53.73f, 7.50f },
+    { "Bensersiel",       "OFr", N_BENSERSIEL,     STROM_LAND_DE, 0.3f,  0, 53.67f, 7.57f },
+    { "Spiekeroog",       "OFr", N_SPIEKEROOG,     STROM_LAND_DE, 0.5f,  0, 53.77f, 7.69f },
+    { "Neuharlingersiel", "OFr", N_NEUHARLINGERSIEL,STROM_LAND_DE,0.3f,  0, 53.70f, 7.70f },
+    { "Harlesiel",        "OFr", N_HARLESIEL,      STROM_LAND_DE, 0.3f,  0, 53.71f, 7.83f },
+    { "Wangerooge",       "OFr", N_WANGEROOGE,     STROM_LAND_DE, 0.5f,  0, 53.79f, 7.90f },
+    { "Hooksiel",         "Nds", N_HOOKSIEL,       STROM_LAND_DE, 0.3f,  0, 53.64f, 8.02f },
+    { "Wilhelmshaven",    "Nds", N_WILHELMSHAVEN,  STROM_LAND_DE, 0.5f,  0, 53.51f, 8.15f },
+    { "Emden",            "OFr", N_EMDEN,          STROM_LAND_DE, 0.5f,  0, 53.34f, 7.19f },
+    { "Bremerhaven",      "Nds", N_BREMERHAVEN,    STROM_LAND_DE, 0.5f,  0, 53.54f, 8.58f },
+    { "Cuxhaven",         "Nds", N_CUXHAVEN,       STROM_LAND_DE, 0.5f,  0, 53.87f, 8.72f },
 };
 static const int HAVEN_N = sizeof(HAVENS) / sizeof(HAVENS[0]);
 

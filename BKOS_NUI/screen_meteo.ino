@@ -1183,11 +1183,15 @@ static void _str_cluster(int x_right, int cy, time_t dep, time_t aank, uint16_t 
 
 static void _str_vlag(int x, int y, int land) {
     int w = UI_SCX(18), h = UI_SCY(12);
-    if (land == STROM_LAND_BE) {
+    if (land == STROM_LAND_BE) {                    // zwart / geel / rood (verticaal)
         tft.fillRect(x,           y, w/3, h, RGB565(0, 0, 0));
         tft.fillRect(x + w/3,     y, w/3, h, RGB565(250, 220, 0));
         tft.fillRect(x + 2*(w/3), y, w - 2*(w/3), h, RGB565(230, 40, 40));
-    } else {
+    } else if (land == STROM_LAND_DE) {             // zwart / rood / goud (horizontaal)
+        tft.fillRect(x, y,           w, h/3, RGB565(0, 0, 0));
+        tft.fillRect(x, y + h/3,     w, h/3, RGB565(210, 30, 30));
+        tft.fillRect(x, y + 2*(h/3), w, h - 2*(h/3), RGB565(250, 200, 0));
+    } else {                                        // NL: rood / wit / blauw (horizontaal)
         tft.fillRect(x, y,           w, h/3, RGB565(200, 30, 40));
         tft.fillRect(x, y + h/3,     w, h/3, RGB565(240, 240, 240));
         tft.fillRect(x, y + 2*(h/3), w, h - 2*(h/3), RGB565(30, 60, 150));
@@ -1646,6 +1650,63 @@ static void meteo_stroming_teken() {
     else                    _str_fase_tabel();
 }
 
+// ─── WEER: plaats kiezen (havens gesorteerd op afstand + typ-optie) ────────
+static bool meteo_plaats_kies   = false;
+static int  meteo_plaats_scroll = 0;
+static int  meteo_plaats_sort[64];
+static int  meteo_plaats_n      = 0;
+
+static void _meteo_plaats_sorteer() {
+    int n = stroming_haven_count();
+    meteo_plaats_n = (n > 64) ? 64 : n;
+    static float d2[64];
+    for (int i = 0; i < meteo_plaats_n; i++) { meteo_plaats_sort[i] = i; d2[i] = _str_haven_d2(i); }
+    for (int i = 1; i < meteo_plaats_n; i++) {
+        int v = meteo_plaats_sort[i], j = i - 1;
+        while (j >= 0 && d2[meteo_plaats_sort[j]] > d2[v]) { meteo_plaats_sort[j+1] = meteo_plaats_sort[j]; j--; }
+        meteo_plaats_sort[j+1] = v;
+    }
+}
+
+#define MPL_TOPH   UI_SCY(26)
+#define MPL_GY     (PANEL_Y + STR_TOP_H)
+#define MPL_COLS   HG_COLS
+#define MPL_CW     ((TFT_W - UI_SB_W - (MPL_COLS + 1) * 4) / MPL_COLS)
+#define MPL_CH     UI_SCY(40)
+
+static void meteo_plaats_teken() {
+    tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
+    int topy = PANEL_Y + 2;
+    ui_knop(4, topy, UI_SCX(70), MPL_TOPH, "< Sluit", C_SURFACE2, C_CYAN);
+    ui_tekst_midden(UI_SCX(80), topy + (MPL_TOPH - 16) / 2, TFT_W - UI_SCX(80) - UI_SCX(124), "KIES PLAATS", C_TEXT, 2);
+    ui_knop(TFT_W - UI_SCX(120), topy, UI_SCX(116), MPL_TOPH, "Typ plaats...", C_SURFACE2, C_AMBER);
+
+    _meteo_plaats_sorteer();
+    int gy = MPL_GY, cw = MPL_CW, ch = MPL_CH;
+    int garea_h = PANEL_Y + PANEL_H - gy;
+    int rows_vis = garea_h / (ch + 4);
+    int rows_tot = (meteo_plaats_n + MPL_COLS - 1) / MPL_COLS;
+    int max_sc = max(0, rows_tot - rows_vis);
+    if (meteo_plaats_scroll > max_sc) meteo_plaats_scroll = max_sc;
+    for (int r = 0; r < rows_vis; r++)
+        for (int c = 0; c < MPL_COLS; c++) {
+            int k = (meteo_plaats_scroll + r) * MPL_COLS + c;
+            if (k >= meteo_plaats_n) continue;
+            int idx = meteo_plaats_sort[k];
+            int x = 4 + c * (cw + 4), y = gy + r * (ch + 4);
+            tft.fillRoundRect(x, y, cw, ch, 5, C_SURFACE2);
+            int land = stroming_haven_land(idx);
+            int tx = x + 6;
+            if (land != STROM_LAND_NL) { _str_vlag(x + 6, y + 6, land); tx = x + 6 + UI_SCX(18) + 4; }
+            tft.setTextSize(1); tft.setTextColor(C_TEXT);
+            tft.setCursor(tx, y + 8); tft.print(stroming_haven_naam(idx));
+            float km = sqrtf(_str_haven_d2(idx)) * 111.0f;
+            char b[16]; snprintf(b, sizeof(b), "%.0f km", km);
+            tft.setTextColor(C_TEXT_DIM); tft.setCursor(x + 6, y + ch - 12); tft.print(b);
+        }
+    ui_scrollbar(TFT_W - UI_SB_W, gy, garea_h, meteo_plaats_scroll, max_sc);
+}
+
 // ─── Hoofdfuncties ────────────────────────────────────────────────────────
 void screen_meteo_teken() {
     tft.fillScreen(C_BG);
@@ -1665,7 +1726,8 @@ void screen_meteo_teken() {
 
     switch (meteo_tab) {
         case METEO_TAB_WEER:
-            if (meteo_detail_dag >= 0) meteo_detail_teken(meteo_detail_dag);
+            if (meteo_plaats_kies)     meteo_plaats_teken();
+            else if (meteo_detail_dag >= 0) meteo_detail_teken(meteo_detail_dag);
             else meteo_weer_teken();
             break;
         case METEO_TAB_GETIJ:    meteo_getij_teken();    break;
@@ -1699,18 +1761,59 @@ void screen_meteo_run(int x, int y, bool aanraking) {
 
     if (!aanraking) return;
 
-    // Klik op de plaatsnaam bovenin het WEER-scherm → weerlocatie wijzigen
-    if (meteo_tab == METEO_TAB_WEER && meteo_detail_dag < 0 &&
-        y >= PANEL_Y && y < PANEL_Y + UI_SCY(26) && x >= 10 && x < UI_SCX(380)) {
-        strncpy(cfg_invoer, strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad, CFG_INVOER_LEN - 1);
-        cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
-        strncpy(cfg_kb_label, "Stad:", 24);
-        cfg_kb_numeriek   = false;
-        cfg_kb_meteo_stad = true;
-        cfg_toetsenbord_actief = true;
-        actief_scherm  = SCREEN_CONFIG;
-        scherm_bouwen  = true;
+    // WEER: plaats-picker actief → afhandelen (alleen binnen het paneel; tabs/nav vallen door)
+    if (meteo_tab == METEO_TAB_WEER && meteo_plaats_kies && y >= PANEL_Y && y < NAV_Y) {
+        int topy = PANEL_Y + 2;
+        if (y >= topy && y < topy + MPL_TOPH) {
+            if (x >= 4 && x < 4 + UI_SCX(70)) {            // Sluit
+                meteo_plaats_kies = false; meteo_weer_teken(); return;
+            }
+            if (x >= TFT_W - UI_SCX(120)) {                // Typ plaats... (zoals nu)
+                meteo_plaats_kies = false;
+                strncpy(cfg_invoer, strlen(meteo_weer_stad) > 0 ? meteo_weer_stad : meteo_stad, CFG_INVOER_LEN - 1);
+                cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+                strncpy(cfg_kb_label, "Stad:", 24);
+                cfg_kb_numeriek = false; cfg_kb_meteo_stad = true; cfg_toetsenbord_actief = true;
+                actief_scherm = SCREEN_CONFIG; scherm_bouwen = true; return;
+            }
+        }
+        int gy = MPL_GY, cw = MPL_CW, ch = MPL_CH;
+        int garea_h = PANEL_Y + PANEL_H - gy;
+        int rows_vis = garea_h / (ch + 4);
+        int rows_tot = (meteo_plaats_n + MPL_COLS - 1) / MPL_COLS;
+        int max_sc = max(0, rows_tot - rows_vis);
+        if (x >= TFT_W - UI_SB_W - 6) {
+            int k = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, gy, garea_h);
+            if      (k == -1) meteo_plaats_scroll = max(0, meteo_plaats_scroll - rows_vis);
+            else if (k ==  1) meteo_plaats_scroll = min(max_sc, meteo_plaats_scroll + rows_vis);
+            else if (k ==  2) meteo_plaats_scroll = constrain((y - gy) * rows_tot / garea_h - rows_vis / 2, 0, max_sc);
+            meteo_plaats_teken(); return;
+        }
+        if (y >= gy) {
+            int r = (y - gy) / (ch + 4), c = (x - 4) / (cw + 4);
+            if (c >= 0 && c < MPL_COLS && r >= 0) {
+                int k = (meteo_plaats_scroll + r) * MPL_COLS + c;
+                if (k >= 0 && k < meteo_plaats_n) {
+                    int idx = meteo_plaats_sort[k];
+                    float la, lo; stroming_haven_latlon(idx, &la, &lo);
+                    meteo_lat = la; meteo_lon = lo;
+                    strncpy(meteo_weer_stad, stroming_haven_naam(idx), 31); meteo_weer_stad[31] = '\0';
+                    getijdata_station_idx = getijdata_dichtstbij(meteo_lat, meteo_lon);
+                    meteo_inst_opslaan();
+                    meteo_getij_berekenen();
+                    meteo_laatste_update = 0;    // forceer weer-refresh
+                    meteo_plaats_kies = false;
+                    meteo_weer_teken();
+                }
+            }
+        }
         return;
+    }
+
+    // Klik op de plaatsnaam bovenin het WEER-scherm → plaatskeuze openen
+    if (meteo_tab == METEO_TAB_WEER && meteo_detail_dag < 0 &&
+        y >= PANEL_Y && y < PANEL_Y + UI_SCY(28) && x >= 6 && x < UI_SCX(360)) {
+        meteo_plaats_kies = true; meteo_plaats_scroll = 0; meteo_plaats_teken(); return;
     }
 
     // Nav bar
@@ -1727,6 +1830,7 @@ void screen_meteo_run(int x, int y, bool aanraking) {
         if (tab >= 0 && tab < TAB_CNT && tab != meteo_tab) {
             meteo_tab = tab;
             meteo_detail_dag = -1;  // detail verlaten bij tab-switch
+            meteo_plaats_kies = false;
             meteo_tabs_teken();
             tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
             switch (meteo_tab) {

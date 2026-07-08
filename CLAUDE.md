@@ -306,6 +306,7 @@ Recente taken:
 | 173 | Sessie 33 | STROMING/weer: plaatsnaam verplaatst van statusbalk naar het WEER-scherm zelf (klikbaar → weerlocatie wijzigen). Uur-symbolen: bij geheel donkere momenten (vertrek én aankomst in het donker) nu een maan als hoofdicoon i.p.v. zon, als signaal dat het geen fijn vaarmoment is. Beta `0.1.260703.6` |
 | 174 | Sessie 33 | STROMING: Duitse Wadden + extra NL wad-havens. 2 NL (Noordpolderzijl, Termunterzijl) + 18 DE (Borkum, Juist, Norderney, Norddeich, Greetsiel, Baltrum, Langeoog, Bensersiel, Spiekeroog, Neuharlingersiel, Harlesiel, Wangerooge, Hooksiel, Wilhelmshaven, Emden, Bremerhaven, Cuxhaven) via Oost-Friese kust/eilanden. DE-vlag toegevoegd; ijk op Delfzijl (geen DE-getijstations → grover naar het oosten, indicatief). Totaal 48 havens |
 | 175 | Sessie 33 | WEER plaats-picker: klik op plaatsnaam → lijst van havens gesorteerd op afstand (met vlag + km) → kies plaats (zet weerlocatie + dichtstbij getijstation), of "Typ plaats..." voor geocode-zoeken zoals voorheen. Beta `0.1.260707.1` |
+| 176 | Sessie 33 | Scherm 180° draaien: knop in WEERGAVE & ENERGIE (`tft_gedraaid`, opgeslagen in app_state config `draai=`). `tft_rotatie_toepassen()` zet basis+180° (SPI setRotation base+2; S3 RGB rot 2), toegepast in tft_setup én na state_load (vóór splash). Touch-flip (x/y invert) in `ts_touched()` beide takken. Live toggle + gegarandeerd na herstart. Beta `0.1.260707.2` |
 
 ---
 

@@ -37,6 +37,7 @@ void state_save() {
     f.printf("modus=%d\n",   (int)vaar_modus);
     f.printf("licht=%d\n",   (int)licht_instelling);
     f.printf("helderh=%d\n", tft_helderheid);
+    f.printf("draai=%d\n",   tft_gedraaid ? 1 : 0);
     f.printf("timer=%ld\n",  scherm_timer);
     f.printf("schema=%d\n",  (int)kleurenschema);
     f.printf("bcat=%d\n",    (int)boot_cat);
@@ -62,6 +63,7 @@ void state_load() {
     vaar_modus            = MODE_HAVEN;
     licht_instelling      = LICHT_AUTO;
     tft_helderheid        = 75;
+    tft_gedraaid          = false;
     scherm_timer          = 30;
     kleurenschema         = 0;
     boot_cat              = 0;
@@ -89,6 +91,7 @@ void state_load() {
         if (key == "modus")   vaar_modus       = (byte)val.toInt();
         if (key == "licht")   licht_instelling  = (byte)val.toInt();
         if (key == "helderh") tft_helderheid    = (int)val.toInt();
+        if (key == "draai")   tft_gedraaid      = (val.toInt() != 0);
         if (key == "timer")   scherm_timer      = val.toInt();
         if (key == "schema")  kleurenschema     = (byte)val.toInt();
         if (key == "bcat")    boot_cat          = (byte)val.toInt();

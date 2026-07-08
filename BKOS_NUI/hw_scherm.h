@@ -12,6 +12,7 @@ extern Arduino_GFX *tft_p;
 #define tft (*tft_p)
 
 extern int           tft_helderheid;
+extern bool          tft_gedraaid;    // scherm 180° gedraaid (beeld + touch)
 extern long          scherm_timer;
 extern bool          tft_actief;
 extern long          scherm_touched;
@@ -21,6 +22,7 @@ extern unsigned long tft_dim_ms;
 
 void tft_setup();
 void tft_loop();
+void tft_rotatie_toepassen();   // past tft_gedraaid toe op de schermrotatie
 void tft_helderheid_zet(int pct);
 void tft_schermvullen(uint16_t kleur);
 

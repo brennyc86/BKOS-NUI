@@ -235,6 +235,7 @@ void hw_setup() {
     ts_setup();
     hw_io_setup();
     state_load();
+    tft_rotatie_toepassen();  // 180°-instelling toepassen (nu geladen)
     slaap_setup();  // deep sleep wake detectie (na state_load)
     palette_toepassen(kleurenschema);
     tft_helderheid_zet(tft_helderheid);

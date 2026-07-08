@@ -6,6 +6,7 @@
 Arduino_GFX *tft_p = nullptr;  // aangemaakt in tft_setup()
 
 int           tft_helderheid    = 75;
+bool          tft_gedraaid       = false;   // scherm 180° gedraaid
 long          scherm_timer      = 30;
 bool          tft_actief        = true;
 long          scherm_touched    = 0;
@@ -102,12 +103,18 @@ void tft_setup() {
 
     pinMode(TFT_BL, OUTPUT);
     tft_p->begin();
-#if PLATFORM_CYD40H
-    tft_p->setRotation(1);  // 480×320 liggend
-#else
-    tft_p->setRotation(0);
-#endif
+    tft_rotatie_toepassen();   // basis-rotatie (tft_gedraaid nog default; opnieuw na state_load)
     tft_helderheid_zet(tft_helderheid);
+}
+
+// Past de basis-oriëntatie + eventuele 180° draai toe (beeld). Touch volgt via tft_gedraaid.
+void tft_rotatie_toepassen() {
+#if PLATFORM_CYD40H
+    int basis = 1;   // 480×320 liggend
+#else
+    int basis = 0;
+#endif
+    tft_p->setRotation((basis + (tft_gedraaid ? 2 : 0)) % 4);
 }
 
 void tft_helderheid_zet(int pct) {

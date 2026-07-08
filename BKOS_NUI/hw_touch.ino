@@ -108,6 +108,7 @@ bool ts_touched() {
         actieve_touch  = true;
         ts_x = touch_x();
         ts_y = touch_y();
+        if (tft_gedraaid) { ts_x = TFT_W - 1 - ts_x; ts_y = TFT_H - 1 - ts_y; }
         return true;
     }
     actieve_touch = false;
@@ -126,6 +127,7 @@ bool ts_touched() {
         ts_y = (int)(ts_cal_ay * ts_raw_px + ts_cal_by * ts_raw_py + ts_cal_cy);
         ts_x = constrain(ts_x, 0, TFT_W - 1);
         ts_y = constrain(ts_y, 0, TFT_H - 1);
+        if (tft_gedraaid) { ts_x = TFT_W - 1 - ts_x; ts_y = TFT_H - 1 - ts_y; }
         scherm_touched = millis();
         actieve_touch  = true;
         return true;

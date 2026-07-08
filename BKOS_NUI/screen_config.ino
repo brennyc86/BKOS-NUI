@@ -1469,6 +1469,22 @@ static void cfg_we_teken() {
         tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(556, y + (40 - 8) / 2); tft.print("lager = minder flikker");
     }
+    y += 44;
+
+    // SCHERM 180° DRAAIEN (beeld + touch; werkt direct, gegarandeerd na herstart)
+    {
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SCHERM 180\xF8 DRAAIEN");
+        bool aan = tft_gedraaid;
+        tft.fillRoundRect(280, y + 4, 110, 32, 5, aan ? C_GREEN : C_SURFACE3);
+        tft.setTextSize(2); tft.setTextColor(aan ? C_BG : C_TEXT);
+        const char* lbl = aan ? "AAN" : "UIT";
+        tft.setCursor(280 + (110 - (int)strlen(lbl) * 12) / 2, y + 4 + (32 - 16) / 2);
+        tft.print(lbl);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(400, y + (40 - 8) / 2); tft.print("ondersteboven gemonteerd scherm");
+    }
 }
 
 static void cfg_update_teken() {
@@ -1731,6 +1747,18 @@ static void cfg_we_run(int x, int y) {
         if      (x >= 280 && x < 328) { scherm_pclk_set(pclk - 1); cfg_we_teken(); }
         else if (x >= 334 && x < 382) { scherm_pclk_set(pclk + 1); cfg_we_teken(); }
         else if (x >= 394 && x < 544) { PLATFORM_REBOOT(); }
+        return;
+    }
+
+    // SCHERM 180° draaien rij (onder PCLK)
+    int draai_y = pclk_y + 44;
+    if (y >= draai_y && y < draai_y + 40) {
+        if (x >= 280 && x < 390) {
+            tft_gedraaid = !tft_gedraaid;
+            state_save();
+            tft_rotatie_toepassen();   // beeld draaien (touch volgt automatisch)
+            scherm_bouwen = true;      // volledige herteken in nieuwe oriëntatie
+        }
         return;
     }
 }

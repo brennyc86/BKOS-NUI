@@ -1,4 +1,5 @@
 #include "io.h"
+#include <ctype.h>
 #include "app_state.h"
 #include "meteo.h"
 #include "hw_scherm.h"
@@ -382,8 +383,46 @@ void io_loop() {
 #endif
 }
 
+// ─── Naamherkenning ──────────────────────────────────────────────────────────
+// Vergelijkt tolerant: spaties vooraan/achteraan tellen niet mee en hoofd-/
+// kleine letters maken niet uit. Een kanaal "**usb " reageert dus net zo goed
+// op "**USB" als een kanaal dat exact zo getypt is.
+static const char* _naam_kop(const char* s) {
+    while (*s == ' ') s++;
+    return s;
+}
+
+static bool _naam_prefix(const char* naam, const char* prefix) {
+    naam   = _naam_kop(naam);
+    prefix = _naam_kop(prefix);
+    int pl = strlen(prefix);
+    while (pl > 0 && prefix[pl - 1] == ' ') pl--;   // spaties achteraan negeren
+    if (pl == 0) return false;                      // lege prefix matcht niets
+    for (int i = 0; i < pl; i++) {
+        if (naam[i] == '\0') return false;
+        if (tolower((unsigned char)naam[i]) != tolower((unsigned char)prefix[i])) return false;
+    }
+    return true;
+}
+
 bool io_naam_is(int kanaal, const char* prefix) {
-    return strncmp(io_namen[kanaal], prefix, strlen(prefix)) == 0;
+    return _naam_prefix(io_namen[kanaal], prefix);
+}
+
+// Zoals io_naam_is, maar de "**"-markering is optioneel aan beide kanten.
+// Alleen voor door de gebruiker ingevoerde apparaatnamen (PANEEL-knoppen, Lua):
+// een knop "USB" vindt zo ook kanaal "**USB" en omgekeerd. De vaste
+// systeemnamen (**L_..., **haven, ...) blijven io_naam_is gebruiken, zodat een
+// kanaal dat gewoon "motor" heet niet ineens door de vaarmodus wordt geschakeld.
+static const char* _naam_zonder_ster(const char* s) {
+    s = _naam_kop(s);
+    if (s[0] == '*' && s[1] == '*') s += 2;
+    return s;
+}
+
+bool io_naam_match(int kanaal, const char* naam) {
+    if (_naam_prefix(io_namen[kanaal], naam)) return true;
+    return _naam_prefix(_naam_zonder_ster(io_namen[kanaal]), _naam_zonder_ster(naam));
 }
 
 String io_naam_clean(int kanaal) {
@@ -558,7 +597,7 @@ byte io_apparaat_staat3(const char* prefix) {
     int gevonden = 0, aan = 0;
     for (int i = 0; i < n; i++) {
         if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: geen uitgangsapparaat
-        if (io_naam_is(i, prefix)) {
+        if (io_naam_match(i, prefix)) {
             gevonden++;
             if (io_output[i] == IO_AAN || io_output[i] == IO_INV_AAN) aan++;
         }
@@ -574,7 +613,7 @@ void io_apparaat_toggle(const char* prefix) {
     int  n     = io_zichtbaar();
     for (int i = 0; i < n; i++) {
         if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: nooit aansturen
-        if (io_naam_is(i, prefix)) {
+        if (io_naam_match(i, prefix)) {
             io_output[i]    = nieuw;
             io_gewijzigd[i] = true;
         }

@@ -25,6 +25,7 @@ extern int  cfg_geselecteerd;
 extern bool cfg_toetsenbord_actief;
 extern bool cfg_bewerk_zeilnr;
 extern bool cfg_kb_info_mode;    // true = geen chips, OPSLAAN laat opslaan aan caller
+extern bool cfg_kb_chips;        // true = chips tóch tonen in info-mode (PANEEL-namen)
 extern bool cfg_kb_opgeslagen;   // true = OPSLAAN gekozen, false = CANCEL
 extern bool cfg_kb_numeriek;     // true = alleen cijfertoetsenbord (0-9 + komma)
 extern bool cfg_kb_meteo_stad;   // true = keyboard geopend vanuit METEO scherm

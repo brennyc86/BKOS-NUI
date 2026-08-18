@@ -13,7 +13,8 @@ void io_bkoss_check();
 void io_detect();
 void io_cyclus();
 void io_loop();
-bool io_naam_is(int kanaal, const char* prefix);
+bool io_naam_is(int kanaal, const char* prefix);     // exacte prefix (systeemnamen)
+bool io_naam_match(int kanaal, const char* naam);    // tolerant: "**" optioneel (apparaatnamen)
 String io_naam_clean(int kanaal);
 byte  io_licht_staat(int kanaal);
 void  io_verlichting_update();

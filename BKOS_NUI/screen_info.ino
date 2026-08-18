@@ -654,7 +654,7 @@ void screen_info_run(int x, int y, bool aanraking) {
             strncpy(cfg_invoer, huidige, CFG_INVOER_LEN - 1); cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
             snprintf(cfg_kb_label, 24, "%s:", lbl);
             cfg_kb_numeriek = false; cfg_geselecteerd = -1; cfg_bewerk_zeilnr = false;
-            cfg_kb_info_mode = true; cfg_kb_opgeslagen = false; kb_sym = false;
+            cfg_kb_info_mode = true; cfg_kb_chips = false; cfg_kb_opgeslagen = false; kb_sym = false;
             info_kb_actief = true;
             screen_config_toetsenbord_teken();
         }
@@ -751,7 +751,7 @@ void screen_info_run(int x, int y, bool aanraking) {
         cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
         snprintf(cfg_kb_label, 24, "Apparaatnaam:");
         cfg_kb_numeriek = false; cfg_geselecteerd = -1; cfg_bewerk_zeilnr = false;
-        cfg_kb_info_mode = true; cfg_kb_opgeslagen = false; kb_sym = false;
+        cfg_kb_info_mode = true; cfg_kb_chips = false; cfg_kb_opgeslagen = false; kb_sym = false;
         info_naam_kb_actief = true;
         screen_config_toetsenbord_teken();
         return;
@@ -774,7 +774,7 @@ void screen_info_run(int x, int y, bool aanraking) {
             cfg_kb_numeriek    = info_kb_boot && boot_numeriek[veld_idx];
             cfg_geselecteerd   = -1;
             cfg_bewerk_zeilnr  = false;
-            cfg_kb_info_mode   = true;
+            cfg_kb_info_mode   = true; cfg_kb_chips = false;
             cfg_kb_opgeslagen  = false;
             kb_sym             = false;
             info_kb_actief     = true;

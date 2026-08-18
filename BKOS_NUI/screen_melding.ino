@@ -166,7 +166,7 @@ static void _open_kb(int doel, const char* label, const char* huidig, bool numer
     cfg_kb_numeriek = numeriek; cfg_kb_wachtwoord = wachtwoord;
     cfg_geselecteerd = -1; cfg_bewerk_zeilnr = false;
     cfg_kb_meteo_stad = false; cfg_kb_foutlog_token = false;
-    cfg_kb_info_mode = true; cfg_kb_opgeslagen = false; kb_sym = false;
+    cfg_kb_info_mode = true; cfg_kb_chips = false; cfg_kb_opgeslagen = false; kb_sym = false;
     meld_kb_actief = true; meld_kb_doel = doel;
     screen_config_toetsenbord_teken();
 }

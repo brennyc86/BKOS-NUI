@@ -60,7 +60,9 @@ static void _pn_open_kb(int i) {
     snprintf(cfg_kb_label, 24, "Knop %d naam:", i + 1);
     cfg_kb_numeriek = false; cfg_kb_wachtwoord = false;
     cfg_geselecteerd = -1; cfg_bewerk_zeilnr = false;
-    cfg_kb_info_mode = true; cfg_kb_opgeslagen = false; kb_sym = false;
+    // chips tonen: één tik zet de volledige kanaalnaam ("**USB") neer, zodat de
+    // "**"-markering niet handmatig via SYM getypt hoeft te worden
+    cfg_kb_info_mode = true; cfg_kb_chips = true; cfg_kb_opgeslagen = false; kb_sym = false;
     pn_kb_actief = true; pn_edit = i;
     screen_config_toetsenbord_teken();
 }
@@ -74,7 +76,8 @@ void screen_paneel_run(int x, int y, bool aanraking) {
                 strncpy(paneel_knop[pn_edit], cfg_invoer, IO_NAAM_LEN - 1);
                 paneel_knop[pn_edit][IO_NAAM_LEN - 1] = '\0';
             }
-            pn_kb_actief = false;
+            pn_kb_actief  = false;
+            cfg_kb_chips  = false;
             scherm_bouwen = true;
         }
         return;

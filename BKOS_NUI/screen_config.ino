@@ -41,6 +41,7 @@ char cfg_invoer[CFG_INVOER_LEN] = "";
 bool kb_hoofdletters            = true;
 bool kb_sym                     = false;
 bool cfg_kb_info_mode           = false;
+bool cfg_kb_chips               = false;
 bool cfg_kb_opgeslagen          = false;
 bool cfg_kb_numeriek            = false;
 bool cfg_kb_meteo_stad          = false;
@@ -1921,6 +1922,13 @@ static void chips_rij_teken(int y, const char** chips, int chip_w, int chip_gap)
     }
 }
 
+// Chips zichtbaar? Tekenen en aanraken gebruiken dezelfde voorwaarde — anders
+// blijven er onzichtbare, wél actieve chip-zones over die de invoer overschrijven.
+static bool cfg_chips_zichtbaar() {
+    if (KB_CHIP_H <= 0 || cfg_bewerk_zeilnr || cfg_kb_numeriek) return false;
+    return (!cfg_kb_info_mode || cfg_kb_chips);
+}
+
 static void cfg_chips_teken() {
     int chip_w = 76, chip_gap = 4;
     chips_rij_teken(KB_CHIP_Y,             cfg_chips_r1, chip_w, chip_gap);
@@ -1949,7 +1957,7 @@ void screen_config_toetsenbord_teken() {
     }
     tft.print("_");
 
-    if (KB_CHIP_H > 0 && !cfg_bewerk_zeilnr && !cfg_kb_info_mode && !cfg_kb_numeriek) cfg_chips_teken();
+    if (cfg_chips_zichtbaar()) cfg_chips_teken();
 
     // Numeriek toetsenbord (alleen cijfers + komma)
     if (cfg_kb_numeriek) {
@@ -2019,7 +2027,7 @@ void screen_config_toetsenbord_teken() {
 }
 
 static bool cfg_chip_klik(int x, int y) {
-    if (cfg_bewerk_zeilnr) return false;
+    if (!cfg_chips_zichtbaar()) return false;
     int chip_w = 76, chip_gap = 4;
     const char** rijen[2] = { cfg_chips_r1, cfg_chips_r2 };
     int rij_ys[2] = { KB_CHIP_Y, KB_CHIP_Y + KB_CHIP_H };

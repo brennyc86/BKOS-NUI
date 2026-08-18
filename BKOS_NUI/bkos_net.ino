@@ -517,7 +517,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         int n = io_zichtbaar();
         for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
             bool match = (match_type == 1)
-                ? io_naam_is(k, naam)
+                ? io_naam_match(k, naam)
                 : (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0);
             if (!match) continue;
             if (staat == NET_IO_TOGGLE) {
@@ -719,6 +719,23 @@ void net_io_namen_sturen() {
 #endif
 }
 
+// ─── Bedient dit apparaat de IO zelf? ────────────────────────────────────────
+// Master en standalone sturen altijd zelf aan. Een slave/extra doet dat óók
+// zolang hij niet daadwerkelijk aan een master gekoppeld is: een verse unit
+// staat standaard op NET_SLAVE (zie net_laden), en zonder deze fallback
+// verdwenen alle schakelopdrachten in _stuur_io_*() — die keren namelijk
+// direct terug als !net_gepaard. Gevolg was: PANEEL-knoppen en de AAN/UIT
+// in het IO-scherm deden niets, terwijl de vaarmodus- en verlichtingsknoppen
+// wél werkten (io_verlichting_update schrijft io_output[] altijd lokaal).
+// Zelfde voorwaarde als _io_achtergrond_taak() en io_verlichting_update().
+bool net_io_lokaal() {
+#if PLATFORM_ESP32
+    return (net_modus == NET_MASTER || net_modus == NET_STANDALONE || !net_gepaard);
+#else
+    return true;
+#endif
+}
+
 // ─── Interne helper: stuur IO-staat (index) naar master ──────────────────────
 #if PLATFORM_ESP32
 static void _stuur_io_toggle(int kanaal, uint8_t staat) {
@@ -751,7 +768,7 @@ static void _stuur_io_naam(const char* naam, uint8_t staat, uint8_t match_type) 
 void net_io_kanaal_zet(int kanaal, uint8_t staat) {
     if (kanaal < 0 || kanaal >= MAX_IO_KANALEN) return;
 #if PLATFORM_ESP32
-    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+    if (net_io_lokaal()) {
         io_output[kanaal]    = staat;
         io_gewijzigd[kanaal] = true;
         io_direct_aanvraag   = true;
@@ -767,7 +784,7 @@ void net_io_kanaal_zet(int kanaal, uint8_t staat) {
 void net_io_kanaal_toggle(int kanaal) {
     if (kanaal < 0 || kanaal >= MAX_IO_KANALEN) return;
 #if PLATFORM_ESP32
-    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+    if (net_io_lokaal()) {
         bool aan = (io_output[kanaal] == IO_AAN || io_output[kanaal] == IO_INV_AAN);
         io_output[kanaal]    = aan ? IO_UIT : IO_AAN;
         io_gewijzigd[kanaal] = true;
@@ -785,7 +802,7 @@ void net_io_kanaal_toggle(int kanaal) {
 // ─── Kanaalbediening op naam ──────────────────────────────────────────────────
 void net_io_naam_zet(const char* naam, uint8_t staat) {
 #if PLATFORM_ESP32
-    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+    if (net_io_lokaal()) {
         int n = io_zichtbaar();
         for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
             if (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0) {
@@ -810,7 +827,7 @@ void net_io_naam_zet(const char* naam, uint8_t staat) {
 
 void net_io_naam_toggle(const char* naam) {
 #if PLATFORM_ESP32
-    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+    if (net_io_lokaal()) {
         int n = io_zichtbaar();
         for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
             if (strncmp(io_namen[k], naam, IO_NAAM_LEN) == 0) {
@@ -838,10 +855,10 @@ void net_io_naam_toggle(const char* naam) {
 // ─── Kanaalbediening op prefix (apparaat-groep) ───────────────────────────────
 void net_io_apparaat_zet(const char* prefix, uint8_t staat) {
 #if PLATFORM_ESP32
-    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+    if (net_io_lokaal()) {
         int n = io_zichtbaar();
         for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
-            if (io_naam_is(k, prefix)) {
+            if (io_naam_match(k, prefix)) {
                 io_output[k]    = staat;
                 io_gewijzigd[k] = true;
             }
@@ -853,7 +870,7 @@ void net_io_apparaat_zet(const char* prefix, uint8_t staat) {
 #else
     int n = io_zichtbaar();
     for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
-        if (io_naam_is(k, prefix)) {
+        if (io_naam_match(k, prefix)) {
             io_output[k]    = staat;
             io_gewijzigd[k] = true;
         }
@@ -888,7 +905,7 @@ void net_app_staat_sturen() {
 
 void net_io_apparaat_toggle(const char* prefix) {
 #if PLATFORM_ESP32
-    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+    if (net_io_lokaal()) {
         io_apparaat_toggle(prefix);
         io_direct_aanvraag = true;
     } else {

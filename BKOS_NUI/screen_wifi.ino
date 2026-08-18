@@ -282,6 +282,7 @@ static void wifi_selecteer_netwerk(int idx) {
     wifi_staat = WIFI_ST_WACHTWOORD;
     cfg_invoer[0]     = '\0';
     cfg_kb_info_mode  = true;
+    cfg_kb_chips      = false;
     cfg_kb_wachtwoord = true;
     cfg_kb_opgeslagen = false;
     cfg_kb_numeriek   = false;

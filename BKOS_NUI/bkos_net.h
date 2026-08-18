@@ -111,7 +111,9 @@ void        net_get_eigen_mac(uint8_t* mac);
 void        net_io_sturen();                        // master → slaves: IO staat (snel, 500ms)
 void        net_io_namen_sturen();                  // master → slaves: kanaalnamen (traag, 5s)
 
-// Kanaal-bediening (werkt op master lokaal, op slave via ESP-NOW naar master)
+// Kanaal-bediening (werkt lokaal op master/standalone/ongekoppeld, op een
+// gekoppelde slave via ESP-NOW naar de master)
+bool        net_io_lokaal();                                      // true = dit apparaat stuurt de IO zelf aan
 void        net_io_kanaal_toggle(int kanaal);                     // toggle op kanaalnummer
 void        net_io_kanaal_zet(int kanaal, uint8_t staat);         // staat = IO_AAN of IO_UIT
 void        net_io_naam_toggle(const char* naam);                 // toggle op exacte kanaalnaam

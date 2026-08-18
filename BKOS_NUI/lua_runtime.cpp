@@ -284,7 +284,7 @@ static int l_io_readName(lua_State* ls) {
     const char* naam = luaL_checkstring(ls, 1);
     int n = io_zichtbaar();
     for (int i = 0; i < n; i++) {
-        if (io_naam_is(i, naam)) {
+        if (io_naam_match(i, naam)) {
             lua_pushboolean(ls, io_input[i] ? 1 : 0);
             return 1;
         }
@@ -298,7 +298,7 @@ static int l_io_writeName(lua_State* ls) {
     int         staat = (int)luaL_checkinteger(ls, 2);
     int n = io_zichtbaar();
     for (int i = 0; i < n; i++) {
-        if (io_naam_is(i, naam)) {
+        if (io_naam_match(i, naam)) {
             io_output[i]    = (byte)staat;
             io_gewijzigd[i] = true;
         }

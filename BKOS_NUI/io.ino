@@ -154,7 +154,11 @@ void io_detect() {
 //
 // Volgorde: puls 1s → loslaten → 4s wachten → meten. Meten gebeurt pas op een
 // verse io_cyclus ná het loslaten, zodat we onze eigen drive niet terugmeten.
-// Zolang de motor draait wordt er niet meer gepulst.
+// Dit herhaalt zich bij ELK interval, ook als de vorige meting "motor draait"
+// gaf: motor_draait wordt uitsluitend door deze meting gezet (nooit door een
+// losse/passieve io_input[]-lezing), zodat de status altijd binnen één
+// interval zichzelf corrigeert in plaats van te blijven hangen op een oude
+// of onbetrouwbare aflezing.
 #define DYN_PULS_MS     1000UL   // duur van de bekrachtigingspuls
 #define DYN_SETTLE_MS   4000UL   // wachttijd na loslaten vóór de meting
 #define DYN_CYCLUS_MAX  3000UL   // opgeven als de IO-bus geen cyclus afrondt
@@ -494,10 +498,13 @@ void io_dynamo_loop() {
             int k = io_dynamo_kanaal();
             if (k < 0) { motor_draait = false; return; }
 
-            // Buiten de sequentie is io_input[] de echte dynamo-stand.
-            motor_draait = io_input[k];
-            if (motor_draait) return;    // draait: bekrachtigen niet nodig
-
+            // GEEN passieve io_input[]-aflezing hier: dat kanaal staat de rest
+            // van de tijd niet gegarandeerd hoogohmig/stabiel, dus een losse
+            // lezing buiten de meetsequentie kan blijven "hoog" lijken zonder
+            // dat de dynamo iets levert — motor_draait zou dan nooit meer
+            // terugvallen naar UIT. motor_draait wordt daarom UITSLUITEND
+            // gezet door DYN_METEN, één puls-loslaat-4s-wacht-meet-cyclus
+            // verderop, elke keer opnieuw bij elk interval.
             if (nu - dyn_laatste < (unsigned long)dynamo_puls_min * 60000UL) return;
 
             dyn_kanaal     = k;

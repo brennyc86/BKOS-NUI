@@ -293,7 +293,7 @@ static void iocfg_overlay_teken() {
             cy += 36;
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(OV_IX, cy);
-            tft.print("interval in minuten; stopt zodra de motor draait");
+            tft.print("interval in minuten; UIT staat = nooit pulsen");
         }
     }
 

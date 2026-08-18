@@ -7,6 +7,13 @@ extern byte licht_cfg_idx;
 extern volatile bool io_direct_aanvraag;  // Core 1 → Core 0: voer io_cyclus direct uit
 extern volatile bool io_staat_gewijzigd;  // Core 0 → Core 1: IO uitkomst beschikbaar
 
+// Dynamo-bekrachtiging op **motor: zet periodiek kort spanning op het
+// ingangskanaal, zodat een dynamo zonder laadlampdraad zichzelf bekrachtigt.
+extern byte          dynamo_puls_min;  // 0=uit, anders interval in minuten (1/2/5/10/15/30)
+extern volatile bool motor_draait;     // laatste detectie: dynamo levert spanning
+void io_dynamo_loop();
+int  io_dynamo_kanaal();               // index van **motor als ingang, anders -1
+
 void io_boot();
 void io_setup_taak();
 void io_bkoss_check();

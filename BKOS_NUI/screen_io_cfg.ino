@@ -15,6 +15,7 @@ static uint8_t ov_alert;
 static uint8_t ov_actie_aan;
 static uint8_t ov_actie_uit;
 static uint8_t ov_param;
+static uint8_t ov_dynpuls;   // dynamo-bekrachtiging (globaal, alleen bij **motor)
 
 // ─── Layout constanten ──────────────────────────────────────────────────
 #define IOCFG_COUNT_Y    (SB_H + 2)
@@ -39,6 +40,18 @@ static const uint8_t actie_codes[] = {0, 1, 2, 3, 4, 5, 6};
 
 static const char* alert_labels[] = {"GEEN", "BIJ AAN", "BIJ UIT", "BEIDE"};
 #define N_ALERTS 4
+
+// Dynamo-bekrachtiging: intervallen in minuten (0 = uit)
+static const uint8_t dyn_waarden[] = {0, 1, 2, 5, 10, 15, 30};
+static const char*   dyn_labels[]  = {"UIT", "1", "2", "5", "10", "15", "30"};
+#define N_DYNPULS 7
+
+// Alleen het **motor-ingangskanaal krijgt de dynamo-instelling te zien: daar
+// wordt de bekrachtigingspuls op gezet (zie io_dynamo_loop in io.ino).
+static bool ov_toont_dynamo() {
+    return (ov_richting == IO_RICHTING_IN && iocfg_kanaal >= 0 &&
+            io_naam_is(iocfg_kanaal, NAAM_PREFIX_MOTOR));
+}
 
 // ─── Aantalregelbalk ────────────────────────────────────────────────────
 static void iocfg_count_teken() {
@@ -254,6 +267,28 @@ static void iocfg_overlay_teken() {
             tft.fillRoundRect(OV_IX + 198, cy, 36, 28, 4, C_SURFACE2);
             tft.setTextSize(1); tft.setTextColor(C_TEXT);
             tft.setCursor(OV_IX + 204, cy + (28 - 8) / 2); tft.print("+");
+            cy += 36;
+        }
+
+        // Dynamo-bekrachtiging (alleen **motor)
+        if (ov_toont_dynamo()) {
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(OV_IX, cy + 4);
+            tft.print("DYNAMO BEKRACHTIGEN (puls 1s, meet na 4s):");
+            cy += 18;
+            int bw = (OV_IW - (N_DYNPULS - 1) * 6) / N_DYNPULS;
+            for (int i = 0; i < N_DYNPULS; i++) {
+                bool act = (dyn_waarden[i] == ov_dynpuls);
+                tft.fillRoundRect(OV_IX + i * (bw + 6), cy, bw, 32, 4, act ? C_AMBER : C_SURFACE2);
+                tft.setTextSize(1); tft.setTextColor(act ? C_TEXT_DARK : C_TEXT_DIM);
+                int tw = strlen(dyn_labels[i]) * 6;
+                tft.setCursor(OV_IX + i * (bw + 6) + (bw - tw) / 2, cy + (32 - 8) / 2);
+                tft.print(dyn_labels[i]);
+            }
+            cy += 36;
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(OV_IX, cy);
+            tft.print("interval in minuten; stopt zodra de motor draait");
         }
     }
 
@@ -403,6 +438,22 @@ static void pico_iocfg_overlay_teken() {
             tft.print(actie_labels[i]);
         }
         cy += 26;
+
+        // Dynamo-bekrachtiging (alleen **motor)
+        if (ov_toont_dynamo()) {
+            tft.setTextColor(C_TEXT_DIM); tft.setCursor(8, cy); tft.print("DYNAMO PULS (min):");
+            cy += 12;
+            int dbw = (TFT_W - 16 - (N_DYNPULS - 1) * 3) / N_DYNPULS;
+            for (int i = 0; i < N_DYNPULS; i++) {
+                bool act = (dyn_waarden[i] == ov_dynpuls);
+                tft.fillRoundRect(8 + i * (dbw + 3), cy, dbw, 22, 3, act ? C_AMBER : C_SURFACE2);
+                tft.setTextSize(1); tft.setTextColor(act ? C_TEXT_DARK : C_TEXT_DIM);
+                int tw = strlen(dyn_labels[i]) * 6;
+                tft.setCursor(8 + i * (dbw + 3) + (dbw - tw) / 2, cy + (22 - 8) / 2);
+                tft.print(dyn_labels[i]);
+            }
+            cy += 26;
+        }
     }
 
     int save_y = NAV_Y - 50;
@@ -614,6 +665,18 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 if (idx >= 0 && idx < N_ACTIES) { ov_actie_uit = actie_codes[idx]; pico_iocfg_overlay_teken(); }
                 return;
             }
+            cy += 26;
+
+            // Dynamo-bekrachtiging (zelfde opbouw als in pico_iocfg_overlay_teken)
+            if (ov_toont_dynamo()) {
+                cy += 12;
+                if (y >= cy && y < cy + 22) {
+                    int dbw = (TFT_W - 16 - (N_DYNPULS - 1) * 3) / N_DYNPULS;
+                    int idx = (x - 8) / (dbw + 3);
+                    if (idx >= 0 && idx < N_DYNPULS) { ov_dynpuls = dyn_waarden[idx]; pico_iocfg_overlay_teken(); }
+                    return;
+                }
+            }
         }
         int save_y = NAV_Y - 50;
         if (y >= save_y && y < save_y + 40) {
@@ -624,6 +687,10 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 io_actie_uit[iocfg_kanaal]   = ov_actie_uit;
                 io_actie_param[iocfg_kanaal] = ov_param;
                 hw_io_cfg_opslaan();
+                if (ov_toont_dynamo() && ov_dynpuls != dynamo_puls_min) {
+                    dynamo_puls_min = ov_dynpuls;   // globaal, dus in de app-config
+                    state_save();
+                }
             }
             iocfg_overlay = false; iocfg_sloot = millis(); scherm_bouwen = true;
         }
@@ -646,6 +713,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
         if (kanaal >= 0 && kanaal < n_kanalen) {
             iocfg_kanaal = kanaal; ov_richting = io_richting[kanaal]; ov_alert = io_alert[kanaal];
             ov_actie_aan = io_actie_aan[kanaal]; ov_actie_uit = io_actie_uit[kanaal]; ov_param = io_actie_param[kanaal];
+            ov_dynpuls = dynamo_puls_min;
             iocfg_overlay = true; iocfg_sloot = millis(); pico_iocfg_overlay_teken();
         }
         return;
@@ -724,12 +792,26 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             // Actiekanaal +/-
             bool heeft_output_actie = (ov_actie_aan >= IO_ACTIE_OUTPUT_AAN ||
                                        ov_actie_uit >= IO_ACTIE_OUTPUT_AAN);
-            if (heeft_output_actie && y >= cy && y < cy + 28) {
-                if (x >= OV_IX + 110 && x < OV_IX + 146)
-                    ov_param = (ov_param > 0) ? ov_param - 1 : 0;
-                else if (x >= OV_IX + 198 && x < OV_IX + 234)
-                    ov_param = (ov_param < MAX_IO_KANALEN - 1) ? ov_param + 1 : ov_param;
-                iocfg_overlay_teken(); return;
+            if (heeft_output_actie) {
+                if (y >= cy && y < cy + 28) {
+                    if (x >= OV_IX + 110 && x < OV_IX + 146)
+                        ov_param = (ov_param > 0) ? ov_param - 1 : 0;
+                    else if (x >= OV_IX + 198 && x < OV_IX + 234)
+                        ov_param = (ov_param < MAX_IO_KANALEN - 1) ? ov_param + 1 : ov_param;
+                    iocfg_overlay_teken(); return;
+                }
+                cy += 36;
+            }
+
+            // Dynamo-bekrachtiging (zelfde opbouw als in iocfg_overlay_teken)
+            if (ov_toont_dynamo()) {
+                cy += 18;
+                if (y >= cy && y < cy + 32) {
+                    int bw  = (OV_IW - (N_DYNPULS - 1) * 6) / N_DYNPULS;
+                    int idx = (x - OV_IX) / (bw + 6);
+                    if (idx >= 0 && idx < N_DYNPULS) { ov_dynpuls = dyn_waarden[idx]; iocfg_overlay_teken(); }
+                    return;
+                }
             }
         }
 
@@ -744,6 +826,10 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 io_actie_uit[iocfg_kanaal]   = ov_actie_uit;
                 io_actie_param[iocfg_kanaal] = ov_param;
                 hw_io_cfg_opslaan();
+                if (ov_toont_dynamo() && ov_dynpuls != dynamo_puls_min) {
+                    dynamo_puls_min = ov_dynpuls;   // globaal, dus in de app-config
+                    state_save();
+                }
             }
             iocfg_overlay  = false;
             iocfg_sloot    = millis();
@@ -788,6 +874,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             ov_actie_aan  = io_actie_aan[kanaal];
             ov_actie_uit  = io_actie_uit[kanaal];
             ov_param      = io_actie_param[kanaal];
+            ov_dynpuls    = dynamo_puls_min;
             iocfg_overlay = true;
             iocfg_sloot   = millis();
             iocfg_overlay_teken();

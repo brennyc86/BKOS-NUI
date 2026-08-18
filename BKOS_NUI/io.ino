@@ -145,6 +145,48 @@ void io_detect() {
 #endif
 }
 
+// ─── Dynamo-bekrachtiging op **motor ─────────────────────────────────────────
+// Het kanaal **motor is een INGANG: het voelt aan de dynamo (D+) of de motor
+// draait. Bij een ontbrekende laadlampdraad bekrachtigt de dynamo zichzelf niet,
+// waardoor D+ laag blijft ook als de motor wel loopt. Daarom zet deze routine
+// periodiek heel kort spanning op datzelfde kanaal; loopt de motor, dan neemt de
+// dynamo het over en blijft D+ hoog nadat wij hebben losgelaten.
+//
+// Volgorde: puls 1s → loslaten → 4s wachten → meten. Meten gebeurt pas op een
+// verse io_cyclus ná het loslaten, zodat we onze eigen drive niet terugmeten.
+// Zolang de motor draait wordt er niet meer gepulst.
+#define DYN_PULS_MS     1000UL   // duur van de bekrachtigingspuls
+#define DYN_SETTLE_MS   4000UL   // wachttijd na loslaten vóór de meting
+#define DYN_CYCLUS_MAX  3000UL   // opgeven als de IO-bus geen cyclus afrondt
+
+enum { DYN_RUST, DYN_PULS, DYN_LOSLATEN, DYN_WACHT, DYN_METEN };
+
+byte          dynamo_puls_min = 0;      // 0=uit, anders interval in minuten
+volatile bool motor_draait    = false;  // laatste detectie: dynamo levert spanning
+
+static byte          dyn_fase       = DYN_RUST;
+static int           dyn_kanaal     = -1;
+static unsigned long dyn_puls_start = 0;
+static unsigned long dyn_los_ms     = 0;
+static unsigned long dyn_verzoek    = 0;
+static unsigned long dyn_laatste    = 0;
+
+// Mag dit kanaal op dit moment door de bekrachtigingspuls hoog gehouden worden?
+// Bewust een pure tijdstoets: ook als de toestandsmachine zou blijven hangen,
+// vervalt de drive vanzelf na DYN_PULS_MS. De puls kan dus nooit blijven staan.
+static bool io_dynamo_drijft(int kanaal) {
+    if (dyn_fase != DYN_PULS || dyn_kanaal < 0 || kanaal != dyn_kanaal) return false;
+    return (millis() - dyn_puls_start < DYN_PULS_MS);
+}
+
+// Loopt er een puls/meet-sequentie op dit kanaal? Zolang dat zo is worden de
+// ingangsacties en meldingen onderdrukt: de spanning die we dan zien is onze
+// eigen puls, niet de dynamo. Zonder dit zou elke puls de aan-actie van het
+// kanaal afvuren (bv. IO_ACTIE_MODUS_MOTOR → vaarmodus springt om).
+static bool io_dynamo_bezig(int kanaal) {
+    return (dyn_fase != DYN_RUST && dyn_kanaal >= 0 && kanaal == dyn_kanaal);
+}
+
 // ─── Veiligheid: bepaalt of een kanaal fysiek HOOG mag worden aangestuurd ─────
 // Dit is het ENIGE beslispunt voor de uitgangsdrive (zowel HC-register als
 // ATtiny). Een kanaal dat als INGANG is geconfigureerd wordt hier altijd als
@@ -152,8 +194,13 @@ void io_detect() {
 // ongeluk stroom krijgen — ook niet als vaarmodus/verlichtingslogica de
 // io_output[] van een ingangskanaal zou zetten. Veiligheid: een ingang mag
 // nooit uitgangsfunctionaliteit krijgen.
+//
+// Eén uitzondering: de dynamo-bekrachtiging op **motor (zie hierboven). Die
+// mag een ingang hoog trekken, maar uitsluitend het kanaal dat de sequentie
+// zelf heeft gekozen en uitsluitend binnen het tijdvenster van de puls.
+// io_output[] speelt daarbij geen rol — een ingang volgt nooit io_output[].
 static inline bool io_drijf_hoog(int kanaal) {
-    if (io_richting[kanaal] == IO_RICHTING_IN) return false;
+    if (io_richting[kanaal] == IO_RICHTING_IN) return io_dynamo_drijft(kanaal);
     byte out = io_output[kanaal];
     return (out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD);
 }
@@ -182,7 +229,8 @@ void io_cyclus() {
         // Ingang lezen (gewone volgorde)
         bool nieuw = digitalRead(HC_IN);
         if (nieuw != io_input[i]) {
-            if (io_richting[i] == IO_RICHTING_IN) {
+            // Tijdens de dynamo-sequentie meten we onze eigen puls: geen acties
+            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
                 io_actie_uitvoeren(nieuw ? io_actie_aan[i] : io_actie_uit[i],
                                    io_actie_param[i]);
                 if ((nieuw  && (io_alert[i] == IO_ALERT_BIJ_AAN || io_alert[i] == IO_ALERT_BEIDE)) ||
@@ -234,7 +282,8 @@ void io_cyclus() {
 
         bool nieuw = (c == '1');
         if (nieuw != io_input[i]) {
-            if (io_richting[i] == IO_RICHTING_IN) {
+            // Tijdens de dynamo-sequentie meten we onze eigen puls: geen acties
+            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
                 io_actie_uitvoeren(
                     nieuw ? io_actie_aan[i] : io_actie_uit[i],
                     io_actie_param[i]);
@@ -299,6 +348,8 @@ static void _io_achtergrond_taak(void*) {
                 io_staat_gewijzigd = true;
                 if (net_modus == NET_MASTER) net_io_sturen();
             }
+
+            io_dynamo_loop();   // dynamo-bekrachtiging op **motor
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
@@ -380,7 +431,111 @@ void io_loop() {
             io_zekering_check();
         }
     }
+
+    io_dynamo_loop();   // dynamo-bekrachtiging op **motor
 #endif
+}
+
+// ─── Dynamo-bekrachtiging: toestandsmachine ──────────────────────────────────
+// Wordt aangeroepen vanaf dezelfde plek als io_cyclus() (Core 0 op ESP32, main
+// loop op Pico), zodat io_gecheckt en io_input[] niet over cores gelezen worden.
+// Beide aanroeppunten liggen al binnen de master/standalone/ongekoppeld-check,
+// dus een gekoppelde slave pulst nooit — die heeft geen eigen IO-hardware.
+
+// Het **motor-kanaal, maar alleen als het ook echt als ingang is ingesteld.
+// Staat het op UITGANG, dan is het het gewone vaarmodus-relais en blijven we
+// eraf: bekrachtigen heeft daar geen betekenis.
+int io_dynamo_kanaal() {
+    int n = io_zichtbaar();
+    if (n > MAX_IO_KANALEN) n = MAX_IO_KANALEN;
+    for (int i = 0; i < n; i++)
+        if (io_richting[i] == IO_RICHTING_IN && io_naam_is(i, NAAM_PREFIX_MOTOR)) return i;
+    return -1;
+}
+
+// Forceer een io_cyclus: op ESP32 pikt de achtergrondtaak io_direct_aanvraag op,
+// op Pico kijkt io_loop() naar io_gewijzigd[]. Zonder dit zou een puls van 1s
+// tussen twee hartslagen (30s/120s) door vallen en de hardware nooit bereiken.
+static void _dyn_cyclus_forceren(int kanaal) {
+    if (kanaal >= 0 && kanaal < MAX_IO_KANALEN) io_gewijzigd[kanaal] = true;
+    io_direct_aanvraag = true;
+}
+
+// Is er een io_cyclus afgerond ná het gegeven moment? Strikt groter: een cyclus
+// die in dezelfde milliseconde als het verzoek afrondt, was al onderweg vóór wij
+// de vlag zetten en bevat dus nog de oude uitgangsstand.
+static bool _dyn_cyclus_klaar(unsigned long sinds) {
+    return ((long)(io_gecheckt - sinds) > 0);
+}
+
+void io_dynamo_loop() {
+    unsigned long nu = millis();
+
+    if (dynamo_puls_min == 0) {          // functie uit: nooit pulsen
+        dyn_fase   = DYN_RUST;
+        dyn_kanaal = -1;
+        return;
+    }
+
+    switch (dyn_fase) {
+        case DYN_RUST: {
+            int k = io_dynamo_kanaal();
+            if (k < 0) { motor_draait = false; return; }
+
+            // Buiten de sequentie is io_input[] de echte dynamo-stand.
+            motor_draait = io_input[k];
+            if (motor_draait) return;    // draait: bekrachtigen niet nodig
+
+            if (nu - dyn_laatste < (unsigned long)dynamo_puls_min * 60000UL) return;
+
+            dyn_kanaal     = k;
+            dyn_puls_start = nu;
+            dyn_fase       = DYN_PULS;
+            _dyn_cyclus_forceren(k);
+            break;
+        }
+
+        case DYN_PULS:
+            if (nu - dyn_puls_start < DYN_PULS_MS) return;
+            // io_dynamo_drijft() geeft vanaf nu false: volgende cyclus laat los
+            dyn_fase    = DYN_LOSLATEN;
+            dyn_verzoek = nu;
+            _dyn_cyclus_forceren(dyn_kanaal);
+            break;
+
+        case DYN_LOSLATEN:
+            if (!_dyn_cyclus_klaar(dyn_verzoek)) {
+                if (nu - dyn_verzoek > DYN_CYCLUS_MAX) { dyn_fase = DYN_RUST; dyn_laatste = nu; }
+                return;
+            }
+            dyn_los_ms = io_gecheckt;    // pin is nu fysiek laag
+            dyn_fase   = DYN_WACHT;
+            break;
+
+        case DYN_WACHT:
+            if (nu - dyn_los_ms < DYN_SETTLE_MS) return;
+            dyn_verzoek = nu;
+            dyn_fase    = DYN_METEN;
+            _dyn_cyclus_forceren(dyn_kanaal);
+            break;
+
+        case DYN_METEN:
+            if (!_dyn_cyclus_klaar(dyn_verzoek)) {
+                if (nu - dyn_verzoek > DYN_CYCLUS_MAX) { dyn_fase = DYN_RUST; dyn_laatste = nu; }
+                return;
+            }
+            // De kanaalindeling kan tussentijds veranderd zijn (rediscovery loopt
+            // elke 30s, de sequentie duurt ~5s): alleen meten als dit nog steeds
+            // hetzelfde **motor-ingangskanaal is.
+            if (dyn_kanaal != io_dynamo_kanaal()) { dyn_fase = DYN_RUST; dyn_laatste = nu; return; }
+
+            // Verse meting, 4s na loslaten: staat er nog spanning, dan levert de
+            // dynamo zelf en draait de motor.
+            motor_draait = io_input[dyn_kanaal];
+            dyn_laatste  = nu;
+            dyn_fase     = DYN_RUST;
+            break;
+    }
 }
 
 // ─── Naamherkenning ──────────────────────────────────────────────────────────

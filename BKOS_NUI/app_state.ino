@@ -1,5 +1,6 @@
 #include "app_state.h"
 #include "hw_io.h"
+#include "io.h"
 #include "platform_fs.h"
 #include "slaap.h"
 
@@ -56,6 +57,7 @@ void state_save() {
     f.printf("slaap_t=%lu\n", (unsigned long)slaap_tijd);
     f.printf("slaap_i=%lu\n", (unsigned long)slaap_interval);
     f.printf("slaap_a=%d\n",  (int)slaap_attiny);
+    f.printf("dynpuls=%d\n",  (int)dynamo_puls_min);
     f.close();
 }
 
@@ -73,6 +75,7 @@ void state_load() {
     licht_int_offset_min  = 15;
     onthoud_licht_modus   = false;
     wifi_open_auto        = false;
+    dynamo_puls_min       = 0;
     for (int i = 0; i < 6; i++) dev_lokaal[i] = false;
 
     if (!SPIFFS.exists(CONFIG_BESTAND)) return;
@@ -121,6 +124,7 @@ void state_load() {
         if (key == "slaap_t")  slaap_tijd     = (uint32_t)val.toInt();
         if (key == "slaap_i")  slaap_interval = max((uint32_t)10, (uint32_t)val.toInt());
         if (key == "slaap_a")  slaap_attiny   = (val.toInt() != 0);
+        if (key == "dynpuls")  dynamo_puls_min = (byte)constrain(val.toInt(), 0, 30);
     }
     f.close();
 

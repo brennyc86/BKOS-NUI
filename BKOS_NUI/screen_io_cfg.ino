@@ -104,11 +104,15 @@ static void iocfg_rij_teken(int kanaal, int rij_y) {
     uint16_t bg = (kanaal % 2 == 0) ? C_SURFACE : C_BG;
     tft.fillRect(0, rij_y, TFT_W, IOCFG_RIJ_H - 1, bg);
 
-    // Kanaalnummer
+    // Technisch nummer (0...) + label (A1, A2, ... B1, ...)
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     char nr[5]; snprintf(nr, sizeof(nr), "%3d", kanaal);
-    tft.setCursor(8, rij_y + (IOCFG_RIJ_H - 8) / 2);
+    tft.setCursor(8, rij_y + 6);
     tft.print(nr);
+    char lbl[8]; io_kanaal_label(kanaal, lbl, sizeof(lbl));
+    tft.setTextColor(C_CYAN);
+    tft.setCursor(8, rij_y + 6 + 10);
+    tft.print(lbl);
 
     // Naam
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
@@ -198,8 +202,9 @@ static void iocfg_overlay_teken() {
     tft.drawRoundRect(OV_X, OV_Y, OV_W, OV_H, 10, C_CYAN);
 
     // Titel + BEWERK naam knop
-    char titel[32];
-    snprintf(titel, sizeof(titel), "Kanaal %d: %s", iocfg_kanaal, io_namen[iocfg_kanaal]);
+    char lbl[8]; io_kanaal_label(iocfg_kanaal, lbl, sizeof(lbl));
+    char titel[40];
+    snprintf(titel, sizeof(titel), "Kanaal %d (%s): %s", iocfg_kanaal, lbl, io_namen[iocfg_kanaal]);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     tft.setCursor(OV_IX, OV_Y + 10);
     tft.print(titel);
@@ -338,9 +343,12 @@ static void pico_iocfg_rij_teken(int kanaal, int y) {
     tft.fillRect(0, y, TFT_W, PIOCFG_RIJ_H, (kanaal % 2 == 0) ? C_SURFACE : C_BG);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     char nr[5]; snprintf(nr, sizeof(nr), "%3d", kanaal);
-    tft.setCursor(2, y + (PIOCFG_RIJ_H - 8) / 2); tft.print(nr);
+    tft.setCursor(2, y + 4); tft.print(nr);
+    char klbl[8]; io_kanaal_label(kanaal, klbl, sizeof(klbl));
+    tft.setTextColor(C_CYAN);
+    tft.setCursor(2, y + 4 + 10); tft.print(klbl);
     tft.setTextColor(C_TEXT);
-    tft.setCursor(22, y + (PIOCFG_RIJ_H - 8) / 2);
+    tft.setCursor(30, y + (PIOCFG_RIJ_H - 8) / 2);
     char naam_k[11]; strncpy(naam_k, io_namen[kanaal], 10); naam_k[10] = '\0';
     tft.print(naam_k);
     bool is_in = (io_richting[kanaal] == IO_RICHTING_IN);
@@ -387,7 +395,8 @@ static void pico_iocfg_overlay_teken() {
     tft.fillRoundRect(2, SB_H + 2, TFT_W - 4, NAV_Y - SB_H - 4, 8, C_SURFACE);
     tft.drawRoundRect(2, SB_H + 2, TFT_W - 4, NAV_Y - SB_H - 4, 8, C_CYAN);
 
-    char titel[24]; snprintf(titel, sizeof(titel), "Kan %d: %s", iocfg_kanaal, io_namen[iocfg_kanaal]);
+    char lbl[8]; io_kanaal_label(iocfg_kanaal, lbl, sizeof(lbl));
+    char titel[28]; snprintf(titel, sizeof(titel), "%d/%s: %s", iocfg_kanaal, lbl, io_namen[iocfg_kanaal]);
     tft.setTextSize(1); tft.setTextColor(C_CYAN);
     tft.setCursor(8, SB_H + 10); tft.print(titel);
     ui_knop(TFT_W - 68, SB_H + 6, 60, 20, "NAAM..", C_SURFACE2, C_AMBER);

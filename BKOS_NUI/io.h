@@ -32,3 +32,4 @@ void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
 void  io_attiny_slaap(bool aan);   // ATtiny slaap/wake commando via UART
 int         io_zichtbaar();
 const char* io_module_naam(byte id);
+void        io_kanaal_label(int kanaal, char* buf, size_t buflen);  // "A1", "B16", ...

@@ -795,6 +795,46 @@ const char* io_module_naam(byte id) {
     }
 }
 
+// Moduleletter: A voor module 0, B voor module 1, ... Z, dan AA, AB, ... —
+// dezelfde opbouw als Excel-kolomletters. MAX_MODULES(30) blijft ver onder de
+// 26 enkele letters bij de meeste installaties, maar bij zeer veel modules
+// blijft het label toch kort en uniek.
+static void _module_letter(int idx, char* buf, size_t buflen) {
+    char tmp[6]; int n = 0;
+    int v = idx;
+    do {
+        tmp[n++] = 'A' + (v % 26);
+        v = v / 26 - 1;
+    } while (v >= 0 && n < (int)sizeof(tmp) - 1);
+    int w = (n < (int)buflen - 1) ? n : (int)buflen - 1;
+    for (int i = 0; i < w; i++) buf[i] = tmp[n - 1 - i];
+    buf[w] = '\0';
+}
+
+// Weergavelabel voor een kanaal: letter per module (A, B, C...) + nummer
+// binnen de module vanaf 1 (A1..A8, B1..B8, ...; A1..A16 bij een 16-kanaals
+// module). Kanalen die alleen via io_kanalen_cfg (handmatige override) zichtbaar
+// zijn — dus voorbij de laatst gedetecteerde module — worden als opeenvolgende
+// virtuele 8-kanaals modules genummerd; dat is de gebruikelijke modulegrootte.
+void io_kanaal_label(int kanaal, char* buf, size_t buflen) {
+    if (kanaal < 0) { if (buflen) buf[0] = '\0'; return; }
+    int rest       = kanaal;
+    int module_idx = 0;
+    for (;;) {
+        int grootte = 8;
+        if (module_idx < io_aparaten_cnt) {
+            byte id = io_aparaten[module_idx];
+            grootte = (id == MODULE_LOGICA16 || id == MODULE_SCHAKEL16) ? 16 : 8;
+        }
+        if (rest < grootte) break;
+        rest -= grootte;
+        module_idx++;
+    }
+    char letter[6];
+    _module_letter(module_idx, letter, sizeof(letter));
+    snprintf(buf, buflen, "%s%d", letter, rest + 1);
+}
+
 void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
     switch (actie) {
         case IO_ACTIE_MODUS_HAVEN:

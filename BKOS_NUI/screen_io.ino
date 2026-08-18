@@ -29,12 +29,12 @@ static void pico_io_rij_teken(int kanaal, int rij_y) {
     bool is_in  = (io_richting[kanaal] == IO_RICHTING_IN);
 
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    char nr[5]; snprintf(nr, sizeof(nr), "%3d", kanaal);
+    char lbl[8]; io_kanaal_label(kanaal, lbl, sizeof(lbl));
     tft.setCursor(2, rij_y + (PICO_IO_RIJ_H - 8) / 2);
-    tft.print(nr);
+    tft.print(lbl);
 
     tft.setTextColor(C_TEXT);
-    tft.setCursor(22, rij_y + (PICO_IO_RIJ_H - 8) / 2);
+    tft.setCursor(30, rij_y + (PICO_IO_RIJ_H - 8) / 2);
     char naam_k[11]; strncpy(naam_k, io_namen[kanaal], 10); naam_k[10] = '\0';
     tft.print(naam_k);
 
@@ -96,11 +96,11 @@ static void io_rij_teken(int kanaal, int rij_y) {
     byte output = io_output[kanaal];
     bool is_in  = (io_richting[kanaal] == IO_RICHTING_IN);
 
-    // Kanaalnummer
+    // Kanaallabel (A1, A2, ... B1, ...)
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    char nr[5]; snprintf(nr, sizeof(nr), "%3d", kanaal);
+    char lbl[8]; io_kanaal_label(kanaal, lbl, sizeof(lbl));
     tft.setCursor(8, rij_y + (IO_RIJ_H - 8) / 2);
-    tft.print(nr);
+    tft.print(lbl);
 
     // Naam
     tft.setTextSize(2); tft.setTextColor(C_TEXT);

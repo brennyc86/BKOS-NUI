@@ -468,6 +468,18 @@ static bool _dyn_cyclus_klaar(unsigned long sinds) {
     return ((long)(io_gecheckt - sinds) > 0);
 }
 
+// Effectieve ingangsstand voor weergave/logica. Voor het **motor-dynamokanaal
+// geeft dit de laatst BEVESTIGDE meting (motor_draait) terug in plaats van de
+// ruwe io_input[]: tijdens en vlak na de bekrachtigingspuls zelf staat de ruwe
+// ingang kort hoog omdat WIJ die spanning zetten — dat zegt niets over de
+// dynamo. motor_draait wordt alleen bijgewerkt in rust (io_dynamo_loop, DYN_RUST)
+// en na de meting 4s ná het loslaten (DYN_METEN), dus is dit altijd de laatst
+// geverifieerde, stabiele waarde. Voor elk ander kanaal is dit gewoon io_input[].
+bool io_kanaal_input_effectief(int kanaal) {
+    if (kanaal == io_dynamo_kanaal()) return motor_draait;
+    return io_input[kanaal];
+}
+
 void io_dynamo_loop() {
     unsigned long nu = millis();
 
@@ -587,8 +599,13 @@ String io_naam_clean(int kanaal) {
 }
 
 byte io_licht_staat(int kanaal) {
+    bool sig = io_kanaal_input_effectief(kanaal);
+    // Een ingang heeft geen "koelt af"/"geen signaal"-nuance — dat hoort bij een
+    // uitgang die net is losgelaten en waarvan het relais nog naijlt. Voor een
+    // ingang (zoals **motor) is er niets om na te ijlen: toon gewoon de stand.
+    if (io_richting[kanaal] == IO_RICHTING_IN)
+        return sig ? LSTATE_ECHT_AAN : LSTATE_ECHT_UIT;
     bool uit = (io_output[kanaal] == IO_UIT || io_output[kanaal] == IO_INV_UIT);
-    bool sig = io_input[kanaal];
     if (uit && !sig)  return LSTATE_ECHT_UIT;
     if (uit && sig)   return LSTATE_KOELT_AF;
     if (!uit && !sig) return LSTATE_GEEN_SIGNAAL;

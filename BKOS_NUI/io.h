@@ -13,6 +13,7 @@ extern byte          dynamo_puls_min;  // 0=uit, anders interval in minuten (1/2
 extern volatile bool motor_draait;     // laatste detectie: dynamo levert spanning
 void io_dynamo_loop();
 int  io_dynamo_kanaal();               // index van **motor als ingang, anders -1
+bool io_kanaal_input_effectief(int kanaal);  // ruwe io_input[], of motor_draait bij **motor
 
 void io_boot();
 void io_setup_taak();

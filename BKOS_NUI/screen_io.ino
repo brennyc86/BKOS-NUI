@@ -57,7 +57,7 @@ static void pico_io_rij_teken(int kanaal, int rij_y) {
         tft.print(lbl);
     } else {
         tft.fillCircle(230, rij_y + PICO_IO_RIJ_H / 2, 5,
-                       io_input[kanaal] ? C_GREEN : C_DARK_GRAY);
+                       io_kanaal_input_effectief(kanaal) ? C_GREEN : C_DARK_GRAY);
     }
 }
 
@@ -138,7 +138,7 @@ static void io_rij_teken(int kanaal, int rij_y) {
 
     // Input feedback dot
     tft.fillCircle(TFT_W - 14, rij_y + IO_RIJ_H / 2, 6,
-                   io_input[kanaal] ? C_GREEN : C_DARK_GRAY);
+                   io_kanaal_input_effectief(kanaal) ? C_GREEN : C_DARK_GRAY);
 }
 
 static void io_sb_teken() {

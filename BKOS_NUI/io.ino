@@ -186,12 +186,16 @@ static bool io_dynamo_drijft(int kanaal) {
     return (millis() - dyn_puls_start < DYN_PULS_MS);
 }
 
-// Loopt er een puls/meet-sequentie op dit kanaal? Zolang dat zo is worden de
-// ingangsacties en meldingen onderdrukt: de spanning die we dan zien is onze
-// eigen puls, niet de dynamo. Zonder dit zou elke puls de aan-actie van het
-// kanaal afvuren (bv. IO_ACTIE_MODUS_MOTOR → vaarmodus springt om).
-static bool io_dynamo_bezig(int kanaal) {
-    return (dyn_fase != DYN_RUST && dyn_kanaal >= 0 && kanaal == dyn_kanaal);
+// Is dit het actieve dynamokanaal? Zo ja, dan mag io_cyclus() NOOIT op basis
+// van een ruwe io_input-overgang een ingangsactie/melding afvuren — ook niet
+// buiten de puls-sequentie om. Zonder deze bredere check zou een gewone
+// hartslag-cyclus (elke 30-120s, tussen twee pulsen door) een ongevalideerde,
+// niet-gedebouncede aflezing kunnen oppikken en bv. de vaarmodus laten
+// springen. De enige plek die voor dit kanaal wél een actie/melding afvuurt
+// is DYN_METEN hieronder, en dan uitsluitend op de gedebouncede
+// motor_draait-overgang (één keer per interval, nooit vaker).
+static bool io_dynamo_debounced(int kanaal) {
+    return (dynamo_puls_min > 0 && kanaal == io_dynamo_kanaal());
 }
 
 // ─── Veiligheid: bepaalt of een kanaal fysiek HOOG mag worden aangestuurd ─────
@@ -236,8 +240,10 @@ void io_cyclus() {
         // Ingang lezen (gewone volgorde)
         bool nieuw = digitalRead(HC_IN);
         if (nieuw != io_input[i]) {
-            // Tijdens de dynamo-sequentie meten we onze eigen puls: geen acties
-            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
+            // Het dynamokanaal vuurt acties/meldingen uitsluitend gedebounced
+            // vanuit DYN_METEN af (zie io_dynamo_debounced) — nooit hier op een
+            // ruwe, mogelijk onbetrouwbare overgang.
+            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_debounced(i)) {
                 io_actie_uitvoeren(nieuw ? io_actie_aan[i] : io_actie_uit[i],
                                    io_actie_param[i]);
                 if ((nieuw  && (io_alert[i] == IO_ALERT_BIJ_AAN || io_alert[i] == IO_ALERT_BEIDE)) ||
@@ -289,8 +295,10 @@ void io_cyclus() {
 
         bool nieuw = (c == '1');
         if (nieuw != io_input[i]) {
-            // Tijdens de dynamo-sequentie meten we onze eigen puls: geen acties
-            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
+            // Het dynamokanaal vuurt acties/meldingen uitsluitend gedebounced
+            // vanuit DYN_METEN af (zie io_dynamo_debounced) — nooit hier op een
+            // ruwe, mogelijk onbetrouwbare overgang.
+            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_debounced(i)) {
                 io_actie_uitvoeren(
                     nieuw ? io_actie_aan[i] : io_actie_uit[i],
                     io_actie_param[i]);
@@ -564,7 +572,21 @@ void io_dynamo_loop() {
 
             // Verse meting, 4s na loslaten: staat er nog spanning, dan levert de
             // dynamo zelf en draait de motor.
-            motor_draait = io_input[dyn_kanaal];
+            {
+                bool nieuw = io_input[dyn_kanaal];
+                if (nieuw != motor_draait) {
+                    // Enige plek die voor dit kanaal een actie/melding afvuurt —
+                    // en dan precies één keer per interval, op de bevestigde
+                    // overgang. Bv. IO_ACTIE_MODUS_MOTOR wisselt de vaarmodus nu
+                    // pas als de puls volledig voorbij is, niet tijdens de puls.
+                    io_actie_uitvoeren(nieuw ? io_actie_aan[dyn_kanaal] : io_actie_uit[dyn_kanaal],
+                                       io_actie_param[dyn_kanaal]);
+                    if ((nieuw  && (io_alert[dyn_kanaal] == IO_ALERT_BIJ_AAN || io_alert[dyn_kanaal] == IO_ALERT_BEIDE)) ||
+                        (!nieuw && (io_alert[dyn_kanaal] == IO_ALERT_BIJ_UIT || io_alert[dyn_kanaal] == IO_ALERT_BEIDE)))
+                        melding_io_trigger(dyn_kanaal, nieuw);
+                }
+                motor_draait = nieuw;
+            }
             dyn_laatste  = nu;
             dyn_fase     = DYN_RUST;
             break;
@@ -874,15 +896,37 @@ void io_kanaal_label(int kanaal, char* buf, size_t buflen) {
 }
 
 void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
+    // Automatisch vaarmodus-wisselen vanuit een ingangskanaal (bv. **motor)
+    // staat helemaal los van handmatige bediening — de ronde knop op het
+    // hoofdscherm bepaalt of dit blok hieronder iets mag doen. Handmatig een
+    // modus kiezen zet vaarmodus_auto zelf niet uit (zie screen_main.ino).
+    if (!vaarmodus_auto) {
+        switch (actie) {
+            case IO_ACTIE_MODUS_HAVEN:
+            case IO_ACTIE_MODUS_ZEILEN:
+            case IO_ACTIE_MODUS_MOTOR:
+            case IO_ACTIE_MODUS_ANKER:
+                return;
+            default: break;
+        }
+    }
     switch (actie) {
         case IO_ACTIE_MODUS_HAVEN:
-            vaar_modus = MODE_HAVEN;  scherm_bouwen = true; break;
+            if (vaar_modus == MODE_HAVEN)  break;
+            vaar_modus = MODE_HAVEN;  scherm_bouwen = true;
+            io_verlichting_update(); net_app_staat_sturen(); break;
         case IO_ACTIE_MODUS_ZEILEN:
-            vaar_modus = MODE_ZEILEN; scherm_bouwen = true; break;
+            if (vaar_modus == MODE_ZEILEN) break;
+            vaar_modus = MODE_ZEILEN; scherm_bouwen = true;
+            io_verlichting_update(); net_app_staat_sturen(); break;
         case IO_ACTIE_MODUS_MOTOR:
-            vaar_modus = MODE_MOTOR;  scherm_bouwen = true; break;
+            if (vaar_modus == MODE_MOTOR)  break;
+            vaar_modus = MODE_MOTOR;  scherm_bouwen = true;
+            io_verlichting_update(); net_app_staat_sturen(); break;
         case IO_ACTIE_MODUS_ANKER:
-            vaar_modus = MODE_ANKER;  scherm_bouwen = true; break;
+            if (vaar_modus == MODE_ANKER)  break;
+            vaar_modus = MODE_ANKER;  scherm_bouwen = true;
+            io_verlichting_update(); net_app_staat_sturen(); break;
         case IO_ACTIE_OUTPUT_AAN:
             if (param < MAX_IO_KANALEN && io_richting[param] != IO_RICHTING_IN) {
                 io_output[param]    = IO_AAN;

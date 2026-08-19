@@ -51,6 +51,7 @@ extern int    actief_scherm;
 extern bool   scherm_bouwen;
 
 extern byte   vaar_modus;
+extern bool   vaarmodus_auto;   // automatisch wisselen o.b.v. ingangskanalen (bv. **motor) toegestaan
 extern byte   licht_instelling;
 extern bool   ota_push_actief;
 

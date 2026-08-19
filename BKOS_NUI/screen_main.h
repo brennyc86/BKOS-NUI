@@ -33,6 +33,11 @@
 #define MKNOP_Y1  (CONTENT_Y + 8)
 #define MKNOP_Y2  (MKNOP_Y1 + MKNOP_H + MKNOP_GAP)
 
+// Ronde AUTO-knop op het kruispunt van de 2×2 vaarmodus-grid
+#define AUTOMODUS_CX  (MKNOP_X2 - 4)
+#define AUTOMODUS_CY  (MKNOP_Y2 - MKNOP_GAP / 2)
+#define AUTOMODUS_R   UI_SCY(22)
+
 // Verlichting knoppen (3 naast elkaar, vullen CTRL_PANEL_W)
 #define LKNOP_W   ((CTRL_PANEL_W - 11 - 12) / 3)
 #define LKNOP_H   UI_SCY(52)
@@ -78,11 +83,17 @@
 #define PICO_MKNOP_H    UI_SCY(38)
 #define PICO_MKNOP_Y(i) (CONTENT_Y + 4 + (i) * (PICO_MKNOP_H + 4))
 
-// Verlichting cycling knop (onder vaarmodus, zelfde breedte)
+// AUTO-knop (vaarmodus automatisch laten wisselen), onder vaarmodus-stapel
+#define PICO_AKNOP_X  (PICO_RIGHT_X + 4)
+#define PICO_AKNOP_W  (PICO_RIGHT_W - 8)
+#define PICO_AKNOP_H  UI_SCY(18)
+#define PICO_AKNOP_Y  (PICO_MKNOP_Y(4) + 4)
+
+// Verlichting cycling knop (onder AUTO-knop, zelfde breedte)
 #define PICO_LKNOP_X  (PICO_RIGHT_X + 4)
 #define PICO_LKNOP_W  (PICO_RIGHT_W - 8)
 #define PICO_LKNOP_H  UI_SCY(22)
-#define PICO_LKNOP_Y  (PICO_MKNOP_Y(4) + 4)
+#define PICO_LKNOP_Y  (PICO_AKNOP_Y + PICO_AKNOP_H + 4)
 
 // Apparaat knoppen: 1 rij volledige breedte, verankerd boven nav bar
 #define PICO_DKNOP_W    ((TFT_W - 20) / 4)

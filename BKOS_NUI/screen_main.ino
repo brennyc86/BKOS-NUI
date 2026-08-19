@@ -318,6 +318,27 @@ static int vaarmodi_zichtbaar(uint8_t out[4]) {
     return n;
 }
 
+// Ronde knop op het kruispunt van de 2×2 vaarmodus-grid: schakelt toe of een
+// ingangskanaal (bv. **motor) de vaarmodus automatisch mag wisselen. Blijft
+// AAN staan ook als de gebruiker handmatig een andere modus kiest — alleen
+// deze knop zelf zet 'm uit. Zie io_actie_uitvoeren() in io.ino.
+static void vaarmodus_auto_knop_teken() {
+    uint16_t bg  = vaarmodus_auto ? C_CYAN : C_SURFACE2;
+    uint16_t fg  = vaarmodus_auto ? C_TEXT_DARK : C_TEXT_DIM;
+    tft.fillCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R, bg);
+    tft.drawCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R, vaarmodus_auto ? C_CYAN : C_SURFACE3);
+    tft.setTextSize(1);
+    tft.setTextColor(fg);
+    const char* lbl = "AUTO";
+    tft.setCursor(AUTOMODUS_CX - (int)strlen(lbl) * 3, AUTOMODUS_CY - 4);
+    tft.print(lbl);
+}
+
+static bool vaarmodus_auto_knop_klik(int x, int y) {
+    int dx = x - AUTOMODUS_CX, dy = y - AUTOMODUS_CY;
+    return (dx * dx + dy * dy) <= (AUTOMODUS_R * AUTOMODUS_R);
+}
+
 static void modus_knoppen_teken() {
     tft.setTextSize(1);
     tft.setTextColor(C_TEXT_DIM);
@@ -332,6 +353,7 @@ static void modus_knoppen_teken() {
         modus_knop(cx[c], cy[c], MKNOP_W, MKNOP_H,
                    m.naam, m.icoon, m.kleur, vaar_modus == m.modus);
     }
+    vaarmodus_auto_knop_teken();
 }
 
 // ─── Verlichting knoppen ────────────────────────────────────────────
@@ -688,6 +710,22 @@ static void pico_modus_knop(int x, int y, const char* naam, int icoon,
     tft.print(naam);
 }
 
+// AUTO-knop: staat toe dat een ingangskanaal (bv. **motor) de vaarmodus
+// automatisch wisselt. Blijft aan staan bij een handmatige modus-keuze.
+static void pico_auto_knop_teken() {
+    uint16_t bg = vaarmodus_auto ? C_CYAN : C_SURFACE;
+    uint16_t fg = vaarmodus_auto ? C_TEXT_DARK : C_TEXT_DIM;
+    tft.fillRoundRect(PICO_AKNOP_X, PICO_AKNOP_Y, PICO_AKNOP_W, PICO_AKNOP_H, 3, bg);
+    tft.drawRoundRect(PICO_AKNOP_X, PICO_AKNOP_Y, PICO_AKNOP_W, PICO_AKNOP_H, 3,
+                      vaarmodus_auto ? C_CYAN : C_SURFACE2);
+    tft.setTextSize(1);
+    tft.setTextColor(fg);
+    const char* lbl = "AUTO";
+    int tw = strlen(lbl) * 6;
+    tft.setCursor(PICO_AKNOP_X + (PICO_AKNOP_W - tw) / 2, PICO_AKNOP_Y + (PICO_AKNOP_H - 8) / 2);
+    tft.print(lbl);
+}
+
 // Verlichting cycling knop (52px breed, 22px hoog): icoon links + kort label
 static void pico_licht_knop_teken() {
     const char* label;
@@ -771,6 +809,7 @@ static void pico_controls_teken() {
     // Apparaat rij (volle breedte)
     tft.fillRect(0, PICO_DKNOP_Y, TFT_W, PICO_DKNOP_H, C_BG);
     pico_modus_knoppen_teken();
+    pico_auto_knop_teken();
     pico_licht_knop_teken();
     pico_apparaten_teken();
 }
@@ -841,6 +880,13 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
                 gewijzigd = true;
             }
         }
+    }
+
+    // AUTO-knop: vaarmodus automatisch laten wisselen aan/uit
+    if (x >= PICO_AKNOP_X && x < PICO_AKNOP_X + PICO_AKNOP_W &&
+        y >= PICO_AKNOP_Y && y < PICO_AKNOP_Y + PICO_AKNOP_H) {
+        vaarmodus_auto = !vaarmodus_auto;
+        gewijzigd = true;
     }
 
     // Verlichting cycling knop: UIT→AAN→AUTO→UIT
@@ -1090,6 +1136,16 @@ void screen_main_run(int x, int y, bool aanraking) {
     }
 
     bool gewijzigd = false;
+
+    // Ronde AUTO-knop (kruispunt) — vóór de rechthoekige knoppen checken en
+    // meteen terugkeren, want de cirkel overlapt licht met hun binnenhoeken
+    // en zou anders óók als modus-tik geregistreerd kunnen worden.
+    if (vaarmodus_auto_knop_klik(x, y)) {
+        vaarmodus_auto = !vaarmodus_auto;
+        state_save();
+        screen_main_update_controls();
+        return;
+    }
 
     // Vaarmodus knoppen — alleen zichtbare modi voor dit boottype
     {

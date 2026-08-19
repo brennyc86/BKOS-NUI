@@ -11,6 +11,7 @@ extern bool ota_beta_kanal_geladen;
 int   actief_scherm    = SCREEN_MAIN;
 bool  scherm_bouwen    = true;
 byte  vaar_modus       = MODE_HAVEN;
+bool  vaarmodus_auto   = false;
 byte  licht_instelling = LICHT_UIT;
 bool  ota_push_actief       = false;
 bool  updaten               = false;
@@ -36,6 +37,7 @@ void state_save() {
     File f = SPIFFS.open(CONFIG_BESTAND, "w");
     if (!f) return;
     f.printf("modus=%d\n",   (int)vaar_modus);
+    f.printf("modus_auto=%d\n", (int)vaarmodus_auto);
     f.printf("licht=%d\n",   (int)licht_instelling);
     f.printf("helderh=%d\n", tft_helderheid);
     f.printf("draai=%d\n",   tft_gedraaid ? 1 : 0);
@@ -63,6 +65,7 @@ void state_save() {
 
 void state_load() {
     vaar_modus            = MODE_HAVEN;
+    vaarmodus_auto        = false;
     licht_instelling      = LICHT_AUTO;
     tft_helderheid        = 75;
     tft_gedraaid          = false;
@@ -91,7 +94,8 @@ void state_load() {
         String key = lijn.substring(0, sep);
         String val = lijn.substring(sep + 1);
 
-        if (key == "modus")   vaar_modus       = (byte)val.toInt();
+        if (key == "modus")      vaar_modus       = (byte)val.toInt();
+        if (key == "modus_auto") vaarmodus_auto   = (val.toInt() != 0);
         if (key == "licht")   licht_instelling  = (byte)val.toInt();
         if (key == "helderh") tft_helderheid    = (int)val.toInt();
         if (key == "draai")   tft_gedraaid      = (val.toInt() != 0);

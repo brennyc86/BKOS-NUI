@@ -152,28 +152,31 @@ void io_detect() {
 // periodiek heel kort spanning op datzelfde kanaal; loopt de motor, dan neemt de
 // dynamo het over en blijft D+ hoog nadat wij hebben losgelaten.
 //
-// Volgorde: puls 1s → loslaten → 4s wachten → meten. Meten gebeurt pas op een
-// verse io_cyclus ná het loslaten, zodat we onze eigen drive niet terugmeten.
+// Volgorde: 1 cyclus aan-zetten → 1s wachten → 3 cycli op rij los-zetten
+// (DYN_LOSLAAT_CYCLI) → 4s wachten → meten. Meten gebeurt pas op een verse
+// io_cyclus ná het loslaten, zodat we onze eigen drive niet terugmeten.
 // Dit herhaalt zich bij ELK interval, ook als de vorige meting "motor draait"
 // gaf: motor_draait wordt uitsluitend door deze meting gezet (nooit door een
 // losse/passieve io_input[]-lezing), zodat de status altijd binnen één
 // interval zichzelf corrigeert in plaats van te blijven hangen op een oude
 // of onbetrouwbare aflezing.
-#define DYN_PULS_MS     1000UL   // duur van de bekrachtigingspuls
-#define DYN_SETTLE_MS   4000UL   // wachttijd na loslaten vóór de meting
-#define DYN_CYCLUS_MAX  3000UL   // opgeven als de IO-bus geen cyclus afrondt
+#define DYN_PULS_MS       1000UL  // duur van de bekrachtigingspuls
+#define DYN_SETTLE_MS     4000UL  // wachttijd na loslaten vóór de meting
+#define DYN_CYCLUS_MAX    3000UL  // opgeven als de IO-bus geen cyclus afrondt
+#define DYN_LOSLAAT_CYCLI 3       // bevestigende cycli na het loslaten (niet 1)
 
 enum { DYN_RUST, DYN_PULS, DYN_LOSLATEN, DYN_WACHT, DYN_METEN };
 
 byte          dynamo_puls_min = 0;      // 0=uit, anders interval in minuten
 volatile bool motor_draait    = false;  // laatste detectie: dynamo levert spanning
 
-static byte          dyn_fase       = DYN_RUST;
-static int           dyn_kanaal     = -1;
-static unsigned long dyn_puls_start = 0;
-static unsigned long dyn_los_ms     = 0;
-static unsigned long dyn_verzoek    = 0;
-static unsigned long dyn_laatste    = 0;
+static byte          dyn_fase           = DYN_RUST;
+static int           dyn_kanaal         = -1;
+static unsigned long dyn_puls_start     = 0;
+static unsigned long dyn_los_ms         = 0;
+static unsigned long dyn_verzoek        = 0;
+static unsigned long dyn_laatste        = 0;
+static byte          dyn_loslaat_teller = 0;  // aantal reeds gedraaide loslaat-cycli
 
 // Mag dit kanaal op dit moment door de bekrachtigingspuls hoog gehouden worden?
 // Bewust een pure tijdstoets: ook als de toestandsmachine zou blijven hangen,
@@ -517,18 +520,29 @@ void io_dynamo_loop() {
         case DYN_PULS:
             if (nu - dyn_puls_start < DYN_PULS_MS) return;
             // io_dynamo_drijft() geeft vanaf nu false: volgende cyclus laat los
-            dyn_fase    = DYN_LOSLATEN;
-            dyn_verzoek = nu;
+            dyn_fase           = DYN_LOSLATEN;
+            dyn_loslaat_teller = 0;
+            dyn_verzoek        = nu;
             _dyn_cyclus_forceren(dyn_kanaal);
             break;
 
+        // Niet met één cyclus genoegen nemen: draai DYN_LOSLAAT_CYCLI (3) losse,
+        // volledig afgeronde cycli op rij die allemaal '0' voor dit kanaal
+        // versturen, vóór we verdergaan. Eén enkele cyclus bleek in de praktijk
+        // niet altijd genoeg om het kanaal fysiek weer laag te krijgen.
         case DYN_LOSLATEN:
             if (!_dyn_cyclus_klaar(dyn_verzoek)) {
                 if (nu - dyn_verzoek > DYN_CYCLUS_MAX) { dyn_fase = DYN_RUST; dyn_laatste = nu; }
                 return;
             }
-            dyn_los_ms = io_gecheckt;    // pin is nu fysiek laag
-            dyn_fase   = DYN_WACHT;
+            dyn_los_ms = io_gecheckt;    // laatst bevestigde loslaat-cyclus
+            dyn_loslaat_teller++;
+            if (dyn_loslaat_teller < DYN_LOSLAAT_CYCLI) {
+                dyn_verzoek = nu;
+                _dyn_cyclus_forceren(dyn_kanaal);
+                return;    // blijf in DYN_LOSLATEN voor de volgende cyclus
+            }
+            dyn_fase = DYN_WACHT;
             break;
 
         case DYN_WACHT:

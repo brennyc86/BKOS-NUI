@@ -456,9 +456,14 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 
     case NET_MSG_IO_STATE: {
         if (net_modus == NET_MASTER) break;
+        // Alleen accepteren van onze eigen, al bekende master — anders kan
+        // IO_STATE van een willekeurige andere afzender (bv. een los testbordje
+        // dat toevallig ooit gepaird is geweest, of gewoon in ESP-NOW-bereik
+        // staat) io_output[]/io_input[]/io_richting[] overschrijven. Dat laatste
+        // is hoe **motor per ongeluk van INGANG naar UITGANG kan omslaan.
+        if (!net_master_bekend() || !_mac_gelijk(mac, net_master_mac)) break;
         // IO_STATE ontvangen = master herkent ons nog; stel gepaard in
-        if (!net_gepaard && net_master_bekend() && _mac_gelijk(mac, net_master_mac))
-            net_gepaard = true;
+        net_gepaard = true;
         uint8_t cnt = pkt.data[0];
         if (cnt > MAX_IO_KANALEN) cnt = MAX_IO_KANALEN;
         bool gewijzigd = ((int)cnt != io_kanalen_cnt);
@@ -481,6 +486,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 
     case NET_MSG_IO_NAMEN: {
         if (net_modus == NET_MASTER) break;
+        if (!net_master_bekend() || !_mac_gelijk(mac, net_master_mac)) break;
         uint8_t offset = pkt.data[0];
         uint8_t chunk  = pkt.data[1];
         for (int j = 0; j < chunk; j++) {
@@ -494,6 +500,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 
     case NET_MSG_IO_TOGGLE: {
         if (net_modus != NET_MASTER) break;
+        if (idx < 0 || !net_peers[idx].bevestigd) break;  // alleen bevestigde slaves
         uint8_t kanaal = pkt.data[0];
         uint8_t staat  = pkt.data[1];   // IO_AAN / IO_UIT / 0xFF=toggle
         int n = io_zichtbaar();
@@ -511,6 +518,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 
     case NET_MSG_IO_NAAM: {
         if (net_modus != NET_MASTER) break;
+        if (idx < 0 || !net_peers[idx].bevestigd) break;  // alleen bevestigde slaves
         uint8_t     staat      = pkt.data[0];
         uint8_t     match_type = pkt.data[1];  // 0=exact, 1=prefix
         const char* naam       = (const char*)&pkt.data[2];
@@ -533,13 +541,15 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
     }
 
     case NET_MSG_APP_STATE: {
-        if (pkt.modus == NET_MASTER && net_modus != NET_MASTER) {
+        if (pkt.modus == NET_MASTER && net_modus != NET_MASTER &&
+            net_master_bekend() && _mac_gelijk(mac, net_master_mac)) {
             // Van master → slave: werk display-staat bij en herteken scherm
             vaar_modus       = (byte)pkt.data[0];
             licht_instelling = (byte)pkt.data[1];
             licht_cfg_idx    = (byte)pkt.data[2];
             if (actief_scherm == SCREEN_MAIN) scherm_bouwen = true;
-        } else if (pkt.modus != NET_MASTER && net_modus == NET_MASTER) {
+        } else if (pkt.modus != NET_MASTER && net_modus == NET_MASTER &&
+                   idx >= 0 && net_peers[idx].bevestigd) {
             if (_boot_sync_actief) {
                 // Boot-sync venster: neem staat over van peer met hoogste uptime
                 uint32_t peer_uptime = 0;

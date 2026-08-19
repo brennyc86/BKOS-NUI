@@ -296,7 +296,7 @@ void hw_setup() {
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
     paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5)
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
-#if PLATFORM_ESP32
+#if BKOS_REMOTE_ENABLED
     bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
     webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)
 #endif
@@ -336,8 +336,10 @@ void hw_loop() {
     // die geen directe schermtoegang nodig hebben.
 
     net_loop();          // ESP-NOW queue verwerken + heartbeat
+#if BKOS_REMOTE_ENABLED
     bkos_client_loop();  // WebSocket server tick + mDNS (status/besturing)
     webapp_loop();       // HTTP server tick (afstandsbediening-pagina)
+#endif
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     brug_loop();       // WiFi-brug BLE verbindingscheck (core 3.x only)
 #endif

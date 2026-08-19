@@ -296,8 +296,9 @@ void hw_setup() {
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
     paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5)
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
-#if PLATFORM_ESP32 && ESP_ARDUINO_VERSION_MAJOR >= 3
-    bkos_client_setup(); // WebSocket server (core 3.x only; op core 2.x bij boot overslaan)
+#if PLATFORM_ESP32
+    bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
+    webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)
 #endif
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
 
@@ -334,9 +335,10 @@ void hw_loop() {
     // prioriteit. Deze lus verwerkt alleen netwerk-gerelateerde en opslag-taken
     // die geen directe schermtoegang nodig hebben.
 
-    net_loop();        // ESP-NOW queue verwerken + heartbeat
+    net_loop();          // ESP-NOW queue verwerken + heartbeat
+    bkos_client_loop();  // WebSocket server tick + mDNS (status/besturing)
+    webapp_loop();       // HTTP server tick (afstandsbediening-pagina)
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    bkos_client_loop(); // WebSocket server tick + mDNS (core 3.x only)
     brug_loop();       // WiFi-brug BLE verbindingscheck (core 3.x only)
 #endif
     provider_loop();   // data-provider scheduler

@@ -213,6 +213,8 @@ void screen_wifi_teken() {
             tft.setCursor(40, cy); tft.print("Verbonden: "); tft.print(WiFi.SSID());
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(40, cy + 26); tft.print("IP: "); tft.print(WiFi.localIP().toString());
+            tft.setTextColor(C_CYAN);
+            tft.setCursor(40, cy + 40); tft.print("Afstandsbediening: http://"); tft.print(WiFi.localIP().toString()); tft.print("/");
         } else {
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(40, cy + 10); tft.print("Niet verbonden");

@@ -24,19 +24,28 @@
 // uit vaste macro's — zo staan de lampen voor elk model op de juiste plek.
 
 // Vaarmodus knoppen (rechter paneel, 2×2 grid)
-// Breedte: vult CTRL_PANEL_W (schalen mee met TFT_W via UI_SCX)
-#define MKNOP_W   ((CTRL_PANEL_W - 10 - 8) / 2)
+// Breedte: vult CTRL_PANEL_W (schalen mee met TFT_W via UI_SCX). De kloof
+// tussen de kolommen/rijen (MKNOP_XGAP/MKNOP_GAP) is bewust ruimer dan een
+// gewone knoppen-tussenruimte: daar zit de ronde AUTO-knop, met wat lucht
+// eromheen zodat die netjes uit de hoeken van de 4 knoppen "geknipt" oogt.
+#define MKNOP_XGAP UI_SCX(32)
+#define MKNOP_W   ((CTRL_PANEL_W - 10 - MKNOP_XGAP) / 2)
 #define MKNOP_H   UI_SCY(68)
-#define MKNOP_GAP UI_SCY(8)
+#define MKNOP_GAP UI_SCY(32)
 #define MKNOP_X1  (CTRL_PANEL_X + 10)
-#define MKNOP_X2  (MKNOP_X1 + MKNOP_W + 8)
+#define MKNOP_X2  (MKNOP_X1 + MKNOP_W + MKNOP_XGAP)
 #define MKNOP_Y1  (CONTENT_Y + 8)
 #define MKNOP_Y2  (MKNOP_Y1 + MKNOP_H + MKNOP_GAP)
 
-// Ronde AUTO-knop op het kruispunt van de 2×2 vaarmodus-grid
-#define AUTOMODUS_CX  (MKNOP_X2 - 4)
-#define AUTOMODUS_CY  (MKNOP_Y2 - MKNOP_GAP / 2)
-#define AUTOMODUS_R   UI_SCY(22)
+// Ronde AUTO-knop op het kruispunt van de 2×2 vaarmodus-grid. AUTOMODUS_R is
+// de knop zelf; de knop wordt getekend bovenop een iets grotere "halo" in de
+// achtergrondkleur (AUTOMODUS_R + AUTOMODUS_MARGIN), die de binnenhoeken van
+// de 4 knoppen rond de cirkel wegneemt — dat geeft de vrije ruimte/afronding.
+#define AUTOMODUS_CX     (MKNOP_X1 + MKNOP_W + MKNOP_XGAP / 2)
+#define AUTOMODUS_CY     (MKNOP_Y1 + MKNOP_H + MKNOP_GAP / 2)
+#define AUTOMODUS_R      UI_SCY(28)
+#define AUTOMODUS_MARGIN 6
+#define AUTOMODUS_HALO_R (AUTOMODUS_R + AUTOMODUS_MARGIN)
 
 // Verlichting knoppen (3 naast elkaar, vullen CTRL_PANEL_W)
 #define LKNOP_W   ((CTRL_PANEL_W - 11 - 12) / 3)

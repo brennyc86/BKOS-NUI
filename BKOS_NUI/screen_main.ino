@@ -323,6 +323,11 @@ static int vaarmodi_zichtbaar(uint8_t out[4]) {
 // AAN staan ook als de gebruiker handmatig een andere modus kiest — alleen
 // deze knop zelf zet 'm uit. Zie io_actie_uitvoeren() in io.ino.
 static void vaarmodus_auto_knop_teken() {
+    // Achtergrond-halo eerst: knipt de binnenhoeken van de 4 modus-knoppen
+    // rond de cirkel weg, zodat de AUTO-knop met wat lucht eromheen oogt
+    // i.p.v. strak tegen de andere knoppen aan te staan.
+    tft.fillCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_HALO_R, C_BG);
+
     uint16_t bg  = vaarmodus_auto ? C_CYAN : C_SURFACE2;
     uint16_t fg  = vaarmodus_auto ? C_TEXT_DARK : C_TEXT_DIM;
     tft.fillCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R, bg);
@@ -335,8 +340,9 @@ static void vaarmodus_auto_knop_teken() {
 }
 
 static bool vaarmodus_auto_knop_klik(int x, int y) {
+    // Ruimere tikzone: de hele halo telt mee, niet alleen de knop zelf.
     int dx = x - AUTOMODUS_CX, dy = y - AUTOMODUS_CY;
-    return (dx * dx + dy * dy) <= (AUTOMODUS_R * AUTOMODUS_R);
+    return (dx * dx + dy * dy) <= (AUTOMODUS_HALO_R * AUTOMODUS_HALO_R);
 }
 
 static void modus_knoppen_teken() {

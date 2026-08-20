@@ -576,16 +576,22 @@ void io_dynamo_loop() {
     unsigned long nu = millis();
 
     if (dynamo_puls_min == 0) {          // functie uit: nooit pulsen
-        dyn_fase        = DYN_RUST;
-        dyn_kanaal      = -1;
-        dyn_kand_teller = 0;
+        dyn_fase              = DYN_RUST;
+        dyn_kanaal            = -1;
+        dyn_kand_teller       = 0;
+        dyn_kand_cyclus_bezig = false;
         return;
     }
 
     switch (dyn_fase) {
         case DYN_RUST: {
             int k = io_dynamo_kanaal();
-            if (k < 0) { motor_draait = false; dyn_kand_teller = 0; return; }
+            if (k < 0) {
+                motor_draait          = false;
+                dyn_kand_teller       = 0;
+                dyn_kand_cyclus_bezig = false;
+                return;
+            }
 
             // Idle-bewaking blijft actief zolang we niet aan een nieuwe puls
             // beginnen — reageert op echte veranderingen tussen twee geplande
@@ -596,8 +602,12 @@ void io_dynamo_loop() {
 
             // Bewaking pauzeren: een eventuele lopende bevestiging is nu
             // achterhaald, de aankomende puls levert zo meteen een verse,
-            // gevalideerde meting op.
-            dyn_kand_teller = 0;
+            // gevalideerde meting op. dyn_kand_cyclus_bezig MOET ook mee
+            // resetten — anders denkt de eerstvolgende bewakingsronde na
+            // deze puls dat een allang-vervallen cyclus-aanvraag nog loopt,
+            // en slaat hij zijn eigen verse cyclus-aanvraag over.
+            dyn_kand_teller       = 0;
+            dyn_kand_cyclus_bezig = false;
             dyn_kanaal      = k;
             dyn_puls_start  = nu;
             dyn_fase        = DYN_PULS;

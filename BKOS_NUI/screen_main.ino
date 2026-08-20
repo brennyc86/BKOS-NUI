@@ -318,10 +318,32 @@ static int vaarmodi_zichtbaar(uint8_t out[4]) {
     return n;
 }
 
+// Pijlpunt (gevulde driehoek) op straal r rond (cx,cy), bij hoek graden,
+// wijzend in tangentiële richting — bouwsteen voor het rond-draai-icoon.
+static void _pijlpunt_teken(int cx, int cy, int r, float graden, uint16_t kleur) {
+    float rad  = graden * PI / 180.0f;
+    float trad = rad + PI / 2.0f;   // tangent: richting van de draai
+    int   px   = cx + (int)(r * cosf(rad));
+    int   py   = cy + (int)(r * sinf(rad));
+    int   tx   = (int)(cosf(trad) * 9);
+    int   ty   = (int)(sinf(trad) * 9);
+    int   rx   = (int)(cosf(rad) * 6);
+    int   ry   = (int)(sinf(rad) * 6);
+    tft.fillTriangle(px + tx, py + ty,
+                      px - tx + rx, py - ty + ry,
+                      px - tx - rx, py - ty - ry,
+                      kleur);
+}
+
 // Ronde knop op het kruispunt van de 2×2 vaarmodus-grid: schakelt toe of een
 // ingangskanaal (bv. **motor) de vaarmodus automatisch mag wisselen. Blijft
 // AAN staan ook als de gebruiker handmatig een andere modus kiest — alleen
 // deze knop zelf zet 'm uit. Zie io_actie_uitvoeren() in io.ino.
+//
+// AAN/UIT is met opzet niet uitsluitend via kleur te zien (kleur hangt af
+// van het actieve kleurenschema, dus niet altijd eenduidig): AAN krijgt een
+// rond-draai-icoon (twee pijlen in een cirkel) om "AUTO" heen, UIT een rood
+// kruis dwars door "AUTO".
 static void vaarmodus_auto_knop_teken() {
     // De 4 modus-knoppen staan nog even dicht op elkaar als altijd (MKNOP_GAP
     // ongewijzigd) — deze grote cirkel snijdt dus flink in hun binnenhoeken.
@@ -337,11 +359,35 @@ static void vaarmodus_auto_knop_teken() {
     tft.fillCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R, bg);
     tft.drawCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R, vaarmodus_auto ? C_CYAN : C_SURFACE3);
     tft.drawCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R - 1, vaarmodus_auto ? C_CYAN : C_SURFACE3);
+
     tft.setTextSize(2);
     tft.setTextColor(fg);
     const char* lbl = "AUTO";
-    tft.setCursor(AUTOMODUS_CX - (int)strlen(lbl) * 6, AUTOMODUS_CY - 8);
+    int lbl_x = AUTOMODUS_CX - (int)strlen(lbl) * 6;
+    int lbl_y = AUTOMODUS_CY - 8;
+    tft.setCursor(lbl_x, lbl_y);
     tft.print(lbl);
+
+    if (vaarmodus_auto) {
+        // Rond-draai-icoon: twee ringsegmenten van ~140° tegenover elkaar,
+        // elk met een pijlpunt aan het uiteinde — het woord "AUTO" blijft
+        // in het midden vrij leesbaar.
+        int ring_r = AUTOMODUS_R - 8;
+        tft.fillArc(AUTOMODUS_CX, AUTOMODUS_CY, ring_r, ring_r - 3, 25, 155, fg);
+        tft.fillArc(AUTOMODUS_CX, AUTOMODUS_CY, ring_r, ring_r - 3, 205, 335, fg);
+        _pijlpunt_teken(AUTOMODUS_CX, AUTOMODUS_CY, ring_r - 1, 155, fg);
+        _pijlpunt_teken(AUTOMODUS_CX, AUTOMODUS_CY, ring_r - 1, 335, fg);
+    } else {
+        // Rood kruis dwars door "AUTO" — ondubbelzinnig UIT, los van kleur.
+        // Iets breder/hoger dan de tekst zelf, 3 evenwijdige lijnen per
+        // diagonaal zodat het kruis ook op een groot scherm goed opvalt.
+        int x0 = lbl_x - 6, x1 = lbl_x + (int)strlen(lbl) * 12 + 6;
+        int y0 = lbl_y - 4, y1 = lbl_y + 16 + 4;
+        for (int d = -1; d <= 1; d++) {
+            tft.drawLine(x0, y0 + d, x1, y1 + d, C_RED_BRIGHT);
+            tft.drawLine(x0, y1 + d, x1, y0 + d, C_RED_BRIGHT);
+        }
+    }
 }
 
 static bool vaarmodus_auto_knop_klik(int x, int y) {

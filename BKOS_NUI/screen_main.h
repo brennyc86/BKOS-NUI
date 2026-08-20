@@ -38,14 +38,14 @@
 #define MKNOP_Y1  (CONTENT_Y + 8)
 #define MKNOP_Y2  (MKNOP_Y1 + MKNOP_H + MKNOP_GAP)
 
-// Ronde AUTO-knop op het kruispunt van de 2×2 vaarmodus-grid. Straal 65px op
+// Ronde AUTO-knop op het kruispunt van de 2×2 vaarmodus-grid. Straal 55px op
 // de 7" (S3) — schaalt op andere schermen mee via UI_SCY. Loopt door tot ver
 // in de 4 hoeken van de knoppen (de tussenruimte zelf is klein gebleven);
 // AUTOMODUS_MARGIN is de achtergrond-halo die rondom de knop wordt getekend
 // en zo minstens dat aantal pixels vrije ruimte rond de knop "uitknipt".
 #define AUTOMODUS_CX     (MKNOP_X2 - 4)
 #define AUTOMODUS_CY     (MKNOP_Y2 - MKNOP_GAP / 2)
-#define AUTOMODUS_R      UI_SCY(65)
+#define AUTOMODUS_R      UI_SCY(55)
 #define AUTOMODUS_MARGIN 4
 #define AUTOMODUS_HALO_R (AUTOMODUS_R + AUTOMODUS_MARGIN)
 

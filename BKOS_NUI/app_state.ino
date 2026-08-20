@@ -135,9 +135,12 @@ void state_load() {
     // Voorkom volledig donker scherm door verouderde config-waarde (b.v. opgeslagen terwijl scherm uit was)
     if (tft_helderheid < 10) tft_helderheid = 10;
 
-    // Als vaarmodus niet onthouden wordt: HAVEN + AUTO als standaard
+    // Als vaarmodus niet onthouden wordt: HAVEN + AUTO als standaard, en de
+    // AUTO-schakelaar staat weer uit — "MODUS ONTHOUDEN" bepaalt dus zowel de
+    // laatst gekozen modus als of automatisch wisselen aan mocht blijven.
     if (!onthoud_licht_modus) {
         vaar_modus       = MODE_HAVEN;
         licht_instelling = LICHT_AUTO;
+        vaarmodus_auto   = false;
     }
 }

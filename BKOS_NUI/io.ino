@@ -154,16 +154,16 @@ void io_detect() {
 //
 // Volgorde: 1 cyclus aan-zetten → 1s wachten → 3 cycli op rij los-zetten
 // (DYN_LOSLAAT_CYCLI) → 4s wachten → meten. Meten gebeurt pas op een verse
-// io_cyclus ná het loslaten, zodat we onze eigen drive niet terugmeten.
-// Dit herhaalt zich bij ELK interval, ook als de vorige meting "motor draait"
-// gaf: motor_draait wordt uitsluitend door deze meting gezet (nooit door een
-// losse/passieve io_input[]-lezing), zodat de status altijd binnen één
-// interval zichzelf corrigeert in plaats van te blijven hangen op een oude
-// of onbetrouwbare aflezing.
+// io_cyclus ná het loslaten, zodat we onze eigen drive niet terugmeten. Dit
+// herhaalt zich bij elk interval. Buiten deze sequentie (DYN_RUST) blijft
+// het kanaal continu bewaakt via de gewone hartslag-cycli, met een 3-op-rij-
+// bevestiging tegen spookwaarnemingen — zie io_dynamo_bewaking() verderop.
 #define DYN_PULS_MS       1000UL  // duur van de bekrachtigingspuls
 #define DYN_SETTLE_MS     4000UL  // wachttijd na loslaten vóór de meting
 #define DYN_CYCLUS_MAX    3000UL  // opgeven als de IO-bus geen cyclus afrondt
 #define DYN_LOSLAAT_CYCLI 3       // bevestigende cycli na het loslaten (niet 1)
+#define DYN_KAND_MS       3000UL  // tijd tussen bevestigingsmetingen tijdens bewaking
+#define DYN_KAND_NODIG    3       // aantal gelijke metingen op rij nodig
 
 enum { DYN_RUST, DYN_PULS, DYN_LOSLATEN, DYN_WACHT, DYN_METEN };
 
@@ -178,6 +178,14 @@ static unsigned long dyn_verzoek        = 0;
 static unsigned long dyn_laatste        = 0;
 static byte          dyn_loslaat_teller = 0;  // aantal reeds gedraaide loslaat-cycli
 
+// Idle-bewaking (alleen tijdens DYN_RUST): 3-op-rij-bevestiging tegen
+// spookwaarnemingen. dyn_kand_teller==0 betekent "niets in behandeling".
+static byte          dyn_kand_waarde       = 0;
+static byte          dyn_kand_teller       = 0;
+static unsigned long dyn_kand_volgende     = 0;
+static unsigned long dyn_kand_verzoek      = 0;
+static bool          dyn_kand_cyclus_bezig = false;
+
 // Mag dit kanaal op dit moment door de bekrachtigingspuls hoog gehouden worden?
 // Bewust een pure tijdstoets: ook als de toestandsmachine zou blijven hangen,
 // vervalt de drive vanzelf na DYN_PULS_MS. De puls kan dus nooit blijven staan.
@@ -186,16 +194,28 @@ static bool io_dynamo_drijft(int kanaal) {
     return (millis() - dyn_puls_start < DYN_PULS_MS);
 }
 
-// Is dit het actieve dynamokanaal? Zo ja, dan mag io_cyclus() NOOIT op basis
-// van een ruwe io_input-overgang een ingangsactie/melding afvuren — ook niet
-// buiten de puls-sequentie om. Zonder deze bredere check zou een gewone
-// hartslag-cyclus (elke 30-120s, tussen twee pulsen door) een ongevalideerde,
-// niet-gedebouncede aflezing kunnen oppikken en bv. de vaarmodus laten
-// springen. De enige plek die voor dit kanaal wél een actie/melding afvuurt
-// is DYN_METEN hieronder, en dan uitsluitend op de gedebouncede
-// motor_draait-overgang (één keer per interval, nooit vaker).
-static bool io_dynamo_debounced(int kanaal) {
+// Is dit het actieve dynamokanaal? Zo ja, dan mag io_cyclus() NOOIT op de
+// eerste ruwe io_input-overgang een actie/melding afvuren — niet tijdens de
+// puls-sequentie (dan zien we onze eigen spanning) en ook niet in rust (dan
+// moet eerst io_dynamo_bewaking() de 3-op-rij-bevestiging doorlopen tegen
+// spookwaarnemingen). Alle actie/melding-afvuring voor dit kanaal loopt
+// uitsluitend via _dyn_actie_vuur(), aangeroepen vanuit DYN_METEN of vanuit
+// io_dynamo_bewaking() — nooit vanuit io_cyclus() zelf.
+static bool io_dynamo_bezig(int kanaal) {
     return (dynamo_puls_min > 0 && kanaal == io_dynamo_kanaal());
+}
+
+// Vuurt de geconfigureerde actie/melding voor het dynamokanaal af, en werkt
+// motor_draait bij. Gedeeld door de geplande meting (DYN_METEN) en de
+// idle-bewaking (DYN_KAND), zodat beide dezelfde logica gebruiken.
+static void _dyn_actie_vuur(int kanaal, bool nieuw) {
+    if (nieuw == motor_draait) return;
+    io_actie_uitvoeren(nieuw ? io_actie_aan[kanaal] : io_actie_uit[kanaal],
+                       io_actie_param[kanaal]);
+    if ((nieuw  && (io_alert[kanaal] == IO_ALERT_BIJ_AAN || io_alert[kanaal] == IO_ALERT_BEIDE)) ||
+        (!nieuw && (io_alert[kanaal] == IO_ALERT_BIJ_UIT || io_alert[kanaal] == IO_ALERT_BEIDE)))
+        melding_io_trigger(kanaal, nieuw);
+    motor_draait = nieuw;
 }
 
 // ─── Veiligheid: bepaalt of een kanaal fysiek HOOG mag worden aangestuurd ─────
@@ -240,10 +260,10 @@ void io_cyclus() {
         // Ingang lezen (gewone volgorde)
         bool nieuw = digitalRead(HC_IN);
         if (nieuw != io_input[i]) {
-            // Het dynamokanaal vuurt acties/meldingen uitsluitend gedebounced
-            // vanuit DYN_METEN af (zie io_dynamo_debounced) — nooit hier op een
-            // ruwe, mogelijk onbetrouwbare overgang.
-            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_debounced(i)) {
+            // Het dynamokanaal (io_dynamo_bezig) vuurt hier nooit een actie af:
+            // tijdens de puls-sequentie is dat onze eigen drive, en in rust
+            // moet io_dynamo_bewaking() eerst de 3-op-rij-bevestiging doorlopen.
+            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
                 io_actie_uitvoeren(nieuw ? io_actie_aan[i] : io_actie_uit[i],
                                    io_actie_param[i]);
                 if ((nieuw  && (io_alert[i] == IO_ALERT_BIJ_AAN || io_alert[i] == IO_ALERT_BEIDE)) ||
@@ -295,10 +315,10 @@ void io_cyclus() {
 
         bool nieuw = (c == '1');
         if (nieuw != io_input[i]) {
-            // Het dynamokanaal vuurt acties/meldingen uitsluitend gedebounced
-            // vanuit DYN_METEN af (zie io_dynamo_debounced) — nooit hier op een
-            // ruwe, mogelijk onbetrouwbare overgang.
-            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_debounced(i)) {
+            // Het dynamokanaal (io_dynamo_bezig) vuurt hier nooit een actie af:
+            // tijdens de puls-sequentie is dat onze eigen drive, en in rust
+            // moet io_dynamo_bewaking() eerst de 3-op-rij-bevestiging doorlopen.
+            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
                 io_actie_uitvoeren(
                     nieuw ? io_actie_aan[i] : io_actie_uit[i],
                     io_actie_param[i]);
@@ -495,32 +515,92 @@ bool io_kanaal_input_effectief(int kanaal) {
     return io_input[kanaal];
 }
 
+// Idle-bewaking: buiten de puls-sequentie (alleen tijdens DYN_RUST aangeroepen)
+// blijft dit kanaal continu in de gaten gehouden via de gewone hartslag-cycli
+// (io_input[] wordt sowieso al elke 30-120s ververst), zodat een echte
+// statuswijziging niet hoeft te wachten op het volgende geplande interval.
+// Tegen spookwaarnemingen (ruis op de D+-lijn) wordt een afwijking pas
+// geaccepteerd na DYN_KAND_NODIG (3) metingen op rij die hetzelfde zeggen,
+// elk DYN_KAND_MS (3s) uit elkaar — wijkt een tussentijdse meting af, dan
+// begint de telling gewoon opnieuw met die nieuwe waarde als kandidaat.
+static void io_dynamo_bewaking(int kanaal) {
+    unsigned long nu = millis();
+
+    if (dyn_kand_teller == 0) {
+        // Niets in behandeling: alleen kijken of de (door de gewone hartslag
+        // ververste) io_input inmiddels afwijkt van de laatst bevestigde stand.
+        bool huidig = io_input[kanaal];
+        if (huidig == motor_draait) return;
+        dyn_kand_waarde   = huidig;
+        dyn_kand_teller   = 1;
+        dyn_kand_volgende = nu + DYN_KAND_MS;
+        return;
+    }
+
+    if (!dyn_kand_cyclus_bezig) {
+        if (nu < dyn_kand_volgende) return;
+        dyn_kand_verzoek      = nu;
+        dyn_kand_cyclus_bezig = true;
+        _dyn_cyclus_forceren(kanaal);
+        return;
+    }
+
+    if (!_dyn_cyclus_klaar(dyn_kand_verzoek)) {
+        if (nu - dyn_kand_verzoek > DYN_CYCLUS_MAX) {
+            // Geen cyclus binnengekomen: laat deze poging vallen, probeer opnieuw.
+            dyn_kand_cyclus_bezig = false;
+            dyn_kand_volgende     = nu + DYN_KAND_MS;
+        }
+        return;
+    }
+
+    dyn_kand_cyclus_bezig = false;
+    bool vers = io_input[kanaal];
+    if (vers == dyn_kand_waarde) {
+        dyn_kand_teller++;
+        if (dyn_kand_teller >= DYN_KAND_NODIG) {
+            _dyn_actie_vuur(kanaal, dyn_kand_waarde);   // 3 op rij gelijk: geaccepteerd
+            dyn_kand_teller = 0;
+            return;
+        }
+        dyn_kand_volgende = nu + DYN_KAND_MS;
+    } else {
+        // Afwijkende meting: begin opnieuw met deze nieuwe waarde als kandidaat.
+        dyn_kand_waarde   = vers;
+        dyn_kand_teller   = 1;
+        dyn_kand_volgende = nu + DYN_KAND_MS;
+    }
+}
+
 void io_dynamo_loop() {
     unsigned long nu = millis();
 
     if (dynamo_puls_min == 0) {          // functie uit: nooit pulsen
-        dyn_fase   = DYN_RUST;
-        dyn_kanaal = -1;
+        dyn_fase        = DYN_RUST;
+        dyn_kanaal      = -1;
+        dyn_kand_teller = 0;
         return;
     }
 
     switch (dyn_fase) {
         case DYN_RUST: {
             int k = io_dynamo_kanaal();
-            if (k < 0) { motor_draait = false; return; }
+            if (k < 0) { motor_draait = false; dyn_kand_teller = 0; return; }
 
-            // GEEN passieve io_input[]-aflezing hier: dat kanaal staat de rest
-            // van de tijd niet gegarandeerd hoogohmig/stabiel, dus een losse
-            // lezing buiten de meetsequentie kan blijven "hoog" lijken zonder
-            // dat de dynamo iets levert — motor_draait zou dan nooit meer
-            // terugvallen naar UIT. motor_draait wordt daarom UITSLUITEND
-            // gezet door DYN_METEN, één puls-loslaat-4s-wacht-meet-cyclus
-            // verderop, elke keer opnieuw bij elk interval.
+            // Idle-bewaking blijft actief zolang we niet aan een nieuwe puls
+            // beginnen — reageert op echte veranderingen tussen twee geplande
+            // intervallen door, met een 3-op-rij-bevestiging tegen ruis.
+            io_dynamo_bewaking(k);
+
             if (nu - dyn_laatste < (unsigned long)dynamo_puls_min * 60000UL) return;
 
-            dyn_kanaal     = k;
-            dyn_puls_start = nu;
-            dyn_fase       = DYN_PULS;
+            // Bewaking pauzeren: een eventuele lopende bevestiging is nu
+            // achterhaald, de aankomende puls levert zo meteen een verse,
+            // gevalideerde meting op.
+            dyn_kand_teller = 0;
+            dyn_kanaal      = k;
+            dyn_puls_start  = nu;
+            dyn_fase        = DYN_PULS;
             _dyn_cyclus_forceren(k);
             break;
         }
@@ -571,22 +651,11 @@ void io_dynamo_loop() {
             if (dyn_kanaal != io_dynamo_kanaal()) { dyn_fase = DYN_RUST; dyn_laatste = nu; return; }
 
             // Verse meting, 4s na loslaten: staat er nog spanning, dan levert de
-            // dynamo zelf en draait de motor.
-            {
-                bool nieuw = io_input[dyn_kanaal];
-                if (nieuw != motor_draait) {
-                    // Enige plek die voor dit kanaal een actie/melding afvuurt —
-                    // en dan precies één keer per interval, op de bevestigde
-                    // overgang. Bv. IO_ACTIE_MODUS_MOTOR wisselt de vaarmodus nu
-                    // pas als de puls volledig voorbij is, niet tijdens de puls.
-                    io_actie_uitvoeren(nieuw ? io_actie_aan[dyn_kanaal] : io_actie_uit[dyn_kanaal],
-                                       io_actie_param[dyn_kanaal]);
-                    if ((nieuw  && (io_alert[dyn_kanaal] == IO_ALERT_BIJ_AAN || io_alert[dyn_kanaal] == IO_ALERT_BEIDE)) ||
-                        (!nieuw && (io_alert[dyn_kanaal] == IO_ALERT_BIJ_UIT || io_alert[dyn_kanaal] == IO_ALERT_BEIDE)))
-                        melding_io_trigger(dyn_kanaal, nieuw);
-                }
-                motor_draait = nieuw;
-            }
+            // dynamo zelf en draait de motor. Deze meting is zelf al het
+            // resultaat van de zorgvuldige puls+loslaat+wacht-sequentie, dus
+            // hoeft (in tegenstelling tot de idle-bewaking) niet nog eens
+            // 3-op-rij bevestigd te worden — één directe, gevalideerde meting.
+            _dyn_actie_vuur(dyn_kanaal, io_input[dyn_kanaal]);
             dyn_laatste  = nu;
             dyn_fase     = DYN_RUST;
             break;

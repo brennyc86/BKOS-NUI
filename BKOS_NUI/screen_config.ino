@@ -1362,7 +1362,7 @@ static void cfg_we_teken() {
         tft.fillRoundRect(310, y + 2, 294, 34, 6, obg);
         tft.drawRoundRect(310, y + 2, 294, 34, 6, ontg ? ((ontg && olm) ? oacc : C_SURFACE3) : C_SURFACE3);
         tft.setTextSize(1); tft.setTextColor(oacc);
-        const char* olbl = (ontg && olm) ? "LICHTMODUS AAN" : "LICHTMODUS UIT";
+        const char* olbl = (ontg && olm) ? "MODUS ONTHOUDEN AAN" : "MODUS ONTHOUDEN UIT";
         tft.setCursor(310 + (294 - (int)strlen(olbl) * 6) / 2, y + 2 + (34 - 8) / 2); tft.print(olbl);
     }
     y += 42;

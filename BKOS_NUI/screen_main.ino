@@ -323,19 +323,24 @@ static int vaarmodi_zichtbaar(uint8_t out[4]) {
 // AAN staan ook als de gebruiker handmatig een andere modus kiest — alleen
 // deze knop zelf zet 'm uit. Zie io_actie_uitvoeren() in io.ino.
 static void vaarmodus_auto_knop_teken() {
-    // Achtergrond-halo eerst: knipt de binnenhoeken van de 4 modus-knoppen
-    // rond de cirkel weg, zodat de AUTO-knop met wat lucht eromheen oogt
-    // i.p.v. strak tegen de andere knoppen aan te staan.
+    // De 4 modus-knoppen staan nog even dicht op elkaar als altijd (MKNOP_GAP
+    // ongewijzigd) — deze grote cirkel snijdt dus flink in hun binnenhoeken.
+    // Dat is bewust: eerst een achtergrond-halo (knop + marge) die de hoeken
+    // wegvaagt, dan de knop zelf erbovenop. Zo ontstaat er precies bij het
+    // kruispunt een "gat" met vrije ruimte, zonder de knoppen zelf te
+    // verschuiven. Icoon/tekst van elke knop staan ver genoeg van de hoek af
+    // om nooit geraakt te worden.
     tft.fillCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_HALO_R, C_BG);
 
     uint16_t bg  = vaarmodus_auto ? C_CYAN : C_SURFACE2;
     uint16_t fg  = vaarmodus_auto ? C_TEXT_DARK : C_TEXT_DIM;
     tft.fillCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R, bg);
     tft.drawCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R, vaarmodus_auto ? C_CYAN : C_SURFACE3);
-    tft.setTextSize(1);
+    tft.drawCircle(AUTOMODUS_CX, AUTOMODUS_CY, AUTOMODUS_R - 1, vaarmodus_auto ? C_CYAN : C_SURFACE3);
+    tft.setTextSize(2);
     tft.setTextColor(fg);
     const char* lbl = "AUTO";
-    tft.setCursor(AUTOMODUS_CX - (int)strlen(lbl) * 3, AUTOMODUS_CY - 4);
+    tft.setCursor(AUTOMODUS_CX - (int)strlen(lbl) * 6, AUTOMODUS_CY - 8);
     tft.print(lbl);
 }
 

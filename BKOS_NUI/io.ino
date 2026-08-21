@@ -196,18 +196,19 @@ static bool io_dynamo_drijft(int kanaal) {
 
 // Is dit het actieve dynamokanaal? Zo ja, dan mag io_cyclus() NOOIT op de
 // eerste ruwe io_input-overgang een actie/melding afvuren — niet tijdens de
-// puls-sequentie (dan zien we onze eigen spanning) en ook niet in rust (dan
-// moet eerst io_dynamo_bewaking() de 3-op-rij-bevestiging doorlopen tegen
-// spookwaarnemingen). Alle actie/melding-afvuring voor dit kanaal loopt
-// uitsluitend via _dyn_actie_vuur(), aangeroepen vanuit DYN_METEN of vanuit
-// io_dynamo_bewaking() — nooit vanuit io_cyclus() zelf.
+// puls-sequentie (dan zien we onze eigen spanning, en de meting vlak erna is
+// nog te ruisgevoelig) en ook niet in rust zonder bevestiging (dan moet eerst
+// io_dynamo_bewaking() de 3-op-rij-bevestiging doorlopen tegen spookwaar-
+// nemingen). Alle actie/melding-afvuring voor dit kanaal loopt uitsluitend
+// via _dyn_actie_vuur(), aangeroepen vanuit io_dynamo_bewaking() — nooit
+// vanuit io_cyclus() zelf en niet direct vanuit de puls-sequentie.
 static bool io_dynamo_bezig(int kanaal) {
     return (dynamo_puls_min > 0 && kanaal == io_dynamo_kanaal());
 }
 
 // Vuurt de geconfigureerde actie/melding voor het dynamokanaal af, en werkt
-// motor_draait bij. Gedeeld door de geplande meting (DYN_METEN) en de
-// idle-bewaking (DYN_KAND), zodat beide dezelfde logica gebruiken.
+// motor_draait bij. De status wordt uitsluitend bepaald door de idle-
+// bewaking (DYN_KAND, 3 metingen op rij), niet door de puls-sequentie zelf.
 static void _dyn_actie_vuur(int kanaal, bool nieuw) {
     if (nieuw == motor_draait) return;
     io_actie_uitvoeren(nieuw ? io_actie_aan[kanaal] : io_actie_uit[kanaal],
@@ -660,12 +661,13 @@ void io_dynamo_loop() {
             // hetzelfde **motor-ingangskanaal is.
             if (dyn_kanaal != io_dynamo_kanaal()) { dyn_fase = DYN_RUST; dyn_laatste = nu; return; }
 
-            // Verse meting, 4s na loslaten: staat er nog spanning, dan levert de
-            // dynamo zelf en draait de motor. Deze meting is zelf al het
-            // resultaat van de zorgvuldige puls+loslaat+wacht-sequentie, dus
-            // hoeft (in tegenstelling tot de idle-bewaking) niet nog eens
-            // 3-op-rij bevestigd te worden — één directe, gevalideerde meting.
-            _dyn_actie_vuur(dyn_kanaal, io_input[dyn_kanaal]);
+            // Deze verse meting, 4s na loslaten, bepaalt NIET zelf de status —
+            // vlak na de puls is dit kanaal (D+ lijn) een bekende ruisbron, dus
+            // één enkele meting hier kan net zo goed spookwaarneming zijn. De
+            // puls dient uitsluitend om de dynamo te bekrachtigen; de status
+            // wordt uitsluitend bepaald buiten de puls om, door de gewone
+            // idle-bewaking (3 metingen op rij, elk 3s uit elkaar) die na
+            // terugkeer naar DYN_RUST gewoon verder observeert.
             dyn_laatste  = nu;
             dyn_fase     = DYN_RUST;
             break;

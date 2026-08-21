@@ -322,6 +322,13 @@ static void netwerk_taak(void* param) {
     }
 }
 
+// Blokkerende, synchrone verbindingspoging — geen achtergrondtaak nodig.
+// Gebruikt door het herstelmenu, dat vóór wifi_taak_start() draait.
+bool wifi_verbind_opgeslagen() {
+    _wifi_verbinden_intern();
+    return wifi_verbonden;
+}
+
 // ─── Publieke API ─────────────────────────────────────────────────────────────
 void wifi_taak_start() {
 #if PLATFORM_PICO

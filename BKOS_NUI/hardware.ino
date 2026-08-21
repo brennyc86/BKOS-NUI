@@ -229,6 +229,20 @@ static void _gui_taak(void*) {
 }
 #endif  // PLATFORM_ESP32
 
+static void _splash_teken() {
+    tft.fillScreen(C_BG);
+    tft_logo(TFT_W / 2 - 100, TFT_H / 2 - 50, 1, C_CYAN);
+    tft.setTextSize(2);
+    tft.setTextColor(C_TEXT);
+    tft.setCursor(TFT_W / 2 - 100, TFT_H / 2 + 40);
+    tft.print("BKOS-NUI  ");
+    tft.print(BKOS_NUI_VERSIE);
+    tft.setTextSize(1);
+    tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(TFT_W / 2 - 80, TFT_H / 2 + 62);
+    tft.print("Opstarten...");
+}
+
 void hw_setup() {
     SPIFFS_BEGIN();   // vroeg mounten: tft_setup() leest de scherm-PCLK uit SPIFFS
     tft_setup();
@@ -243,17 +257,17 @@ void hw_setup() {
     // Splash scherm (overgeslagen bij deep sleep wake voor snellere herstart)
     bool splash = !slaap_was_deep_wake();
     if (splash) {
-    tft.fillScreen(C_BG);
-    tft_logo(TFT_W / 2 - 100, TFT_H / 2 - 50, 1, C_CYAN);
-    tft.setTextSize(2);
-    tft.setTextColor(C_TEXT);
-    tft.setCursor(TFT_W / 2 - 100, TFT_H / 2 + 40);
-    tft.print("BKOS-NUI  ");
-    tft.print(BKOS_NUI_VERSIE);
-    tft.setTextSize(1);
-    tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(TFT_W / 2 - 80, TFT_H / 2 + 62);
-    tft.print("Opstarten...");
+        _splash_teken();
+
+        // Herstelmenu: raakt de gebruiker nu het midden van het scherm aan, dan
+        // volgt een keuzemenu (gewoon opstarten / BKOS verwijderen / update
+        // zoeken) met UITSLUITEND scherm+touch+WiFi actief — vóór io_boot(),
+        // app_setup(), net_setup() en de rest, zodat een bug daar dit pad niet
+        // kan blokkeren. Alleen op een echte boot, niet bij deep-sleep wake.
+        if (recovery_check()) {
+            recovery_menu();   // blokkerend; keert alleen terug bij "gewoon opstarten"
+            _splash_teken();   // herstelmenu overschreef het scherm
+        }
     }
 
     info_laden();       // boot naam en eigenaar uit SPIFFS (voor status bar)

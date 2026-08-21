@@ -40,6 +40,7 @@ void wifi_creds_verwijder(int idx);
 void wifi_creds_wis_alles();
 bool wifi_internet_ok();
 
+bool wifi_verbind_opgeslagen();                 // blokkerend: probeert cache + alle opgeslagen netwerken
 void wifi_taak_start();                         // start FreeRTOS background task
 void wifi_ota_zet(bool actief);                 // OTA scherm aan/uit → WiFi beheer
 void wifi_verbind_aanvragen();                  // directe verbinding aanvragen

@@ -109,6 +109,7 @@ static void _gui_taak(void*) {
                         break;
                 }
             }
+            tft_flush(true);   // dubbele buffering (indien actief): volledige hertekening direct tonen
         }
 
         // Nieuwe aanraking: reset verwerkt-vlag + begin lang-druk tracking
@@ -202,6 +203,7 @@ static void _gui_taak(void*) {
                     }
                     }
                 }
+                tft_flush(false);   // dubbele buffering (indien actief): tik-updates snelheidsbegrensd doorzetten
             } else {
                 touch_verwerkt = true;
             }
@@ -226,6 +228,7 @@ static void _gui_taak(void*) {
                     default: break;
                 }
             }
+            tft_flush(false);   // dubbele buffering (indien actief): periodieke updates snelheidsbegrensd doorzetten
         }
 
         vorige_touch = aanraking;

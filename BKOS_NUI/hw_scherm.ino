@@ -44,6 +44,41 @@ void scherm_pclk_set(uint8_t mhz) {
     if (f) { f.print((int)mhz); f.close(); }
 }
 
+// ─── Dubbele buffering instelling (zelfde opslagpatroon als PCLK) ─────────────
+#define DBUF_BESTAND "/bkos_dbuf.txt"
+static int _dbuf_ram = -1;   // -1 = nog niet gelezen, 0/1 = UIT/AAN
+
+bool scherm_dubbele_buffer_get() {
+    if (_dbuf_ram < 0) {
+        _dbuf_ram = 0;   // default UIT
+        if (SPIFFS.exists(DBUF_BESTAND)) {
+            File f = SPIFFS.open(DBUF_BESTAND, "r");
+            if (f) { _dbuf_ram = (f.parseInt() != 0) ? 1 : 0; f.close(); }
+        }
+    }
+    return _dbuf_ram != 0;
+}
+
+void scherm_dubbele_buffer_set(bool aan) {
+    _dbuf_ram = aan ? 1 : 0;
+    File f = SPIFFS.open(DBUF_BESTAND, "w");
+    if (f) { f.print(aan ? 1 : 0); f.close(); }
+}
+
+// Niet-nullptr zodra dubbele buffering daadwerkelijk actief is (kan alsnog UIT
+// blijven t.o.v. de instelling als ps_malloc mislukte — zie tft_setup()).
+static Arduino_Canvas *_tft_canvas = nullptr;
+static unsigned long   _tft_laatste_flush = 0;
+#define TFT_FLUSH_MIN_MS 40   // rate-limit: max ~25 flushes/seconde bij snel opeenvolgende updates
+
+void tft_flush(bool forceer) {
+    if (!_tft_canvas) return;
+    unsigned long nu = millis();
+    if (!forceer && nu - _tft_laatste_flush < TFT_FLUSH_MIN_MS) return;
+    _tft_canvas->flush();
+    _tft_laatste_flush = nu;
+}
+
 void tft_setup() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     // ESP32-S3: RGB panel 800×480
@@ -73,7 +108,14 @@ void tft_setup() {
         0, 210, 30, 16, 0, 22, 13, 23, 1, // sync parameters + pclk_active_neg
         (uint32_t)_pclk_mhz * 1000000UL);  // prefer_speed uit instelling
 #endif
-    tft_p = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
+    Arduino_GFX *_tft_echt = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+    // Dubbele buffering alleen zinvol op het core-2.x-pad (core 3.x lost
+    // dezelfde PSRAM-bus-contentie al op met de bounce buffer hierboven).
+    if (scherm_dubbele_buffer_get())
+        _tft_canvas = new Arduino_Canvas(800, 480, _tft_echt, 0, 0);
+#endif
+    tft_p = _tft_canvas ? (Arduino_GFX*)_tft_canvas : _tft_echt;
 
 #elif PLATFORM_WROOM
     // ILI9341 via HSPI native driver (touch deelt bus via shared_hspi SPIClass, eigen CS)
@@ -102,7 +144,18 @@ void tft_setup() {
 #endif
 
     pinMode(TFT_BL, OUTPUT);
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD && ESP_ARDUINO_VERSION_MAJOR < 3
+    if (!tft_p->begin() && _tft_canvas) {
+        // ps_malloc voor de canvas-buffer mislukte (te weinig PSRAM) — terugvallen
+        // op rechtstreeks tekenen i.p.v. crashen op een lege framebuffer.
+        delete _tft_canvas;
+        _tft_canvas = nullptr;
+        tft_p = _tft_echt;
+        tft_p->begin();
+    }
+#else
     tft_p->begin();
+#endif
     tft_rotatie_toepassen();   // basis-rotatie (tft_gedraaid nog default; opnieuw na state_load)
     tft_helderheid_zet(tft_helderheid);
 }

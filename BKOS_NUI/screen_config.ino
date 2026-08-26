@@ -1472,6 +1472,27 @@ static void cfg_we_teken() {
     }
     y += 44;
 
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+    // DUBBELE BUFFERING (S3 RGB-paneel; experimenteel tegen "trillen" tijdens
+    // verversing — tekent naar een schaduw-buffer i.p.v. rechtstreeks in de
+    // buffer die de RGB-DMA uitleest. Valt terug op UIT als er te weinig PSRAM
+    // is. Werkt na HERSTART)
+    {
+        bool aan = scherm_dubbele_buffer_get();
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("DUBBELE BUFFERING");
+        tft.fillRoundRect(280, y + 4, 110, 32, 5, aan ? C_GREEN : C_SURFACE3);
+        tft.setTextSize(2); tft.setTextColor(aan ? C_BG : C_TEXT);
+        const char* dblbl = aan ? "AAN" : "UIT";
+        tft.setCursor(280 + (110 - (int)strlen(dblbl) * 12) / 2, y + 4 + (32 - 16) / 2);
+        tft.print(dblbl);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(400, y + (40 - 8) / 2); tft.print("experimenteel tegen trillen, na HERSTART");
+    }
+    y += 44;
+#endif
+
     // SCHERM 180° DRAAIEN (beeld + touch; werkt direct, gegarandeerd na herstart)
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
@@ -1751,8 +1772,21 @@ static void cfg_we_run(int x, int y) {
         return;
     }
 
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+    // DUBBELE BUFFERING rij (onder PCLK)
+    int dbuf_y = pclk_y + 44;
+    if (y >= dbuf_y && y < dbuf_y + 40) {
+        if (x >= 280 && x < 390) {
+            scherm_dubbele_buffer_set(!scherm_dubbele_buffer_get());
+            cfg_we_teken();
+        }
+        return;
+    }
+    int draai_y = dbuf_y + 44;
+#else
     // SCHERM 180° draaien rij (onder PCLK)
     int draai_y = pclk_y + 44;
+#endif
     if (y >= draai_y && y < draai_y + 40) {
         if (x >= 280 && x < 390) {
             tft_gedraaid = !tft_gedraaid;

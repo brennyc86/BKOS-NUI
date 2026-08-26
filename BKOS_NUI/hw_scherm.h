@@ -33,6 +33,16 @@ void tft_schermvullen(uint16_t kleur);
 uint8_t scherm_pclk_get();        // opgeslagen PCLK in MHz (default SCHERM_PCLK_DEFAULT)
 void    scherm_pclk_set(uint8_t mhz);  // opslaan (toegepast na herstart)
 
+// ─── Dubbele buffering (S3 RGB paneel op core 2.x; experimenteel) ─────────────
+// Tekent naar een schaduw-buffer (Arduino_Canvas) i.p.v. rechtstreeks in de
+// buffer die de RGB-DMA continu uitleest; tft_flush() zet het resultaat pas
+// in één keer over. Doel: minder zichtbaar "trillen"/tearing tijdens een
+// verversing. Uit als er onvoldoende PSRAM is (valt dan terug op direct
+// tekenen). Werkt na HERSTART; default UIT.
+bool scherm_dubbele_buffer_get();
+void scherm_dubbele_buffer_set(bool aan);
+void tft_flush(bool forceer = false);  // no-op als dubbele buffering uit staat / niet actief is
+
 extern byte bkos_logo_200_75[];
 void tft_logo(int32_t x, int32_t y, int schaal, uint16_t kleur);
 

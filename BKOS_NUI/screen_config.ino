@@ -52,6 +52,7 @@ static unsigned long cfg_kb_sloot = 0;
 static bool cfg_preset_menu     = false;
 static int  cfg_ins_scroll_y    = 0;
 static int  cfg_deelscherm      = 0;  // 0=hoofd, 1=boot, 2=weergave, 3=update
+static int  cfg_we_scroll_y     = 0;  // scroll-offset WEERGAVE & ENERGIE-tabblad
 
 // Wachtwoord-display: alle tekens behalve het laatste als '*'
 static void kb_wachtwoord_print(const char* s) {
@@ -1315,11 +1316,21 @@ static void cfg_boot_teken() {
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 }
 
+// Totale content-hoogte van dit tabblad (som van alle y+= stappen + hoogte van
+// de laatste rij) — nodig voor de scrollbar. Bijwerken als er een rij bijkomt
+// of verdwijnt (zelfde aanpak als PICO_CFG_INS_H hierboven).
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+40)   // + DUBBELE BUFFERING-rij (S3-only)
+#else
+  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+40)
+#endif
+#define CFG_WE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_WE_INHOUD_H - (int)NAV_Y)
+
 static void cfg_we_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
     cfg_sub_header("WEERGAVE & ENERGIE");
     bool ontg = config_ontgrendeld;
-    int y = CFG_SUB_Y0;
+    int y = CFG_SUB_Y0 - cfg_we_scroll_y;
 
     // Kleurpaletten (PIN vereist)
     palette_swatches_teken(y);
@@ -1507,6 +1518,8 @@ static void cfg_we_teken() {
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(400, y + (40 - 8) / 2); tft.print("ondersteboven gemonteerd scherm");
     }
+
+    ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_we_scroll_y, CFG_WE_MAX_SCROLL);
 }
 
 static void cfg_update_teken() {
@@ -1591,6 +1604,7 @@ static void cfg_hoofd_run(int x, int y) {
         if (y >= cy && y < cy + cat_h) {
             if (i < 3) {
                 cfg_deelscherm = i + 1;      // 1=BOOT, 2=WEERGAVE, 3=VERBINDINGEN
+                cfg_we_scroll_y = 0;         // begin bovenaan bij het openen van een tabblad
                 cfg_instellingen_teken();
             } else {
                 pin_stap = 1; pin_invoer[0] = '\0';
@@ -1701,7 +1715,26 @@ static void cfg_we_run(int x, int y) {
         cfg_deelscherm = 0; cfg_instellingen_teken(); return;
     }
 
-    int cy = CFG_SUB_Y0;
+    // Swipe scrollen (vóór klik-detectie) — zelfde patroon als de PICO-variant
+    if (CFG_WE_MAX_SCROLL > 0 && abs(hw_touch_drag_dy) >= 25) {
+        cfg_we_scroll_y = constrain(cfg_we_scroll_y - hw_touch_drag_dy, 0, CFG_WE_MAX_SCROLL);
+        cfg_we_teken();
+        return;
+    }
+    // Scrollbar pijlen (rechts)
+    if (x >= TFT_W - UI_SB_W) {
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0);
+        if (dir == -1 && cfg_we_scroll_y > 0) {
+            cfg_we_scroll_y = max(0, cfg_we_scroll_y - 30);
+            cfg_we_teken();
+        } else if (dir == 1 && cfg_we_scroll_y < CFG_WE_MAX_SCROLL) {
+            cfg_we_scroll_y = min(CFG_WE_MAX_SCROLL, cfg_we_scroll_y + 30);
+            cfg_we_teken();
+        }
+        return;
+    }
+
+    int cy = CFG_SUB_Y0 - cfg_we_scroll_y;
     int pal_y  = cy; cy += 62;
     int ow_y   = cy; cy += 34;
     int fr2_y  = cy; cy += 42;

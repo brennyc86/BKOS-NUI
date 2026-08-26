@@ -67,7 +67,18 @@ void scherm_dubbele_buffer_set(bool aan) {
 
 // Niet-nullptr zodra dubbele buffering daadwerkelijk actief is (kan alsnog UIT
 // blijven t.o.v. de instelling als ps_malloc mislukte — zie tft_setup()).
-static Arduino_Canvas *_tft_canvas = nullptr;
+static Arduino_Canvas *_tft_canvas        = nullptr;
+// Het echte RGB-paneel-object (S3), ongeacht of tft_p ernaar wijst of naar de
+// canvas eromheen — tft_rotatie_toepassen() roteert ALTIJD dit object, nooit
+// de canvas zelf. Reden: Arduino_Canvas (GFX 1.3.7) past _rotation niet toe
+// in zijn writePixel/writeFastHLine-overrides (in tegenstelling tot latere
+// GFX-versies) — draaide je de canvas zelf, dan bleef het beeld onveranderd
+// terwijl de touch-flip (tft_gedraaid, hw_touch.ino) wél omklapte, met een
+// scherm en touch die niet meer overeenkwamen tot gevolg. Arduino_RGB_Display
+// past rotatie WEL correct toe in zijn eigen draw16bitRGBBitmap(), dus door
+// alleen dát object te draaien en de canvas altijd op rotatie 0 te laten,
+// roteert flush() het beeld alsnog correct bij het overzetten.
+static Arduino_GFX     *_tft_echt_display = nullptr;
 static unsigned long   _tft_laatste_flush = 0;
 #define TFT_FLUSH_MIN_MS 40   // rate-limit: max ~25 flushes/seconde bij snel opeenvolgende updates
 
@@ -108,14 +119,14 @@ void tft_setup() {
         0, 210, 30, 16, 0, 22, 13, 23, 1, // sync parameters + pclk_active_neg
         (uint32_t)_pclk_mhz * 1000000UL);  // prefer_speed uit instelling
 #endif
-    Arduino_GFX *_tft_echt = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
+    _tft_echt_display = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 #if ESP_ARDUINO_VERSION_MAJOR < 3
     // Dubbele buffering alleen zinvol op het core-2.x-pad (core 3.x lost
     // dezelfde PSRAM-bus-contentie al op met de bounce buffer hierboven).
     if (scherm_dubbele_buffer_get())
-        _tft_canvas = new Arduino_Canvas(800, 480, _tft_echt, 0, 0);
+        _tft_canvas = new Arduino_Canvas(800, 480, _tft_echt_display, 0, 0);
 #endif
-    tft_p = _tft_canvas ? (Arduino_GFX*)_tft_canvas : _tft_echt;
+    tft_p = _tft_canvas ? (Arduino_GFX*)_tft_canvas : _tft_echt_display;
 
 #elif PLATFORM_WROOM
     // ILI9341 via HSPI native driver (touch deelt bus via shared_hspi SPIClass, eigen CS)
@@ -150,7 +161,7 @@ void tft_setup() {
         // op rechtstreeks tekenen i.p.v. crashen op een lege framebuffer.
         delete _tft_canvas;
         _tft_canvas = nullptr;
-        tft_p = _tft_echt;
+        tft_p = _tft_echt_display;
         tft_p->begin();
     }
 #else
@@ -167,7 +178,10 @@ void tft_rotatie_toepassen() {
 #else
     int basis = 0;
 #endif
-    tft_p->setRotation((basis + (tft_gedraaid ? 2 : 0)) % 4);
+    // Draai ALTIJD het echte paneel-object (_tft_echt_display), nooit de canvas
+    // eromheen — zie de toelichting bij _tft_echt_display hierboven.
+    Arduino_GFX *doel = _tft_echt_display ? _tft_echt_display : tft_p;
+    doel->setRotation((basis + (tft_gedraaid ? 2 : 0)) % 4);
 }
 
 void tft_helderheid_zet(int pct) {

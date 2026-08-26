@@ -21,6 +21,7 @@
 #define SCREEN_MELDING    14 // Meldingen (CallMeBot Signal/WhatsApp)
 #define SCREEN_PANEEL     15 // Configureerbare PANEEL-knoppen
 #define SCREEN_BERICHT    16 // Bericht aan eigenaar (vaste keuzeknoppen)
+#define SCREEN_TIJD       17 // Tijd instellen (klok in statusbalk aantikken)
 
 // Vaarmodi
 #define MODE_HAVEN   0

@@ -21,6 +21,7 @@
 #include "screen_paneel.h"
 #include "bericht.h"
 #include "screen_bericht.h"
+#include "screen_tijd.h"
 #include "recovery.h"
 
 void hw_setup();

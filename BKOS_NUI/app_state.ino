@@ -3,6 +3,7 @@
 #include "io.h"
 #include "platform_fs.h"
 #include "slaap.h"
+#include "wifi.h"
 
 // Forward declarations voor OTA state (gedeclareerd in ota.ino)
 extern bool ota_beta_kanal;
@@ -60,6 +61,8 @@ void state_save() {
     f.printf("slaap_i=%lu\n", (unsigned long)slaap_interval);
     f.printf("slaap_a=%d\n",  (int)slaap_attiny);
     f.printf("dynpuls=%d\n",  (int)dynamo_puls_min);
+    f.printf("tzidx=%d\n",    (int)tijdzone_idx);
+    f.printf("tzuur=%d\n",    tijdzone_vast_uur);
     f.close();
 }
 
@@ -79,6 +82,8 @@ void state_load() {
     onthoud_licht_modus   = false;
     wifi_open_auto        = false;
     dynamo_puls_min       = 0;
+    tijdzone_idx          = 0;   // Midden-Europa (CET/CEST)
+    tijdzone_vast_uur     = 0;
     for (int i = 0; i < 6; i++) dev_lokaal[i] = false;
 
     if (!SPIFFS.exists(CONFIG_BESTAND)) return;
@@ -129,8 +134,12 @@ void state_load() {
         if (key == "slaap_i")  slaap_interval = max((uint32_t)10, (uint32_t)val.toInt());
         if (key == "slaap_a")  slaap_attiny   = (val.toInt() != 0);
         if (key == "dynpuls")  dynamo_puls_min = (byte)constrain(val.toInt(), 0, 30);
+        if (key == "tzidx")    tijdzone_idx      = (byte)constrain(val.toInt(), 0, TIJDZONE_PRESET_CNT - 1);
+        if (key == "tzuur")    tijdzone_vast_uur = constrain(val.toInt(), -12, 14);
     }
     f.close();
+
+    tijdzone_toepassen();
 
     // Voorkom volledig donker scherm door verouderde config-waarde (b.v. opgeslagen terwijl scherm uit was)
     if (tft_helderheid < 10) tft_helderheid = 10;

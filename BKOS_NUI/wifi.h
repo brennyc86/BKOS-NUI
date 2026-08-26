@@ -18,6 +18,21 @@
 
 #define WIFI_MAX_CREDS   5     // maximaal aantal opgeslagen netwerken
 
+// ─── Tijdzones ────────────────────────────────────────────────────────────
+// POSIX TZ-strings inclusief automatische zomertijdregel. TIJDZONE_CUSTOM_IDX
+// is geen vaste preset: de tz-string wordt dynamisch opgebouwd uit
+// tijdzone_vast_uur (vaste UTC-offset, geen zomertijd — voor gebieden buiten
+// de 3 Europese presets).
+#define TIJDZONE_PRESET_CNT 4
+#define TIJDZONE_CUSTOM_IDX 3
+struct TijdzoneOptie { const char* naam; const char* tz; };
+extern const TijdzoneOptie tijdzone_presets[TIJDZONE_PRESET_CNT];
+extern byte tijdzone_idx;       // welke preset, of TIJDZONE_CUSTOM_IDX
+extern int  tijdzone_vast_uur;  // alleen relevant bij TIJDZONE_CUSTOM_IDX: UTC±N
+
+const char* tijdzone_tz_actief();   // actieve POSIX TZ-string (preset of custom)
+void        tijdzone_toepassen();   // setenv+tzset op basis van bovenstaande, ververst klok_tijd
+
 extern volatile bool wifi_verbonden;
 extern bool wifi_aangesloten;
 extern volatile bool wifi_ota_modus;   // true = OTA scherm actief, WiFi aanhouden
@@ -31,6 +46,12 @@ void wifi_reset();
 bool wifi_verbind(const char* ssid, const char* wachtwoord);
 void ntp_setup();
 void ntp_loop();
+void ntp_start_sync();              // start (opnieuw) de NTP-sync met de actieve tijdzone
+bool ntp_synced();                  // true zodra de tijd ooit succesvol gesynchroniseerd is
+void ntp_forceer_hersync();         // forceert een nieuwe sync-poging (negeert ntp_synced())
+bool ntp_wacht_op_sync(uint32_t timeout_ms);  // blokkerend pollen tot sync lukt of timeout
+bool tijd_handmatig_zetten(int jaar, int maand, int dag, int uur, int minuut);
+void wifi_ontkoppelen();            // ontkoppelt direct (respecteert wifi_ota_modus)
 
 // Meervoudige credential opslag
 int  wifi_creds_cnt();

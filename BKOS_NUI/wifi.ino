@@ -16,6 +16,34 @@ bool wifi_open_auto = false;     // auto-verbinden met open netwerken (tracking)
 
 static bool   ntp_gesync      = false;
 static unsigned long ntp_last_sync = 0;
+static bool   ntp_herhaal_gevraagd = false;  // forceert een nieuwe sync-poging, ongeacht ntp_gesync
+
+// ─── Tijdzones ────────────────────────────────────────────────────────────
+const TijdzoneOptie tijdzone_presets[TIJDZONE_PRESET_CNT] = {
+    {"Midden-Europa (CET/CEST)", "CET-1CEST,M3.5.0,M10.5.0/3"},   // NL/BE/DUI/FRA/...
+    {"West-Europa (GMT/BST)",    "GMT0BST,M3.5.0/1,M10.5.0"},     // VK/Ierland/Portugal
+    {"Oost-Europa (EET/EEST)",   "EET-2EEST,M3.5.0/3,M10.5.0/4"}, // Finland/Griekenland/Baltics
+    {"Vaste tijd (geen DST)",    "UTC0"},                          // TIJDZONE_CUSTOM_IDX: zie tijdzone_tz_actief()
+};
+byte tijdzone_idx      = 0;
+int  tijdzone_vast_uur = 0;
+
+const char* tijdzone_tz_actief() {
+    if (tijdzone_idx == TIJDZONE_CUSTOM_IDX) {
+        // POSIX TZ-teken is omgekeerd t.o.v. UTC±N: UTC+2 → "UTC-2"
+        static char buf[16];
+        snprintf(buf, sizeof(buf), "UTC%d", -tijdzone_vast_uur);
+        return buf;
+    }
+    if (tijdzone_idx >= TIJDZONE_PRESET_CNT) return tijdzone_presets[0].tz;
+    return tijdzone_presets[tijdzone_idx].tz;
+}
+
+void tijdzone_toepassen() {
+    setenv("TZ", tijdzone_tz_actief(), 1);
+    tzset();
+    ntp_last_sync = 0;  // eerstvolgende ntp_loop() leest de klok meteen opnieuw af
+}
 
 // ─── Meervoudige credential opslag ───────────────────────────────────────────
 // Preferences namespace "wifi_creds": cnt + s0..s4 + p0..p4
@@ -256,7 +284,7 @@ static void netwerk_taak(void* param) {
 
     _wifi_verbinden_intern();
     if (wifi_verbonden) {
-        configTime(NTP_GMT_OFFSET, NTP_DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
+        ntp_start_sync();
         for (int _ntp_i = 0; _ntp_i < 40 && time(nullptr) < 1000000UL; _ntp_i++)
             vTaskDelay(500 / portTICK_PERIOD_MS);
         if (!meteo_geladen) meteo_locatie_ophalen();
@@ -333,8 +361,7 @@ bool wifi_verbind_opgeslagen() {
 void wifi_taak_start() {
 #if PLATFORM_PICO
     _wifi_verbinden_intern();
-    if (wifi_verbonden)
-        configTime(NTP_GMT_OFFSET, NTP_DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
+    if (wifi_verbonden) ntp_start_sync();
 #else
     PLATFORM_TASK_CREATE(
         netwerk_taak,
@@ -387,7 +414,7 @@ bool wifi_verbind(const char* ssid, const char* wachtwoord) {
     wifi_verbonden = (WiFi.status() == WL_CONNECTED);
     if (wifi_verbonden) {
         wifi_creds_toevoegen(ssid, wachtwoord);  // opslaan in meervoudige lijst
-        ntp_gesync = false;
+        ntp_forceer_hersync();  // nieuw netwerk kan een andere/betere NTP-route hebben
     }
     return wifi_verbonden;
 }
@@ -425,11 +452,102 @@ bool wifi_check() {
 
 void ntp_setup() {
     if (!wifi_verbonden) return;
+    ntp_start_sync();
+}
+
+// Start (opnieuw) de NTP-sync met de actieve tijdzone. Platform-afhankelijk:
+// op ESP32 combineert configTzTime() de POSIX TZ-regel (incl. automatische
+// zomertijd) met de NTP-fetch in één call; arduino-pico kent configTzTime()
+// niet (WiFiNTP.h's configTime-macro heeft bovendien een geheel andere
+// betekenis dan de ESP32-versie), dus daar blijft de bestaande configTime()
+// staan en wordt alleen de TZ-omgevingsvariabele apart gezet.
+void ntp_start_sync() {
+#if PLATFORM_ESP32
+    configTzTime(tijdzone_tz_actief(), NTP_SERVER1, NTP_SERVER2);
+#else
     configTime(NTP_GMT_OFFSET, NTP_DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
-    ntp_gesync = false;
+    tijdzone_toepassen();
+#endif
+}
+
+bool ntp_synced() { return ntp_gesync; }
+
+void ntp_forceer_hersync() {
+    ntp_gesync             = false;
+    ntp_herhaal_gevraagd   = true;
+    if (wifi_verbonden) { ntp_start_sync(); ntp_herhaal_gevraagd = false; }
+}
+
+// Blokkerend pollen tot getLocalTime() lukt of de timeout verstrijkt — voor
+// UI-acties (TIJD OPHALEN) die synchroon op een resultaat wachten.
+bool ntp_wacht_op_sync(uint32_t timeout_ms) {
+    unsigned long t0 = millis();
+    struct tm t;
+    while (millis() - t0 < timeout_ms) {
+#if PLATFORM_ESP32
+        if (getLocalTime(&t, 0)) {
+#else
+        time_t nu = time(nullptr);
+        if (nu > 1000000000UL && localtime_r(&nu, &t)) {
+#endif
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
+            klok_tijd  = String(buf);
+            ntp_gesync = true;
+            return true;
+        }
+        delay(200);
+    }
+    return false;
+}
+
+// Tijd rechtstreeks zetten (geen NTP) — voor handmatige invoer als ophalen
+// niet lukt. jaar/maand/dag/uur/minuut zijn LOKALE tijd; mktime() rekent op
+// basis van de al toegepaste tijdzone (tijdzone_toepassen()) om naar UTC.
+bool tijd_handmatig_zetten(int jaar, int maand, int dag, int uur, int minuut) {
+    tijdzone_toepassen();
+    struct tm t = {0};
+    t.tm_year  = jaar - 1900;
+    t.tm_mon   = maand - 1;
+    t.tm_mday  = dag;
+    t.tm_hour  = uur;
+    t.tm_min   = minuut;
+    t.tm_sec   = 0;
+    t.tm_isdst = -1;   // laat de C-bibliotheek de DST-status uit de TZ-regel afleiden
+    time_t epoch = mktime(&t);
+    if (epoch < 0) return false;
+    struct timeval tv = { (long)epoch, 0 };
+    settimeofday(&tv, nullptr);
+    ntp_gesync = true;   // telt als "bekend" — een volgende WiFi-fetch mag dit weer overschrijven
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%02d:%02d", uur, minuut);
+    klok_tijd = String(buf);
+    if (net_modus != NET_STANDALONE) net_tijd_sturen();
+    return true;
+}
+
+void wifi_ontkoppelen() {
+    if (!wifi_ota_modus) _wifi_verbreken_intern();
 }
 
 void ntp_loop() {
+    // Zelfherstellend: als WiFi verbinding krijgt terwijl de tijd nog niet
+    // gesynchroniseerd is, start de SNTP-client hier alsnog. Zonder dit blijft
+    // de klok voorgoed op "--:--" staan wanneer de allereerste boot-poging
+    // (netwerk_taak) mislukte (bv. router na stroomstoring trager dan de
+    // ESP32) — configTime()/configTzTime() werd daarna nergens opnieuw
+    // aangeroepen, ook niet bij een latere automatische of handmatige
+    // herverbinding. ntp_herhaal_gevraagd bedient daarnaast een expliciete
+    // "opnieuw ophalen"-actie vanuit de UI, ook als de tijd al bekend was.
+    static bool _ntp_vorige_verbonden = false;
+    bool moet_starten = wifi_verbonden &&
+                        ((!_ntp_vorige_verbonden && !ntp_gesync) || ntp_herhaal_gevraagd);
+    if (moet_starten) {
+        ntp_start_sync();
+        ntp_herhaal_gevraagd = false;
+    }
+    _ntp_vorige_verbonden = wifi_verbonden;
+
     if (millis() - ntp_last_sync < 30000) return;
     ntp_last_sync = millis();
     struct tm t;
@@ -453,8 +571,7 @@ void ntp_vanaf_net(time_t epoch) {
 #if PLATFORM_ESP32
     if (ntp_gesync) return;
     if (epoch < 1700000000UL) return;
-    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
-    tzset();
+    tijdzone_toepassen();
     struct timeval tv = { (long)epoch, 0 };
     settimeofday(&tv, nullptr);
     ntp_gesync = true;

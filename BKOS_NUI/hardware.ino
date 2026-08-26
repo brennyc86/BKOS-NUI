@@ -101,6 +101,7 @@ static void _gui_taak(void*) {
                     case SCREEN_PANEEL:     screen_paneel_teken();      break;
                     case SCREEN_BERICHT:    screen_bericht_teken();     break;
                     case SCREEN_BRUG:       screen_brug_teken();        break;
+                    case SCREEN_TIJD:       screen_tijd_teken();        break;
                     case SCREEN_LUA_APP:
                         lua_forceer_app = -1;
                         actief_scherm   = SCREEN_APPS;
@@ -171,6 +172,12 @@ static void _gui_taak(void*) {
                                 lua_app_run(app_idx, ts_x, ts_y, true);
                             }
                         }
+                    } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
+                               actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
+                               actief_scherm != SCREEN_TIJD) {
+                        // Klok in de statusbalk aantikken → tijd-instelmenu (elk scherm, behalve
+                        // WIFI/INFO die deze hoek al voor hun eigen "< TERUG"-knop gebruiken)
+                        tijd_scherm_openen();
                     } else {
                         hw_touch_drag_dy = ts_y - touch_start_y;
                     switch (actief_scherm) {
@@ -190,6 +197,7 @@ static void _gui_taak(void*) {
                             case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
                             case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                                     case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
+                            case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
                         }
                     }
                     }
@@ -444,6 +452,7 @@ void hw_loop() {
                 case SCREEN_PANEEL:     screen_paneel_teken();      break;
                 case SCREEN_BERICHT:    screen_bericht_teken();     break;
                 case SCREEN_BRUG:       screen_brug_teken();        break;
+                case SCREEN_TIJD:       screen_tijd_teken();        break;
                 case SCREEN_LUA_APP:
                     lua_forceer_app = -1;
                     actief_scherm   = SCREEN_APPS;
@@ -511,6 +520,10 @@ void hw_loop() {
                             lua_app_run(app_idx, ts_x, ts_y, true);
                         }
                     }
+                } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
+                           actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
+                           actief_scherm != SCREEN_TIJD) {
+                    tijd_scherm_openen();
                 } else {
                     hw_touch_drag_dy = ts_y - touch_start_y;
                 switch (actief_scherm) {
@@ -530,6 +543,7 @@ void hw_loop() {
                         case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
                         case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
+                        case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
                     }
                 }
                 }

@@ -2,6 +2,8 @@
 #include "hw_touch.h"
 #include "ui_colors.h"
 #include "platform_fs.h"   // SPIFFS voor de instelbare scherm-PCLK
+#include "app_state.h"     // vaar_modus/MODE_* voor tft_helderheid_auto_loop()
+#include "meteo.h"         // meteo_zonsopgang/-ondergang/-is_dag
 
 Arduino_GFX *tft_p = nullptr;  // aangemaakt in tft_setup()
 
@@ -13,6 +15,11 @@ long          scherm_touched    = 0;
 bool          scherm_net_gewekt = false;
 bool          tft_bijna_uit     = false;
 unsigned long tft_dim_ms        = 0;
+
+bool          helderheid_auto   = true;
+int           held_dag          = 100;
+int           held_nacht_anker  = 50;
+int           held_nacht_varend = 25;
 
 
 byte bkos_logo_200_75[] = { 80, 40, 80, 0, 70, 60, 70, 0, 63, 74, 63, 0, 57, 86, 57, 0, 52, 20, 31, 45, 52, 0, 47, 21, 35, 50, 47, 0, 43, 23, 37, 54, 43, 0, 40, 24, 39, 31, 11, 15, 40, 0, 37, 25, 41, 30, 11, 19, 37, 0, 34, 27, 42, 29, 11, 20, 37, 0, 31, 29, 43, 28, 11, 24, 34, 0, 29, 30, 44, 27, 11, 28, 31, 0, 27, 32, 14, 22, 8, 26, 11, 31, 29, 0, 24, 34, 12, 25, 8, 25, 11, 34, 27, 0, 22, 36, 10, 27, 8, 24, 11, 38, 24, 0, 20, 37, 10, 28, 8, 23, 11, 41, 22, 0, 18, 39, 9, 29, 8, 22, 11, 44, 20, 0, 17, 39, 10, 29, 8, 21, 11, 47, 18, 0, 15, 41, 9, 30, 8, 20, 11, 50, 16, 0, 14, 42, 8, 31, 8, 19, 11, 52, 15, 0, 12, 43, 9, 31, 8, 18, 11, 55, 13, 0, 11, 44, 9, 31, 8, 17, 11, 57, 12, 0, 10, 45, 9, 31, 8, 16, 11, 59, 11, 0, 9, 46, 9, 31, 8, 15, 11, 61, 10, 0, 8, 48, 8, 31, 8, 14, 11, 63, 9, 0, 7, 49, 8, 31, 8, 13, 11, 65, 8, 0, 6, 50, 9, 30, 8, 12, 11, 67, 7, 0, 5, 51, 9, 30, 8, 11, 11, 69, 6, 0, 4, 53, 9, 29, 8, 10, 11, 71, 5, 0, 3, 54, 10, 28, 8, 9, 11, 73, 4, 0, 3, 55, 10, 27, 8, 8, 11, 74, 4, 0, 2, 57, 11, 25, 8, 7, 11, 76, 3, 0, 2, 58, 12, 23, 8, 6, 11, 77, 3, 0, 1, 60, 42, 5, 11, 79, 2, 0, 1, 61, 41, 4, 13, 78, 2, 0, 1, 63, 39, 3, 15, 77, 2, 0, 0, 63, 40, 2, 17, 77, 1, 0, 0, 61, 42, 1, 18, 77, 1, 0, 0, 59, 64, 76, 1, 0, 0, 58, 55, 2, 9, 75, 1, 0, 0, 57, 55, 3, 10, 74, 1, 0, 1, 55, 13, 26, 16, 5, 9, 73, 2, 0, 1, 54, 11, 29, 15, 7, 9, 72, 2, 0, 1, 53, 11, 30, 14, 8, 10, 71, 2, 0, 2, 52, 10, 31, 13, 10, 10, 69, 3, 0, 2, 51, 11, 31, 12, 12, 9, 69, 3, 0, 3, 50, 10, 32, 11, 14, 9, 67, 4, 0, 3, 49, 11, 32, 10, 15, 10, 66, 4, 0, 4, 48, 10, 33, 9, 17, 9, 65, 5, 0, 5, 47, 10, 33, 8, 19, 9, 63, 6, 0, 6, 46, 10, 33, 8, 19, 10, 61, 7, 0, 7, 45, 10, 33, 8, 20, 9, 60, 8, 0, 8, 44, 10, 33, 8, 21, 9, 58, 9, 0, 9, 43, 10, 33, 8, 21, 10, 56, 10, 0, 10, 42, 11, 32, 8, 22, 10, 54, 11, 0, 12, 40, 11, 32, 8, 22, 10, 52, 13, 0, 13, 40, 10, 32, 8, 23, 10, 50, 14, 0, 15, 38, 11, 31, 8, 23, 11, 47, 16, 0, 16, 38, 11, 30, 8, 24, 10, 46, 17, 0, 18, 36, 12, 29, 8, 24, 11, 43, 19, 0, 20, 35, 13, 27, 8, 25, 11, 40, 21, 0, 22, 33, 15, 25, 8, 26, 10, 38, 23, 0, 25, 31, 47, 26, 11, 34, 26, 0, 27, 30, 46, 27, 11, 31, 28, 0, 29, 29, 45, 28, 10, 29, 30, 0, 32, 27, 44, 28, 11, 25, 33, 0, 35, 25, 43, 29, 11, 21, 36, 0, 38, 23, 42, 30, 10, 18, 39, 0, 41, 22, 40, 30, 11, 14, 42, 0, 45, 21, 37, 31, 11, 9, 46, 0, 50, 20, 33, 46, 51, 0, 55, 89, 56, 0, 61, 77, 62, 0, 68, 63, 69, 0, 78, 43, 79, 0 };
@@ -187,6 +194,55 @@ void tft_rotatie_toepassen() {
 void tft_helderheid_zet(int pct) {
     // Pas ALLEEN de PWM aan — tft_helderheid bewaart de gebruikersinstelling
     analogWrite(TFT_BL, map(constrain(pct, 0, 100), 0, 100, 0, 255));
+}
+
+static int _sec_sinds_middernacht(time_t t) {
+    struct tm tmv;
+    localtime_r(&t, &tmv);
+    return tmv.tm_hour * 3600 + tmv.tm_min * 60 + tmv.tm_sec;
+}
+
+// Berekent de doel-helderheid op basis van dagdeel + vaarmodus en past die toe.
+// Curve (in "seconden sinds middernacht", zon-tijden uit meteo_zonsop-/ondergang):
+//   - volledig DAG   vanaf zonsopgang+1u  t/m  zonsondergang-1u
+//   - volledig NACHT vanaf zonsondergang+30min  t/m  zonsopgang-30min (volgende ochtend)
+//   - daartussen (schemer) glijdt de waarde lineair met de tijd mee — omdat
+//     deze functie periodiek opnieuw rekent tegen de dan geldende klok, is die
+//     overgang vanzelf in kleine stapjes, zonder aparte smoothing-logica nodig.
+// De nacht-waarde zelf (anker vs. varend) wordt elke aanroep vers bepaald, dus
+// een vaarmodus-wissel werkt direct door — bewust GEEN gladstrijken daarvan.
+void tft_helderheid_auto_loop() {
+    if (!helderheid_auto) return;
+
+    bool navigeert = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR);
+    int  nacht_doel = navigeert ? held_nacht_varend : held_nacht_anker;
+
+    int doel;
+    if (meteo_zonsopgang > 0 && meteo_zonsondergang > 0) {
+        int nu_s   = _sec_sinds_middernacht(time(nullptr));
+        int sr_s   = _sec_sinds_middernacht(meteo_zonsopgang);
+        int ss_s   = _sec_sinds_middernacht(meteo_zonsondergang);
+        int dag0   = sr_s + 60 * 60;   // 1u na zonsopgang: volledig dag
+        int dag1   = ss_s - 60 * 60;   // 1u voor zonsondergang: einde volledig dag
+        int nacht0 = ss_s + 30 * 60;   // 30min na zonsondergang: volledig nacht
+        int nacht1 = sr_s - 30 * 60;   // 30min voor zonsopgang: einde volledig nacht
+
+        float factor;   // 1 = volledig dag, 0 = volledig nacht
+        if (nu_s >= dag0 && nu_s <= dag1) factor = 1.0f;
+        else if (nu_s >= nacht0 || nu_s <= nacht1) factor = 0.0f;
+        else if (nu_s < dag0) factor = (float)(nu_s - nacht1) / (float)(dag0 - nacht1);      // ochtendschemer
+        else                  factor = 1.0f - (float)(nu_s - dag1) / (float)(nacht0 - dag1); // avondschemer
+
+        doel = (int)roundf(nacht_doel + factor * (held_dag - nacht_doel));
+    } else {
+        // Geen zontijden bekend (nog geen weer opgehaald) — alleen dag/nacht, geen schemer
+        doel = meteo_is_dag ? held_dag : nacht_doel;
+    }
+
+    doel = constrain(doel, 5, 100);
+    if (doel == tft_helderheid) return;
+    tft_helderheid = doel;
+    if (tft_actief) tft_helderheid_zet(tft_helderheid);   // niet overschrijven tijdens idle-dimmen
 }
 
 void tft_schermvullen(uint16_t kleur) {

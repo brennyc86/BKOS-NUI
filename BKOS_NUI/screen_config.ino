@@ -125,7 +125,7 @@ static const char* cfg_chips_r2[] = {
 #if SCREEN_SMALL
 
 // Totale virtuele inhoudshoogte instellingen (som van alle y += stappen + 26px laatste rij)
-#define PICO_CFG_INS_H  (282 + (PLATFORM_ESP32 ? 90 : 0))  // +90 voor slaap-rijen (ESP32)
+#define PICO_CFG_INS_H  (282 + 120 + (PLATFORM_ESP32 ? 90 : 0))  // +120 voor HELDERHEID AUTO-rijen, +90 voor slaap-rijen (ESP32)
 static int pico_cfg_scroll_y = 0;  // pixels omhoog verschoven
 
 // PIN overlay voor 240×320
@@ -404,6 +404,20 @@ bool pico_screen_config_toetsenbord_run(int x, int y) {
     return false;
 }
 
+// Compacte helderheid-slider (label+waarde+-/+) voor de PICO-instellingenlijst.
+static void _held_slider_pico_teken(int y, const char* label, int waarde) {
+    tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
+    tft.fillRoundRect(8, y + 2, 26, 22, 4, C_SURFACE2);
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    tft.setCursor(15, y + 3); tft.print("-");
+    char buf[16]; snprintf(buf, sizeof(buf), "%s %d%%", label, waarde);
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    tft.setCursor(40, y + (26 - 8) / 2); tft.print(buf);
+    tft.fillRoundRect(TFT_W - 8 - 26, y + 2, 26, 22, 4, C_SURFACE2);
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    tft.setCursor(TFT_W - 8 - 26 + 7, y + 3); tft.print("+");
+}
+
 static void pico_cfg_instellingen_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, CONTENT_H, C_BG);
     bool ontg = config_ontgrendeld;
@@ -426,6 +440,18 @@ static void pico_cfg_instellingen_teken() {
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(152, y + (32 - 8) / 2); tft.print(tbuf);
     y += 36;
+
+    // Helderheid AUTO (dagdeel + vaarmodus)
+    tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(8, y + (26 - 8) / 2); tft.print("H.AUTO:");
+    tft.setTextColor(helderheid_auto ? C_GREEN : C_TEXT_DIM);
+    tft.setCursor(60, y + (26 - 8) / 2); tft.print(helderheid_auto ? "AAN" : "UIT");
+    y += 30;
+
+    _held_slider_pico_teken(y, "DAG",     held_dag);          y += 30;
+    _held_slider_pico_teken(y, "NACHT-A", held_nacht_anker);  y += 30;
+    _held_slider_pico_teken(y, "NACHT-V", held_nacht_varend); y += 30;
 
     // WiFi + Ontgrendelen
     ui_knop(4, y, 130, 26, "WIFI >", C_SURFACE, C_CYAN);
@@ -659,6 +685,33 @@ static void pico_cfg_instellingen_run(int x, int y) {
         return;
     }
     y0 += 36;
+
+    // Helderheid AUTO toggle
+    if (y >= y0 && y < y0 + 26) {
+        helderheid_auto = !helderheid_auto;
+        state_save(); pico_cfg_instellingen_teken(); return;
+    }
+    y0 += 30;
+    // 3 helderheid-sliders (zelfde -/+ hitzones als _held_slider_pico_teken tekent)
+    if (y >= y0 && y < y0 + 26) {
+        if      (x < 8 + 26) { held_dag = max(5, held_dag - 5); state_save(); pico_cfg_instellingen_teken(); }
+        else if (x >= TFT_W - 8 - 26) { held_dag = min(100, held_dag + 5); state_save(); pico_cfg_instellingen_teken(); }
+        return;
+    }
+    y0 += 30;
+    if (y >= y0 && y < y0 + 26) {
+        if      (x < 8 + 26) { held_nacht_anker = max(5, held_nacht_anker - 5); state_save(); pico_cfg_instellingen_teken(); }
+        else if (x >= TFT_W - 8 - 26) { held_nacht_anker = min(100, held_nacht_anker + 5); state_save(); pico_cfg_instellingen_teken(); }
+        return;
+    }
+    y0 += 30;
+    if (y >= y0 && y < y0 + 26) {
+        if      (x < 8 + 26) { held_nacht_varend = max(5, held_nacht_varend - 5); state_save(); pico_cfg_instellingen_teken(); }
+        else if (x >= TFT_W - 8 - 26) { held_nacht_varend = min(100, held_nacht_varend + 5); state_save(); pico_cfg_instellingen_teken(); }
+        return;
+    }
+    y0 += 30;
+
     if (y >= y0 && y < y0 + 26) {
         if (x < 138) { actief_scherm = SCREEN_WIFI; scherm_bouwen = true; }
         else {
@@ -1320,11 +1373,27 @@ static void cfg_boot_teken() {
 // de laatste rij) — nodig voor de scrollbar. Bijwerken als er een rij bijkomt
 // of verdwijnt (zelfde aanpak als PICO_CFG_INS_H hierboven).
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
-  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+40)   // + DUBBELE BUFFERING-rij (S3-only)
+  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+44+40)   // + DUBBELE BUFFERING (S3-only) + HELDERHEID AUTO-rijen
 #else
-  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+40)
+  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+40)
 #endif
 #define CFG_WE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_WE_INHOUD_H - (int)NAV_Y)
+
+// Eén rij van een HELDERHEID-slider (label + waarde + -/+); voor de 3
+// dag/nacht-niveaus in de auto-helderheidscurve.
+static void _held_slider_teken(int y, const char* label, int waarde) {
+    tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(18, y + (40 - 8) / 2); tft.print(label);
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    char pb[8]; snprintf(pb, sizeof(pb), "%d%%", waarde);
+    tft.setCursor(150, y + (40 - 16) / 2); tft.print(pb);
+    tft.fillRoundRect(280, y + 4, 48, 32, 5, C_SURFACE3);
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    tft.setCursor(280 + 19, y + 4 + (32 - 16) / 2); tft.print("-");
+    tft.fillRoundRect(334, y + 4, 48, 32, 5, C_SURFACE3);
+    tft.setCursor(334 + 19, y + 4 + (32 - 16) / 2); tft.print("+");
+}
 
 static void cfg_we_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
@@ -1518,6 +1587,27 @@ static void cfg_we_teken() {
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(400, y + (40 - 8) / 2); tft.print("ondersteboven gemonteerd scherm");
     }
+    y += 44;
+
+    // HELDERHEID AUTO (dagdeel + vaarmodus; zie tft_helderheid_auto_loop())
+    {
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("HELDERHEID AUTO");
+        bool aan = helderheid_auto;
+        tft.fillRoundRect(280, y + 4, 110, 32, 5, aan ? C_GREEN : C_SURFACE3);
+        tft.setTextSize(2); tft.setTextColor(aan ? C_BG : C_TEXT);
+        const char* halbl = aan ? "AAN" : "UIT";
+        tft.setCursor(280 + (110 - (int)strlen(halbl) * 12) / 2, y + 4 + (32 - 16) / 2);
+        tft.print(halbl);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(400, y + (40 - 8) / 2); tft.print("volgt dag/nacht + varen, glijdt geleidelijk mee");
+    }
+    y += 44;
+
+    _held_slider_teken(y, "OVERDAG",        held_dag);          y += 44;
+    _held_slider_teken(y, "NACHT (ANKER)",  held_nacht_anker);   y += 44;
+    _held_slider_teken(y, "NACHT (VAREND)", held_nacht_varend);
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_we_scroll_y, CFG_WE_MAX_SCROLL);
 }
@@ -1827,6 +1917,36 @@ static void cfg_we_run(int x, int y) {
             tft_rotatie_toepassen();   // beeld draaien (touch volgt automatisch)
             scherm_bouwen = true;      // volledige herteken in nieuwe oriëntatie
         }
+        return;
+    }
+
+    // HELDERHEID AUTO toggle
+    int hauto_y = draai_y + 44;
+    if (y >= hauto_y && y < hauto_y + 40) {
+        if (x >= 280 && x < 390) {
+            helderheid_auto = !helderheid_auto;
+            state_save(); cfg_we_teken();
+        }
+        return;
+    }
+
+    // 3 helderheid-sliders (zelfde -/+ hitzones als _held_slider_teken tekent)
+    int hdag_y = hauto_y + 44;
+    int hna_y  = hdag_y + 44;
+    int hnv_y  = hna_y + 44;
+    if (y >= hdag_y && y < hdag_y + 40) {
+        if      (x >= 280 && x < 328) { held_dag = max(5, held_dag - 5); state_save(); cfg_we_teken(); }
+        else if (x >= 334 && x < 382) { held_dag = min(100, held_dag + 5); state_save(); cfg_we_teken(); }
+        return;
+    }
+    if (y >= hna_y && y < hna_y + 40) {
+        if      (x >= 280 && x < 328) { held_nacht_anker = max(5, held_nacht_anker - 5); state_save(); cfg_we_teken(); }
+        else if (x >= 334 && x < 382) { held_nacht_anker = min(100, held_nacht_anker + 5); state_save(); cfg_we_teken(); }
+        return;
+    }
+    if (y >= hnv_y && y < hnv_y + 40) {
+        if      (x >= 280 && x < 328) { held_nacht_varend = max(5, held_nacht_varend - 5); state_save(); cfg_we_teken(); }
+        else if (x >= 334 && x < 382) { held_nacht_varend = min(100, held_nacht_varend + 5); state_save(); cfg_we_teken(); }
         return;
     }
 }

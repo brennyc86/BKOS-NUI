@@ -4,6 +4,7 @@
 #include "platform_fs.h"
 #include "slaap.h"
 #include "wifi.h"
+#include "hw_scherm.h"
 
 // Forward declarations voor OTA state (gedeclareerd in ota.ino)
 extern bool ota_beta_kanal;
@@ -63,6 +64,10 @@ void state_save() {
     f.printf("dynpuls=%d\n",  (int)dynamo_puls_min);
     f.printf("tzidx=%d\n",    (int)tijdzone_idx);
     f.printf("tzuur=%d\n",    tijdzone_vast_uur);
+    f.printf("held_auto=%d\n", (int)helderheid_auto);
+    f.printf("held_dag=%d\n",  held_dag);
+    f.printf("held_na=%d\n",   held_nacht_anker);
+    f.printf("held_nv=%d\n",   held_nacht_varend);
     f.close();
 }
 
@@ -84,6 +89,10 @@ void state_load() {
     dynamo_puls_min       = 0;
     tijdzone_idx          = 0;   // Midden-Europa (CET/CEST)
     tijdzone_vast_uur     = 0;
+    helderheid_auto       = true;
+    held_dag              = 100;
+    held_nacht_anker      = 50;
+    held_nacht_varend     = 25;
     for (int i = 0; i < 6; i++) dev_lokaal[i] = false;
 
     if (!SPIFFS.exists(CONFIG_BESTAND)) return;
@@ -136,6 +145,10 @@ void state_load() {
         if (key == "dynpuls")  dynamo_puls_min = (byte)constrain(val.toInt(), 0, 30);
         if (key == "tzidx")    tijdzone_idx      = (byte)constrain(val.toInt(), 0, TIJDZONE_PRESET_CNT - 1);
         if (key == "tzuur")    tijdzone_vast_uur = constrain(val.toInt(), -12, 14);
+        if (key == "held_auto") helderheid_auto   = (val.toInt() != 0);
+        if (key == "held_dag")  held_dag          = constrain(val.toInt(), 5, 100);
+        if (key == "held_na")   held_nacht_anker  = constrain(val.toInt(), 5, 100);
+        if (key == "held_nv")   held_nacht_varend = constrain(val.toInt(), 5, 100);
     }
     f.close();
 

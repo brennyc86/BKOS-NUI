@@ -43,6 +43,18 @@ bool scherm_dubbele_buffer_get();
 void scherm_dubbele_buffer_set(bool aan);
 void tft_flush(bool forceer = false);  // no-op als dubbele buffering uit staat / niet actief is
 
+// ─── Automatische helderheid (dagdeel + vaarmodus) ────────────────────────
+// Helderheid glijdt geleidelijk tussen held_dag en de actieve nacht-waarde
+// (held_nacht_anker of held_nacht_varend, afhankelijk van vaar_modus) via de
+// zonsop-/ondergangstijden — zie tft_helderheid_auto_loop() voor de curve.
+// De sprong tussen "varend" en "niet varend" gaat wél direct (geen fade),
+// alleen de dag/nacht-overgang zelf verloopt geleidelijk.
+extern bool helderheid_auto;      // AAN: helderheid volgt dagdeel+vaarmodus; UIT: alleen handmatige slider
+extern int  held_dag;             // 5-100%, standaard 100 (volledig overdag)
+extern int  held_nacht_anker;     // 5-100%, standaard 50  (nacht, niet varend)
+extern int  held_nacht_varend;    // 5-100%, standaard 25  (nacht, varend: zeilen/motor)
+void tft_helderheid_auto_loop();  // periodiek aanroepen; no-op als helderheid_auto uit staat
+
 extern byte bkos_logo_200_75[];
 void tft_logo(int32_t x, int32_t y, int schaal, uint16_t kleur);
 

@@ -393,6 +393,13 @@ void hw_loop() {
         if (licht_instelling == LICHT_AUTO) io_verlichting_update();
     }
 
+    // Periodieke helderheid-update voor dag/nacht + vaarmodus (no-op als uit)
+    static unsigned long held_auto_ms = 0;
+    if (millis() - held_auto_ms >= 5000) {
+        held_auto_ms = millis();
+        tft_helderheid_auto_loop();
+    }
+
     // Energie-besparende slaapstand (alleen als scherm volledig uit)
     slaap_loop();
 
@@ -586,6 +593,12 @@ void hw_loop() {
     if (millis() - licht_auto_ms >= 60000) {
         licht_auto_ms = millis();
         if (licht_instelling == LICHT_AUTO) io_verlichting_update();
+    }
+
+    static unsigned long held_auto_ms = 0;
+    if (millis() - held_auto_ms >= 5000) {
+        held_auto_ms = millis();
+        tft_helderheid_auto_loop();
     }
 
     static int vorig_scherm = -1;

@@ -252,6 +252,11 @@ static void _splash_teken() {
     tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(TFT_W / 2 - 80, TFT_H / 2 + 62);
     tft.print("Opstarten...");
+    // Draait hier nog vóór de GUI-taak bestaat (die normaal flusht) — zonder
+    // dit blijft de splash (en alles wat recovery_check()/recovery_menu()
+    // daarna tekenen) onzichtbaar in de schaduw-buffer als dubbele buffering
+    // aan staat, tot de GUI-taak 'm straks met het hoofdscherm overschrijft.
+    tft_flush(true);
 }
 
 void hw_setup() {
@@ -270,11 +275,12 @@ void hw_setup() {
     if (splash) {
         _splash_teken();
 
-        // Herstelmenu: raakt de gebruiker nu het midden van het scherm aan, dan
-        // volgt een keuzemenu (gewoon opstarten / BKOS verwijderen / update
-        // zoeken) met UITSLUITEND scherm+touch+WiFi actief — vóór io_boot(),
-        // app_setup(), net_setup() en de rest, zodat een bug daar dit pad niet
-        // kan blokkeren. Alleen op een echte boot, niet bij deep-sleep wake.
+        // Herstelmenu: het opstartlogo blijft nu 2s zichtbaar (RC_VENSTER_MS);
+        // tikt de gebruiker er in die tijd ergens op, dan volgt een keuzemenu
+        // (gewoon opstarten / BKOS verwijderen / update zoeken) met UITSLUITEND
+        // scherm+touch+WiFi actief — vóór io_boot(), app_setup(), net_setup()
+        // en de rest, zodat een bug daar dit pad niet kan blokkeren. Alleen op
+        // een echte boot, niet bij deep-sleep wake.
         if (recovery_check()) {
             recovery_menu();   // blokkerend; keert alleen terug bij "gewoon opstarten"
             _splash_teken();   // herstelmenu overschreef het scherm

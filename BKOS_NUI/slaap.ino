@@ -16,8 +16,14 @@ volatile bool slaap_actief   = false;
 #include "esp_sleep.h"
 #include "esp_system.h"
 
-// RTC geheugen blijft behouden bij deep sleep (niet bij gewone herstart)
-RTC_DATA_ATTR static bool _rtc_deep_wake = false;
+// BEWUST geen RTC_DATA_ATTR: esp_reset_reason() is zelf al elke boot betrouwbaar
+// opvraagbaar (ESP_RST_DEEPSLEEP alleen bij een echte deep-sleep wake). Met
+// RTC_DATA_ATTR bleef deze vlag op true "plakken" over elke volgende ZACHTE
+// herstart heen (OTA-herstart, watchdog, reset-knop — het RTC-domein verliest
+// dan geen stroom) zodra het apparaat ooit ÉÉN keer uit deep sleep ontwaakte:
+// splash én herstelmenu (die er direct achter zit) bleven daarna permanent
+// overgeslagen, ook na een gewone koude opstart via OTA-update.
+static bool _rtc_deep_wake = false;
 
 // Touch IRQ GPIO als wake source (XPT2046 TIRQ = LOW bij aanraking)
 // Gebruik een aparte vlag — GPIO_NUM_* zijn enum-waarden, geen preprocessor-constanten.
@@ -60,9 +66,8 @@ static void _scherm_wekken() {
 
 void slaap_setup() {
 #if PLATFORM_ESP32
-    if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
-        _rtc_deep_wake = true;
-    }
+    // Onvoorwaardelijk (her)bepalen — nooit laten "plakken" op een oude boot.
+    _rtc_deep_wake = (esp_reset_reason() == ESP_RST_DEEPSLEEP);
 #endif
 }
 

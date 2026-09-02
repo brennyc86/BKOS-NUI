@@ -394,6 +394,11 @@ bool ota_download_toepassen(String url) {
     // Lege voortgangsbalk tekenen
     int bx = 50, by = 160, bw = TFT_W - 100, bh = 36;
     tft.drawRoundRect(bx, by, bw, bh, 6, C_SURFACE2);
+    // Deze hele download-lus kan buiten de normale GUI-taak om draaien (bv.
+    // vanuit recovery.ino, vóór de GUI-taak bestaat) — zonder expliciete
+    // flush blijft de voortgang onzichtbaar in de schaduw-buffer als dubbele
+    // buffering aan staat.
+    tft_flush(true);
 
     WiFiClient* stream = http.getStreamPtr();
     size_t written = 0;
@@ -435,6 +440,7 @@ bool ota_download_toepassen(String url) {
                 char pb[24];
                 snprintf(pb, sizeof(pb), "%d%%  %d / %d KB", pct, (int)(written/1024), len/1024);
                 tft.print(pb);
+                tft_flush(false);   // snelheidsbegrensd; percentage verandert toch niet vaker
             }
         } else {
             int kb_nu = (int)(written / 1024);
@@ -445,6 +451,7 @@ bool ota_download_toepassen(String url) {
                 tft.setCursor(bx, by + bh + 8);
                 char pb[24]; snprintf(pb, sizeof(pb), "%d KB ontvangen...", kb_nu);
                 tft.print(pb);
+                tft_flush(false);
             }
         }
         yield();
@@ -458,6 +465,7 @@ bool ota_download_toepassen(String url) {
     tft.fillRect(bx, by + bh + 8, 300, 20, C_BG);
     tft.setTextSize(2); tft.setTextColor(C_GREEN);
     tft.setCursor(bx, by + bh + 8); tft.print("100%  Klaar! Herstarten...");
+    tft_flush(true);
     delay(1200);
     PLATFORM_REBOOT();
     return true;

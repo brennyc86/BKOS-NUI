@@ -930,7 +930,9 @@ bool pin_overlay_run(int x, int y) {
                     tft.fillRoundRect(bkx + 2, bky + 2, PICO_PIN_KW - 4, PICO_PIN_KH - 4, 4, C_CYAN);
                     tft.setTextSize(2); tft.setTextColor(C_TEXT_DARK);
                     tft.setCursor(bkx + (PICO_PIN_KW - 12) / 2, bky + (PICO_PIN_KH - 16) / 2);
-                    tft.print(krows[r][k]); delay(60);
+                    tft.print(krows[r][k]);
+                    tft_flush(true);
+                    while (ts_touched()) delay(15);   // ingedrukte-kleur blijft tot loslaten
                     int len = strlen(pin_invoer);
                     pin_invoer[len] = krows[r][k]; pin_invoer[len+1] = '\0';
                     pico_pin_overlay_teken(); return false;
@@ -944,7 +946,9 @@ bool pin_overlay_run(int x, int y) {
         if (x >= kx && x < del_x && strlen(pin_invoer) < 4) {
             tft.fillRoundRect(kx + 2, ky4 + 2, PICO_PIN_KW * 2 + PICO_PIN_KGAP - 4, PICO_PIN_KH - 4, 4, C_CYAN);
             tft.setTextSize(2); tft.setTextColor(C_TEXT_DARK);
-            tft.setCursor(kx + (PICO_PIN_KW - 6) / 2, ky4 + (PICO_PIN_KH - 16) / 2); tft.print("0"); delay(60);
+            tft.setCursor(kx + (PICO_PIN_KW - 6) / 2, ky4 + (PICO_PIN_KH - 16) / 2); tft.print("0");
+            tft_flush(true);
+            while (ts_touched()) delay(15);
             int len = strlen(pin_invoer); pin_invoer[len]='0'; pin_invoer[len+1]='\0';
             pico_pin_overlay_teken(); return false;
         }
@@ -978,7 +982,9 @@ bool pin_overlay_run(int x, int y) {
                     tft.fillRoundRect(bkx + 4, bky + 4, PIN_KW - 8, PIN_KH - 8, 6, C_CYAN);
                     tft.setTextSize(3); tft.setTextColor(C_TEXT_DARK);
                     tft.setCursor(bkx + (PIN_KW - 18) / 2, bky + (PIN_KH - 24) / 2);
-                    tft.print(krows[r][k]); delay(60);
+                    tft.print(krows[r][k]);
+                    tft_flush(true);
+                    while (ts_touched()) delay(15);   // ingedrukte-kleur blijft tot loslaten
                     int len = strlen(pin_invoer);
                     pin_invoer[len] = krows[r][k]; pin_invoer[len + 1] = '\0';
                     pin_overlay_teken(); return false;
@@ -992,7 +998,9 @@ bool pin_overlay_run(int x, int y) {
         if (x >= kx && x < del_x && strlen(pin_invoer) < 4) {  // "0"
             tft.fillRoundRect(kx + 4, ky4 + 4, PIN_KW * 2 + PIN_KGAP - 8, PIN_KH - 8, 6, C_CYAN);
             tft.setTextSize(3); tft.setTextColor(C_TEXT_DARK);
-            tft.setCursor(kx + PIN_KW - 9, ky4 + (PIN_KH - 24) / 2); tft.print("0"); delay(60);
+            tft.setCursor(kx + PIN_KW - 9, ky4 + (PIN_KH - 24) / 2); tft.print("0");
+            tft_flush(true);
+            while (ts_touched()) delay(15);
             int len = strlen(pin_invoer);
             pin_invoer[len] = '0'; pin_invoer[len + 1] = '\0';
             pin_overlay_teken(); return false;

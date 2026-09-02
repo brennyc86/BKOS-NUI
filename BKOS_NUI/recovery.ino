@@ -44,6 +44,39 @@ static void _rc_layout() {
     _rc_bw = TFT_W - 2 * _rc_mx;
 }
 
+// ─── Gedeelde, doorlopende touch-debounce voor het hele herstelmenu ───────
+// Elke wacht-functie hieronder gebruikte voorheen zijn EIGEN lokale
+// "vorige"-status, die bij elke nieuwe aanroep weer op false begon. Bleef
+// een vinger van de vorige knop nog aangeraakt op het moment dat het
+// volgende scherm verscheen (heel gewoon bij een fysieke tik), dan zag de
+// eerstvolgende wacht-functie meteen touched=true met vorige=false —
+// diezelfde aanhoudende aanraking telde dus meteen weer als een nieuwe,
+// ongedebouncede tik op het nieuwe scherm, vaak met net-iets-andere/nog
+// instabiele coördinaten. Vandaar dat het herstelmenu "doorschoot" of
+// verkeerde knoppen leek te raken. Deze status is nu GLOBAAL (overleeft
+// scherm-overgangen): een volgende tik telt pas weer zodra het scherm
+// minstens RC_DEBOUNCE_MS ononderbroken losgelaten is geweest.
+#define RC_DEBOUNCE_MS 300UL
+static bool          _rc_touch_vorige   = false;
+static unsigned long _rc_losgelaten_ms  = 0;
+static bool          _rc_klaar_voor_tik = true;
+
+static bool _rc_tik_gedebounced() {
+    bool nu = ts_touched();
+    if (!nu) {
+        if (_rc_touch_vorige) _rc_losgelaten_ms = millis();  // moment van loslaten
+        if (!_rc_klaar_voor_tik && millis() - _rc_losgelaten_ms >= RC_DEBOUNCE_MS)
+            _rc_klaar_voor_tik = true;
+    }
+    bool stijgende_flank = nu && !_rc_touch_vorige;
+    _rc_touch_vorige = nu;
+    if (stijgende_flank && _rc_klaar_voor_tik) {
+        _rc_klaar_voor_tik = false;   // pas weer een tik toestaan na de volgende 300ms-loslating
+        return true;
+    }
+    return false;
+}
+
 // recovery.ino draait volledig vóór de GUI-taak bestaat (die normaal na elke
 // tekening flusht) — _rc_titel()/_rc_regel() flushen daarom zelf, anders
 // blijft dit hele scherm onzichtbaar in de schaduw-buffer als dubbele
@@ -66,17 +99,14 @@ static void _rc_regel(int rij, const char* t, uint16_t kleur, uint8_t grootte = 
 // Wacht op een touch-DOWN binnen één van 'n' knoppen die allemaal dezelfde
 // breedte/hoogte hebben en onder elkaar staan vanaf y0, met RC_BTN_GAP ertussen.
 static int _rc_wacht_knop(int y0, int h, int n) {
-    bool vorige = false;
     for (;;) {
-        bool nu = ts_touched();
-        if (nu && !vorige) {
+        if (_rc_tik_gedebounced()) {
             for (int i = 0; i < n; i++) {
                 int y = y0 + i * (h + RC_BTN_GAP);
                 if (ts_x >= _rc_mx && ts_x < _rc_mx + _rc_bw && ts_y >= y && ts_y < y + h)
                     return i;
             }
         }
-        vorige = nu;
         delay(15);
     }
 }
@@ -85,10 +115,8 @@ static int _rc_wacht_knop(int y0, int h, int n) {
 // tussenruimte) óf binnen de losse knop op (extra_y, extra_h). Retourneert
 // 0..n-1 voor een rij, n voor de extra knop.
 static int _rc_wacht_lijst(int y0, int h, int n, int extra_y, int extra_h) {
-    bool vorige = false;
     for (;;) {
-        bool nu = ts_touched();
-        if (nu && !vorige) {
+        if (_rc_tik_gedebounced()) {
             if (ts_x >= _rc_mx && ts_x < _rc_mx + _rc_bw && ts_y >= extra_y && ts_y < extra_y + extra_h)
                 return n;
             for (int i = 0; i < n; i++) {
@@ -97,7 +125,6 @@ static int _rc_wacht_lijst(int y0, int h, int n, int extra_y, int extra_h) {
                     return i;
             }
         }
-        vorige = nu;
         delay(15);
     }
 }
@@ -135,9 +162,14 @@ bool recovery_check() {
     ui_tekst_midden(0, TFT_H - UI_SCY(20), TFT_W, "Tik op het logo voor het herstelmenu", C_TEXT_DIM, 1);
     tft_flush(true);
 
+    // _rc_tik_gedebounced() i.p.v. losse ts_touched(): elke aanraking hier
+    // telt meteen (er is nog geen eerdere status), maar zo staat de gedeelde
+    // debounce-status meteen goed voor recovery_menu() erna — anders zou
+    // dezelfde vinger die deze tik veroorzaakte op het eerste menu-scherm
+    // meteen weer als een (nog niet losgelaten) tik meetellen.
     unsigned long t0 = millis();
     while (millis() - t0 < RC_VENSTER_MS) {
-        if (ts_touched()) return true;
+        if (_rc_tik_gedebounced()) return true;
         delay(15);
     }
     return false;

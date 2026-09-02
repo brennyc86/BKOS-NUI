@@ -232,6 +232,8 @@ static void _tijd_menu_run(int x, int y) {
 // ─── PIN-invoer (eigen, kleine numerieke pad — voor handmatig-overschrijven
 // en tijdzone wijzigen; ophalen via WiFi en handmatig instellen als de tijd
 // nog nooit bekend was, vereisen bewust GEEN pincode) ─────────────────────
+static const char* _tp_toetsen[12] = {"1","2","3","4","5","6","7","8","9","ANN","0","OK"};
+
 static void _tijd_pin_teken() {
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
     tft.setCursor(TR_X, CONTENT_Y + UI_SCY(16));
@@ -251,14 +253,13 @@ static void _tijd_pin_teken() {
         tft.print(_tijd_pin_fout);
     }
 
-    static const char* toetsen[12] = {"1","2","3","4","5","6","7","8","9","ANN","0","OK"};
     for (int i = 0; i < 12; i++) {
         int col = i % 3, row = i / 3;
         int kx = TP_X0 + col * (TP_KW + TP_GAPX);
         int ky = TP_Y0 + row * (TP_KH + TP_GAPY);
         uint16_t bg = (i == 11) ? C_CYAN : C_SURFACE2;
         uint16_t fg = (i == 11) ? C_BG   : C_TEXT;
-        ui_knop(kx, ky, TP_KW, TP_KH, toetsen[i], bg, fg);
+        ui_knop(kx, ky, TP_KW, TP_KH, _tp_toetsen[i], bg, fg);
     }
 }
 
@@ -267,9 +268,20 @@ static void _tijd_pin_run(int x, int y) {
     int col = (x - TP_X0) / (TP_KW + TP_GAPX);
     int row = (y - TP_Y0) / (TP_KH + TP_GAPY);
     if (col < 0 || col > 2 || row < 0 || row > 3) return;
-    if (x >= TP_X0 + col * (TP_KW + TP_GAPX) + TP_KW) return;
-    if (y >= TP_Y0 + row * (TP_KH + TP_GAPY) + TP_KH) return;
+    int kx = TP_X0 + col * (TP_KW + TP_GAPX);
+    int ky = TP_Y0 + row * (TP_KH + TP_GAPY);
+    if (x >= kx + TP_KW) return;
+    if (y >= ky + TP_KH) return;
     int i = row * 3 + col;
+
+    // Ingedrukte-kleur zolang de vinger op deze toets blijft — laat zien voor
+    // welke toets de aanraking geregistreerd wordt, ook bij een langere druk
+    // (i.p.v. een vast flitsje). Expliciete flush: deze functie draait in de
+    // normale GUI-taak, dus zonder dit blijft de gemarkeerde toets onzichtbaar
+    // in de schaduw-buffer zolang dubbele buffering aan staat.
+    ui_knop(kx, ky, TP_KW, TP_KH, _tp_toetsen[i], C_CYAN, C_BG);
+    tft_flush(true);
+    while (ts_touched()) delay(15);
 
     if (i == 9) {   // ANNULEREN
         _tijd_stap = TIJD_ST_MENU;

@@ -159,14 +159,22 @@ static bool _rc_bevestig(const char* titel, const char* regel1, const char* rege
 bool recovery_check() {
     _rc_layout();
 
+    // Als er al een aanraking "vasthangt" op het moment dat dit scherm start
+    // (bv. een vinger die nog op het scherm rust vlak na een herstart vanuit
+    // een andere firmware, zoals direct na op "INSTALLEREN" tikken in
+    // BKOS-blanco), mag dat NIET meteen als een bewuste tik op het nieuwe
+    // logo tellen — anders opent het herstelmenu zonder dat iemand het ooit
+    // bewust aantikte, en een volgende willekeurige tik kan dan per ongeluk
+    // BKOS VERWIJDEREN raken (voelt dan aan alsof "BKOS-NUI installeren" in
+    // werkelijkheid blanco terugzet). Zaai de gedeelde debounce-status
+    // daarom eerst met de ACTUELE aanraakstand, zodat een al vasthangende
+    // aanraking als "nog vast" gezien wordt i.p.v. als nieuw.
+    _rc_touch_vorige   = ts_touched();
+    _rc_klaar_voor_tik = !_rc_touch_vorige;
+
     ui_tekst_midden(0, TFT_H - UI_SCY(20), TFT_W, "Tik op het logo voor het herstelmenu", C_TEXT_DIM, 1);
     tft_flush(true);
 
-    // _rc_tik_gedebounced() i.p.v. losse ts_touched(): elke aanraking hier
-    // telt meteen (er is nog geen eerdere status), maar zo staat de gedeelde
-    // debounce-status meteen goed voor recovery_menu() erna — anders zou
-    // dezelfde vinger die deze tik veroorzaakte op het eerste menu-scherm
-    // meteen weer als een (nog niet losgelaten) tik meetellen.
     unsigned long t0 = millis();
     while (millis() - t0 < RC_VENSTER_MS) {
         if (_rc_tik_gedebounced()) return true;

@@ -29,6 +29,14 @@ void  io_verlichting_update();
 void  io_zekering_check();
 byte  io_apparaat_staat3(const char* prefix);  // 0=all off, 1=mix, 2=all on
 void  io_apparaat_toggle(const char* prefix);
+// Herkent de virtuele lampgroep-schakelnaam "**IL_<N>" (N=1..99, geen kleur);
+// 0 = geen match. Gebruikt door io_apparaat_toggle/staat3 en (voor gepaarde
+// slaves) de master-kant van NET_MSG_IO_NAAM in bkos_net.ino.
+int   io_il_lamp_nr(const char* naam);
+// Geeft het lampnummer terug als dit kanaal een genummerde **IL_wit<N>/
+// **IL_rood<N>-uitgang is (welke kleur maakt niet uit), anders 0. Voor het
+// LAMPEN-instellingenscherm (bestaande genummerde kanalen opsporen).
+int   io_il_kanaal_lamp_nr(int kanaal);
 void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
 void  io_attiny_slaap(bool aan);   // ATtiny slaap/wake commando via UART
 int         io_zichtbaar();

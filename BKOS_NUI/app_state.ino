@@ -15,6 +15,7 @@ bool  scherm_bouwen    = true;
 byte  vaar_modus       = MODE_HAVEN;
 bool  vaarmodus_auto   = false;
 byte  licht_instelling = LICHT_UIT;
+byte  interieur_modus  = INTERIEUR_AUTO;
 bool  ota_push_actief       = false;
 bool  updaten               = false;
 bool  ota_auto_update       = false;
@@ -44,6 +45,7 @@ void state_save() {
     f.printf("modus=%d\n",   (int)vaar_modus);
     f.printf("modus_auto=%d\n", (int)vaarmodus_auto);
     f.printf("licht=%d\n",   (int)licht_instelling);
+    f.printf("intmodus=%d\n",(int)interieur_modus);
     f.printf("helderh=%d\n", tft_helderheid);
     f.printf("draai=%d\n",   tft_gedraaid ? 1 : 0);
     f.printf("timer=%ld\n",  scherm_timer);
@@ -81,6 +83,7 @@ void state_load() {
     vaar_modus            = MODE_HAVEN;
     vaarmodus_auto        = false;
     licht_instelling      = LICHT_AUTO;
+    interieur_modus       = INTERIEUR_AUTO;
     tft_helderheid        = 75;
     tft_gedraaid          = false;
     scherm_timer          = 30;
@@ -120,6 +123,7 @@ void state_load() {
         if (key == "modus")      vaar_modus       = (byte)val.toInt();
         if (key == "modus_auto") vaarmodus_auto   = (val.toInt() != 0);
         if (key == "licht")   licht_instelling  = (byte)val.toInt();
+        if (key == "intmodus") interieur_modus  = (byte)constrain(val.toInt(), 0, 3);
         if (key == "helderh") tft_helderheid    = (int)val.toInt();
         if (key == "draai")   tft_gedraaid      = (val.toInt() != 0);
         if (key == "timer")   scherm_timer      = val.toInt();

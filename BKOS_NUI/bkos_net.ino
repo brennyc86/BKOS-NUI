@@ -3,6 +3,7 @@
 #include "screen_info.h"  // info_boot_naam(), info_sync_verwerken(), net_info_sync_sturen()
 #include "io.h"           // io_zichtbaar, io_naam_is, io_apparaat_toggle
 #include "hw_io.h"        // io_aparaten_cnt, io_kanalen_cnt
+#include "lamp.h"         // lamp_aan[] — virtuele "**IL_<N>"-lampgroepen (zie io_il_lamp_nr)
 #include "app_manager.h"  // apps[], apps_cnt, app_master_lijst_verwerken
 #include "wifi.h"         // ntp_vanaf_net()
 
@@ -522,6 +523,17 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         uint8_t     staat      = pkt.data[0];
         uint8_t     match_type = pkt.data[1];  // 0=exact, 1=prefix
         const char* naam       = (const char*)&pkt.data[2];
+
+        // Virtuele lampgroep-schakelnaam ("**IL_<N>") — geen fysiek kanaal,
+        // zie io_apparaat_toggle()/io_apparaat_staat3() in io.ino.
+        int lamp_nr = io_il_lamp_nr(naam);
+        if (lamp_nr > 0) {
+            if (staat == NET_IO_TOGGLE) lamp_aan[lamp_nr] = !lamp_aan[lamp_nr];
+            else                        lamp_aan[lamp_nr] = (staat == IO_AAN);
+            io_verlichting_update();
+            break;
+        }
+
         int n = io_zichtbaar();
         for (int k = 0; k < n && k < MAX_IO_KANALEN; k++) {
             bool match = (match_type == 1)

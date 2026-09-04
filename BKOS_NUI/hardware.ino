@@ -99,6 +99,7 @@ static void _gui_taak(void*) {
                     case SCREEN_NETWERK:    screen_netwerk_teken();     break;
                     case SCREEN_MELDING:    screen_melding_teken();     break;
                     case SCREEN_PANEEL:     screen_paneel_teken();      break;
+                    case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                     case SCREEN_BERICHT:    screen_bericht_teken();     break;
                     case SCREEN_BRUG:       screen_brug_teken();        break;
                     case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -196,6 +197,7 @@ static void _gui_taak(void*) {
                             case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
                             case SCREEN_MELDING:    screen_melding_run(ts_x, ts_y, true);   break;
                             case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
+                            case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                             case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                                     case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                             case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
@@ -326,6 +328,7 @@ void hw_setup() {
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
     paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5)
+    lamp_laden();    // laad genummerde IL-lampgroepen (naam + opstartstand)
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
 #if BKOS_REMOTE_ENABLED
     bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
@@ -466,6 +469,7 @@ void hw_loop() {
                 case SCREEN_NETWERK:    screen_netwerk_teken();     break;
                 case SCREEN_MELDING:    screen_melding_teken();     break;
                 case SCREEN_PANEEL:     screen_paneel_teken();      break;
+                case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                 case SCREEN_BERICHT:    screen_bericht_teken();     break;
                 case SCREEN_BRUG:       screen_brug_teken();        break;
                 case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -557,6 +561,7 @@ void hw_loop() {
                         case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
                         case SCREEN_MELDING:    screen_melding_run(ts_x, ts_y, true);   break;
                         case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
+                        case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                         case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;

@@ -22,6 +22,7 @@
 #define SCREEN_PANEEL     15 // Configureerbare PANEEL-knoppen
 #define SCREEN_BERICHT    16 // Bericht aan eigenaar (vaste keuzeknoppen)
 #define SCREEN_TIJD       17 // Tijd instellen (klok in statusbalk aantikken)
+#define SCREEN_LAMPEN     18 // Genummerde IL-lampgroepen: naam + opstartstand (via CONFIG → BOOT)
 
 // Vaarmodi
 #define MODE_HAVEN   0
@@ -33,6 +34,13 @@
 #define LICHT_UIT   0
 #define LICHT_AAN   1
 #define LICHT_AUTO  2
+
+// Interieurverlichting — onafhankelijk van de buitenverlichting (LICHT_*)
+// instelbaar vanaf het hoofdscherm (interieur_status_teken(), aantikbaar)
+#define INTERIEUR_UIT   0
+#define INTERIEUR_WIT   1
+#define INTERIEUR_ROOD  2
+#define INTERIEUR_AUTO  3
 
 // IO output stadia (per kanaal)
 #define IO_UIT         0
@@ -54,6 +62,7 @@ extern bool   scherm_bouwen;
 extern byte   vaar_modus;
 extern bool   vaarmodus_auto;   // automatisch wisselen o.b.v. ingangskanalen (bv. **motor) toegestaan
 extern byte   licht_instelling;
+extern byte   interieur_modus;  // INTERIEUR_UIT/WIT/ROOD/AUTO — los van licht_instelling (buitenverlichting)
 extern bool   ota_push_actief;
 
 // IO state

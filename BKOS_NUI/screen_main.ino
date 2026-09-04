@@ -3,6 +3,7 @@
 #include "meteo.h"
 #include "nav_bar.h"
 #include "paneel.h"
+#include "lamp.h"
 #include "screen_info.h"
 #include "victron_ble.h"
 #include "bkos_net.h"
@@ -21,6 +22,7 @@
 #define I_TV         9
 #define I_WATER      10
 #define I_DEKLICHT   11
+#define I_LAMP       12  // genummerde IL-lampgroep ("**IL_<N>", zie lamp.h)
 
 static void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
     switch (type) {
@@ -94,6 +96,14 @@ static void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
             tft.drawLine(cx, cy-6, cx-3, cy-9, kleur);
             tft.drawLine(cx, cy-6, cx+3, cy-9, kleur);
             tft.drawLine(cx, cy-6, cx, cy-9, kleur);
+            break;
+        case I_LAMP:  // klassiek gloeilampje: bol + kruis-filament + voetje
+            tft.drawCircle(cx, cy-2, 6, kleur);
+            tft.drawLine(cx-3, cy-5, cx+3, cy+1, kleur);
+            tft.drawLine(cx+3, cy-5, cx-3, cy+1, kleur);
+            tft.drawFastVLine(cx, cy+4, 3, kleur);
+            tft.drawFastHLine(cx-3, cy+7, 6, kleur);
+            tft.drawFastHLine(cx-3, cy+9, 6, kleur);
             break;
     }
 }
@@ -459,6 +469,7 @@ static void _paneel_rect(int idx, int totaal, int* bx, int* by, int* bw, int* bh
 
 // Herken bekende apparaatnamen → icoon (na strippen van "**"); -1 = geen icoon
 static int paneel_icoon(const char* naam) {
+    if (io_il_lamp_nr(naam) > 0) return I_LAMP;   // virtuele lampgroep-knop "**IL_<N>"
     char b[20]; int j = 0;
     const char* s = naam;
     if (s[0] == '*' && s[1] == '*') s += 2;
@@ -470,6 +481,23 @@ static int paneel_icoon(const char* naam) {
     if (strstr(b, "water")) return I_WATER;
     if (strstr(b, "dek"))   return I_DEKLICHT;
     return -1;
+}
+
+// Effectief label voor een PANEEL-knop: voor een virtuele lampgroep-knop
+// ("**IL_<N>") de ingestelde lampnaam, of anders gewoon het nummer — pas
+// paneel_label()'s "IL_1" (kaal gestript+hoofdletters) zou hier onduidelijk zijn.
+static void _paneel_label_effectief(const char* naam, char* buf, int len) {
+    int lamp_nr = io_il_lamp_nr(naam);
+    if (lamp_nr > 0) {
+        if (lamp_naam[lamp_nr][0]) {
+            strncpy(buf, lamp_naam[lamp_nr], len - 1);
+            buf[len - 1] = '\0';
+        } else {
+            snprintf(buf, len, "%d", lamp_nr);
+        }
+        return;
+    }
+    paneel_label(naam, buf, len);
 }
 
 static void _paneel_knop_teken(int x, int y, int w, int h, const char* label,
@@ -501,12 +529,16 @@ static void apparaat_knoppen_teken() {
         const char* naam = paneel_knop_naam(i);
         int bx, by, bw, bh; _paneel_rect(i, totaal, &bx, &by, &bw, &bh);
         byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
-        char lab[16]; paneel_label(naam, lab, sizeof(lab));
+        char lab[16]; _paneel_label_effectief(naam, lab, sizeof(lab));
         _paneel_knop_teken(bx, by, bw, bh, lab, paneel_icoon(naam), (s3 == 2), (s3 == 1));
     }
 }
 
 // ─── Interieur licht status (compact) ───────────────────────────────
+// Aantikbaar: cyclet UIT → WIT → ROOD → AUTO → UIT. Losse instelling van de
+// buitenverlichting (LICHT_*) — zie interieur_modus in app_state.h.
+#define INT_STATUS_KNOP_W 156   // linkerdeel (aantikzone); rechterdeel blijft Victron-display
+
 static void interieur_status_teken() {
     // Schuift naar onder de 3e paneelknoppenrij zodra die actief is (7-9 knoppen)
     int y = (paneel_aantal() > 6) ? INT_STATUS_Y3 : INT_STATUS_Y;
@@ -516,6 +548,7 @@ static void interieur_status_teken() {
     int h = 38;
 
     tft.fillRoundRect(x, y, w, h, 6, C_SURFACE);
+    tft.drawRoundRect(x, y, INT_STATUS_KNOP_W, h, 6, C_SURFACE3);  // hint: dit deel is een knop
 
     bool wit_aan = false, rood_aan = false;
     for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
@@ -534,11 +567,16 @@ static void interieur_status_teken() {
     tft.setTextColor(rood_aan ? C_TEXT_DARK : C_TEXT_DIM);
     tft.setCursor(x + 40, cy - 3); tft.print("R");
 
+    // Tekst toont de INSTELLING (interieur_modus), niet enkel de actuele kleur
+    // — bij AUTO wisselt de kleur vanzelf, het label blijft "AUTO" staan.
     const char* txt;
     uint16_t kleur;
-    if      (wit_aan)  { txt = "INT: WIT";  kleur = C_WHITE; }
-    else if (rood_aan) { txt = "INT: ROOD"; kleur = C_LIGHT_ON_RED; }
-    else               { txt = "INT: UIT";  kleur = C_TEXT_DIM; }
+    switch (interieur_modus) {
+        case INTERIEUR_WIT:  txt = "INT: WIT";  kleur = C_WHITE;        break;
+        case INTERIEUR_ROOD: txt = "INT: ROOD"; kleur = C_LIGHT_ON_RED; break;
+        case INTERIEUR_AUTO: txt = "INT: AUTO"; kleur = C_CYAN;         break;
+        default:              txt = "INT: UIT";  kleur = C_TEXT_DIM;    break;
+    }
     tft.setTextSize(1);
     tft.setTextColor(kleur);
     tft.setCursor(x + 68, cy - 3);
@@ -846,7 +884,7 @@ static void pico_apparaten_teken() {
         const char* naam = paneel_knop_naam(i);
         byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
         bool aan = (s3 == 2), mix = (s3 == 1);
-        char lab[16]; paneel_label(naam, lab, sizeof(lab));
+        char lab[16]; _paneel_label_effectief(naam, lab, sizeof(lab));
         int icoon = paneel_icoon(naam);
         tft.fillRoundRect(bx, PICO_DKNOP_Y, bw, PICO_DKNOP_H, 4, aan ? C_SURFACE2 : C_SURFACE);
         tft.drawRoundRect(bx, PICO_DKNOP_Y, bw, PICO_DKNOP_H, 4, aan ? C_CYAN : C_SURFACE2);
@@ -1258,6 +1296,20 @@ void screen_main_run(int x, int y, bool aanraking) {
                 dev_lokaal[i] = !dev_lokaal[i];
                 gewijzigd = true;
             }
+        }
+    }
+
+    // Interieurverlichting (aantikbaar deel van interieur_status_teken(),
+    // losgekoppeld van de buitenverlichting-knoppen hierboven)
+    {
+        int isy = (paneel_aantal() > 6) ? INT_STATUS_Y3 : INT_STATUS_Y;
+        if (isy + 30 <= NAV_Y &&
+            x >= CTRL_PANEL_X + 10 && x < CTRL_PANEL_X + 10 + INT_STATUS_KNOP_W &&
+            y >= isy && y < isy + 38) {
+            interieur_modus = (interieur_modus + 1) % 4;   // UIT->WIT->ROOD->AUTO->UIT
+            io_verlichting_update();
+            net_app_staat_sturen();
+            gewijzigd = true;
         }
     }
 

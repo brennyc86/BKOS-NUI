@@ -5,6 +5,7 @@
 #include "hw_scherm.h"
 #include "bkos_net.h"
 #include "melding.h"
+#include "lamp.h"
 
 byte licht_cfg_idx = 0;
 
@@ -781,6 +782,55 @@ bool io_naam_match(int kanaal, const char* naam) {
     return _naam_prefix(_naam_zonder_ster(io_namen[kanaal]), _naam_zonder_ster(naam));
 }
 
+// ─── Genummerde IL-lampgroepen ("**IL_wit<N>"/"**IL_rood<N>", N=1..99) ───────
+// Geeft voor kanaal `kanaal` terug: -1 = exact "**<kleur_prefix>" (ongenummerd,
+// bestaand gedrag: volgt altijd de kleur), 1..99 = lampnummer uit de suffix,
+// 0 = geen match (naam begint niet met kleur_prefix, of de suffix is geen
+// zuiver 1-2-cijferig getal 1-99).
+static int _il_kleur_lamp_nr(int kanaal, const char* kleur_prefix) {
+    if (!io_naam_is(kanaal, kleur_prefix)) return 0;
+    const char* s = io_namen[kanaal];
+    while (*s == ' ') s++;
+    s += strlen(kleur_prefix);
+    if (*s == '\0') return -1;
+    int nr = 0, digits = 0;
+    while (s[digits] >= '0' && s[digits] <= '9' && digits < 2) { nr = nr * 10 + (s[digits] - '0'); digits++; }
+    s += digits;
+    while (*s == ' ') s++;
+    if (digits == 0 || *s != '\0' || nr < 1 || nr > LAMP_MAX) return 0;
+    return nr;
+}
+
+// Herkent de VIRTUELE schakelnaam "**IL_<N>" (N=1..99, geen kleur) zoals
+// gebruikt door een PANEEL-knop, de webapp of Lua. Geeft 0 terug als `naam`
+// niet dit patroon volgt (dan gaat io_apparaat_toggle/staat3 gewoon door met
+// de normale kanaal-naam-matching). Tolerant zoals io_naam_match: "**" mag
+// weggelaten worden, hoofdletterongevoelig.
+int io_il_lamp_nr(const char* naam) {
+    const char* s = naam;
+    while (*s == ' ') s++;
+    if (s[0] == '*' && s[1] == '*') s += 2;
+    const char* p = "IL_";
+    for (int i = 0; i < 3; i++) {
+        if (s[i] == '\0' || tolower((unsigned char)s[i]) != tolower((unsigned char)p[i])) return 0;
+    }
+    s += 3;
+    int nr = 0, digits = 0;
+    while (s[digits] >= '0' && s[digits] <= '9' && digits < 2) { nr = nr * 10 + (s[digits] - '0'); digits++; }
+    s += digits;
+    while (*s == ' ') s++;
+    if (digits == 0 || *s != '\0' || nr < 1 || nr > LAMP_MAX) return 0;
+    return nr;
+}
+
+int io_il_kanaal_lamp_nr(int kanaal) {
+    int wit_nr = _il_kleur_lamp_nr(kanaal, "**IL_wit");
+    if (wit_nr >= 1) return wit_nr;
+    int rood_nr = _il_kleur_lamp_nr(kanaal, "**IL_rood");
+    if (rood_nr >= 1) return rood_nr;
+    return 0;
+}
+
 String io_naam_clean(int kanaal) {
     String s = String(io_namen[kanaal]);
     s.trim();
@@ -839,17 +889,19 @@ void io_verlichting_update() {
     else if (licht_instelling == LICHT_AAN)  nav_licht_ok = (vaar_modus != MODE_HAVEN);
     else                                      nav_licht_ok = _nav_licht_auto_aan();
 
-    // --- Interieur rood ---
-    // Alleen bij ZEILEN/MOTOR en als navigatielichten ook aan zijn.
-    // LICHT_AUTO: extra tijdsgestuurde voorwaarde via int offset.
+    // --- Interieurverlichting ---
+    // Onafhankelijk instelbaar (interieur_modus, hoofdscherm) — losgekoppeld van
+    // de buitenverlichting (licht_instelling/nav_licht_ok hierboven). AUTO volgt
+    // hetzelfde principe als voorheen de enige optie was: rood behoudt nachtzicht
+    // tijdens varen (ZEILEN/MOTOR) na zonsondergang, wit overdag/in de haven.
     bool navigeert = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR);
-    bool int_rood;
-    if (!navigeert || !nav_licht_ok) {
-        int_rood = false;
-    } else if (licht_instelling == LICHT_AUTO) {
-        int_rood = _int_rood_auto_aan();
-    } else {
-        int_rood = true;  // LICHT_AAN + navigerend
+    bool auto_rood = navigeert && _int_rood_auto_aan();
+    bool int_aan, int_rood;
+    switch (interieur_modus) {
+        case INTERIEUR_UIT:  int_aan = false; int_rood = auto_rood; break;
+        case INTERIEUR_WIT:  int_aan = true;  int_rood = false;     break;
+        case INTERIEUR_ROOD: int_aan = true;  int_rood = true;      break;
+        default:              int_aan = true;  int_rood = auto_rood; break;  // INTERIEUR_AUTO
     }
 
     // Alle navigatielichten eerst uit
@@ -902,11 +954,20 @@ void io_verlichting_update() {
         }
     }
 
-    // Interieur verlichting
+    // Interieur verlichting — ongenummerd ("**IL_wit"/"**IL_rood" exact) is de
+    // hoofdverlichting: aan/uit via int_aan (interieur_modus), kleur via
+    // int_rood. Genummerd ("**IL_wit<N>"/"**IL_rood<N>") is een los te
+    // schakelen lamp(groep): aan/uit via lamp_aan[N] (níet int_aan — een
+    // losgekoppelde lamp mag onafhankelijk van de hoofdverlichting aan/uit),
+    // maar volgt wél dezelfde kleur (zie _il_kleur_lamp_nr hierboven).
     for (int i = 0; i < n; i++) {
         if (io_richting[i] == IO_RICHTING_IN) continue;  // ingang: nooit aansturen
-        if (io_naam_is(i, "**IL_wit"))  io_output[i] = int_rood ? IO_UIT : IO_AAN;
-        if (io_naam_is(i, "**IL_rood")) io_output[i] = int_rood ? IO_AAN : IO_UIT;
+        int wit_nr  = _il_kleur_lamp_nr(i, "**IL_wit");
+        int rood_nr = _il_kleur_lamp_nr(i, "**IL_rood");
+        if      (wit_nr  == -1) io_output[i] = (int_aan && !int_rood) ? IO_AAN : IO_UIT;
+        else if (wit_nr  >=  1) io_output[i] = (lamp_aan[wit_nr]  && !int_rood) ? IO_AAN : IO_UIT;
+        else if (rood_nr == -1) io_output[i] = (int_aan &&  int_rood) ? IO_AAN : IO_UIT;
+        else if (rood_nr >=  1) io_output[i] = (lamp_aan[rood_nr] &&  int_rood) ? IO_AAN : IO_UIT;
     }
 
     // Alleen op master/standalone: markeer gewijzigd zodat achtergrondtaak loopt.
@@ -954,6 +1015,9 @@ void io_zekering_check() {
 }
 
 byte io_apparaat_staat3(const char* prefix) {
+    int lamp_nr = io_il_lamp_nr(prefix);
+    if (lamp_nr > 0) return lamp_aan[lamp_nr] ? 2 : 0;
+
     int n = io_zichtbaar();
     int gevonden = 0, aan = 0;
     for (int i = 0; i < n; i++) {
@@ -969,6 +1033,15 @@ byte io_apparaat_staat3(const char* prefix) {
 }
 
 void io_apparaat_toggle(const char* prefix) {
+    int lamp_nr = io_il_lamp_nr(prefix);
+    if (lamp_nr > 0) {
+        lamp_aan[lamp_nr] = !lamp_aan[lamp_nr];
+        // Zet meteen door naar de fysieke **IL_wit<N>/**IL_rood<N>-kanalen
+        // (welke van de twee hangt af van de huidige verlichtingskleur).
+        io_verlichting_update();
+        return;
+    }
+
     byte s    = io_apparaat_staat3(prefix);
     byte nieuw = (s > 0) ? IO_UIT : IO_AAN;
     int  n     = io_zichtbaar();

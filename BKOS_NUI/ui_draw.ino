@@ -149,27 +149,27 @@ void ui_maan_symbool(int cx, int cy, int r, float fase) {
 
 void ui_scrollbar(int x, int y, int h, int scroll, int max_scroll) {
     if (max_scroll <= 0) return;
-    const int BTN = 18;
+    int btn = min(UI_SB_BTN, h / 2);   // op een heel lage strip nooit meer dan de helft per knop
     tft.fillRect(x, y, UI_SB_W, h, C_SURFACE2);
-    tft.fillRect(x, y, UI_SB_W, BTN, C_SURFACE3);
-    tft.fillRect(x, y + h - BTN, UI_SB_W, BTN, C_SURFACE3);
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(x + (UI_SB_W - 6) / 2, y + (BTN - 8) / 2);
+    tft.fillRoundRect(x + 2, y + 2, UI_SB_W - 4, btn - 4, 4, C_SURFACE3);
+    tft.fillRoundRect(x + 2, y + h - btn + 2, UI_SB_W - 4, btn - 4, 4, C_SURFACE3);
+    tft.setTextSize(2); tft.setTextColor(C_TEXT);
+    tft.setCursor(x + (UI_SB_W - 12) / 2, y + (btn - 16) / 2);
     tft.print("^");
-    tft.setCursor(x + (UI_SB_W - 6) / 2, y + h - BTN + (BTN - 8) / 2);
+    tft.setCursor(x + (UI_SB_W - 12) / 2, y + h - btn + (btn - 16) / 2);
     tft.print("v");
-    int track = h - 2 * BTN;
+    int track = h - 2 * btn;
     if (track > 0) {
-        int th = max(10, track * track / (track + max_scroll));
-        int ty = y + BTN + (track - th) * scroll / max_scroll;
-        tft.fillRect(x + 3, ty, UI_SB_W - 6, th, C_CYAN);
+        int th = max(14, track * track / (track + max_scroll));
+        int ty = y + btn + (track - th) * scroll / max_scroll;
+        tft.fillRoundRect(x + 5, ty, UI_SB_W - 10, th, 4, C_CYAN);
     }
 }
 
 int ui_scrollbar_klik(int kx, int ky, int sb_x, int sb_y, int sb_h) {
     if (kx < sb_x || kx >= sb_x + UI_SB_W || ky < sb_y || ky >= sb_y + sb_h) return 0;
-    const int BTN = 18;
-    if (ky < sb_y + BTN) return -1;
-    if (ky >= sb_y + sb_h - BTN) return 1;
+    int btn = min(UI_SB_BTN, sb_h / 2);
+    if (ky < sb_y + btn) return -1;
+    if (ky >= sb_y + sb_h - btn) return 1;
     return 2;
 }

@@ -49,7 +49,10 @@ void ui_panel_bg(int x, int y, int w, int h, uint16_t kleur);
 void ui_maan_symbool(int cx, int cy, int r, float fase);  // fase 0..1
 
 // Scrollbar met pijl-knoppen (alleen zichtbaar als max_scroll > 0)
-#define UI_SB_W  16
+// Ruim bemeten (vingerbediening): te smal/laag zorgde ervoor dat een tik naast
+// de knop viel en per ongeluk een rij eronder raakte.
+#define UI_SB_W    34
+#define UI_SB_BTN  40   // hoogte van de ^/v-knoppen; ook gebruikt door ui_scrollbar_klik()
 void ui_scrollbar(int x, int y, int h, int scroll, int max_scroll);
 // Geeft -1 (▲), +1 (▼), 2 (thumb), 0 (niet geraakt)
 int  ui_scrollbar_klik(int kx, int ky, int sb_x, int sb_y, int sb_h);

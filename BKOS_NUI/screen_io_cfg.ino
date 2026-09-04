@@ -1,10 +1,14 @@
 #include "screen_io_cfg.h"
 #include "nav_bar.h"
 
+extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
+
 // ─── State ──────────────────────────────────────────────────────────────
 static int  iocfg_scroll        = 0;
 static bool iocfg_overlay       = false;
 static int  iocfg_kanaal        = -1;
+static int  iocfg_ov_scroll_y   = 0;  // scroll-offset overlay-inhoud (groot scherm)
+static int  iocfg_ov_max_scroll = 0;  // door iocfg_overlay_teken() berekend, hangt af van kanaal-inhoud
 static bool iocfg_naam_kb       = false;  // naambewerking actief
 static bool iocfg_preset_modus  = true;   // true = preset-keuze, false = toetsenbord
 static unsigned long iocfg_sloot = 0;
@@ -33,6 +37,14 @@ static uint8_t ov_boot_gedrag;  // IO_BOOT_UIT/AAN/ONTHOUD (alleen UITGANG-kanal
 #define OV_H    (TFT_H - SB_H - NAV_H)
 #define OV_IX   (OV_X + 14)     // inner x
 #define OV_IW   (OV_W - 28)     // inner width
+
+// Scrollbaar middengebied — vast boven (titel+richting) en onder (opslaan/sluiten)
+// blijven altijd zichtbaar; alleen alert/actie/dynamo/opstart-inhoud scrolt.
+// Nodig omdat de grote (niet-SCREEN_SMALL) layout is ontworpen op de 800×480
+// S3-referentie maar ook op CYD40H (480×320, wél non-SCREEN_SMALL) draait,
+// waar OV_H veel kleiner is en de inhoud anders voorbij OPSLAAN/SLUITEN valt.
+#define OV_CONTENT_TOP  (OV_Y + 96)
+#define OV_CONTENT_BOT  (OV_Y + OV_H - 60)
 
 // Actie labels en codes
 static const char* actie_labels[] = {"GEEN", "HAVEN", "ZEILEN", "MOTOR", "ANKER", "->AAN", "->UIT"};
@@ -205,32 +217,9 @@ static void iocfg_overlay_teken() {
     tft.fillRoundRect(OV_X, OV_Y, OV_W, OV_H, 10, C_SURFACE);
     tft.drawRoundRect(OV_X, OV_Y, OV_W, OV_H, 10, C_CYAN);
 
-    // Titel + BEWERK naam knop
-    char lbl[8]; io_kanaal_label(iocfg_kanaal, lbl, sizeof(lbl));
-    char titel[40];
-    snprintf(titel, sizeof(titel), "Kanaal %d (%s): %s", iocfg_kanaal, lbl, io_namen[iocfg_kanaal]);
-    tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(OV_IX, OV_Y + 10);
-    tft.print(titel);
-    ui_knop(OV_X + OV_W - 110, OV_Y + 8, 90, 24, "NAAM..", C_SURFACE2, C_AMBER);
-
-    tft.drawFastHLine(OV_IX, OV_Y + 38, OV_IW, C_SURFACE3);
-
-    // Richting knoppen
-    int ry = OV_Y + 46;
-    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(OV_IX, ry + (34 - 8) / 2); tft.print("RICHTING:");
-
-    int rbx = OV_IX + 90;
     bool is_in = (ov_richting == IO_RICHTING_IN);
-    ui_knop(rbx,       ry, 120, 34, "UITGANG",
-            !is_in ? C_CYAN : C_SURFACE2, !is_in ? C_TEXT_DARK : C_TEXT);
-    ui_knop(rbx + 128, ry, 120, 34, "INGANG",
-            is_in ? C_CYAN : C_SURFACE2,  is_in ? C_TEXT_DARK : C_TEXT);
-
-    tft.drawFastHLine(OV_IX, OV_Y + 88, OV_IW, C_SURFACE3);
-
-    int cy = OV_Y + 96;
+    int cy_start = OV_CONTENT_TOP - iocfg_ov_scroll_y;
+    int cy = cy_start;
 
     if (!is_in) {
         // UITGANG: alert instelling
@@ -315,14 +304,50 @@ static void iocfg_overlay_teken() {
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(OV_IX, cy);
             tft.print("interval in minuten; UIT staat = nooit pulsen");
+            cy += 14;
         }
     }
 
-    // Onderkant knoppen
+    // Scroll-bereik bepalen aan de hand van de daadwerkelijk getekende inhoud
+    // (verschilt per kanaal: INGANG met/zonder dynamo, actiekanaal wel/niet)
+    // en meteen begrenzen — voorkomt vastlopen als de inhoud korter werd
+    // (bv. van INGANG-met-dynamo naar UITGANG) terwijl er nog scroll stond.
+    iocfg_ov_max_scroll = max(0, (cy - cy_start) - (OV_CONTENT_BOT - OV_CONTENT_TOP));
+    iocfg_ov_scroll_y   = constrain(iocfg_ov_scroll_y, 0, iocfg_ov_max_scroll);
+
+    // Titel + BEWERK naam knop + RICHTING — vast, tekent overheen zodra
+    // gescrolde inhoud eronder omhoog is geschoven
+    char lbl[8]; io_kanaal_label(iocfg_kanaal, lbl, sizeof(lbl));
+    char titel[40];
+    snprintf(titel, sizeof(titel), "Kanaal %d (%s): %s", iocfg_kanaal, lbl, io_namen[iocfg_kanaal]);
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    tft.setCursor(OV_IX, OV_Y + 10);
+    tft.print(titel);
+    ui_knop(OV_X + OV_W - 110, OV_Y + 8, 90, 24, "NAAM..", C_SURFACE2, C_AMBER);
+
+    tft.drawFastHLine(OV_IX, OV_Y + 38, OV_IW, C_SURFACE3);
+
+    int ry = OV_Y + 46;
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(OV_IX, ry + (34 - 8) / 2); tft.print("RICHTING:");
+
+    int rbx = OV_IX + 90;
+    ui_knop(rbx,       ry, 120, 34, "UITGANG",
+            !is_in ? C_CYAN : C_SURFACE2, !is_in ? C_TEXT_DARK : C_TEXT);
+    ui_knop(rbx + 128, ry, 120, 34, "INGANG",
+            is_in ? C_CYAN : C_SURFACE2,  is_in ? C_TEXT_DARK : C_TEXT);
+
+    tft.drawFastHLine(OV_IX, OV_Y + 88, OV_IW, C_SURFACE3);
+
+    // Onderkant knoppen — vast, tekent overheen zodra gescrolde inhoud er nog
+    // onder wacht om zichtbaar te worden
     int save_y = OV_Y + OV_H - 52;
     tft.drawFastHLine(OV_IX, save_y - 8, OV_IW, C_SURFACE3);
     ui_knop(OV_IX,              save_y, 180, 42, "OPSLAAN", C_GREEN,    C_TEXT_DARK);
     ui_knop(OV_IX + OV_IW - 180, save_y, 180, 42, "SLUITEN", C_SURFACE2, C_TEXT_DIM);
+
+    ui_scrollbar(OV_X + OV_W - UI_SB_W - 4, OV_CONTENT_TOP, OV_CONTENT_BOT - OV_CONTENT_TOP,
+                 iocfg_ov_scroll_y, iocfg_ov_max_scroll);
 }
 
 // ─────────────────────── PICO UI ────────────────────────────────────────────
@@ -820,16 +845,36 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             return;
         }
 
-        // Richting knoppen
+        // Richting knoppen (vast, scrolt niet mee)
         int ry = OV_Y + 46;
         int rbx = OV_IX + 90;
         if (y >= ry && y < ry + 34) {
             if (x >= rbx && x < rbx + 120)       ov_richting = IO_RICHTING_UIT;
             else if (x >= rbx + 128 && x < rbx + 248) ov_richting = IO_RICHTING_IN;
+            iocfg_ov_scroll_y = 0;   // andere inhoud, begin weer bovenaan
             iocfg_overlay_teken(); return;
         }
 
-        int cy = OV_Y + 96;
+        // Swipe scrollen (vóór klik-detectie op de scrollbare inhoud)
+        if (iocfg_ov_max_scroll > 0 && abs(hw_touch_drag_dy) >= 25) {
+            iocfg_ov_scroll_y = constrain(iocfg_ov_scroll_y - hw_touch_drag_dy, 0, iocfg_ov_max_scroll);
+            iocfg_overlay_teken();
+            return;
+        }
+        // Scrollbar pijlen (rechts, alleen binnen het scrollbare middengebied)
+        if (x >= OV_X + OV_W - UI_SB_W - 4 && y >= OV_CONTENT_TOP && y < OV_CONTENT_BOT) {
+            int dir = ui_scrollbar_klik(x, y, OV_X + OV_W - UI_SB_W - 4, OV_CONTENT_TOP, OV_CONTENT_BOT - OV_CONTENT_TOP);
+            if (dir == -1 && iocfg_ov_scroll_y > 0) {
+                iocfg_ov_scroll_y = max(0, iocfg_ov_scroll_y - 30);
+                iocfg_overlay_teken();
+            } else if (dir == 1 && iocfg_ov_scroll_y < iocfg_ov_max_scroll) {
+                iocfg_ov_scroll_y = min(iocfg_ov_max_scroll, iocfg_ov_scroll_y + 30);
+                iocfg_overlay_teken();
+            }
+            return;
+        }
+
+        int cy = OV_CONTENT_TOP - iocfg_ov_scroll_y;
         bool is_in = (ov_richting == IO_RICHTING_IN);
 
         if (!is_in) {
@@ -949,6 +994,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             ov_dynpuls    = dynamo_puls_min;
             ov_boot_gedrag = io_boot_gedrag[kanaal];
             iocfg_overlay = true;
+            iocfg_ov_scroll_y = 0;
             iocfg_sloot   = millis();
             iocfg_overlay_teken();
         }

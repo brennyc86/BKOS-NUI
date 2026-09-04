@@ -53,6 +53,9 @@ static bool cfg_preset_menu     = false;
 static int  cfg_ins_scroll_y    = 0;
 static int  cfg_deelscherm      = 0;  // 0=hoofd, 1=boot, 2=weergave, 3=update
 static int  cfg_we_scroll_y     = 0;  // scroll-offset WEERGAVE & ENERGIE-tabblad
+static int  cfg_hoofd_scroll_y  = 0;  // scroll-offset hoofdtabblad (WiFi-rij + categorieknoppen)
+static int  cfg_boot_scroll_y   = 0;  // scroll-offset BOOT-tabblad
+static int  cfg_update_scroll_y = 0;  // scroll-offset VERBINDINGEN-tabblad
 
 // Wachtwoord-display: alle tekens behalve het laatste als '*'
 static void kb_wachtwoord_print(const char* s) {
@@ -1314,19 +1317,25 @@ static void _slot_icoon(int cx, int cy, bool dicht, uint16_t k, uint16_t bg) {
     }
 }
 
+// Vast bovenaan: helderheidbalk + gebied eronder scrolt (WiFi-rij + 4
+// categorieknoppen kunnen op een klein/liggend scherm zoals CYD40H — dat de
+// 800×480-referentielayout ongeschaald hergebruikt — buiten NAV_Y vallen)
+#define CFG_HOOFD_TOP        (HLD_Y + HLD_H + 4)
+#define CFG_HOOFD_INHOUD_H   (44 + 4 * 72 + 3 * 8)   // WiFi-rij-gat + 4 categorieknoppen (72px elk)
+#define CFG_HOOFD_MAX_SCROLL max(0, CFG_HOOFD_TOP + CFG_HOOFD_INHOUD_H - (int)NAV_Y)
+
 static void cfg_hoofd_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
-    helderheid_balk_teken();
 
     bool ontg = config_ontgrendeld;
-    int fr_y = HLD_Y + HLD_H + 4;
+    int fr_y = CFG_HOOFD_TOP - cfg_hoofd_scroll_y;
 
     // WiFi row (altijd vrij)
     tft.fillRoundRect(8, fr_y + 2, TFT_W - 16, 34, 6, C_SURFACE);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
 
-    // ── Categorieknoppen altijd op vaste positie ─────────────────────────
+    // ── Categorieknoppen ──────────────────────────────────────────────────
     const char* cats[]   = {"BOOT  >", "WEERGAVE & ENERGIE  >", "VERBINDINGEN  >", "PINCODE WIJZIGEN  >"};
     uint16_t cat_kleur[] = {C_CYAN, C_CYAN, C_CYAN, C_AMBER};
     int cat_y = fr_y + 44;
@@ -1347,8 +1356,9 @@ static void cfg_hoofd_teken() {
         for (int dy = waas_top; dy < waas_bot; dy += 2)
             tft.drawFastHLine(0, dy, TFT_W, C_BG);
 
-        // Centreer paneel over de knoppen
-        int pan_w = 500, pan_h = 128;
+        // Centreer paneel over de knoppen (breedte begrensd zodat 'ie ook op
+        // smalle liggende schermen als CYD40H binnen TFT_W blijft)
+        int pan_w = min(500, TFT_W - 40), pan_h = 128;
         int pan_x = (TFT_W - pan_w) / 2;
         int pan_y = waas_top + (waas_bot - waas_top - pan_h) / 2;
         tft.fillRoundRect(pan_x, pan_y, pan_w, pan_h, 10, RGB565(22, 7, 0));
@@ -1366,13 +1376,23 @@ static void cfg_hoofd_teken() {
         tft.setCursor(pan_x + 96, pan_y + pan_h / 2 + 8);
         tft.print("Tik om te ontgrendelen met pincode");
     }
+
+    // Helderheidbalk blijft vast bovenaan — tekent overheen zodra iets
+    // omhoog gescrold is, dekt dat gedeelte dus netjes af
+    helderheid_balk_teken();
+    ui_scrollbar(TFT_W - UI_SB_W, CFG_HOOFD_TOP, NAV_Y - CFG_HOOFD_TOP, cfg_hoofd_scroll_y, CFG_HOOFD_MAX_SCROLL);
 }
+
+// Rijhoogtes: categorie/model/zeilnr/naam module (44 elk) + IO-configuratierij
+// (50, inclusief padding) + PANEEL-KNOPPEN-rij (44) — nodig voor de scrollbar.
+#define CFG_BOOT_INHOUD_H   (44 * 4 + 50 + 44)
+#define CFG_BOOT_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_BOOT_INHOUD_H - (int)NAV_Y)
 
 static void cfg_boot_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
     cfg_sub_header("BOOT");
     bool ontg = config_ontgrendeld;
-    int y = CFG_SUB_Y0;
+    int y = CFG_SUB_Y0 - cfg_boot_scroll_y;
 
     // Stap 1 — Categorie
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
@@ -1474,9 +1494,13 @@ static void cfg_boot_teken() {
         if (ontg) { ui_knop(684, y + 10, 22, 22, "-", C_SURFACE, C_TEXT); ui_knop(710, y + 10, 22, 22, "+", C_SURFACE, C_TEXT); }
     }
 #endif
+    y += 50;   // zelfde 50px die de touch-hittest van de IO-rij ook gebruikt
+
     // PANEEL-knoppen instellen (opent het paneel-scherm)
-    ui_knop(10, CFG_SUB_Y0 + 182 + 4, TFT_W - 20, 38, "PANEEL-KNOPPEN  >",
+    ui_knop(10, y + 4, TFT_W - 20, 38, "PANEEL-KNOPPEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+
+    ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_boot_scroll_y, CFG_BOOT_MAX_SCROLL);
 }
 
 // Totale content-hoogte van dit tabblad (som van alle y+= stappen + hoogte van
@@ -1775,11 +1799,17 @@ static void cfg_we_teken() {
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_we_scroll_y, CFG_WE_MAX_SCROLL);
 }
 
+// Vaste inhoud onafhankelijk van de (runtime) TOKEN-rij: FIRMWARE UPDATEN,
+// ruimte voor TOKEN, BRUG @ +100, BERICHTEN @ +150 (+44 rijhoogte).
+#define CFG_UPDATE_INHOUD_H   200
+#define CFG_UPDATE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_UPDATE_INHOUD_H - (int)NAV_Y)
+
 static void cfg_update_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
     cfg_sub_header("VERBINDINGEN");
     bool ontg = config_ontgrendeld;
-    int y = CFG_SUB_Y0;
+    int y0 = CFG_SUB_Y0 - cfg_update_scroll_y;
+    int y  = y0;
 
     ui_knop(10, y + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
@@ -1794,10 +1824,12 @@ static void cfg_update_teken() {
     }
 
     // BRUG (voorlopig uitgeschakeld — grijs, niet klikbaar) + BERICHTEN
-    ui_knop(10, CFG_SUB_Y0 + 100 + 4, TFT_W - 20, 38, "BRUG  (uitgeschakeld)",
+    ui_knop(10, y0 + 100 + 4, TFT_W - 20, 38, "BRUG  (uitgeschakeld)",
             C_SURFACE, C_DARK_GRAY);
-    ui_knop(10, CFG_SUB_Y0 + 150 + 4, TFT_W - 20, 38, "BERICHTEN  >",
+    ui_knop(10, y0 + 150 + 4, TFT_W - 20, 38, "BERICHTEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+
+    ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_update_scroll_y, CFG_UPDATE_MAX_SCROLL);
 }
 
 static void cfg_instellingen_teken() {
@@ -1810,7 +1842,7 @@ static void cfg_instellingen_teken() {
 static void cfg_hoofd_run(int x, int y) {
     bool ontg = config_ontgrendeld;
 
-    // Helderheid (altijd vrij)
+    // Helderheid (altijd vrij, vaste positie — scrolt niet mee)
     if (y >= HLD_Y && y < HLD_Y + HLD_H) {
         if (x >= 12 && x < 12 + HLD_BTN_W) {
             tft_helderheid = max(5, tft_helderheid - 5);
@@ -1830,10 +1862,30 @@ static void cfg_hoofd_run(int x, int y) {
             scherm_timer = staps[(hui + 1) % 5];
             state_save(); helderheid_balk_teken(); return;
         }
+        return;
+    }
+
+    // Swipe scrollen (vóór klik-detectie) — zelfde patroon als WEERGAVE & ENERGIE
+    if (CFG_HOOFD_MAX_SCROLL > 0 && abs(hw_touch_drag_dy) >= 25) {
+        cfg_hoofd_scroll_y = constrain(cfg_hoofd_scroll_y - hw_touch_drag_dy, 0, CFG_HOOFD_MAX_SCROLL);
+        cfg_hoofd_teken();
+        return;
+    }
+    // Scrollbar pijlen (rechts)
+    if (x >= TFT_W - UI_SB_W && y >= CFG_HOOFD_TOP) {
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_HOOFD_TOP, NAV_Y - CFG_HOOFD_TOP);
+        if (dir == -1 && cfg_hoofd_scroll_y > 0) {
+            cfg_hoofd_scroll_y = max(0, cfg_hoofd_scroll_y - 30);
+            cfg_hoofd_teken();
+        } else if (dir == 1 && cfg_hoofd_scroll_y < CFG_HOOFD_MAX_SCROLL) {
+            cfg_hoofd_scroll_y = min(CFG_HOOFD_MAX_SCROLL, cfg_hoofd_scroll_y + 30);
+            cfg_hoofd_teken();
+        }
+        return;
     }
 
     // WiFi row (altijd vrij)
-    int fr_y = HLD_Y + HLD_H + 4;
+    int fr_y = CFG_HOOFD_TOP - cfg_hoofd_scroll_y;
     if (y >= fr_y && y < fr_y + 40) {
         actief_scherm = SCREEN_WIFI; scherm_bouwen = true; return;
     }
@@ -1857,7 +1909,8 @@ static void cfg_hoofd_run(int x, int y) {
         if (y >= cy && y < cy + cat_h) {
             if (i < 3) {
                 cfg_deelscherm = i + 1;      // 1=BOOT, 2=WEERGAVE, 3=VERBINDINGEN
-                cfg_we_scroll_y = 0;         // begin bovenaan bij het openen van een tabblad
+                // begin bovenaan bij het openen van een tabblad
+                cfg_boot_scroll_y = cfg_we_scroll_y = cfg_update_scroll_y = 0;
                 cfg_instellingen_teken();
             } else {
                 pin_stap = 1; pin_invoer[0] = '\0';
@@ -1872,10 +1925,29 @@ static void cfg_boot_run(int x, int y) {
     bool ontg = config_ontgrendeld;
 
     if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
-        cfg_deelscherm = 0; cfg_instellingen_teken(); return;
+        cfg_deelscherm = 0; cfg_hoofd_scroll_y = 0; cfg_instellingen_teken(); return;
     }
 
-    int cy = CFG_SUB_Y0;
+    // Swipe scrollen (vóór klik-detectie)
+    if (CFG_BOOT_MAX_SCROLL > 0 && abs(hw_touch_drag_dy) >= 25) {
+        cfg_boot_scroll_y = constrain(cfg_boot_scroll_y - hw_touch_drag_dy, 0, CFG_BOOT_MAX_SCROLL);
+        cfg_boot_teken();
+        return;
+    }
+    // Scrollbar pijlen (rechts)
+    if (x >= TFT_W - UI_SB_W && y >= CFG_SUB_Y0) {
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0);
+        if (dir == -1 && cfg_boot_scroll_y > 0) {
+            cfg_boot_scroll_y = max(0, cfg_boot_scroll_y - 30);
+            cfg_boot_teken();
+        } else if (dir == 1 && cfg_boot_scroll_y < CFG_BOOT_MAX_SCROLL) {
+            cfg_boot_scroll_y = min(CFG_BOOT_MAX_SCROLL, cfg_boot_scroll_y + 30);
+            cfg_boot_teken();
+        }
+        return;
+    }
+
+    int cy = CFG_SUB_Y0 - cfg_boot_scroll_y;
     int cat_y   = cy; cy += 44;
     int model_y = cy; cy += 44;
     int zl_y    = cy; cy += 44;
@@ -1965,7 +2037,7 @@ static void cfg_we_run(int x, int y) {
     bool ontg = config_ontgrendeld;
 
     if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
-        cfg_deelscherm = 0; cfg_instellingen_teken(); return;
+        cfg_deelscherm = 0; cfg_hoofd_scroll_y = 0; cfg_instellingen_teken(); return;
     }
 
     // Swipe scrollen (vóór klik-detectie) — zelfde patroon als de PICO-variant
@@ -2144,10 +2216,29 @@ static void cfg_update_run(int x, int y) {
     bool ontg = config_ontgrendeld;
 
     if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
-        cfg_deelscherm = 0; cfg_instellingen_teken(); return;
+        cfg_deelscherm = 0; cfg_hoofd_scroll_y = 0; cfg_instellingen_teken(); return;
     }
 
-    int cy = CFG_SUB_Y0;
+    // Swipe scrollen (vóór klik-detectie)
+    if (CFG_UPDATE_MAX_SCROLL > 0 && abs(hw_touch_drag_dy) >= 25) {
+        cfg_update_scroll_y = constrain(cfg_update_scroll_y - hw_touch_drag_dy, 0, CFG_UPDATE_MAX_SCROLL);
+        cfg_update_teken();
+        return;
+    }
+    // Scrollbar pijlen (rechts)
+    if (x >= TFT_W - UI_SB_W && y >= CFG_SUB_Y0) {
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0);
+        if (dir == -1 && cfg_update_scroll_y > 0) {
+            cfg_update_scroll_y = max(0, cfg_update_scroll_y - 30);
+            cfg_update_teken();
+        } else if (dir == 1 && cfg_update_scroll_y < CFG_UPDATE_MAX_SCROLL) {
+            cfg_update_scroll_y = min(CFG_UPDATE_MAX_SCROLL, cfg_update_scroll_y + 30);
+            cfg_update_teken();
+        }
+        return;
+    }
+
+    int cy = CFG_SUB_Y0 - cfg_update_scroll_y;
     int upd_y = cy;
 
     if (y >= upd_y && y < upd_y + 50) {

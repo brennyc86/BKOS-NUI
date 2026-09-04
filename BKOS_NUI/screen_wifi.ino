@@ -2,6 +2,8 @@
 #include "screen_config.h"
 #include "nav_bar.h"
 
+extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
+
 // ─── State ──────────────────────────────────────────────────────────
 
 #define WIFI_ST_IDLE       0
@@ -18,10 +20,16 @@ static int   wifi_geselecteerd = -1;
 static char  wifi_ssid_buf[33]   = "";
 static char  wifi_pass_buf[64]   = "";
 static unsigned long wifi_kb_sloot = 0;
+static int   wifi_idle_scroll_y   = 0;  // scroll-offset WIFI_ST_IDLE (groot scherm)
+static int   wifi_idle_max_scroll = 0;  // door wifi_lijst_teken() berekend (hangt af van aantal opgeslagen netwerken)
 
 #define WIFI_RIJ_H   52
-#define WIFI_RIJEN_N 6
 #define WIFI_LIST_Y  (CONTENT_Y + 46)
+// Rijen die daadwerkelijk vóór NAV_Y passen — vast op 6 overschreed NAV_Y al op
+// CYD40H (480×320, non-SCREEN_SMALL maar met een veel lagere NAV_Y dan de
+// 800×480-referentie); de bestaande VORIGE/VOLGENDE-paginering onder de lijst
+// schaalt hier automatisch in mee.
+#define WIFI_RIJEN_N ((NAV_Y - WIFI_LIST_Y) / WIFI_RIJ_H)
 
 static void wifi_verbind_uitvoeren() {
     wifi_staat = WIFI_ST_VERBINDEN;
@@ -207,7 +215,8 @@ void screen_wifi_teken() {
         tft.fillRect(0, CONTENT_Y, TFT_W, CONTENT_H, C_BG);
 
         // Verbinding status
-        int cy = CONTENT_Y + 10;
+        int y0 = CONTENT_Y - wifi_idle_scroll_y;
+        int cy = y0 + 10;
         if (wifi_verbonden) {
             tft.setTextSize(2); tft.setTextColor(C_GREEN);
             tft.setCursor(40, cy); tft.print("Verbonden: "); tft.print(WiFi.SSID());
@@ -222,7 +231,7 @@ void screen_wifi_teken() {
 
         // Opgeslagen netwerken
         int cnt = wifi_creds_cnt();
-        int ly = CONTENT_Y + 64;
+        int ly = y0 + 64;
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         char hbuf[40]; snprintf(hbuf, sizeof(hbuf), "OPGESLAGEN NETWERKEN (%d/%d)", cnt, WIFI_MAX_CREDS);
         tft.setCursor(40, ly); tft.print(hbuf);
@@ -249,13 +258,21 @@ void screen_wifi_teken() {
         }
 
         // Knoppen
-        int btn_y = max(ly + 10, CONTENT_Y + 238);
+        int btn_y = max(ly + 10, y0 + 238);
         ui_knop_groot(60, btn_y, TFT_W - 120, 52,
                       "SCANNEN", "Beschikbare WiFi netwerken zoeken",
                       C_SURFACE, C_CYAN, C_CYAN, false);
         ui_knop_groot(60, btn_y + 62, TFT_W - 120, 52,
                       "WIFI WISSEN", "Alle opgeslagen netwerken vergeten — herstart",
                       C_SURFACE, C_RED_BRIGHT, C_RED_BRIGHT, false);
+
+        // Scroll-bereik: verschilt met het aantal opgeslagen netwerken. Vast op
+        // CYD40H (480×320, non-SCREEN_SMALL): SCANNEN/WIFI WISSEN vielen daar
+        // altijd al voorbij NAV_Y, ook met 0 opgeslagen netwerken.
+        int inhoud_h = (btn_y + 62 + 52) - y0;
+        wifi_idle_max_scroll = max(0, inhoud_h - (int)(NAV_Y - CONTENT_Y));
+        wifi_idle_scroll_y   = constrain(wifi_idle_scroll_y, 0, wifi_idle_max_scroll);
+        ui_scrollbar(TFT_W - UI_SB_W, CONTENT_Y, NAV_Y - CONTENT_Y, wifi_idle_scroll_y, wifi_idle_max_scroll);
     } else if (wifi_staat == WIFI_ST_WACHTWOORD) {
         screen_config_toetsenbord_teken();
     } else {
@@ -376,9 +393,28 @@ void screen_wifi_run(int x, int y, bool aanraking) {
     }
 
     if (wifi_staat == WIFI_ST_IDLE) {
+        // Swipe scrollen (vóór klik-detectie)
+        if (wifi_idle_max_scroll > 0 && abs(hw_touch_drag_dy) >= 25) {
+            wifi_idle_scroll_y = constrain(wifi_idle_scroll_y - hw_touch_drag_dy, 0, wifi_idle_max_scroll);
+            wifi_lijst_teken();
+            return;
+        }
+        // Scrollbar pijlen (rechts)
+        if (x >= TFT_W - UI_SB_W) {
+            int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CONTENT_Y, NAV_Y - CONTENT_Y);
+            if (dir == -1 && wifi_idle_scroll_y > 0) {
+                wifi_idle_scroll_y = max(0, wifi_idle_scroll_y - 30);
+                wifi_lijst_teken();
+            } else if (dir == 1 && wifi_idle_scroll_y < wifi_idle_max_scroll) {
+                wifi_idle_scroll_y = min(wifi_idle_max_scroll, wifi_idle_scroll_y + 30);
+                wifi_lijst_teken();
+            }
+            return;
+        }
+
         // X knop: verwijder opgeslagen netwerk
         int cnt = wifi_creds_cnt();
-        int ly = CONTENT_Y + 82;
+        int ly = CONTENT_Y - wifi_idle_scroll_y + 82;
         for (int n = 0; n < cnt; n++) {
             if (y >= ly && y < ly + 32 && x >= TFT_W - 60 && x < TFT_W - 30) {
                 wifi_creds_verwijder(n);
@@ -389,7 +425,7 @@ void screen_wifi_run(int x, int y, bool aanraking) {
         }
 
         // Knoppen — y positie afhankelijk van aantal opgeslagen netwerken
-        int btn_y = max(ly + 10, CONTENT_Y + 238);
+        int btn_y = max(ly + 10, CONTENT_Y - wifi_idle_scroll_y + 238);
 
         // SCANNEN knop
         if (y >= btn_y && y < btn_y + 52) {

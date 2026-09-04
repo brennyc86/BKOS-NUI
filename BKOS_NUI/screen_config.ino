@@ -1507,9 +1507,9 @@ static void cfg_boot_teken() {
 // de laatste rij) — nodig voor de scrollbar. Bijwerken als er een rij bijkomt
 // of verdwijnt (zelfde aanpak als PICO_CFG_INS_H hierboven).
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
-  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+44+44+44+40)   // + DUBBELE BUFFERING (S3-only) + HELDERHEID AUTO-rijen + OPSTARTINSTELLING-rijen
+  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+44+44+40)   // + DUBBELE BUFFERING (S3-only) + HELDERHEID AUTO-rijen + OPSTARTINSTELLING-rijen (VAARMODUS/VERLICHTING, AUTOMODUS zit als vinkje bij VAARMODUS)
 #else
-  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+44+44+40)
+  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+44+40)
 #endif
 #define CFG_WE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_WE_INHOUD_H - (int)NAV_Y)
 
@@ -1582,6 +1582,7 @@ static void cfg_we_teken() {
     y += 42;
 
     // Opstart vaarmodus (alleen van toepassing zolang MODUS ONTHOUDEN uit staat)
+    // + vinkje ernaast: automatisch wisselen (vaarmodus_auto) ook meteen actief
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
@@ -1596,6 +1597,21 @@ static void cfg_we_teken() {
             int tw = strlen(mlbl[i]) * 6;
             tft.setCursor(230 + i * 90 + (84 - tw) / 2, y + 4 + (32 - 8) / 2);
             tft.print(mlbl[i]);
+        }
+        // Vinkje: OPSTART AUTOMODUS
+        {
+            bool aan = boot_vaarmodus_auto;
+            int cbx = 630, cbs = 24, cby = y + (40 - cbs) / 2;
+            tft.fillRoundRect(cbx, cby, cbs, cbs, 4, aan ? C_CYAN : C_SURFACE2);
+            tft.drawRoundRect(cbx, cby, cbs, cbs, 4, C_SURFACE3);
+            if (aan) {
+                tft.drawLine(cbx + 5,  cby + 12, cbx + 10, cby + 18, C_TEXT_DARK);
+                tft.drawLine(cbx + 5,  cby + 13, cbx + 10, cby + 19, C_TEXT_DARK);
+                tft.drawLine(cbx + 10, cby + 18, cbx + 19, cby + 6,  C_TEXT_DARK);
+                tft.drawLine(cbx + 10, cby + 19, cbx + 19, cby + 7,  C_TEXT_DARK);
+            }
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(cbx + cbs + 8, y + (40 - 8) / 2); tft.print("OOK AUTO");
         }
     }
     y += 44;
@@ -1615,22 +1631,6 @@ static void cfg_we_teken() {
             tft.setCursor(230 + i * 90 + (84 - tw) / 2, y + 4 + (32 - 8) / 2);
             tft.print(llbl[i]);
         }
-    }
-    y += 44;
-
-    // Opstart automodus (vaarmodus_auto)
-    {
-        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
-        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("OPSTART AUTOMODUS");
-        bool aan = boot_vaarmodus_auto;
-        tft.fillRoundRect(280, y + 4, 110, 32, 5, aan ? C_GREEN : C_SURFACE3);
-        tft.setTextSize(2); tft.setTextColor(aan ? C_BG : C_TEXT);
-        const char* balbl = aan ? "AAN" : "UIT";
-        tft.setCursor(280 + (110 - (int)strlen(balbl) * 12) / 2, y + 4 + (32 - 16) / 2);
-        tft.print(balbl);
-        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(400, y + (40 - 8) / 2); tft.print("alleen actief zolang MODUS ONTHOUDEN uit staat");
     }
     y += 44;
 
@@ -2065,7 +2065,6 @@ static void cfg_we_run(int x, int y) {
     int fr2_y  = cy; cy += 42;
     int bvm_y  = cy; cy += 44;
     int blt_y  = cy; cy += 44;
-    int bam_y  = cy; cy += 44;
     int sly    = cy; cy += 44;
     int sly2   = cy; cy += 44;
     int sly3   = cy;
@@ -2098,10 +2097,15 @@ static void cfg_we_run(int x, int y) {
         state_save(); cfg_we_teken(); return;
     }
 
-    if (y >= bvm_y && y < bvm_y + 40 && x >= 230) {
+    if (y >= bvm_y && y < bvm_y + 40) {
         if (!ontg) { pin_vereist_tonen(); return; }
-        int idx = (x - 230) / 90;
-        if (idx >= 0 && idx < 4) { boot_vaar_modus = (byte)idx; state_save(); cfg_we_teken(); }
+        if (x >= 230 && x < 590) {
+            int idx = (x - 230) / 90;
+            if (idx >= 0 && idx < 4) { boot_vaar_modus = (byte)idx; state_save(); cfg_we_teken(); }
+        } else if (x >= 620 && x < 730) {   // vinkje: OPSTART AUTOMODUS
+            boot_vaarmodus_auto = !boot_vaarmodus_auto;
+            state_save(); cfg_we_teken();
+        }
         return;
     }
 
@@ -2109,15 +2113,6 @@ static void cfg_we_run(int x, int y) {
         if (!ontg) { pin_vereist_tonen(); return; }
         int idx = (x - 230) / 90;
         if (idx >= 0 && idx < 3) { boot_licht_instelling = (byte)idx; state_save(); cfg_we_teken(); }
-        return;
-    }
-
-    if (y >= bam_y && y < bam_y + 40) {
-        if (!ontg) { pin_vereist_tonen(); return; }
-        if (x >= 280 && x < 390) {
-            boot_vaarmodus_auto = !boot_vaarmodus_auto;
-            state_save(); cfg_we_teken();
-        }
         return;
     }
 

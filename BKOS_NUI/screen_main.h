@@ -67,9 +67,12 @@
 #define DKNOP2_X2 (DKNOP2_X1 + DKNOP_W + 6)
 #define DKNOP_Y1  (LKNOP_Y + LKNOP_H + UI_SCY(16))
 #define DKNOP_Y2  (DKNOP_Y1 + DKNOP_H + UI_SCY(6))
+#define DKNOP_Y3  (DKNOP_Y2 + DKNOP_H + UI_SCY(6))   // derde rij (7-9 knoppen)
 
-// Interieur status balk (wordt overgeslagen als er geen ruimte is)
-#define INT_STATUS_Y  (DKNOP_Y2 + DKNOP_H + UI_SCY(8))
+// Interieur status balk (wordt overgeslagen als er geen ruimte is) — schuift
+// mee naar onder de 3e knoppenrij zodra die actief is (paneel_aantal() > 6)
+#define INT_STATUS_Y   (DKNOP_Y2 + DKNOP_H + UI_SCY(8))
+#define INT_STATUS_Y3  (DKNOP_Y3 + DKNOP_H + UI_SCY(8))
 
 #if SCREEN_SMALL
 // ─── Portret compact-layout (schaalbaar: 240×320 t/m 320×480) ─────────────

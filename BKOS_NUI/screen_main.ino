@@ -433,25 +433,28 @@ static void licht_knoppen_teken() {
 
 // ─── Apparaat knoppen ───────────────────────────────────────────────
 // Positie van paneelknop `idx` (0-based, onder de gevulde knoppen) bij `totaal`.
-// Rij-indeling: 1->[1] 2->[2] 3->[3] 4->[2,2] 5->[3,2] 6->[3,3]
+// Aantal rijen = ceil(totaal/3) (max 3, dus max 9 knoppen); binnen dat aantal
+// rijen wordt zo gelijk mogelijk verdeeld, met het restant in de eerste rij(en)
+// — bv. 1->[1] 2->[2] 3->[3] 4->[2,2] 5->[3,2] 6->[3,3] 7->[3,2,2] 8->[3,3,2] 9->[3,3,3]
 static void _paneel_rect(int idx, int totaal, int* bx, int* by, int* bw, int* bh) {
-    int r0, r1;
-    switch (totaal) {
-        case 1: r0 = 1; r1 = 0; break;
-        case 2: r0 = 2; r1 = 0; break;
-        case 3: r0 = 3; r1 = 0; break;
-        case 4: r0 = 2; r1 = 2; break;
-        case 5: r0 = 3; r1 = 2; break;
-        default: r0 = 3; r1 = 3; break;  // 6
+    if (totaal < 1) totaal = 1;
+    if (totaal > 9) totaal = 9;
+    int rijen = (totaal + 2) / 3;           // ceil(totaal/3), 1..3
+    int basis = totaal / rijen;
+    int extra = totaal % rijen;             // eerste 'extra' rijen krijgen er één bij
+
+    int rij = 0, k = 0, pos = 0, cum = 0;
+    for (int r = 0; r < rijen; r++) {
+        int rk = basis + (r < extra ? 1 : 0);
+        if (idx < cum + rk) { rij = r; k = rk; pos = idx - cum; break; }
+        cum += rk;
     }
-    int rij = (idx < r0) ? 0 : 1;
-    int k   = (rij == 0) ? r0 : r1;
-    int pos = (rij == 0) ? idx : idx - r0;
     *bw = DKNOP_W; *bh = DKNOP_H;
     int rowW   = k * DKNOP_W + (k - 1) * 6;
     int startX = CTRL_PANEL_X + (CTRL_PANEL_W - rowW) / 2;
     *bx = startX + pos * (DKNOP_W + 6);
-    *by = (rij == 0) ? DKNOP_Y1 : DKNOP_Y2;
+    const int rowY[3] = {DKNOP_Y1, DKNOP_Y2, DKNOP_Y3};
+    *by = rowY[rij];
 }
 
 // Herken bekende apparaatnamen → icoon (na strippen van "**"); -1 = geen icoon
@@ -505,9 +508,10 @@ static void apparaat_knoppen_teken() {
 
 // ─── Interieur licht status (compact) ───────────────────────────────
 static void interieur_status_teken() {
-    if (INT_STATUS_Y + 30 > NAV_Y) return;  // niet genoeg ruimte (bijv. CYD40H)
+    // Schuift naar onder de 3e paneelknoppenrij zodra die actief is (7-9 knoppen)
+    int y = (paneel_aantal() > 6) ? INT_STATUS_Y3 : INT_STATUS_Y;
+    if (y + 30 > NAV_Y) return;  // niet genoeg ruimte (bijv. CYD40H, of 3 rijen op een kleiner scherm)
     int x = CTRL_PANEL_X + 10;
-    int y = INT_STATUS_Y;
     int w = CTRL_PANEL_W - 20;
     int h = 38;
 

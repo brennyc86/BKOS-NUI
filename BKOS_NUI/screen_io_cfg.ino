@@ -16,6 +16,7 @@ static uint8_t ov_actie_aan;
 static uint8_t ov_actie_uit;
 static uint8_t ov_param;
 static uint8_t ov_dynpuls;   // dynamo-bekrachtiging (globaal, alleen bij **motor)
+static uint8_t ov_boot_gedrag;  // IO_BOOT_UIT/AAN/ONTHOUD (alleen UITGANG-kanalen)
 
 // ─── Layout constanten ──────────────────────────────────────────────────
 #define IOCFG_COUNT_Y    (SB_H + 2)
@@ -40,6 +41,9 @@ static const uint8_t actie_codes[] = {0, 1, 2, 3, 4, 5, 6};
 
 static const char* alert_labels[] = {"GEEN", "BIJ AAN", "BIJ UIT", "BEIDE"};
 #define N_ALERTS 4
+
+static const char* boot_gedrag_labels[] = {"UIT", "AAN", "ONTHOUDEN"};
+#define N_BOOT 3
 
 // Dynamo-bekrachtiging: intervallen in minuten (0 = uit)
 static const uint8_t dyn_waarden[] = {0, 1, 2, 5, 10, 15, 30};
@@ -130,7 +134,7 @@ static void iocfg_rij_teken(int kanaal, int rij_y) {
     // Alert/actie badge
     bool heeft_cfg = is_in
         ? (io_actie_aan[kanaal] || io_actie_uit[kanaal])
-        : (io_alert[kanaal] > 0);
+        : (io_alert[kanaal] > 0 || io_boot_gedrag[kanaal] != IO_BOOT_UIT);
     if (heeft_cfg) {
         tft.fillRoundRect(478, rij_y + 6, 80, IOCFG_RIJ_H - 12, 5, C_AMBER);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DARK);
@@ -241,6 +245,23 @@ static void iocfg_overlay_teken() {
             int tw = strlen(alert_labels[i]) * 6;
             tft.setCursor(OV_IX + i * (bw + 6) + (bw - tw) / 2, cy + (32 - 8) / 2);
             tft.print(alert_labels[i]);
+        }
+        cy += 44;
+
+        // Status bij opstarten (alleen UITGANG — een INGANG volgt io_output[] toch nooit)
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(OV_IX, cy + 4); tft.print("STATUS BIJ OPSTARTEN:");
+        cy += 18;
+        {
+            int bbw = (OV_IW - (N_BOOT - 1) * 6) / N_BOOT;
+            for (int i = 0; i < N_BOOT; i++) {
+                bool act = (i == ov_boot_gedrag);
+                tft.fillRoundRect(OV_IX + i * (bbw + 6), cy, bbw, 32, 4, act ? C_AMBER : C_SURFACE2);
+                tft.setTextSize(1); tft.setTextColor(act ? C_TEXT_DARK : C_TEXT_DIM);
+                int tw = strlen(boot_gedrag_labels[i]) * 6;
+                tft.setCursor(OV_IX + i * (bbw + 6) + (bbw - tw) / 2, cy + (32 - 8) / 2);
+                tft.print(boot_gedrag_labels[i]);
+            }
         }
     } else {
         // INGANG: actie bij actief worden
@@ -358,7 +379,8 @@ static void pico_iocfg_rij_teken(int kanaal, int y) {
     const char* lbl = is_in ? "INGANG" : "UITGANG";
     int tw = strlen(lbl) * 6;
     tft.setCursor(148 + (54 - tw) / 2, y + (PIOCFG_RIJ_H - 8) / 2); tft.print(lbl);
-    bool heeft_cfg = is_in ? (io_actie_aan[kanaal] || io_actie_uit[kanaal]) : (io_alert[kanaal] > 0);
+    bool heeft_cfg = is_in ? (io_actie_aan[kanaal] || io_actie_uit[kanaal])
+                           : (io_alert[kanaal] > 0 || io_boot_gedrag[kanaal] != IO_BOOT_UIT);
     if (heeft_cfg) {
         tft.fillCircle(234, y + PIOCFG_RIJ_H / 2, 4, C_AMBER);
     }
@@ -424,6 +446,21 @@ static void pico_iocfg_overlay_teken() {
             int tw = strlen(alert_labels[i]) * 6;
             tft.setCursor(8 + i * (bw + 4) + (bw - tw) / 2, cy + (26 - 8) / 2);
             tft.print(alert_labels[i]);
+        }
+        cy += 26 + 10;
+
+        // Status bij opstarten (alleen UITGANG)
+        tft.setTextColor(C_TEXT_DIM); tft.setCursor(8, cy); tft.print("OPSTART:"); cy += 12;
+        {
+            int bbw = (TFT_W - 16 - (N_BOOT - 1) * 3) / N_BOOT;
+            for (int i = 0; i < N_BOOT; i++) {
+                bool act = (i == ov_boot_gedrag);
+                tft.fillRoundRect(8 + i * (bbw + 3), cy, bbw, 22, 3, act ? C_AMBER : C_SURFACE2);
+                tft.setTextSize(1); tft.setTextColor(act ? C_TEXT_DARK : C_TEXT_DIM);
+                int tw = strlen(boot_gedrag_labels[i]) * 6;
+                tft.setCursor(8 + i * (bbw + 3) + (bbw - tw) / 2, cy + (22 - 8) / 2);
+                tft.print(boot_gedrag_labels[i]);
+            }
         }
     } else {
         tft.setTextColor(C_TEXT_DIM); tft.setCursor(8, cy); tft.print("BIJ ACTIEF:"); cy += 12;
@@ -660,6 +697,13 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 if (idx >= 0 && idx < N_ALERTS) { ov_alert = idx; pico_iocfg_overlay_teken(); }
                 return;
             }
+            cy += 26 + 10 + 12;
+            if (y >= cy && y < cy + 22) {
+                int bbw = (TFT_W - 16 - (N_BOOT - 1) * 3) / N_BOOT;
+                int idx = (x - 8) / (bbw + 3);
+                if (idx >= 0 && idx < N_BOOT) { ov_boot_gedrag = (uint8_t)idx; pico_iocfg_overlay_teken(); }
+                return;
+            }
         } else {
             cy += 12;
             int bw = (TFT_W - 16 - (N_ACTIES - 1) * 3) / N_ACTIES;
@@ -695,6 +739,11 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 io_actie_aan[iocfg_kanaal]   = ov_actie_aan;
                 io_actie_uit[iocfg_kanaal]   = ov_actie_uit;
                 io_actie_param[iocfg_kanaal] = ov_param;
+                io_boot_gedrag[iocfg_kanaal] = ov_boot_gedrag;
+                // Bij (opnieuw) kiezen voor ONTHOUDEN meteen de actuele stand vastleggen
+                // i.p.v. tot 5s te wachten op de periodieke achtergrondcontrole
+                if (ov_boot_gedrag == IO_BOOT_ONTHOUD)
+                    io_boot_waarde[iocfg_kanaal] = (io_output[iocfg_kanaal] == IO_AAN || io_output[iocfg_kanaal] == IO_INV_AAN) ? 1 : 0;
                 hw_io_cfg_opslaan();
                 if (ov_toont_dynamo() && ov_dynpuls != dynamo_puls_min) {
                     dynamo_puls_min = ov_dynpuls;   // globaal, dus in de app-config
@@ -723,6 +772,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             iocfg_kanaal = kanaal; ov_richting = io_richting[kanaal]; ov_alert = io_alert[kanaal];
             ov_actie_aan = io_actie_aan[kanaal]; ov_actie_uit = io_actie_uit[kanaal]; ov_param = io_actie_param[kanaal];
             ov_dynpuls = dynamo_puls_min;
+            ov_boot_gedrag = io_boot_gedrag[kanaal];
             iocfg_overlay = true; iocfg_sloot = millis(); pico_iocfg_overlay_teken();
         }
         return;
@@ -791,6 +841,14 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 if (idx >= 0 && idx < N_ALERTS) { ov_alert = idx; iocfg_overlay_teken(); }
                 return;
             }
+            cy += 44 + 18;
+            // Status bij opstarten knoppen
+            if (y >= cy && y < cy + 32) {
+                int bbw = (OV_IW - (N_BOOT - 1) * 6) / N_BOOT;
+                int idx = (x - OV_IX) / (bbw + 6);
+                if (idx >= 0 && idx < N_BOOT) { ov_boot_gedrag = (uint8_t)idx; iocfg_overlay_teken(); }
+                return;
+            }
         } else {
             cy += 18;
             if (ov_actie_klik(x, y, cy, ov_actie_aan)) { iocfg_overlay_teken(); return; }
@@ -834,6 +892,11 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 io_actie_aan[iocfg_kanaal]   = ov_actie_aan;
                 io_actie_uit[iocfg_kanaal]   = ov_actie_uit;
                 io_actie_param[iocfg_kanaal] = ov_param;
+                io_boot_gedrag[iocfg_kanaal] = ov_boot_gedrag;
+                // Bij (opnieuw) kiezen voor ONTHOUDEN meteen de actuele stand vastleggen
+                // i.p.v. tot 5s te wachten op de periodieke achtergrondcontrole
+                if (ov_boot_gedrag == IO_BOOT_ONTHOUD)
+                    io_boot_waarde[iocfg_kanaal] = (io_output[iocfg_kanaal] == IO_AAN || io_output[iocfg_kanaal] == IO_INV_AAN) ? 1 : 0;
                 hw_io_cfg_opslaan();
                 if (ov_toont_dynamo() && ov_dynpuls != dynamo_puls_min) {
                     dynamo_puls_min = ov_dynpuls;   // globaal, dus in de app-config
@@ -884,6 +947,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             ov_actie_uit  = io_actie_uit[kanaal];
             ov_param      = io_actie_param[kanaal];
             ov_dynpuls    = dynamo_puls_min;
+            ov_boot_gedrag = io_boot_gedrag[kanaal];
             iocfg_overlay = true;
             iocfg_sloot   = millis();
             iocfg_overlay_teken();

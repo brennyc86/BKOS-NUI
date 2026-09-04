@@ -32,6 +32,9 @@ int   lua_forceer_app       = -1;
 int   licht_nav_offset_min  = 0;
 int   licht_int_offset_min  = 15;
 bool  onthoud_licht_modus   = false;
+byte  boot_vaar_modus       = MODE_HAVEN;
+byte  boot_licht_instelling = LICHT_AUTO;
+bool  boot_vaarmodus_auto   = false;
 
 #define CONFIG_BESTAND "/bkos_config.csv"
 
@@ -52,6 +55,9 @@ void state_save() {
     f.printf("navoff=%d\n",   licht_nav_offset_min);
     f.printf("intoff=%d\n",   licht_int_offset_min);
     f.printf("onthlicht=%d\n",(int)onthoud_licht_modus);
+    f.printf("bootvm=%d\n",  (int)boot_vaar_modus);
+    f.printf("bootlt=%d\n",  (int)boot_licht_instelling);
+    f.printf("bootam=%d\n",  (int)boot_vaarmodus_auto);
     f.printf("ota_auto=%d\n", (int)ota_auto_update);
     f.printf("ota_beta=%d\n", (int)ota_beta_kanal);
     f.printf("ota_int=%d\n",  ota_check_interval_min);
@@ -85,6 +91,9 @@ void state_load() {
     licht_nav_offset_min  = 0;
     licht_int_offset_min  = 15;
     onthoud_licht_modus   = false;
+    boot_vaar_modus       = MODE_HAVEN;
+    boot_licht_instelling = LICHT_AUTO;
+    boot_vaarmodus_auto   = false;
     wifi_open_auto        = false;
     dynamo_puls_min       = 0;
     tijdzone_idx          = 0;   // Midden-Europa (CET/CEST)
@@ -133,6 +142,9 @@ void state_load() {
         if (key == "navoff")    licht_nav_offset_min  = val.toInt();
         if (key == "intoff")    licht_int_offset_min  = val.toInt();
         if (key == "onthlicht") onthoud_licht_modus   = (val.toInt() != 0);
+        if (key == "bootvm")    boot_vaar_modus       = (byte)constrain(val.toInt(), 0, 3);
+        if (key == "bootlt")    boot_licht_instelling = (byte)constrain(val.toInt(), 0, 2);
+        if (key == "bootam")    boot_vaarmodus_auto   = (val.toInt() != 0);
         if (key == "ota_auto")  ota_auto_update        = (val.toInt() != 0);
         if (key == "ota_beta")  { ota_beta_kanal = (val.toInt() != 0); ota_beta_kanal_geladen = true; }
         if (key == "ota_int")   ota_check_interval_min = val.toInt();
@@ -157,12 +169,12 @@ void state_load() {
     // Voorkom volledig donker scherm door verouderde config-waarde (b.v. opgeslagen terwijl scherm uit was)
     if (tft_helderheid < 10) tft_helderheid = 10;
 
-    // Als vaarmodus niet onthouden wordt: HAVEN + AUTO als standaard, en de
-    // AUTO-schakelaar staat weer uit — "MODUS ONTHOUDEN" bepaalt dus zowel de
-    // laatst gekozen modus als of automatisch wisselen aan mocht blijven.
+    // Als vaarmodus niet onthouden wordt: de ingestelde opstartwaarden gebruiken
+    // i.p.v. de laatst gebruikte stand — "MODUS ONTHOUDEN" bepaalt dus of de
+    // laatst gekozen modus/verlichting/AUTO-stand wint, of deze standaardwaarden.
     if (!onthoud_licht_modus) {
-        vaar_modus       = MODE_HAVEN;
-        licht_instelling = LICHT_AUTO;
-        vaarmodus_auto   = false;
+        vaar_modus       = boot_vaar_modus;
+        licht_instelling = boot_licht_instelling;
+        vaarmodus_auto   = boot_vaarmodus_auto;
     }
 }

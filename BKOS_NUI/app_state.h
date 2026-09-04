@@ -93,6 +93,12 @@ extern int  licht_nav_offset_min;   // nav verlichting offset
 extern int  licht_int_offset_min;   // interieur rood offset
 extern bool onthoud_licht_modus;    // bewaar licht_instelling + vaar_modus na herstart
 
+// Opstartinstellingen — alleen van toepassing zolang onthoud_licht_modus UIT staat
+// (staat die AAN, dan wint de laatst gebruikte stand altijd van deze standaardwaarden)
+extern byte boot_vaar_modus;       // vaar_modus bij opstarten
+extern byte boot_licht_instelling; // licht_instelling bij opstarten
+extern bool boot_vaarmodus_auto;   // vaarmodus_auto bij opstarten
+
 // Lua app geforceerd open (ongeacht vervangt-veld); -1 = geen
 extern int lua_forceer_app;
 

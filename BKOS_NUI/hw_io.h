@@ -47,6 +47,12 @@ extern uint16_t io_heartbeat_uit;  // seconden, instelbaar
 #define IO_RICHTING_UIT    0
 #define IO_RICHTING_IN     1
 
+// Opstartgedrag per kanaal (alleen zinvol voor UITGANG-kanalen — een INGANG
+// volgt io_output[] toch nooit, zie io_drijf_hoog() in io.ino)
+#define IO_BOOT_UIT        0   // altijd UIT bij opstarten (standaard)
+#define IO_BOOT_AAN        1   // altijd AAN bij opstarten
+#define IO_BOOT_ONTHOUD    2   // laatst bekende stand herstellen (io_boot_waarde[])
+
 // Alert codes (voor uitgangen)
 #define IO_ALERT_GEEN      0
 #define IO_ALERT_BIJ_AAN   1
@@ -79,9 +85,12 @@ extern uint8_t io_alert[];
 extern uint8_t io_actie_aan[];
 extern uint8_t io_actie_uit[];
 extern uint8_t io_actie_param[];
+extern uint8_t io_boot_gedrag[];  // IO_BOOT_UIT/AAN/ONTHOUD per kanaal
+extern uint8_t io_boot_waarde[];  // laatst opgeslagen AAN/UIT-stand (0/1) voor ONTHOUD-kanalen
 
 void hw_io_setup();
 void hw_io_namen_laden();
 void hw_io_namen_opslaan();
 void hw_io_cfg_laden();
 void hw_io_cfg_opslaan();
+bool hw_io_boot_onthouden_bijwerken();  // true als er iets gewijzigd is (caller moet dan opslaan)

@@ -164,6 +164,8 @@ void io_detect() {
 #define DYN_LOSLAAT_CYCLI 3       // bevestigende cycli na het loslaten (niet 1)
 #define DYN_KAND_MS       3000UL  // tijd tussen bevestigingsmetingen tijdens bewaking
 #define DYN_KAND_NODIG    3       // aantal gelijke metingen op rij nodig
+#define DYN_BOOT_LAAG_MS   3000UL // pin moet dit lang aaneengesloten laag zijn na opstarten
+#define DYN_BOOT_POLL_MS    500UL // hoe vaak een verse meting geforceerd wordt tijdens dat venster
 
 enum { DYN_RUST, DYN_PULS, DYN_LOSLATEN, DYN_WACHT, DYN_METEN };
 
@@ -185,6 +187,15 @@ static byte          dyn_kand_teller       = 0;
 static unsigned long dyn_kand_volgende     = 0;
 static unsigned long dyn_kand_verzoek      = 0;
 static bool          dyn_kand_cyclus_bezig = false;
+
+// Boot-instelvenster: bij opstarten kan deze pin (D+, ruisgevoelig) een tijdje
+// hoog uitlezen vóórdat hij daadwerkelijk settelt. Zolang dat zo is, mag noch
+// de puls-timer, noch io_dynamo_bewaking() met dit kanaal aan de slag.
+static bool          dyn_boot_klaar        = false;
+static unsigned long dyn_boot_laag_sinds   = 0;   // 0 = nog geen lage meting in de huidige reeks
+static unsigned long dyn_boot_laatste_poll = 0;
+static unsigned long dyn_boot_verzoek      = 0;
+static bool          dyn_boot_bezig        = false;
 
 // Mag dit kanaal op dit moment door de bekrachtigingspuls hoog gehouden worden?
 // Bewust een pure tijdstoets: ook als de toestandsmachine zou blijven hangen,
@@ -424,6 +435,16 @@ void io_loop() {
                 io_zekering_check();
         }
     }
+    {
+        static unsigned long boot_onthoud_gecheckt = 0;
+        unsigned long nu = millis();
+        if (nu - boot_onthoud_gecheckt >= 5000) {
+            boot_onthoud_gecheckt = nu;
+            if ((net_modus == NET_MASTER || net_modus == NET_STANDALONE) &&
+                hw_io_boot_onthouden_bijwerken())
+                hw_io_cfg_opslaan();
+        }
+    }
 #else
     // Pico: io_cyclus() is snel (GPIO, geen UART) — gewoon in de main loop
     if (net_modus != NET_STANDALONE && net_modus != NET_MASTER && net_gepaard) return;
@@ -465,6 +486,13 @@ void io_loop() {
         if (nu - zekering_gecheckt >= 5000) {
             zekering_gecheckt = nu;
             io_zekering_check();
+        }
+    }
+    {
+        static unsigned long boot_onthoud_gecheckt = 0;
+        if (nu - boot_onthoud_gecheckt >= 5000) {
+            boot_onthoud_gecheckt = nu;
+            if (hw_io_boot_onthouden_bijwerken()) hw_io_cfg_opslaan();
         }
     }
 
@@ -514,6 +542,38 @@ static bool _dyn_cyclus_klaar(unsigned long sinds) {
 bool io_kanaal_input_effectief(int kanaal) {
     if (kanaal == io_dynamo_kanaal()) return motor_draait;
     return io_input[kanaal];
+}
+
+// Bootgate: forceert elke DYN_BOOT_POLL_MS een verse io_cyclus en houdt bij hoe
+// lang de aflezing aaneengesloten laag is. Elke hoge meting reset de reeks. Pas
+// zodra de reeks DYN_BOOT_LAAG_MS aaneengesloten laag heeft gestaan, geeft dit
+// blijvend true terug (eenmalig venster — géén doorlopende herhaling nadien).
+static bool io_dynamo_boot_gate(int kanaal) {
+    if (dyn_boot_klaar) return true;
+    unsigned long nu = millis();
+
+    if (!dyn_boot_bezig) {
+        if (nu - dyn_boot_laatste_poll < DYN_BOOT_POLL_MS) return false;
+        dyn_boot_laatste_poll = nu;
+        dyn_boot_verzoek      = nu;
+        dyn_boot_bezig        = true;
+        _dyn_cyclus_forceren(kanaal);
+        return false;
+    }
+    if (!_dyn_cyclus_klaar(dyn_boot_verzoek)) {
+        if (nu - dyn_boot_verzoek > DYN_CYCLUS_MAX) dyn_boot_bezig = false;  // opnieuw proberen
+        return false;
+    }
+    dyn_boot_bezig = false;
+
+    if (io_input[kanaal]) {
+        dyn_boot_laag_sinds = 0;                          // hoog: reeks opnieuw beginnen
+    } else if (dyn_boot_laag_sinds == 0) {
+        dyn_boot_laag_sinds = nu;                          // eerste lage meting van deze reeks
+    } else if (nu - dyn_boot_laag_sinds >= DYN_BOOT_LAAG_MS) {
+        dyn_boot_klaar = true;
+    }
+    return dyn_boot_klaar;
 }
 
 // Idle-bewaking: buiten de puls-sequentie (alleen tijdens DYN_RUST aangeroepen)
@@ -593,6 +653,11 @@ void io_dynamo_loop() {
                 dyn_kand_cyclus_bezig = false;
                 return;
             }
+
+            // Vlak na opstarten kan deze pin nog een tijdje hoog uitlezen
+            // (restlading/ruis op de D+-lijn) — pas als hij minstens 3s
+            // aaneengesloten laag heeft gestaan mag er iets mee gebeuren.
+            if (!io_dynamo_boot_gate(k)) return;
 
             // Idle-bewaking blijft actief zolang we niet aan een nieuwe puls
             // beginnen — reageert op echte veranderingen tussen twee geplande

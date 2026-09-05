@@ -23,6 +23,11 @@
 #define RC_ROW_DY1   UI_SCY(3)
 #define RC_ROW_DY2   UI_SCY(19)
 #define RC_MAXRIJEN  6
+// Hoofdmenu heeft 4 knoppen i.p.v. 2 — eigen (kleinere) hoogte/tussenruimte
+// zodat ze nog binnen het scherm passen; RC_BTN_H/GAP blijven ongewijzigd
+// voor de 1-2-knops dialogen (_rc_bevestig/_rc_melding_terug).
+#define RC_MENU_BTN_H  UI_SCY(44)
+#define RC_MENU_GAP    UI_SCY(8)
 #else
 #define RC_TITEL_Y   UI_SCY(20)
 #define RC_MSG_Y0    UI_SCY(50)
@@ -35,6 +40,8 @@
 #define RC_ROW_DY1   UI_SCY(4)
 #define RC_ROW_DY2   UI_SCY(24)
 #define RC_MAXRIJEN  7
+#define RC_MENU_BTN_H  UI_SCY(58)
+#define RC_MENU_GAP    UI_SCY(12)
 #endif
 
 static int _rc_mx, _rc_bw;
@@ -97,12 +104,14 @@ static void _rc_regel(int rij, const char* t, uint16_t kleur, uint8_t grootte = 
 }
 
 // Wacht op een touch-DOWN binnen één van 'n' knoppen die allemaal dezelfde
-// breedte/hoogte hebben en onder elkaar staan vanaf y0, met RC_BTN_GAP ertussen.
-static int _rc_wacht_knop(int y0, int h, int n) {
+// breedte/hoogte hebben en onder elkaar staan vanaf y0, met `gap` ertussen
+// (default RC_BTN_GAP — moet exact overeenkomen met de tussenruimte waarmee
+// de knoppen getekend zijn, anders wijkt de tikzone af van wat zichtbaar is).
+static int _rc_wacht_knop(int y0, int h, int n, int gap = RC_BTN_GAP) {
     for (;;) {
         if (_rc_tik_gedebounced()) {
             for (int i = 0; i < n; i++) {
-                int y = y0 + i * (h + RC_BTN_GAP);
+                int y = y0 + i * (h + gap);
                 if (ts_x >= _rc_mx && ts_x < _rc_mx + _rc_bw && ts_y >= y && ts_y < y + h)
                     return i;
             }
@@ -266,22 +275,66 @@ static void _rc_versie_kiezen() {
     }
 }
 
+// ─── Beta installeren: de nieuwste tussenversie (main-branch build) voor dit
+// platform. Anders dan bij stabiel bestaat er geen historie van individueel
+// terug te halen betabinaries (elke CI-build overschrijft de vorige op
+// dezelfde URL) — dus geen lijst zoals _rc_versie_kiezen(), gewoon de
+// nieuwste ophalen en bevestigen, zelfde opzet als _rc_verwijderen(). Zet
+// ota_beta_kanal tijdelijk om (en zet 'm terug) zodat ota_git_check() het
+// betakanaal leest zonder de normale schermvoorkeur van de gebruiker te
+// wijzigen.
+static void _rc_beta_installeren() {
+    _rc_titel("BETA INSTALLEREN");
+    _rc_regel(0, "Huidige versie:", C_TEXT_DIM, 1);
+    _rc_regel(1, BKOS_NUI_VERSIE, C_TEXT, 1);
+    _rc_regel(3, "WiFi verbinden...", C_TEXT_DIM, 1);
+    if (!wifi_verbind_opgeslagen()) {
+        _rc_melding_terug("BETA INSTALLEREN", "Geen WiFi-verbinding.", "Controleer opgeslagen netwerk.", C_RED_BRIGHT);
+        return;
+    }
+
+    _rc_regel(3, "Nieuwste beta ophalen...", C_TEXT_DIM, 1);
+    bool oud_kanaal = ota_beta_kanal;
+    ota_beta_kanal = true;
+    ota_git_check();
+    ota_beta_kanal = oud_kanaal;
+
+    if (ota_versie_github.length() == 0) {
+        _rc_melding_terug("BETA INSTALLEREN", "Kon versie niet ophalen:", ota_status_tekst.c_str(), C_RED_BRIGHT);
+        return;
+    }
+
+    char r1[40];
+    snprintf(r1, sizeof(r1), "Beta %s flashen?", ota_versie_github.c_str());
+    bool ja = _rc_bevestig("BETA FLASHEN", r1, "Tussenversie - minder getest dan stabiel.", "FLASHEN", C_AMBER);
+    if (!ja) return;
+
+    _rc_titel("BETA INSTALLEREN");
+    _rc_regel(0, "Downloaden en flashen...", C_TEXT_DIM, 1);
+    // ota_download_toepassen() tekent zijn eigen voortgangsscherm en herstart
+    // het apparaat bij succes — deze aanroep keert dan ook nooit terug.
+    ota_download_toepassen(String(OTA_GITHUB_FIRMWARE_URL));
+    _rc_melding_terug("BETA INSTALLEREN", "Downloaden/flashen mislukt:", ota_status_tekst.c_str(), C_RED_BRIGHT);
+}
+
 void recovery_menu() {
     _rc_layout();
     for (;;) {
         _rc_titel("HERSTELMENU");
         _rc_regel(0, "BKOS-NUI " BKOS_NUI_VERSIE, C_TEXT_DIM, 1);
 
-        ui_knop_groot(_rc_mx, RC_BTN_TOP,                             _rc_bw, RC_BTN_H, "OPSTARTEN", "Ga verder",  C_SURFACE, C_TEXT, C_CYAN,       true);
-        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_BTN_H + RC_BTN_GAP),     _rc_bw, RC_BTN_H, "VERWIJDER", "Wist BKOS",  C_SURFACE, C_TEXT, C_RED_BRIGHT, true);
-        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_BTN_H + RC_BTN_GAP) * 2, _rc_bw, RC_BTN_H, "UPDATE",    "Kies versie", C_SURFACE, C_TEXT, C_AMBER,      true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP,                                 _rc_bw, RC_MENU_BTN_H, "OPSTARTEN", "Ga verder",   C_SURFACE, C_TEXT, C_CYAN,       true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP),     _rc_bw, RC_MENU_BTN_H, "VERWIJDER", "Wist BKOS",   C_SURFACE, C_TEXT, C_RED_BRIGHT, true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 2, _rc_bw, RC_MENU_BTN_H, "UPDATE",    "Kies versie", C_SURFACE, C_TEXT, C_AMBER,      true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 3, _rc_bw, RC_MENU_BTN_H, "BETA",      "Nieuwste tussenversie", C_SURFACE, C_TEXT, C_ZEILEN, true);
         tft_flush(true);
 
-        int keuze = _rc_wacht_knop(RC_BTN_TOP, RC_BTN_H, 3);
+        int keuze = _rc_wacht_knop(RC_BTN_TOP, RC_MENU_BTN_H, 4, RC_MENU_GAP);
         if (keuze == 0) return;              // gewoon opstarten
-        if (keuze == 1) _rc_verwijderen();
-        else            _rc_versie_kiezen();
-        // Beide acties keren alleen terug bij annuleren/falen — dan gewoon
+        else if (keuze == 1) _rc_verwijderen();
+        else if (keuze == 2) _rc_versie_kiezen();
+        else                 _rc_beta_installeren();
+        // Alle acties keren alleen terug bij annuleren/falen — dan gewoon
         // opnieuw het herstelmenu tonen i.p.v. meteen op te starten.
     }
 }

@@ -25,6 +25,7 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 static bool lp_kb_actief = false;
 static int  lp_edit_nr   = -1;      // lampnummer dat via het toetsenbord bewerkt wordt
 static unsigned long lp_flits_tot = 0;
+static bool lp_opslaan_fout = false;  // true = laatste OPSLAAN is mislukt (bv. SPIFFS vol)
 static int  lp_scroll_y   = 0;
 static int  lp_max_scroll = 0;
 
@@ -121,9 +122,22 @@ void screen_lampen_teken() {
     tft.setCursor((TFT_W - 7 * 12) / 2, LP_OPSLAAN_Y + LP_OPSLAAN_H / 2 - 8); tft.print("OPSLAAN");
 
     if (lp_flits_tot > millis()) {
-        tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_GREEN);
-        tft.setTextSize(2); tft.setTextColor(C_BG);
-        tft.setCursor(12, NAV_Y - 20); tft.print("Opgeslagen");
+        if (lp_opslaan_fout) {
+            char msg[48];
+#if PLATFORM_PICO
+            snprintf(msg, sizeof(msg), "Opslaan mislukt! (opslag vol?)");
+#else
+            snprintf(msg, sizeof(msg), "Opslaan mislukt! (%u bytes vrij)",
+                     (unsigned)(SPIFFS.totalBytes() - SPIFFS.usedBytes()));
+#endif
+            tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_RED_BRIGHT);
+            tft.setTextSize(1); tft.setTextColor(C_BG);
+            tft.setCursor(12, NAV_Y - 16); tft.print(msg);
+        } else {
+            tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_GREEN);
+            tft.setTextSize(2); tft.setTextColor(C_BG);
+            tft.setCursor(12, NAV_Y - 20); tft.print("Opgeslagen");
+        }
     }
     nav_bar_teken();
 }
@@ -182,8 +196,8 @@ void screen_lampen_run(int x, int y, bool aanraking) {
 
     // OPSLAAN — vast, altijd op dezelfde plek ongeacht scroll
     if (y >= LP_OPSLAAN_Y && y < LP_OPSLAAN_Y + LP_OPSLAAN_H) {
-        lamp_opslaan();
-        lp_flits_tot = millis() + 1800;
+        lp_opslaan_fout = !lamp_opslaan();
+        lp_flits_tot = millis() + (lp_opslaan_fout ? 4000 : 1800);
         screen_lampen_teken();
         return;
     }

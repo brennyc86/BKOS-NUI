@@ -18,9 +18,10 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define PN_OPSLAAN_Y    (NAV_Y - PN_OPSLAAN_H - 8)
 #define PN_LIST_BOT     (PN_OPSLAAN_Y - 8)
 
-static bool pn_kb_actief = false;
-static int  pn_edit      = -1;
+static bool pn_kb_actief   = false;
+static int  pn_edit        = -1;
 static unsigned long pn_flits_tot = 0;
+static bool pn_opslaan_fout = false;  // true = laatste OPSLAAN is mislukt (bv. SPIFFS vol)
 static int  pn_scroll_y     = 0;
 static int  pn_max_scroll   = 0;
 
@@ -67,9 +68,22 @@ void screen_paneel_teken() {
     tft.setCursor((TFT_W - 7 * 12) / 2, PN_OPSLAAN_Y + PN_OPSLAAN_H / 2 - 8); tft.print("OPSLAAN");
 
     if (pn_flits_tot > millis()) {
-        tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_GREEN);
-        tft.setTextSize(2); tft.setTextColor(C_BG);
-        tft.setCursor(12, NAV_Y - 20); tft.print("Opgeslagen");
+        if (pn_opslaan_fout) {
+            char msg[48];
+#if PLATFORM_PICO
+            snprintf(msg, sizeof(msg), "Opslaan mislukt! (opslag vol?)");
+#else
+            snprintf(msg, sizeof(msg), "Opslaan mislukt! (%u bytes vrij)",
+                     (unsigned)(SPIFFS.totalBytes() - SPIFFS.usedBytes()));
+#endif
+            tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_RED_BRIGHT);
+            tft.setTextSize(1); tft.setTextColor(C_BG);
+            tft.setCursor(12, NAV_Y - 16); tft.print(msg);
+        } else {
+            tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_GREEN);
+            tft.setTextSize(2); tft.setTextColor(C_BG);
+            tft.setCursor(12, NAV_Y - 20); tft.print("Opgeslagen");
+        }
     }
 }
 
@@ -122,8 +136,8 @@ void screen_paneel_run(int x, int y, bool aanraking) {
 
     // OPSLAAN — vast, altijd op dezelfde plek ongeacht scroll
     if (y >= PN_OPSLAAN_Y && y < PN_OPSLAAN_Y + PN_OPSLAAN_H) {
-        paneel_opslaan();
-        pn_flits_tot = millis() + 1800;
+        pn_opslaan_fout = !paneel_opslaan();
+        pn_flits_tot = millis() + (pn_opslaan_fout ? 4000 : 1800);
         scherm_bouwen = true;
         return;
     }

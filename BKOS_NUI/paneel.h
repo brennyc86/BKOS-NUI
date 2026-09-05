@@ -13,7 +13,7 @@
 extern char paneel_knop[PANEEL_KNOP_MAX][IO_NAAM_LEN];   // "" = leeg/niet tonen
 
 void        paneel_laden();
-void        paneel_opslaan();
+bool        paneel_opslaan();   // false = schrijven mislukt (bv. SPIFFS vol) — zie screen_paneel.ino
 int         paneel_aantal();                       // aantal niet-lege knoppen
 const char* paneel_knop_naam(int gevuld_idx);      // naam van de i-de gevulde knop
 void        paneel_label(const char* naam, char* buf, int len);  // "**USB" -> "USB"

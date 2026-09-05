@@ -32,11 +32,30 @@ void paneel_laden() {
     }
 }
 
-void paneel_opslaan() {
+bool paneel_opslaan() {
     File f = SPIFFS.open(PANEEL_BESTAND, "w");
-    if (!f) return;
-    for (int i = 0; i < PANEEL_KNOP_MAX; i++) f.printf("%s\n", paneel_knop[i]);
+    if (!f) return false;
+    bool schrijf_ok = true;
+    for (int i = 0; i < PANEEL_KNOP_MAX; i++) {
+        int verwacht = strlen(paneel_knop[i]) + 1;   // +1 voor de '\n'
+        if (f.printf("%s\n", paneel_knop[i]) != verwacht) schrijf_ok = false;
+    }
     f.close();
+    if (!schrijf_ok) return false;
+
+    // Direct terugleren en vergelijken — vangt ook een write die qua
+    // bytenaantal klopte maar waarvan de inhoud (bv. door een volle SPIFFS-
+    // partitie tijdens het intern wegschrijven) toch niet goed op flash staat.
+    File r = SPIFFS.open(PANEEL_BESTAND, "r");
+    if (!r) return false;
+    bool lees_ok = true;
+    for (int i = 0; i < PANEEL_KNOP_MAX; i++) {
+        String l = r.readStringUntil('\n');
+        l.trim();
+        if (!l.equals(paneel_knop[i])) { lees_ok = false; break; }
+    }
+    r.close();
+    return lees_ok;
 }
 
 int paneel_aantal() {

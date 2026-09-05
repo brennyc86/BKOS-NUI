@@ -39,15 +39,47 @@ void lamp_laden() {
     for (int i = 0; i <= LAMP_MAX; i++) lamp_aan[i] = lamp_boot_aan[i];
 }
 
-void lamp_opslaan() {
+bool lamp_opslaan() {
     File f = SPIFFS.open(LAMP_BESTAND, "w");
-    if (!f) return;
+    if (!f) return false;
+    bool schrijf_ok = true;
     for (int i = 1; i <= LAMP_MAX; i++) {
         if (lamp_boot_aan[i] || lamp_naam[i][0]) {
-            f.printf("%d:%d:%s\n", i, (int)lamp_boot_aan[i], lamp_naam[i]);
+            char regel[8 + IO_NAAM_LEN];
+            int len = snprintf(regel, sizeof(regel), "%d:%d:%s\n", i, (int)lamp_boot_aan[i], lamp_naam[i]);
+            if (f.print(regel) != len) schrijf_ok = false;
         }
     }
     f.close();
+    if (!schrijf_ok) return false;
+
+    // Direct terugleren en vergelijken (zelfde reden als paneel_opslaan():
+    // vangt een write die qua bytenaantal klopte maar er door een volle
+    // SPIFFS-partitie tijdens het intern wegschrijven toch niet goed staat).
+    File r = SPIFFS.open(LAMP_BESTAND, "r");
+    if (!r) return false;
+    bool lees_ok = true;
+    int gezien = 0;
+    while (r.available()) {
+        String l = r.readStringUntil('\n');
+        l.trim();
+        if (l.length() == 0) continue;
+        int s1 = l.indexOf(':');
+        int s2 = (s1 >= 1) ? l.indexOf(':', s1 + 1) : -1;
+        if (s1 < 1 || s2 < 0) { lees_ok = false; break; }
+        int nr = l.substring(0, s1).toInt();
+        if (nr < 1 || nr > LAMP_MAX ||
+            (l.substring(s1 + 1, s2).toInt() != 0) != lamp_boot_aan[nr] ||
+            !l.substring(s2 + 1).equals(lamp_naam[nr])) { lees_ok = false; break; }
+        gezien++;
+    }
+    r.close();
+    if (lees_ok) {
+        int verwacht = 0;
+        for (int i = 1; i <= LAMP_MAX; i++) if (lamp_boot_aan[i] || lamp_naam[i][0]) verwacht++;
+        if (gezien != verwacht) lees_ok = false;
+    }
+    return lees_ok;
 }
 
 void lamp_label(int nr, char* buf, int len) {

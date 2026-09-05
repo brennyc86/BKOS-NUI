@@ -17,5 +17,5 @@ extern bool lamp_boot_aan[LAMP_MAX + 1];  // opstartstand
 extern char lamp_naam[LAMP_MAX + 1][IO_NAAM_LEN];  // "" = ongenaamd -> label "Lamp N"
 
 void lamp_laden();
-void lamp_opslaan();
+bool lamp_opslaan();   // false = schrijven mislukt (bv. SPIFFS vol) — zie screen_lampen.ino
 void lamp_label(int nr, char* buf, int len);   // ingestelde naam, anders "Lamp N"

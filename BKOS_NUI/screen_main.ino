@@ -97,14 +97,30 @@ static void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
             tft.drawLine(cx, cy-6, cx+3, cy-9, kleur);
             tft.drawLine(cx, cy-6, cx, cy-9, kleur);
             break;
-        case I_LAMP:  // klassiek gloeilampje: bol + kruis-filament + voetje
-            tft.drawCircle(cx, cy-2, 6, kleur);
-            tft.drawLine(cx-3, cy-5, cx+3, cy+1, kleur);
-            tft.drawLine(cx+3, cy-5, cx-3, cy+1, kleur);
-            tft.drawFastVLine(cx, cy+4, 3, kleur);
-            tft.drawFastHLine(cx-3, cy+7, 6, kleur);
-            tft.drawFastHLine(cx-3, cy+9, 6, kleur);
-            break;
+        // I_LAMP heeft een eigen tekenfunctie (teken_icoon_lamp) — die kent de
+        // aan/uit-stand én de actuele kleur, wat teken_icoon()'s ene kleur-
+        // parameter niet kan uitdrukken (peertje moet wit/rood oplichten).
+    }
+}
+
+// Peertje: glazen bol (gevuld+oplichtend als 'aan', anders alleen omtrek) op
+// een voetje met schroefdraad; bij 'aan' een paar lichtstralen in de actuele
+// kleur (wit/rood) — gebruikt door PANEEL-knoppen die een IL-lampgroep zijn.
+static void teken_icoon_lamp(int cx, int cy, bool aan, bool rood) {
+    uint16_t kleur = aan ? (rood ? C_LIGHT_ON_RED : C_WHITE) : C_TEXT_DIM;
+    int by = cy - 2;
+    if (aan) { tft.fillCircle(cx, by, 6, kleur); ui_glow(cx, by, 6, kleur, 2); }
+    else       tft.drawCircle(cx, by, 6, kleur);
+    tft.drawFastVLine(cx, by + 5, 3, kleur);
+    tft.drawFastHLine(cx - 3, by + 8, 6, kleur);
+    tft.drawFastHLine(cx - 3, by + 10, 6, kleur);
+    if (aan) {
+        // 5 stralen, uitwaaierend over de bovenste helft (niet omlaag, door het voetje)
+        tft.drawLine(cx,     by - 8,  cx,     by - 12, kleur);   // boven
+        tft.drawLine(cx - 6, by - 6,  cx - 9, by - 9,  kleur);   // linksboven
+        tft.drawLine(cx + 6, by - 6,  cx + 9, by - 9,  kleur);   // rechtsboven
+        tft.drawLine(cx - 8, by,      cx - 12, by,     kleur);   // links
+        tft.drawLine(cx + 8, by,      cx + 12, by,     kleur);   // rechts
     }
 }
 
@@ -508,7 +524,10 @@ static void _paneel_knop_teken(int x, int y, int w, int h, const char* label,
     uint16_t fg = aan ? C_CYAN : C_TEXT_DIM;
     tft.setTextSize(2); tft.setTextColor(fg);
     int tw = strlen(label) * 12;
-    if (icoon >= 0) {
+    if (icoon == I_LAMP) {
+        teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood);
+        tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8); // label onder
+    } else if (icoon >= 0) {
         teken_icoon(icoon, x + w / 2, y + h * 3 / 8, fg);   // icoon boven
         tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8); // label onder
     } else {
@@ -891,7 +910,10 @@ static void pico_apparaten_teken() {
         uint16_t fg = aan ? C_CYAN : C_TEXT_DIM;
         tft.setTextSize(1); tft.setTextColor(fg);
         int tw = strlen(lab) * 6;
-        if (icoon >= 0) {
+        if (icoon == I_LAMP) {
+            teken_icoon_lamp(bx + bw / 2, PICO_DKNOP_Y + 11, aan, interieur_kleur_rood);
+            tft.setCursor(bx + (bw - tw) / 2, PICO_DKNOP_Y + PICO_DKNOP_H - 9);
+        } else if (icoon >= 0) {
             teken_icoon(icoon, bx + bw / 2, PICO_DKNOP_Y + 11, fg);
             tft.setCursor(bx + (bw - tw) / 2, PICO_DKNOP_Y + PICO_DKNOP_H - 9);
         } else {

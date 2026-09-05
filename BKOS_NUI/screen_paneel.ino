@@ -8,11 +8,15 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define PN_HDR_H    30
 #define PN_ROW_H    40
 #define PN_START_Y  (CONTENT_Y + PN_HDR_H + 6)
-#define PN_OPSLA_R  PANEEL_KNOP_MAX          // rij-index van de OPSLAAN-knop
-// Alle 9 knop-rijen + OPSLAAN vallen op kleinere schermen (en bij 9 slots ook
-// op de S3-referentie) voorbij NAV_Y — scrollbaar gemaakt, één layout voor
-// alle platforms (dit scherm heeft geen aparte SCREEN_SMALL-variant).
-#define PN_SCROLL_TOP  (PN_START_Y + 12)
+// Alle 9 knop-rijen vallen op kleinere schermen (en bij 9 slots ook op de
+// S3-referentie) voorbij NAV_Y — scrollbaar gemaakt, één layout voor alle
+// platforms (dit scherm heeft geen aparte SCREEN_SMALL-variant). OPSLAAN
+// staat daarom NIET in de scrollende lijst maar vast net boven de navbar —
+// anders moest je eerst helemaal naar beneden scrollen om te kunnen opslaan.
+#define PN_SCROLL_TOP   (PN_START_Y + 12)
+#define PN_OPSLAAN_H    (PN_ROW_H - 4)
+#define PN_OPSLAAN_Y    (NAV_Y - PN_OPSLAAN_H - 8)
+#define PN_LIST_BOT     (PN_OPSLAAN_Y - 8)
 
 static bool pn_kb_actief = false;
 static int  pn_edit      = -1;
@@ -38,6 +42,7 @@ void screen_paneel_teken() {
     int y0 = PN_SCROLL_TOP - pn_scroll_y;
     for (int i = 0; i < PANEEL_KNOP_MAX; i++) {
         int ry = y0 + i * PN_ROW_H;
+        if (ry + PN_ROW_H <= PN_SCROLL_TOP || ry >= PN_LIST_BOT) continue;  // buiten het vaste kijkvenster
         tft.fillRect(8, ry, TFT_W - 16, PN_ROW_H - 4, (i % 2 == 0) ? C_SURFACE : C_BG);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         char kl[12]; snprintf(kl, sizeof(kl), "Knop %d", i + 1);
@@ -50,16 +55,16 @@ void screen_paneel_teken() {
         tft.setCursor(TFT_W - 22, ry + (PN_ROW_H - 4) / 2 - 4); tft.print(">");
     }
 
-    // OPSLAAN
-    int oy = y0 + PANEEL_KNOP_MAX * PN_ROW_H + 6;
-    tft.fillRoundRect(8, oy, TFT_W - 16, PN_ROW_H - 4, 6, C_CYAN);
-    tft.setTextSize(2); tft.setTextColor(C_BG);
-    tft.setCursor((TFT_W - 7 * 12) / 2, oy + (PN_ROW_H - 4) / 2 - 8); tft.print("OPSLAAN");
-
-    int inhoud_h = PANEEL_KNOP_MAX * PN_ROW_H + 6 + (PN_ROW_H - 4);
-    pn_max_scroll = max(0, (PN_SCROLL_TOP + inhoud_h) - (int)NAV_Y);
+    pn_max_scroll = max(0, (PN_SCROLL_TOP + PANEEL_KNOP_MAX * PN_ROW_H) - PN_LIST_BOT);
     pn_scroll_y   = constrain(pn_scroll_y, 0, pn_max_scroll);
-    ui_scrollbar(TFT_W - UI_SB_W, PN_SCROLL_TOP, NAV_Y - PN_SCROLL_TOP, pn_scroll_y, pn_max_scroll);
+    ui_scrollbar(TFT_W - UI_SB_W, PN_SCROLL_TOP, PN_LIST_BOT - PN_SCROLL_TOP, pn_scroll_y, pn_max_scroll);
+
+    // OPSLAAN — vast onderaan, tekent overheen zodra gescrolde rijen er nog
+    // onder zaten (zelfde masker-truc als de IO CFG-overlay elders)
+    tft.fillRect(0, PN_LIST_BOT, TFT_W, PN_OPSLAAN_Y - PN_LIST_BOT, C_BG);
+    tft.fillRoundRect(8, PN_OPSLAAN_Y, TFT_W - 16, PN_OPSLAAN_H, 6, C_CYAN);
+    tft.setTextSize(2); tft.setTextColor(C_BG);
+    tft.setCursor((TFT_W - 7 * 12) / 2, PN_OPSLAAN_Y + PN_OPSLAAN_H / 2 - 8); tft.print("OPSLAAN");
 
     if (pn_flits_tot > millis()) {
         tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_GREEN);
@@ -103,8 +108,8 @@ void screen_paneel_run(int x, int y, bool aanraking) {
         return;
     }
     // Scrollbar pijlen (rechts)
-    if (x >= TFT_W - UI_SB_W) {
-        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, PN_SCROLL_TOP, NAV_Y - PN_SCROLL_TOP);
+    if (x >= TFT_W - UI_SB_W && y < PN_LIST_BOT) {
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, PN_SCROLL_TOP, PN_LIST_BOT - PN_SCROLL_TOP);
         if (dir == -1 && pn_scroll_y > 0) {
             pn_scroll_y = max(0, pn_scroll_y - 30);
             screen_paneel_teken();
@@ -115,13 +120,17 @@ void screen_paneel_run(int x, int y, bool aanraking) {
         return;
     }
 
-    int y0 = PN_SCROLL_TOP - pn_scroll_y;
-    if (y < y0) return;
-    int r = (y - y0) / PN_ROW_H;
-    if (r >= 0 && r < PANEEL_KNOP_MAX) { _pn_open_kb(r); return; }
-    if (r == PN_OPSLA_R) {                       // OPSLAAN-rij
+    // OPSLAAN — vast, altijd op dezelfde plek ongeacht scroll
+    if (y >= PN_OPSLAAN_Y && y < PN_OPSLAAN_Y + PN_OPSLAAN_H) {
         paneel_opslaan();
         pn_flits_tot = millis() + 1800;
         scherm_bouwen = true;
+        return;
     }
+
+    if (y < PN_SCROLL_TOP || y >= PN_LIST_BOT) return;
+    int y0 = PN_SCROLL_TOP - pn_scroll_y;
+    if (y < y0) return;
+    int r = (y - y0) / PN_ROW_H;
+    if (r >= 0 && r < PANEEL_KNOP_MAX) _pn_open_kb(r);
 }

@@ -13,8 +13,14 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define LP_BOOT_PIL_W 60   // AAN/UIT-pil rechts — vast klein zodat een volle naam (11 tekens) altijd past
 #define LP_START_Y   (CONTENT_Y + LP_HDR_H + LP_UITLEG_H)
 // Aantal rijen kan groot worden (tot 99 lampen) — dit scherm heeft geen aparte
-// SCREEN_SMALL-variant, dus altijd scrollbaar maken.
+// SCREEN_SMALL-variant, dus altijd scrollbaar maken. OPSLAAN staat vast net
+// boven de navbar (niet in de scrollende lijst) — anders was 'ie pas na
+// helemaal doorscrollen bereikbaar, of (bij lp_cnt==0) verborgen achter de
+// lege-staat-tekst.
 #define LP_SCROLL_TOP (LP_START_Y + 8)
+#define LP_OPSLAAN_H  (LP_ROW_H - 4)
+#define LP_OPSLAAN_Y  (NAV_Y - LP_OPSLAAN_H - 8)
+#define LP_LIST_BOT   (LP_OPSLAAN_Y - 8)
 
 static bool lp_kb_actief = false;
 static int  lp_edit_nr   = -1;      // lampnummer dat via het toetsenbord bewerkt wordt
@@ -78,6 +84,7 @@ void screen_lampen_teken() {
         for (int r = 0; r < lp_cnt; r++) {
             int nr = lp_nrs[r];
             int ry = y0 + r * LP_ROW_H;
+            if (ry + LP_ROW_H <= LP_SCROLL_TOP || ry >= LP_LIST_BOT) continue;  // buiten het vaste kijkvenster
             tft.fillRect(8, ry, TFT_W - 16, LP_ROW_H - 4, (r % 2 == 0) ? C_SURFACE : C_BG);
 
             char kl[8]; snprintf(kl, sizeof(kl), "#%d", nr);
@@ -101,17 +108,17 @@ void screen_lampen_teken() {
         }
     }
 
-    // OPSLAAN
-    int oy = y0 + lp_cnt * LP_ROW_H + 6;
-    tft.fillRoundRect(8, oy, TFT_W - 16, LP_ROW_H - 4, 6, C_CYAN);
-    tft.setTextSize(2); tft.setTextColor(C_BG);
-    tft.setCursor((TFT_W - 7 * 12) / 2, oy + (LP_ROW_H - 4) / 2 - 8); tft.print("OPSLAAN");
-
-    int inhoud_h = max(1, lp_cnt) * LP_ROW_H + 6 + (LP_ROW_H - 4);
-    if (lp_cnt == 0) inhoud_h = 72 + 6 + (LP_ROW_H - 4);  // ruimte voor de lege-staat-tekst
-    lp_max_scroll = max(0, (LP_SCROLL_TOP + inhoud_h) - (int)NAV_Y);
+    int inhoud_h = (lp_cnt > 0) ? lp_cnt * LP_ROW_H : 72;  // lege staat: ruimte voor de uitleg-tekst
+    lp_max_scroll = max(0, (LP_SCROLL_TOP + inhoud_h) - LP_LIST_BOT);
     lp_scroll_y   = constrain(lp_scroll_y, 0, lp_max_scroll);
-    ui_scrollbar(TFT_W - UI_SB_W, LP_SCROLL_TOP, NAV_Y - LP_SCROLL_TOP, lp_scroll_y, lp_max_scroll);
+    ui_scrollbar(TFT_W - UI_SB_W, LP_SCROLL_TOP, LP_LIST_BOT - LP_SCROLL_TOP, lp_scroll_y, lp_max_scroll);
+
+    // OPSLAAN — vast onderaan, tekent overheen zodra gescrolde inhoud er nog
+    // onder zat (zelfde masker-truc als de IO CFG-overlay elders)
+    tft.fillRect(0, LP_LIST_BOT, TFT_W, LP_OPSLAAN_Y - LP_LIST_BOT, C_BG);
+    tft.fillRoundRect(8, LP_OPSLAAN_Y, TFT_W - 16, LP_OPSLAAN_H, 6, C_CYAN);
+    tft.setTextSize(2); tft.setTextColor(C_BG);
+    tft.setCursor((TFT_W - 7 * 12) / 2, LP_OPSLAAN_Y + LP_OPSLAAN_H / 2 - 8); tft.print("OPSLAAN");
 
     if (lp_flits_tot > millis()) {
         tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_GREEN);
@@ -161,8 +168,8 @@ void screen_lampen_run(int x, int y, bool aanraking) {
         return;
     }
     // Scrollbar pijlen (rechts)
-    if (x >= TFT_W - UI_SB_W) {
-        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, LP_SCROLL_TOP, NAV_Y - LP_SCROLL_TOP);
+    if (x >= TFT_W - UI_SB_W && y < LP_LIST_BOT) {
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, LP_SCROLL_TOP, LP_LIST_BOT - LP_SCROLL_TOP);
         if (dir == -1 && lp_scroll_y > 0) {
             lp_scroll_y = max(0, lp_scroll_y - 30);
             screen_lampen_teken();
@@ -173,16 +180,17 @@ void screen_lampen_run(int x, int y, bool aanraking) {
         return;
     }
 
-    int y0 = LP_SCROLL_TOP - lp_scroll_y;
-    int oy = y0 + lp_cnt * LP_ROW_H + 6;   // OPSLAAN-rij (ook zichtbaar in lege staat)
-
-    if (y >= oy && y < oy + LP_ROW_H - 4) {
+    // OPSLAAN — vast, altijd op dezelfde plek ongeacht scroll
+    if (y >= LP_OPSLAAN_Y && y < LP_OPSLAAN_Y + LP_OPSLAAN_H) {
         lamp_opslaan();
         lp_flits_tot = millis() + 1800;
         screen_lampen_teken();
         return;
     }
-    if (lp_cnt == 0 || y < y0) return;
+
+    if (lp_cnt == 0 || y < LP_SCROLL_TOP || y >= LP_LIST_BOT) return;
+    int y0 = LP_SCROLL_TOP - lp_scroll_y;
+    if (y < y0) return;
 
     int r = (y - y0) / LP_ROW_H;
     if (r < 0 || r >= lp_cnt) return;

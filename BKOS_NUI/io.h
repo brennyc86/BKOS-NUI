@@ -2,6 +2,7 @@
 #include "hw_io.h"
 
 extern byte licht_cfg_idx;
+extern bool interieur_kleur_rood;  // laatst berekende interieurkleur (true=rood); voor UI (lampje-icoon)
 
 // Cross-core signalering (Core 0 = io_taak, Core 1 = UI loop)
 extern volatile bool io_direct_aanvraag;  // Core 1 → Core 0: voer io_cyclus direct uit

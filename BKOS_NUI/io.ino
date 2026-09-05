@@ -8,6 +8,7 @@
 #include "lamp.h"
 
 byte licht_cfg_idx = 0;
+bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=rood, wit anders) — voor UI
 
 volatile bool io_direct_aanvraag = false;
 volatile bool io_staat_gewijzigd = false;
@@ -903,6 +904,7 @@ void io_verlichting_update() {
         case INTERIEUR_ROOD: int_aan = true;  int_rood = true;      break;
         default:              int_aan = true;  int_rood = auto_rood; break;  // INTERIEUR_AUTO
     }
+    interieur_kleur_rood = int_rood;  // voor UI (lampje-icoon PANEEL-knop) — zie screen_main.ino
 
     // Alle navigatielichten eerst uit
     for (int i = 0; i < n; i++) {

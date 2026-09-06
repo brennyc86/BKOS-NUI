@@ -56,7 +56,8 @@ werd binnen de betafase zelf al teruggedraaid en heeft nooit een stabiele releas
 
 ## [0.2.1] - 2026-09-06
 
-Gepromoot van beta `0.1.260906.1`.
+Gepromoot van beta `0.1.260906.2` (code-identiek aan `0.1.260906.1`; `.2` was uitsluitend een
+CI-retrigger na een transiënte GitHub-infrastructuurfout, geen codewijziging).
 
 ### Toegevoegd
 - Eigen kleurpatroon (`PALETTE_CUSTOM`): een 8e kleurenschema "EIGEN" waarvan alle 10

@@ -5,6 +5,7 @@
 #include "slaap.h"
 #include "wifi.h"
 #include "hw_scherm.h"
+#include "ui_colors.h"   // custom_palette (PALETTE_CUSTOM, zie screen_kleur)
 
 // Forward declarations voor OTA state (gedeclareerd in ota.ino)
 extern bool ota_beta_kanal;
@@ -50,6 +51,16 @@ void state_save() {
     f.printf("draai=%d\n",   tft_gedraaid ? 1 : 0);
     f.printf("timer=%ld\n",  scherm_timer);
     f.printf("schema=%d\n",  (int)kleurenschema);
+    f.printf("cpbg=%u\n",  custom_palette.bg);
+    f.printf("cps1=%u\n",  custom_palette.surface);
+    f.printf("cps2=%u\n",  custom_palette.surface2);
+    f.printf("cps3=%u\n",  custom_palette.surface3);
+    f.printf("cpsb=%u\n",  custom_palette.statusbar);
+    f.printf("cptx=%u\n",  custom_palette.text);
+    f.printf("cptd=%u\n",  custom_palette.text_dim);
+    f.printf("cptk=%u\n",  custom_palette.text_dark);
+    f.printf("cpdg=%u\n",  custom_palette.dark_gray);
+    f.printf("cpac=%u\n",  custom_palette.accent);
     f.printf("bcat=%d\n",    (int)boot_cat);
     f.printf("bmodel=%d\n",  (int)boot_model);
     f.printf("zeilnr=%s\n",  zeilnummer);
@@ -88,6 +99,7 @@ void state_load() {
     tft_gedraaid          = false;
     scherm_timer          = 30;
     kleurenschema         = 0;
+    custom_palette_reset_default();  // overschreven hieronder als er een opgeslagen eigen kleurpatroon is
     boot_cat              = 0;
     boot_model            = 0;
     zeilnummer[0]         = '\0';
@@ -128,6 +140,16 @@ void state_load() {
         if (key == "draai")   tft_gedraaid      = (val.toInt() != 0);
         if (key == "timer")   scherm_timer      = val.toInt();
         if (key == "schema")  kleurenschema     = (byte)val.toInt();
+        if (key == "cpbg") custom_palette.bg        = (uint16_t)val.toInt();
+        if (key == "cps1") custom_palette.surface    = (uint16_t)val.toInt();
+        if (key == "cps2") custom_palette.surface2   = (uint16_t)val.toInt();
+        if (key == "cps3") custom_palette.surface3   = (uint16_t)val.toInt();
+        if (key == "cpsb") custom_palette.statusbar  = (uint16_t)val.toInt();
+        if (key == "cptx") custom_palette.text       = (uint16_t)val.toInt();
+        if (key == "cptd") custom_palette.text_dim   = (uint16_t)val.toInt();
+        if (key == "cptk") custom_palette.text_dark  = (uint16_t)val.toInt();
+        if (key == "cpdg") custom_palette.dark_gray  = (uint16_t)val.toInt();
+        if (key == "cpac") custom_palette.accent     = (uint16_t)val.toInt();
         if (key == "bcat")    boot_cat          = (byte)val.toInt();
         if (key == "bmodel")  boot_model        = (byte)val.toInt();
         if (key == "btype") {   // migratie oude 1-staps keuze → categorie+model

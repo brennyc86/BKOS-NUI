@@ -23,6 +23,7 @@
 #define SCREEN_BERICHT    16 // Bericht aan eigenaar (vaste keuzeknoppen)
 #define SCREEN_TIJD       17 // Tijd instellen (klok in statusbalk aantikken)
 #define SCREEN_LAMPEN     18 // Genummerde IL-lampgroepen: naam + opstartstand (via CONFIG → BOOT)
+#define SCREEN_KLEUR      19 // Eigen kleurpatroon bewerken (via CONFIG → WEERGAVE & ENERGIE)
 
 // Vaarmodi
 #define MODE_HAVEN   0

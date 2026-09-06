@@ -16,14 +16,12 @@ uint16_t C_NAV_ACTIVE;
 uint16_t C_NAV_NORMAL;
 
 // ─── Paletdefinities ─────────────────────────────────────────────────────
-struct Palette {
-    uint16_t bg, surface, surface2, surface3;
-    uint16_t statusbar;
-    uint16_t text, text_dim, text_dark, dark_gray;
-    uint16_t accent;
-};
+// Palette-struct zelf staat in ui_colors.h (ook nodig voor custom_palette).
+Palette custom_palette;   // wordt bij eerste gebruik gevuld door custom_palette_reset_default()
 
-static const Palette paletten[PALETTE_CNT] = {
+// PALETTE_CUSTOM (index 7) zit hier bewust niet in — die leest custom_palette,
+// zie palette_toepassen()/palette_accent()/palette_bg()/palette_text() hieronder.
+static const Palette paletten[PALETTE_CNT - 1] = {
     // 0: NYMBUS — diep bosgroen + warm beige (Brendan's boot, hoog contrast)
     { RGB565(4,  18,  6),  RGB565(9,  34, 12), RGB565(16, 52, 20), RGB565(26, 74, 30),
       RGB565(3,  12,  4),
@@ -61,22 +59,25 @@ static const Palette paletten[PALETTE_CNT] = {
       RGB565(175, 16, 16) },
 };
 
-uint16_t palette_accent(byte schema) {
-    if (schema >= PALETTE_CNT) schema = 0;
-    return paletten[schema].accent;
+// Geeft het juiste palet terug: custom_palette voor PALETTE_CUSTOM, anders
+// een vaste rij uit paletten[] (met schema 0 als terugval bij een ongeldige
+// index — zo blijven palette_accent/bg/text hieronder simpel).
+static const Palette& _palet_voor(byte schema) {
+    if (schema == PALETTE_CUSTOM) return custom_palette;
+    if (schema >= PALETTE_CNT - 1) schema = 0;
+    return paletten[schema];
 }
-uint16_t palette_bg(byte schema) {
-    if (schema >= PALETTE_CNT) schema = 0;
-    return paletten[schema].bg;
-}
-uint16_t palette_text(byte schema) {
-    if (schema >= PALETTE_CNT) schema = 0;
-    return paletten[schema].text;
+
+uint16_t palette_accent(byte schema) { return _palet_voor(schema).accent; }
+uint16_t palette_bg(byte schema)     { return _palet_voor(schema).bg; }
+uint16_t palette_text(byte schema)   { return _palet_voor(schema).text; }
+
+void custom_palette_reset_default() {
+    custom_palette = paletten[PALETTE_NYMBUS];
 }
 
 void palette_toepassen(byte schema) {
-    if (schema >= PALETTE_CNT) schema = 0;
-    const Palette& p = paletten[schema];
+    const Palette& p = _palet_voor(schema);
     C_BG        = p.bg;
     C_SURFACE   = p.surface;
     C_SURFACE2  = p.surface2;

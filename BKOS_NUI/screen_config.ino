@@ -128,7 +128,7 @@ static const char* cfg_chips_r2[] = {
 #if SCREEN_SMALL
 
 // Totale virtuele inhoudshoogte instellingen (som van alle y += stappen + 26px laatste rij)
-#define PICO_CFG_INS_H  (282 + 120 + 120 + (PLATFORM_ESP32 ? 90 : 0))  // +120 voor HELDERHEID AUTO-rijen, +90 voor slaap-rijen (ESP32), +120 voor MODUS ONTHOUDEN + OPSTARTINSTELLING-rijen
+#define PICO_CFG_INS_H  (282 + 120 + 120 + 30 + (PLATFORM_ESP32 ? 90 : 0))  // +120 voor HELDERHEID AUTO-rijen, +90 voor slaap-rijen (ESP32), +120 voor MODUS ONTHOUDEN + OPSTARTINSTELLING-rijen, +30 voor EIGEN KLEUR-rij
 static int pico_cfg_scroll_y = 0;  // pixels omhoog verschoven
 
 // PIN overlay voor 240×320
@@ -479,6 +479,11 @@ static void pico_cfg_instellingen_teken() {
     }
     y += 34;
 
+    // Eigen kleurpatroon bewerken
+    ui_knop(4, y, TFT_W - 8, 26, "EIGEN KLEUR  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    y += 30;
+
     // Stap 1 — Categorie
     tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
@@ -805,6 +810,13 @@ static void pico_cfg_instellingen_run(int x, int y) {
         return;
     }
     y0 += 34;
+    // Eigen kleurpatroon bewerken
+    if (y >= y0 && y < y0 + 26) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_KLEUR; scherm_bouwen = true;
+        return;
+    }
+    y0 += 30;
     // Stap 1 — Categorie
     if (y >= y0 && y < y0 + 26) {
         if (!ontg) { pin_vereist_tonen(); return; }
@@ -1249,7 +1261,7 @@ static void mini_boot(const BootModel* m, int x, int y, int w, int h, uint16_t c
 
 // ─── Tab 0: Instellingen ────────────────────────────────────────────────
 static const char* palette_names[PALETTE_CNT] = {
-    "NYMBUS", "RAN", "GLORY", "HAVEN", "STORM", "KOMPAS", "NACHT"
+    "NYMBUS", "RAN", "GLORY", "HAVEN", "STORM", "KOMPAS", "NACHT", "EIGEN"
 };
 
 static void palette_swatches_teken(int sy) {
@@ -1257,7 +1269,11 @@ static void palette_swatches_teken(int sy) {
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(14, sy + 25); tft.print("KLEUR");
 
-    int sw = 95, sh = 50, gap = 6, start_x = 80;
+    // sw is afhankelijk van PALETTE_CNT — anders loopt de rij van het scherm
+    // af zodra er een swatch bijkomt (gebeurde toen EIGEN/PALETTE_CUSTOM
+    // toegevoegd werd: vast 95px x 7 paste nog net, x 8 niet meer).
+    int sh = 50, gap = 6, start_x = 80;
+    int sw = (TFT_W - start_x - 8 - (PALETTE_CNT - 1) * gap) / PALETTE_CNT;
     for (int i = 0; i < PALETTE_CNT; i++) {
         int x = start_x + i * (sw + gap);
         bool act = (kleurenschema == i);
@@ -1513,9 +1529,9 @@ static void cfg_boot_teken() {
 // de laatste rij) — nodig voor de scrollbar. Bijwerken als er een rij bijkomt
 // of verdwijnt (zelfde aanpak als PICO_CFG_INS_H hierboven).
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
-  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+44+44+40)   // + DUBBELE BUFFERING (S3-only) + HELDERHEID AUTO-rijen + OPSTARTINSTELLING-rijen (VAARMODUS/VERLICHTING, AUTOMODUS zit als vinkje bij VAARMODUS)
+  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+44+40)   // + EIGEN KLEURPATROON-rij + DUBBELE BUFFERING (S3-only) + HELDERHEID AUTO-rijen + OPSTARTINSTELLING-rijen (VAARMODUS/VERLICHTING, AUTOMODUS zit als vinkje bij VAARMODUS)
 #else
-  #define CFG_WE_INHOUD_H (62+34+42+44+44+44+44+44+44+44+44+44+40)
+  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+40)
 #endif
 #define CFG_WE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_WE_INHOUD_H - (int)NAV_Y)
 
@@ -1548,6 +1564,11 @@ static void cfg_we_teken() {
             tft.drawFastHLine(0, dy, TFT_W, C_BG);
     }
     y += 62;
+
+    // Eigen kleurpatroon bewerken (PIN vereist)
+    ui_knop(10, y + 4, TFT_W - 20, 38, "EIGEN KLEURPATROON BEWERKEN  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    y += 44;
 
     // Open netwerken toggle (PIN vereist)
     {
@@ -2075,6 +2096,7 @@ static void cfg_we_run(int x, int y) {
 
     int cy = CFG_SUB_Y0 - cfg_we_scroll_y;
     int pal_y  = cy; cy += 62;
+    int kb_y   = cy; cy += 44;
     int ow_y   = cy; cy += 34;
     int fr2_y  = cy; cy += 42;
     int bvm_y  = cy; cy += 44;
@@ -2085,7 +2107,11 @@ static void cfg_we_run(int x, int y) {
 
     if (y >= pal_y && y < pal_y + 58) {
         if (!ontg) { pin_vereist_tonen(); return; }
-        int sw = 95, gap = 6, start_x = 80;
+        // Zelfde formule als palette_swatches_teken() — anders wijkt de
+        // tikzone af van wat zichtbaar is (gebeurde hier al eerder met een
+        // vaste sw=95 toen PALETTE_CNT van 7 naar 8 ging voor EIGEN/CUSTOM).
+        int gap = 6, start_x = 80;
+        int sw = (TFT_W - start_x - 8 - (PALETTE_CNT - 1) * gap) / PALETTE_CNT;
         int idx = (x - start_x) / (sw + gap);
         if (idx >= 0 && idx < PALETTE_CNT) {
             int px_off = start_x + idx * (sw + gap);
@@ -2095,6 +2121,12 @@ static void cfg_we_run(int x, int y) {
                 state_save(); scherm_bouwen = true;
             }
         }
+        return;
+    }
+
+    if (y >= kb_y && y < kb_y + 40) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_KLEUR; scherm_bouwen = true;
         return;
     }
 

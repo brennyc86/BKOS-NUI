@@ -12,7 +12,19 @@
 #define PALETTE_STORM   4  // diep indigo + elektrisch amber
 #define PALETTE_KOMPAS  5  // warm perkament + diep marine (licht thema)
 #define PALETTE_NACHT   6  // nachtzicht — puur zwart + dim rood
-#define PALETTE_CNT     7
+#define PALETTE_CUSTOM  7  // eigen kleurpatroon — door de gebruiker samengesteld, zie screen_kleur
+#define PALETTE_CNT     8
+
+// Eén kleurenschema — dezelfde 10 velden als de 7 vaste paletten. Ook gebruikt
+// voor PALETTE_CUSTOM (custom_palette hieronder, door de gebruiker ingesteld).
+struct Palette {
+    uint16_t bg, surface, surface2, surface3;
+    uint16_t statusbar;
+    uint16_t text, text_dim, text_dark, dark_gray;
+    uint16_t accent;
+};
+extern Palette custom_palette;         // actieve waarden voor PALETTE_CUSTOM
+void custom_palette_reset_default();   // vult custom_palette met een startpunt (kopie van NYMBUS)
 
 // ─── Thema-afhankelijke kleuren (runtime variabelen) ─────────────────────
 extern uint16_t C_BG;

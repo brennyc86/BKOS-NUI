@@ -18,20 +18,24 @@ betabuild via `firmware/beta_historie.json`.
 
 ## Bekende problemen
 
-Problemen die een tijd in de firmware hebben gezeten en wanneer ze verholpen zijn. Alleen
-problemen die met zekerheid uit de taakgeschiedenis blijken staan hier; twee items zijn
-gemarkeerd als *vermoedelijk* verholpen omdat Brendan de fix nooit expliciet heeft bevestigd.
+Problemen die een tijd in een **stabiele** release hebben gezeten, en in welke stabiele versie
+ze verholpen zijn. Betaversienummers doen er voor dit overzicht niet toe — alleen of een
+probleem daadwerkelijk in een uitgebrachte stabiele versie zat en welke stabiele versie het
+fixte. Elke rij is geverifieerd tegen de commit-geschiedenis (introductie- en fixcommit
+vergeleken met de promotiedatum van elke stabiele versie); twee items zijn gemarkeerd als
+*vermoedelijk* verholpen omdat Brendan de fix nooit expliciet heeft bevestigd. Eén eerder
+vermoed probleem (een korte ESP32-core-3.x-regressie eind mei) is hier bewust weggelaten: die
+werd binnen de betafase zelf al teruggedraaid en heeft nooit een stabiele release gehaald.
 
 | Probleem | Aanwezig sinds | Verholpen in | Toelichting |
 |---|---|---|---|
-| `**motor` dynamo-status bleef soms onterecht "actief" | 0.1.7-ontwikkelperiode (rond `0.1.260818.2`) | `0.1.260821.1` (0.1.7) | Vijf meldingen op rij; de eerste vier fixpogingen (netwerk-afzenderverificatie, debounce, idle-bewaking-reset) waren stuk voor stuk reële bugs maar niet de hoofdoorzaak. Uiteindelijke oorzaak: `DYN_METEN` vuurde de statusbepaling ongedebounced af, precies op het moment dat de meting het gevoeligst is voor ruis. |
-| ESP32 core 3.x brak WiFi/netwerk op de S3 (meteo update niet, OTA "fout -1") | kortstondig rond `0.1.260529.9`/`0.1.260530.x` | `0.1.260530.3`, binnen enkele dagen | Sindsdien bewust op core 2.0.17 gehouden voor alle platforms (ook bij een latere korte herbevestiging in `0.1.260607.2`) — de repo-conventie in `CLAUDE.md` waarschuwt hier expliciet voor. |
-| OTA "GitHub fout -1" bij versiecheck | meerdere keren teruggekomen (o.a. rond `0.1.260516.1`) | laatst structureel opgelost in `0.1.260607.1` (0.1.6) | Steeds dezelfde klasse fout: de ingebouwde TLS-client faalde de handshake; opgelost door zelf een `WiFiClientSecure` met `setInsecure()` te gebruiken i.p.v. een kale `http.begin(url)`. |
-| CYD40H-instellingenschermen grotendeels onbereikbaar voorbij de navigatiebalk (CONFIG-hoofdtab, BOOT-tab, VERBINDINGEN-tab, IO CFG-overlay, WIFI-scherm) | sinds CYD40H-platformondersteuning (medio mei) | `0.1.260904.2` (0.2.1) | CYD40H (480×320) zit niet in de `SCREEN_SMALL`-groep en hergebruikte dus de 800×480-layout zonder scrollbalk — een groot deel van de instellingen viel structureel voorbij het scherm. |
-| Scrollbalk-knoppen te klein om betrouwbaar te raken | sinds scrollbalken geïntroduceerd | `0.1.260904.3` (0.2.1) | Direct na de CYD40H-fix gemeld; knop-hoogte/breedte fors vergroot. |
-| Splash-logo en herstelmenu permanent onbereikbaar na een deep-sleep-wake | sluimerend sinds slaapstand-feature; zichtbaarder na dubbele buffering (`0.1.260826.2`) | `0.1.260902.2` (0.1.8) | `_rtc_deep_wake` werd nooit teruggezet naar `false`, waardoor die vlag na één echte deep sleep permanent bleef "plakken" over elke volgende herstart heen. |
-| PANEEL-knoppenconfiguratie leek soms te verdwijnen na een update/herstart | gemeld, exacte oorzaak niet gevonden | **vermoedelijk** `0.1.260905.3` (0.2.1) — niet bevestigd | Geen reproduceerbare bug gevonden in de opslag-/laadcode zelf. `0.1.260905.3` voegt schrijf-verificatie toe (rode foutmelding bij een mislukte save) zodat een toekomstige mislukking zichtbaar wordt — dit legt de oorzaak bloot als hij terugkomt, maar is geen bevestigde fix. |
-| BKOS-Blanco herinstalleren vanuit het herstelmenu kon per ongeluk terugvallen naar blanco firmware | gemeld na introductie herstelmenu | **vermoedelijk** `0.1.260902.5` (0.1.8) — niet bevestigd | Vermoedelijke oorzaak: een nog vasthangende aanraking na "installeren" werd als een nieuwe tik op het opstartlogo gelezen. Debounce-status gefixt, maar nooit expliciet door Brendan bevestigd als verholpen. |
+| `**motor` dynamo-status bleef soms onterecht "actief" | 0.1.7 | 0.1.8 | Vijf meldingen op rij; verschillende eerdere fixpogingen (netwerk-afzenderverificatie, debounce, idle-bewaking-reset) waren stuk voor stuk reële bugs maar niet de hoofdoorzaak — en waren zelf ook al in 0.1.7 beland zonder het probleem te verhelpen. Uiteindelijke oorzaak: de statusbepaling na de bekrachtigingspuls vuurde ongedebounced af, precies op het moment dat de meting het gevoeligst is voor ruis. |
+| OTA "GitHub fout -1" bij versiecheck | 0.1.0 | 0.1.6 | Terugkerende TLS-handshakefout in de ingebouwde HTTP-client, meerdere keren teruggekomen; structureel opgelost door zelf een `WiFiClientSecure` met `setInsecure()` te gebruiken i.p.v. een kale `http.begin(url)`. |
+| CYD40H-instellingenschermen grotendeels onbereikbaar voorbij de navigatiebalk (CONFIG-hoofdtab, BOOT-tab, VERBINDINGEN-tab, IO CFG-overlay, WIFI-scherm) | 0.1.2 | 0.2.1 | CYD40H (480×320) zit niet in de `SCREEN_SMALL`-groep en hergebruikte dus de 800×480-layout zonder scrollbalk — een groot deel van de instellingen viel structureel voorbij het scherm. |
+| Scrollbalk-knoppen te klein om betrouwbaar te raken | 0.1.0 | 0.2.1 | Aanwezig zolang er scrollbalken bestonden; knop-hoogte/breedte fors vergroot (16→34px breed, 18→40px hoog). |
+| Splash-logo en herstelmenu onbereikbaar na een deep-sleep-wake | 0.1.6 (ontbrekend opstartlogo; vanaf 0.1.8 — toen het herstelmenu er kwam — ook het herstelmenu onbereikbaar) | 0.1.8 | Een RTC-vlag die bijhoudt of het apparaat net uit een échte deep sleep ontwaakte, werd nooit teruggezet naar `false` — na één deep sleep bleef die vlag permanent "plakken" over elke volgende (zachte) herstart heen. |
+| PANEEL-knoppenconfiguratie leek soms te verdwijnen na een update/herstart | 0.1.6 | **vermoedelijk** 0.2.1 — niet bevestigd | Geen reproduceerbare bug gevonden in de opslag-/laadcode zelf. 0.2.1 voegt schrijf-verificatie toe (rode foutmelding bij een mislukte save) zodat een toekomstige mislukking zichtbaar wordt — dit legt de oorzaak bloot als hij terugkomt, maar is geen bevestigde fix. |
+| BKOS-Blanco herinstalleren vanuit het herstelmenu kon per ongeluk terugvallen naar blanco firmware | 0.1.8 | **vermoedelijk** 0.2.1 — niet bevestigd | Vermoedelijke oorzaak: een nog vasthangende aanraking na "installeren" werd als een nieuwe tik op het opstartlogo gelezen. Debounce-status gefixt vlak ná het moment waarop 0.1.8 al was gepromoot, dus de fix zit pas in 0.2.1; nooit expliciet door Brendan bevestigd als verholpen. |
 
 ## Versies in het kort
 
@@ -84,8 +88,9 @@ Gepromoot van beta `0.1.260906.1`.
   (was voorheen onderaan een scrollende lijst en kon buiten beeld/de navbar-tikzone vallen).
 
 ### Opgelost
-- Zie *Bekende problemen* hierboven voor de CYD40H-layoutfix, de scrollbalk-knoppen en de
-  (vermoedelijke) PANEEL-opslaanfix.
+- Zie *Bekende problemen* hierboven voor de CYD40H-layoutfix, de scrollbalk-knoppen, en de
+  (vermoedelijke, niet-bevestigde) fixes voor de PANEEL-opslaanbug en de
+  BKOS-Blanco-herinstallatie-terugval.
 
 ---
 
@@ -112,8 +117,8 @@ Gepromoot van beta `0.1.260902.4`.
 - Druk-vasthoud toetsfeedback op beide PIN-schermen (toets blijft van kleur zolang ingedrukt).
 
 ### Opgelost
-- Zie *Bekende problemen*: splash/herstelmenu onbereikbaar na deep-sleep-wake, en de
-  (vermoedelijke) BKOS-Blanco-herinstallatie-terugval.
+- Zie *Bekende problemen*: de `**motor` dynamo-statusbug (uiteindelijke hoofdoorzaak gevonden),
+  en splash/herstelmenu onbereikbaar na een deep-sleep-wake.
 - Herstelmenu-debounce: een nog vasthangende aanraking van het vorige scherm werd niet langer
   als een nieuwe, foutieve tik geteld.
 - OTA-voortgangsbalk bleef onzichtbaar tijdens updaten wanneer dubbele buffering aanstond
@@ -143,11 +148,11 @@ Gepromoot van beta `0.1.260820.4`.
 - BKOS-Brug (WiFi-brug via Raspberry Pi Zero 2W, BLE GATT Central) geïntegreerd.
 
 ### Opgelost
-- Zie *Bekende problemen*: de `**motor` dynamo-statusbug (vijf meldingen, uiteindelijk verholpen
-  in `0.1.260821.1`).
 - Netwerkprotocol-kwetsbaarheid: `IO_STATE`/`IO_NAMEN`/`APP_STATE`-berichten over ESP-NOW
   ontbraken een afzenderverificatie, waardoor een willekeurig ander ESP-NOW-apparaat in bereik
-  `io_richting[]` kon overschrijven.
+  `io_richting[]` kon overschrijven. (Onderdeel van het uitzoekwerk naar de `**motor`
+  dynamo-statusbug — de échte hoofdoorzaak daarvan werd pas ná deze release gevonden en zit in
+  0.1.8, zie *Bekende problemen*.)
 
 ---
 
@@ -173,8 +178,11 @@ Gepromoot van beta `0.1.260609.4`.
   worden aangestuurd (`io_drijf_hoog()` als enig drive-punt).
 
 ### Opgelost
-- Zie *Bekende problemen*: OTA "GitHub fout -1" (structureel via eigen `WiFiClientSecure`), en
-  de korte ESP32-core-3.x-regressie (teruggedraaid naar 2.0.17).
+- Zie *Bekende problemen*: OTA "GitHub fout -1" structureel opgelost via een eigen
+  `WiFiClientSecure`.
+- Kortstondige ESP32-core-3.x-regressie tijdens deze ontwikkelperiode teruggedraaid naar
+  core 2.0.17 vóórdat 0.1.6 werd uitgebracht — heeft geen stabiele release geraakt, maar
+  bepaalt sindsdien wel bewust de core-conventie in `CLAUDE.md`.
 - IO-regressie: `io_detect()` liep alleen als een eerdere versiehandshake (`bkoss_actief`)
   slaagde, waardoor alle IO uitviel zodra die handshake faalde terwijl de ATtiny wél aanwezig
   was.

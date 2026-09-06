@@ -31,17 +31,17 @@ werd binnen de betafase zelf al teruggedraaid en heeft nooit een stabiele releas
 |---|---|---|---|
 | `**motor` dynamo-status bleef soms onterecht "actief" | 0.1.7 | 0.1.8 | Vijf meldingen op rij; verschillende eerdere fixpogingen (netwerk-afzenderverificatie, debounce, idle-bewaking-reset) waren stuk voor stuk reële bugs maar niet de hoofdoorzaak — en waren zelf ook al in 0.1.7 beland zonder het probleem te verhelpen. Uiteindelijke oorzaak: de statusbepaling na de bekrachtigingspuls vuurde ongedebounced af, precies op het moment dat de meting het gevoeligst is voor ruis. |
 | OTA "GitHub fout -1" bij versiecheck | 0.1.0 | 0.1.6 | Terugkerende TLS-handshakefout in de ingebouwde HTTP-client, meerdere keren teruggekomen; structureel opgelost door zelf een `WiFiClientSecure` met `setInsecure()` te gebruiken i.p.v. een kale `http.begin(url)`. |
-| CYD40H-instellingenschermen grotendeels onbereikbaar voorbij de navigatiebalk (CONFIG-hoofdtab, BOOT-tab, VERBINDINGEN-tab, IO CFG-overlay, WIFI-scherm) | 0.1.2 | 0.2.1 | CYD40H (480×320) zit niet in de `SCREEN_SMALL`-groep en hergebruikte dus de 800×480-layout zonder scrollbalk — een groot deel van de instellingen viel structureel voorbij het scherm. |
-| Scrollbalk-knoppen te klein om betrouwbaar te raken | 0.1.0 | 0.2.1 | Aanwezig zolang er scrollbalken bestonden; knop-hoogte/breedte fors vergroot (16→34px breed, 18→40px hoog). |
+| CYD40H-instellingenschermen grotendeels onbereikbaar voorbij de navigatiebalk (CONFIG-hoofdtab, BOOT-tab, VERBINDINGEN-tab, IO CFG-overlay, WIFI-scherm) | 0.1.2 | 0.2.0 | CYD40H (480×320) zit niet in de `SCREEN_SMALL`-groep en hergebruikte dus de 800×480-layout zonder scrollbalk — een groot deel van de instellingen viel structureel voorbij het scherm. |
+| Scrollbalk-knoppen te klein om betrouwbaar te raken | 0.1.0 | 0.2.0 | Aanwezig zolang er scrollbalken bestonden; knop-hoogte/breedte fors vergroot (16→34px breed, 18→40px hoog). |
 | Splash-logo en herstelmenu onbereikbaar na een deep-sleep-wake | 0.1.6 (ontbrekend opstartlogo; vanaf 0.1.8 — toen het herstelmenu er kwam — ook het herstelmenu onbereikbaar) | 0.1.8 | Een RTC-vlag die bijhoudt of het apparaat net uit een échte deep sleep ontwaakte, werd nooit teruggezet naar `false` — na één deep sleep bleef die vlag permanent "plakken" over elke volgende (zachte) herstart heen. |
-| PANEEL-knoppenconfiguratie leek soms te verdwijnen na een update/herstart | 0.1.6 | **vermoedelijk** 0.2.1 — niet bevestigd | Geen reproduceerbare bug gevonden in de opslag-/laadcode zelf. 0.2.1 voegt schrijf-verificatie toe (rode foutmelding bij een mislukte save) zodat een toekomstige mislukking zichtbaar wordt — dit legt de oorzaak bloot als hij terugkomt, maar is geen bevestigde fix. |
-| BKOS-Blanco herinstalleren vanuit het herstelmenu kon per ongeluk terugvallen naar blanco firmware | 0.1.8 | **vermoedelijk** 0.2.1 — niet bevestigd | Vermoedelijke oorzaak: een nog vasthangende aanraking na "installeren" werd als een nieuwe tik op het opstartlogo gelezen. Debounce-status gefixt vlak ná het moment waarop 0.1.8 al was gepromoot, dus de fix zit pas in 0.2.1; nooit expliciet door Brendan bevestigd als verholpen. |
+| PANEEL-knoppenconfiguratie leek soms te verdwijnen na een update/herstart | 0.1.6 | **vermoedelijk** 0.2.0 — niet bevestigd | Geen reproduceerbare bug gevonden in de opslag-/laadcode zelf. 0.2.0 voegt schrijf-verificatie toe (rode foutmelding bij een mislukte save) zodat een toekomstige mislukking zichtbaar wordt — dit legt de oorzaak bloot als hij terugkomt, maar is geen bevestigde fix. |
+| BKOS-Blanco herinstalleren vanuit het herstelmenu kon per ongeluk terugvallen naar blanco firmware | 0.1.8 | **vermoedelijk** 0.2.0 — niet bevestigd | Vermoedelijke oorzaak: een nog vasthangende aanraking na "installeren" werd als een nieuwe tik op het opstartlogo gelezen. Debounce-status gefixt vlak ná het moment waarop 0.1.8 al was gepromoot, dus de fix zit pas in 0.2.0; nooit expliciet door Brendan bevestigd als verholpen. |
 
 ## Versies in het kort
 
 | Versie | Datum | Belangrijkste thema |
 |---|---|---|
-| [0.2.1](#021---2026-09-06) | 2026-09-06 | CYD40H-layoutfix, eigen kleurpatroon, genummerde lampgroepen, PANEEL 3×3 |
+| [0.2.0](#020---2026-09-06) | 2026-09-06 | CYD40H-layoutfix, eigen kleurpatroon, genummerde lampgroepen, PANEEL 3×3 |
 | [0.1.8](#018---2026-09-02) | 2026-09-02 | Lokale webapp, herstelmenu, tijd-instelmenu, automatische helderheid |
 | [0.1.7](#017---2026-08-20) | 2026-08-20 | STROMING (vaartijd vs. getijstroom), dynamo-bekrachtiging `**motor` |
 | [0.1.6](#016---2026-06-09) | 2026-06-09 | Meldingen (CallMeBot), configureerbare PANEEL-knoppen, BKOS-Brug |
@@ -54,7 +54,7 @@ werd binnen de betafase zelf al teruggedraaid en heeft nooit een stabiele releas
 
 ---
 
-## [0.2.1] - 2026-09-06
+## [0.2.0] - 2026-09-06
 
 Gepromoot van beta `0.1.260906.2` (code-identiek aan `0.1.260906.1`; `.2` was uitsluitend een
 CI-retrigger na een transiënte GitHub-infrastructuurfout, geen codewijziging).
@@ -165,7 +165,7 @@ Gepromoot van beta `0.1.260609.4`.
 - Meldingen-engine (CallMeBot Signal/WhatsApp): eigenaar + 4 extra ontvangers, niet-blokkerende
   verzendwachtrij, IO-trigger, hartslag bij opstart/dagelijks/wekelijks, met een eigen
   instellingenscherm en later per-dienst alternatief telefoonnummer/code.
-- Configureerbare PANEEL-knoppen (eerste versie, later in 0.2.1 naar 9 knoppen uitgebreid):
+- Configureerbare PANEEL-knoppen (eerste versie, later in 0.2.0 naar 9 knoppen uitgebreid):
   eigen namen instellen via het bestaande naam-toetsenbord, adaptieve layout.
 - BKOS-Brug-integratie: WiFi-brug via een Raspberry Pi Zero 2 W, UART-JSON-protocol.
 - Bericht-aan-eigenaar met vaste keuzeknoppen.

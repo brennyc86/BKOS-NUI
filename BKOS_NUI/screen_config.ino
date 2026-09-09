@@ -550,18 +550,18 @@ static void pico_cfg_instellingen_teken() {
     y += 30;
 
 #if PLATFORM_ESP32
-    // Slaap modus (compact: 4 knoppen in één rij)
+    // Slaap modus (alleen GEEN/LIGHT — zie slaap.h waarom DEEP/HIBERN vervielen)
     {
         tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(8, y + (26 - 8) / 2); tft.print("SLP:");
-        const char* modi[] = {"GEEN", "LIGHT", "DEEP", "HIBERN"};
-        uint16_t mkl[] = {C_TEXT_DIM, C_CYAN, C_AMBER, C_RED_BRIGHT};
-        int mw = (TFT_W - 8 - 34 - 8) / 4;
-        for (int i = 0; i < 4; i++) {
+        const char* modi[] = {"GEEN", "LIGHT"};
+        uint16_t mkl[] = {C_TEXT_DIM, C_CYAN};
+        int mw = (TFT_W - 8 - 34 - 8) / 2;
+        for (int i = 0; i < 2; i++) {
             bool sel = (slaap_modus == i);
             uint16_t mfg = sel ? mkl[i] : C_SURFACE3;
-            uint16_t mbg = sel ? (i == 0 ? C_SURFACE2 : (i == 1 ? RGB565(0, 14, 24) : (i == 2 ? RGB565(24, 10, 0) : RGB565(28, 0, 0)))) : C_SURFACE;
+            uint16_t mbg = sel ? (i == 0 ? C_SURFACE2 : RGB565(0, 14, 24)) : C_SURFACE;
             tft.fillRoundRect(36 + i * (mw + 2), y + 3, mw, 20, 3, mbg);
             if (sel) tft.drawRoundRect(36 + i * (mw + 2), y + 3, mw, 20, 3, mfg);
             tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
@@ -871,9 +871,9 @@ static void pico_cfg_instellingen_run(int x, int y) {
 #if PLATFORM_ESP32
     // Slaap modus
     if (y >= y0 && y < y0 + 26) {
-        int mw = (TFT_W - 8 - 34 - 8) / 4;
+        int mw = (TFT_W - 8 - 34 - 8) / 2;
         int idx = (x - 36) / (mw + 2);
-        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); pico_cfg_instellingen_teken(); }
+        if (idx >= 0 && idx < 2) { slaap_modus = (uint8_t)idx; state_save(); pico_cfg_instellingen_teken(); }
         return;
     }
     y0 += 30;
@@ -1661,23 +1661,20 @@ static void cfg_we_teken() {
     }
     y += 44;
 
-    // Slaap modus
+    // Slaap modus (alleen GEEN/LIGHT — zie slaap.h waarom DEEP/HIBERN vervielen:
+    // ESP-NOW/WiFi staat sowieso uit in beide, en touch-wake was onbetrouwbaar
+    // buiten light sleep's 250ms-pollvenster)
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(18, y + (40 - 8) / 2); tft.print("SLAAP");
-        const char* modi[]    = {"GEEN", "LIGHT", "DEEP", "HIBERN"};
-        const char* uitleg[]  = {"", " CPU pauze  (~2mA)  touch wekt",
-                                     " Herstart bij wake  (~10uA)  touch wekt",
-                                     " Koudst  (~5uA)  ALLEEN timer wake"};
-        uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN, C_AMBER, C_RED_BRIGHT};
-        for (int i = 0; i < 4; i++) {
+        const char* modi[]    = {"GEEN", "LIGHT"};
+        const char* uitleg[]  = {"", " CPU pauze  (~2mA)  touch + slave-scherm wekt"};
+        uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN};
+        for (int i = 0; i < 2; i++) {
             bool sel = (slaap_modus == i);
             uint16_t mfg = sel ? mkleuren[i] : C_SURFACE3;
-            uint16_t mbg = !sel ? C_SURFACE :
-                           i==0 ? C_SURFACE2 :
-                           i==1 ? RGB565(0, 14, 24) :
-                           i==2 ? RGB565(24, 10, 0) : RGB565(28, 0, 0);
+            uint16_t mbg = !sel ? C_SURFACE : i==0 ? C_SURFACE2 : RGB565(0, 14, 24);
             tft.fillRoundRect(90 + i * 100, y + 4, 94, 32, 5, mbg);
             if (sel) tft.drawRoundRect(90 + i * 100, y + 4, 94, 32, 5, mfg);
             tft.setTextSize(1); tft.setTextColor(sel ? mfg : C_SURFACE3);
@@ -1713,12 +1710,13 @@ static void cfg_we_teken() {
     }
     y += 44;
 
-    // IO interval + ATtiny
+    // IO + net interval (forceert IO-cyclus én, op de master, een kort ESP-NOW-
+    // luistervenster voor slave-schermstatus/retry-commando's, zie slaap.ino)
     {
         bool dis = (slaap_modus == SLAAP_GEEN);
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("INTERVAL");
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("IO+NET");
         const uint32_t ivals[] = {10, 30, 60, 300};
         const char* ilbls[]    = {"10s", "30s", "1 min", "5 min"};
         for (int i = 0; i < 4; i++) {
@@ -2164,7 +2162,7 @@ static void cfg_we_run(int x, int y) {
 
     if (y >= sly && y < sly + 40 && x >= 90) {
         int idx = (x - 90) / 100;
-        if (idx >= 0 && idx < 4) { slaap_modus = (uint8_t)idx; state_save(); cfg_we_teken(); }
+        if (idx >= 0 && idx < 2) { slaap_modus = (uint8_t)idx; state_save(); cfg_we_teken(); }
         return;
     }
 

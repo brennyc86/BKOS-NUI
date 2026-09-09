@@ -67,6 +67,60 @@ void ts_kalibratie_opslaan() {
   static SPIClass cyd40_hspi(HSPI);
 #endif
 
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+// ─── GT911: INT-pin naar LEVEL-trigger (fabrieksdefault is edge-pulse) ────────
+// Nodig voor betrouwbare EXT0 touch-wake uit light sleep (zie slaap.ino): de
+// fabrieksinstelling geeft maar een 1-5ms puls op INT bij aanraking, te kort
+// voor een level-triggered wake-bron. In level-modus blijft INT laag zolang er
+// aangeraakt wordt, waardoor EXT0 de aanraking altijd meteen vangt i.p.v. te
+// moeten wachten op het 250ms-pollvenster dat slaap.ino als vangnet gebruikt.
+// TAMC_GT911 (de library) houdt zijn register-I/O privé, dus dit gaat via
+// rechtstreekse I2C-aanroepen op dezelfde Wire-bus die ts.begin() al opzet —
+// bewust GEEN patch van de library zelf, want die staat niet in deze repo en
+// zou dus niet meeverhuizen naar een andere machine/CI. Best-effort: als dit
+// om wat voor reden dan ook niet aanslaat, blijft het 250ms-pollvenster gewoon
+// de vangnet-functie vervullen die het nu al heeft — geen verslechtering.
+#define _GT911_ADDR       GT911_ADDR1
+#define _GT911_MOD_SW1    (uint16_t)0x804D
+#define _GT911_CFG_START  (uint16_t)0x8047
+#define _GT911_CFG_CHKSUM (uint16_t)0x80FF
+#define _GT911_CFG_FRESH  (uint16_t)0x8100
+#define _GT911_CFG_SIZE   185  // 0x80FF - 0x8047 + 1
+
+static void _gt911_schrijf_byte(uint16_t reg, uint8_t val) {
+    Wire.beginTransmission(_GT911_ADDR);
+    Wire.write(highByte(reg));
+    Wire.write(lowByte(reg));
+    Wire.write(val);
+    Wire.endTransmission();
+}
+
+static void _gt911_int_level_mode() {
+    uint8_t buf[_GT911_CFG_SIZE];
+    Wire.beginTransmission(_GT911_ADDR);
+    Wire.write(highByte(_GT911_CFG_START));
+    Wire.write(lowByte(_GT911_CFG_START));
+    if (Wire.endTransmission() != 0) return;  // GT911 niet bereikbaar — geen wijziging
+    Wire.requestFrom((uint8_t)_GT911_ADDR, (uint8_t)_GT911_CFG_SIZE);
+    int n = 0;
+    while (n < _GT911_CFG_SIZE && Wire.available()) buf[n++] = Wire.read();
+    if (n != _GT911_CFG_SIZE) return;  // onvolledige lezing — niet doorzetten
+
+    // Module_Switch_1 bit1:0 = INT-triggermodus: 00=rising,01=falling,10=low level,11=high level
+    int sw1_idx = _GT911_MOD_SW1 - _GT911_CFG_START;
+    buf[sw1_idx] = (buf[sw1_idx] & ~0x03) | 0x02;  // → low level
+
+    // Checksum: two's complement van de som van alle config-bytes vóór het checksum-veld
+    uint8_t som = 0;
+    for (int i = 0; i < _GT911_CFG_SIZE - 1; i++) som += buf[i];
+    uint8_t chk = (uint8_t)((~som) + 1);
+
+    _gt911_schrijf_byte(_GT911_MOD_SW1, buf[sw1_idx]);
+    _gt911_schrijf_byte(_GT911_CFG_CHKSUM, chk);
+    _gt911_schrijf_byte(_GT911_CFG_FRESH, 1);
+}
+#endif
+
 void ts_setup() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     // Wire timeout VOOR ts.begin() zodat GT911-init niet hangt bij verkeerd I2C-adres
@@ -74,6 +128,7 @@ void ts_setup() {
     Wire.setTimeout(50);
     ts.begin();
     ts.setRotation(0);
+    _gt911_int_level_mode();
     // GT911 INT pin als INPUT_PULLUP: hoog als scherm niet aangeraakt, laag bij aanraking.
     // TAMC_GT911 gebruikt intPin=-1 (geen adres-selectie via INT), wij gebruiken de pin
     // alleen als EXT0 wake source. Pull-up voorkomt willekeurige wakeups bij zwevende pin.

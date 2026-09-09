@@ -4,6 +4,7 @@
 #include "hw_touch.h"
 #include "hw_io.h"
 #include "io.h"
+#include "bkos_net.h"
 
 uint8_t       slaap_modus    = SLAAP_GEEN;
 uint32_t      slaap_tijd     = 60;    // standaard 60s na scherm-uit
@@ -39,19 +40,6 @@ static bool _rtc_deep_wake = false;
 #else
   #define SLAAP_WAKE_BESCHIKBAAR 0  // ESP32-S3 GT911: geen XPT2046 IRQ → alleen timer wake
 #endif
-
-static void _wake_sources_instellen() {
-    esp_sleep_enable_timer_wakeup((uint64_t)slaap_interval * 1000000ULL);
-    // Touch IRQ als extra wake source (XPT2046 platformen met gedefinieerde IRQ pin)
-#if SLAAP_WAKE_BESCHIKBAAR
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_WAKE_PIN, 0);  // wake bij LOW (aanraking)
-#endif
-    // ESP32-S3 / GT911: INT pin (GPIO18) gaat LOW bij aanraking
-    // GPIO18 is RTC-capable (bereik 0-21) → EXT0 werkt vanuit light én deep sleep
-#if defined(SLAAP_S3_INT_PIN) && ESP_IDF_VERSION_MAJOR < 5
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_S3_INT_PIN, 0);
-#endif
-}
 
 static void _scherm_wekken() {
     slaap_actief      = false;
@@ -94,6 +82,18 @@ void slaap_loop() {
         return;
     }
 
+    // Een gepaarde slave heeft zijn scherm actief (recent gemeld via
+    // NET_MSG_SCHERM_STATUS) — blijf wakker zodat ESP-NOW bereikbaar blijft
+    // (de radio gaat anders uit tijdens light sleep) totdat die melding weer
+    // verloopt. Geen aparte ATtiny-wake nodig: die wordt vanzelf wakker op de
+    // eerstvolgende UART-activiteit (io_cyclus draait gewoon door via de
+    // normale wakkere hw_loop-cyclus).
+    if (net_slave_scherm_actief()) {
+        scherm_was_aan = true;
+        slaap_actief   = false;
+        return;
+    }
+
     // Scherm is volledig zwart (fase 2)
     if (scherm_was_aan) {
         scherm_uit_ms  = millis();
@@ -108,63 +108,53 @@ void slaap_loop() {
 
     slaap_actief = true;
 
-    if (slaap_modus == SLAAP_LIGHT) {
-        // ─── Light sleep ──────────────────────────────────────────────────────
-        // 250ms timer: na elke wake touch controleren via I2C/SPI.
-        // GT911 INT-pulse duurt 1–5ms — te kort voor level-triggered EXT0.
-        // Door actief te pollen na elke 250ms-wake missen we geen aanraking.
-        static unsigned long _laatste_io_ms = 0;
+    // ─── Light sleep (enige beschikbare slaapmodus, zie slaap.h) ─────────────
+    // 250ms timer: na elke wake touch controleren via I2C/SPI. hw_touch.ino zet
+    // de GT911 om naar level-trigger zodat EXT0 een aanraking meestal al direct
+    // vangt; dit pollvenster blijft als vangnet staan voor het geval dat niet
+    // aanslaat (GT911 INT-pulse duurt anders maar 1-5ms — te kort voor EXT0).
+    static unsigned long _laatste_io_ms  = 0;
+    static unsigned long _laatste_net_ms = 0;
 
-        esp_sleep_enable_timer_wakeup(250000ULL);  // 250ms touch-check interval
+    esp_sleep_enable_timer_wakeup(250000ULL);  // 250ms touch-check interval
 #if SLAAP_WAKE_BESCHIKBAAR
-        esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_WAKE_PIN, 0);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_WAKE_PIN, 0);
 #endif
 #if defined(SLAAP_S3_INT_PIN)
-        esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_S3_INT_PIN, 0);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)SLAAP_S3_INT_PIN, 0);
 #endif
-        esp_light_sleep_start();  // blokkeert tot wake
+    esp_light_sleep_start();  // blokkeert tot wake
 
-        delay(2);  // I2C/SPI bus stabilisatie na wake
-        if (ts_touched()) {
-            if (slaap_attiny) io_attiny_slaap(false);
-            _scherm_wekken();
-            return;
-        }
-
-        // Geen aanraking: IO cyclus op slaap_interval, daarna terugslapen
-        if (_laatste_io_ms == 0 || (millis() - _laatste_io_ms) >= (uint32_t)slaap_interval * 1000UL) {
-            _laatste_io_ms = millis();
-            io_direct_aanvraag = true;
-        }
-        // slaap_actief blijft true → volgende aanroep slaapt opnieuw
-
-    } else if (slaap_modus == SLAAP_DEEP) {
-        // ─── Deep sleep ───────────────────────────────────────────────────────
-        // ESP32 volledig uitschakelen. Herstart op wake (hardware.ino detecteert dit).
-        // RTC geheugen behouden → _rtc_deep_wake vlag overleeft herstart.
-        // Touch (GPIO18 EXT0) of timer wekt op.
-        _rtc_deep_wake = true;
-        state_save();
-        if (slaap_attiny) io_attiny_slaap(true);
-        _wake_sources_instellen();
-        esp_deep_sleep_start();
-        // Hier komt code nooit aan — ESP32 herstart op wake
-
-    } else if (slaap_modus == SLAAP_HIBERN) {
-        // ─── Hibernation ──────────────────────────────────────────────────────
-        // Diepste slaapstand (~5µA): RTC geheugen en peripherals uit.
-        // LET OP: EXT0 touch wake werkt NIET — alleen timer wekt op.
-        // Herstart identiek aan power-on (geen RTC data bewaard).
-        state_save();
-        if (slaap_attiny) io_attiny_slaap(true);
-        esp_sleep_enable_timer_wakeup((uint64_t)slaap_interval * 1000000ULL);
-        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH,   ESP_PD_OPTION_OFF);
-#if ESP_IDF_VERSION_MAJOR < 5
-        // ESP_PD_DOMAIN_RTC_FAST_MEM / RTC_SLOW_MEM bestaan niet in IDF 5.x (S3)
-        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
-        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
-#endif
-        esp_deep_sleep_start();
+    delay(2);  // I2C/SPI bus stabilisatie na wake
+    if (ts_touched()) {
+        if (slaap_attiny) io_attiny_slaap(false);
+        _scherm_wekken();
+        return;
     }
+
+    // Geen aanraking: IO cyclus op slaap_interval, daarna terugslapen
+    if (_laatste_io_ms == 0 || (millis() - _laatste_io_ms) >= (uint32_t)slaap_interval * 1000UL) {
+        _laatste_io_ms = millis();
+        io_direct_aanvraag = true;
+    }
+
+    // Master: periodiek een venster openhouden voor ESP-NOW (de radio staat
+    // anders alleen tijdens deze 250ms-wakes heel even aan, te kort om een
+    // slave's "scherm actief"-broadcast of een retry-commando betrouwbaar te
+    // vangen). Hergebruikt dezelfde slaap_interval-instelling als de IO-cyclus
+    // hierboven. net_slave_scherm_actief() wordt bovenaan de VOLGENDE
+    // slaap_loop()-aanroep gecheckt — vindt dit venster iets, dan blijft het
+    // apparaat vanaf dan gewoon wakker totdat die melding weer verloopt.
+    if (net_modus == NET_MASTER &&
+        (_laatste_net_ms == 0 || (millis() - _laatste_net_ms) >= (uint32_t)slaap_interval * 1000UL)) {
+        _laatste_net_ms = millis();
+        unsigned long netvenster_start = millis();
+        while (millis() - netvenster_start < SLAAP_NET_VENSTER_MS) {
+            net_loop();
+            delay(10);
+        }
+    }
+    // slaap_actief blijft true → volgende aanroep slaapt opnieuw (tenzij de
+    // bovenstaande net_slave_scherm_actief()-check dat dan alsnog voorkomt)
 #endif
 }

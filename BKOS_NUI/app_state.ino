@@ -177,7 +177,9 @@ void state_load() {
         if (key == "ota_int")   ota_check_interval_min = val.toInt();
         if (key == "ota_tijd")  ota_check_tijd_uur     = val.toInt();
         if (key == "wifi_open") wifi_open_auto         = (val.toInt() != 0);
-        if (key == "slaap_m")  slaap_modus    = (uint8_t)constrain(val.toInt(), 0, 2);
+        // Bereik 0-1 (SLAAP_GEEN/SLAAP_LIGHT) — DEEP(2)/HIBERN(3) uit een oudere
+        // firmwareversie vallen hiermee automatisch terug op LIGHT, zie slaap.h
+        if (key == "slaap_m")  slaap_modus    = (uint8_t)constrain(val.toInt(), 0, 1);
         if (key == "slaap_t")  slaap_tijd     = (uint32_t)val.toInt();
         if (key == "slaap_i")  slaap_interval = max((uint32_t)10, (uint32_t)val.toInt());
         if (key == "slaap_a")  slaap_attiny   = (val.toInt() != 0);

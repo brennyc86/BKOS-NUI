@@ -24,6 +24,8 @@
 #define NET_MSG_INFO_SYNC   0x31  // master → slaves: info velden + PIN
 #define NET_MSG_INFO_UPDATE 0x32  // slave → master: gewijzigde info velden
 #define NET_MSG_PEER_INFO   0x33  // slave → master: lokale IO telling
+#define NET_MSG_SCHERM_STATUS 0x25 // slave → master: eigen scherm actief (data[0]=1/0), herhaald zolang actief
+#define NET_MSG_CMD_ACK     0x26  // master → slave: bevestiging van IO_TOGGLE/IO_NAAM (data[0]=req_id)
 
 // App-gerelateerde berichten
 #define NET_MSG_APP_LIST    0x40  // master → slaves: geïnst. app IDs + namen
@@ -56,6 +58,8 @@ extern uint8_t   lua_net_q_cnt;
 #define NET_HEARTBEAT_MS    5000UL
 #define NET_TIMEOUT_MS      15000UL
 #define NET_PAIR_INTERVAL   30000UL  // herverbinding na verbroken pairing
+#define NET_SCHERM_STATUS_MS         3000UL   // slave: herhaalinterval "scherm actief"-melding
+#define NET_SCHERM_STATUS_TIMEOUT_MS 10000UL  // master: hoelang zo'n melding als geldig telt (>2x NET_SCHERM_STATUS_MS)
 
 // ─── Data structuren ──────────────────────────────────────────────────────────
 struct NetPeer {
@@ -68,6 +72,8 @@ struct NetPeer {
     uint8_t  io_modules;    // gerapporteerd door peer (0 = onbekend)
     uint8_t  io_kanalen;
     char     pin[5];         // 4-cijferige PIN van slave (bekende peer)
+    bool     scherm_actief;    // laatst gemelde scherm-status (master-kant, zie NET_MSG_SCHERM_STATUS)
+    uint32_t scherm_actief_ms; // millis() van die melding — voor staleness (net_slave_scherm_actief)
 };
 
 // ESP-NOW pakket (max 250 bytes)
@@ -106,6 +112,11 @@ String      net_mac_str(const uint8_t* mac);
 const char* net_modus_naam(uint8_t m);
 bool        net_master_bekend();
 void        net_get_eigen_mac(uint8_t* mac);
+
+// Slaapstand-ondersteuning: is er een gepaarde slave met scherm actief (recent
+// gemeld, zie NET_MSG_SCHERM_STATUS)? Gebruikt door slaap.ino om de master niet
+// te laten slapen terwijl iemand op een slave-scherm zit te kijken.
+bool        net_slave_scherm_actief();
 
 // IO synchronisatie
 void        net_io_sturen();                        // master → slaves: IO staat (snel, 500ms)

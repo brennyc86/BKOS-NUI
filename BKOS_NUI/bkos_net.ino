@@ -6,6 +6,7 @@
 #include "lamp.h"         // lamp_aan[] — virtuele "**IL_<N>"-lampgroepen (zie io_il_lamp_nr)
 #include "app_manager.h"  // apps[], apps_cnt, app_master_lijst_verwerken
 #include "wifi.h"         // ntp_vanaf_net()
+#include "hw_scherm.h"    // tft_actief — voor NET_MSG_SCHERM_STATUS
 
 #if PLATFORM_ESP32
 #include <esp_now.h>
@@ -56,6 +57,27 @@ static volatile uint8_t _rx_head = 0;  // consumer schrijft
 static volatile uint8_t _rx_tail = 0;  // producer schrijft
 static uint8_t          _rx_q_mac[NET_RX_Q][6];
 static NetPaket         _rx_q_buf[NET_RX_Q];
+
+// Uitgaande commando-retry (slave → master): IO_TOGGLE/IO_NAAM zijn losse,
+// onbevestigde esp_now_send()-oproepen — als de master op dat moment sliep
+// (light sleep, radio uit) komt zo'n pakket domweg nooit aan. Elke via
+// _stuur_io_toggle()/_stuur_io_naam() verstuurde opdracht krijgt daarom een
+// oplopend req_id mee en wordt hier ook gebufferd; zolang er geen NET_MSG_CMD_ACK
+// met datzelfde id terugkomt, wordt hij periodiek herhaald (tot een maximum).
+#define NET_TX_Q            4
+#define NET_TX_RETRY_MS     4000UL
+#define NET_TX_MAX_POGINGEN 20   // ~80s, daarna opgeven
+struct _NetTxItem {
+    bool     actief;
+    uint32_t volgende_ms;
+    uint8_t  pogingen;
+    int      data_len;
+    NetPaket pkt;   // data[2] = req_id (IO_TOGGLE en IO_NAAM, zie _stuur_io_*)
+};
+static _NetTxItem _tx_q[NET_TX_Q];
+static uint8_t    _tx_req_id_teller = 0;
+
+static unsigned long _last_scherm_status = 0;  // slave: laatste NET_MSG_SCHERM_STATUS-broadcast
 #endif
 
 // ─── Hulpfuncties ─────────────────────────────────────────────────────────────
@@ -79,6 +101,22 @@ const char* net_modus_naam(uint8_t m) {
 
 bool net_master_bekend() {
     for (int i = 0; i < 6; i++) if (net_master_mac[i]) return true;
+    return false;
+}
+
+// Zie NET_MSG_SCHERM_STATUS: "actief" telt alleen als de laatste melding van die
+// peer nog vers is (peer herhaalt de melding elke NET_SCHERM_STATUS_MS zolang zijn
+// scherm aan staat) — zo valt dit vanzelf en veilig terug op "niet actief" als de
+// peer zwijgt, ongeacht de reden (scherm uit, buiten bereik, uitgevallen).
+bool net_slave_scherm_actief() {
+#if PLATFORM_ESP32
+    if (net_modus != NET_MASTER) return false;
+    unsigned long nu = millis();
+    for (int i = 0; i < net_peers_cnt; i++) {
+        if (!net_peers[i].bevestigd || !net_peers[i].scherm_actief) continue;
+        if (nu - net_peers[i].scherm_actief_ms < NET_SCHERM_STATUS_TIMEOUT_MS) return true;
+    }
+#endif
     return false;
 }
 
@@ -198,6 +236,53 @@ static void _stuur(const uint8_t* mac, const NetPaket& pkt, int data_len = 0) {
     _peer_registreren(mac);
     int len = (int)(sizeof(NetPaket) - sizeof(pkt.data)) + data_len;
     esp_now_send(mac, (const uint8_t*)&pkt, (size_t)len);
+}
+
+// Bewaar een kopie van een net verstuurd commando voor retry (zie NET_TX_Q hierboven).
+static void _tx_q_toevoegen(const NetPaket& pkt, int data_len) {
+    for (int i = 0; i < NET_TX_Q; i++) {
+        if (_tx_q[i].actief) continue;
+        _tx_q[i].actief      = true;
+        _tx_q[i].pogingen    = 0;
+        _tx_q[i].data_len    = data_len;
+        _tx_q[i].pkt         = pkt;
+        _tx_q[i].volgende_ms = millis() + NET_TX_RETRY_MS;
+        return;
+    }
+    // Queue vol (4 tegelijk onbevestigd, zeldzaam) — dit commando wordt niet herhaald
+    // als het eerste verzendpoging faalt; de al lopende retries blijven ongemoeid.
+}
+
+// Periodiek (net_loop) onbevestigde commando's herhalen totdat een NET_MSG_CMD_ACK
+// binnenkomt of het maximum aantal pogingen bereikt is.
+static void _tx_retry_verwerk() {
+    if (!_espnow_ok || !net_gepaard) return;
+    unsigned long nu = millis();
+    for (int i = 0; i < NET_TX_Q; i++) {
+        if (!_tx_q[i].actief || nu < _tx_q[i].volgende_ms) continue;
+        if (_tx_q[i].pogingen >= NET_TX_MAX_POGINGEN) { _tx_q[i].actief = false; continue; }
+        _tx_q[i].pogingen++;
+        _tx_q[i].volgende_ms = nu + NET_TX_RETRY_MS;
+        _stuur(net_master_mac, _tx_q[i].pkt, _tx_q[i].data_len);
+    }
+}
+
+// Wis een retry-entry zodra de master 'm bevestigd heeft (NET_MSG_CMD_ACK).
+static void _tx_q_ack_verwerk(uint8_t req_id) {
+    for (int i = 0; i < NET_TX_Q; i++)
+        if (_tx_q[i].actief && _tx_q[i].pkt.data[2] == req_id) _tx_q[i].actief = false;
+}
+
+// Master → slave: bevestig ontvangst/verwerking van een IO_TOGGLE/IO_NAAM-commando.
+static void _stuur_cmd_ack(const uint8_t* mac, uint8_t req_id) {
+    if (!_espnow_ok) return;
+    NetPaket ack = {};
+    ack.versie  = NET_PROTOCOL_VERSIE;
+    ack.type    = NET_MSG_CMD_ACK;
+    ack.modus   = net_modus;
+    strncpy(ack.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    ack.data[0] = req_id;
+    _stuur(mac, ack, 1);
 }
 
 #if ESP_IDF_VERSION_MAJOR >= 5
@@ -377,6 +462,8 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             net_peers[idx].io_modules   = 0;
             net_peers[idx].io_kanalen   = 0;
             net_peers[idx].pin[0]       = '\0';
+            net_peers[idx].scherm_actief    = false;
+            net_peers[idx].scherm_actief_ms = 0;
         }
         net_peers[idx].modus = pkt.modus;
         strncpy(net_peers[idx].naam, pkt.naam, NET_NAAM_LEN - 1);
@@ -504,6 +591,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         if (idx < 0 || !net_peers[idx].bevestigd) break;  // alleen bevestigde slaves
         uint8_t kanaal = pkt.data[0];
         uint8_t staat  = pkt.data[1];   // IO_AAN / IO_UIT / 0xFF=toggle
+        uint8_t req_id = pkt.data[2];
         int n = io_zichtbaar();
         if (kanaal >= (uint8_t)n || kanaal >= MAX_IO_KANALEN) break;
         if (staat == NET_IO_TOGGLE) {
@@ -514,6 +602,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         }
         io_gewijzigd[kanaal] = true;
         io_direct_aanvraag   = true;
+        _stuur_cmd_ack(mac, req_id);
         break;
     }
 
@@ -522,7 +611,8 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
         if (idx < 0 || !net_peers[idx].bevestigd) break;  // alleen bevestigde slaves
         uint8_t     staat      = pkt.data[0];
         uint8_t     match_type = pkt.data[1];  // 0=exact, 1=prefix
-        const char* naam       = (const char*)&pkt.data[2];
+        uint8_t     req_id     = pkt.data[2];
+        const char* naam       = (const char*)&pkt.data[3];
 
         // Virtuele lampgroep-schakelnaam ("**IL_<N>") — geen fysiek kanaal,
         // zie io_apparaat_toggle()/io_apparaat_staat3() in io.ino.
@@ -531,6 +621,7 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             if (staat == NET_IO_TOGGLE) lamp_aan[lamp_nr] = !lamp_aan[lamp_nr];
             else                        lamp_aan[lamp_nr] = (staat == IO_AAN);
             io_verlichting_update();
+            _stuur_cmd_ack(mac, req_id);
             break;
         }
 
@@ -549,8 +640,23 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             io_gewijzigd[k] = true;
         }
         io_direct_aanvraag = true;
+        _stuur_cmd_ack(mac, req_id);
         break;
     }
+
+    case NET_MSG_SCHERM_STATUS:
+        if (net_modus != NET_MASTER) break;
+        if (idx >= 0 && net_peers[idx].bevestigd) {
+            net_peers[idx].scherm_actief    = (pkt.data[0] != 0);
+            net_peers[idx].scherm_actief_ms = millis();
+        }
+        break;
+
+    case NET_MSG_CMD_ACK:
+        if (net_modus == NET_MASTER) break;
+        if (!net_master_bekend() || !_mac_gelijk(mac, net_master_mac)) break;
+        _tx_q_ack_verwerk(pkt.data[0]);
+        break;
 
     case NET_MSG_APP_STATE: {
         if (pkt.modus == NET_MASTER && net_modus != NET_MASTER &&
@@ -769,7 +875,9 @@ static void _stuur_io_toggle(int kanaal, uint8_t staat) {
     strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
     pkt.data[0] = (uint8_t)kanaal;
     pkt.data[1] = staat;
-    _stuur(net_master_mac, pkt, 2);
+    pkt.data[2] = ++_tx_req_id_teller;   // voor NET_MSG_CMD_ACK-correlatie, zie _tx_q_*
+    _stuur(net_master_mac, pkt, 3);
+    _tx_q_toevoegen(pkt, 3);
 }
 
 static void _stuur_io_naam(const char* naam, uint8_t staat, uint8_t match_type) {
@@ -781,8 +889,11 @@ static void _stuur_io_naam(const char* naam, uint8_t staat, uint8_t match_type) 
     strncpy(pkt.naam, net_eigen_naam, NET_NAAM_LEN - 1);
     pkt.data[0] = staat;
     pkt.data[1] = match_type;
-    strncpy((char*)&pkt.data[2], naam, IO_NAAM_LEN - 1);
-    _stuur(net_master_mac, pkt, 2 + IO_NAAM_LEN);
+    pkt.data[2] = ++_tx_req_id_teller;
+    strncpy((char*)&pkt.data[3], naam, IO_NAAM_LEN - 1);
+    int len = 3 + IO_NAAM_LEN;
+    _stuur(net_master_mac, pkt, len);
+    _tx_q_toevoegen(pkt, len);
 }
 #endif
 
@@ -1165,6 +1276,26 @@ void net_loop() {
     if (net_modus != NET_MASTER && net_auto_verbinden && !net_gepaard && nu - _last_pair_req >= NET_PAIR_INTERVAL) {
         net_pair_sturen();
     }
+
+    // Slave: eigen scherm-status periodiek melden aan master (zie NET_MSG_SCHERM_STATUS
+    // en net_slave_scherm_actief()) — alleen zolang tft_actief; stopt vanzelf zodra het
+    // scherm weer uitgaat, de master beschouwt de melding dan na een paar seconden als
+    // verlopen. Zo hoeft er geen apart "uit"-bericht verstuurd/verwerkt te worden.
+    if (net_modus != NET_MASTER && net_gepaard && tft_actief &&
+        nu - _last_scherm_status >= NET_SCHERM_STATUS_MS) {
+        _last_scherm_status = nu;
+        NetPaket sp = {};
+        sp.versie  = NET_PROTOCOL_VERSIE;
+        sp.type    = NET_MSG_SCHERM_STATUS;
+        sp.modus   = net_modus;
+        strncpy(sp.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+        sp.data[0] = 1;
+        _stuur(net_master_mac, sp, 1);
+    }
+
+    // Uitgaande IO-commando's die nog niet bevestigd zijn opnieuw proberen — dekt
+    // het geval dat de master aan het slapen was toen we voor het eerst stuurden.
+    _tx_retry_verwerk();
 
 #endif  // PLATFORM_ESP32
 }

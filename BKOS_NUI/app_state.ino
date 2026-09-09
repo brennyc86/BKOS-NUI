@@ -12,6 +12,7 @@ extern bool ota_beta_kanal;
 extern bool ota_beta_kanal_geladen;
 
 int   actief_scherm    = SCREEN_MAIN;
+int   laatste_hoofdscherm = SCREEN_MAIN;
 bool  scherm_bouwen    = true;
 byte  vaar_modus       = MODE_HAVEN;
 bool  vaarmodus_auto   = false;

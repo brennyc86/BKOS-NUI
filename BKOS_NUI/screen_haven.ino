@@ -9,13 +9,18 @@
 
 extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
-#define HV_HDR_H     34
 #define HV_GAP       8
 #define HV_TILE_H    UI_SCY(80)
-#define HV_START_Y   (CONTENT_Y + HV_HDR_H + 6)
-#define HV_BACK_H    44
-#define HV_BACK_Y    (NAV_Y - HV_BACK_H - 8)
-#define HV_LIST_BOT  (HV_BACK_Y - 8)
+#define HV_SECTIE_H  18   // hoogte van een sectie-titelrij ("VERLICHTING"/"APPARATEN")
+
+// Klein terug-knopje linksboven (i.p.v. een volle balk onderaan) — geen aparte
+// header meer nodig, tegels beginnen meteen onder dit knopje.
+#define HV_BACK_X    8
+#define HV_BACK_Y    (CONTENT_Y + 6)
+#define HV_BACK_W    48
+#define HV_BACK_H    32
+#define HV_START_Y   (HV_BACK_Y + HV_BACK_H + 8)
+#define HV_LIST_BOT  (NAV_Y - 8)
 
 static int hv_lamp_nrs[LAMP_MAX];
 static int hv_lamp_cnt = 0;
@@ -24,11 +29,12 @@ static int hv_paneel_cnt = 0;
 static int hv_scroll_y   = 0;
 static int hv_max_scroll = 0;
 
-// Aantal kolommen: past zich aan de schermbreedte aan (2 op de kleinste
-// SCREEN_SMALL-schermen, tot 4 op de 800px S3-referentie).
-static int _hv_cols() {
+// Aantal kolommen + tegelbreedte: past zich aan de schermbreedte aan (2 op de
+// kleinste SCREEN_SMALL-schermen, tot 4 op de 800px S3-referentie).
+static void _hv_layout(int* cols, int* tile_w) {
     int avail = TFT_W - UI_SB_W - 16;
-    return constrain(avail / 150, 2, 4);
+    *cols = constrain(avail / 150, 2, 4);
+    *tile_w = (avail - (*cols - 1) * HV_GAP) / *cols;
 }
 
 // Zelfde scan+sortering als screen_lampen.ino's _lp_scan() — elke keer bij
@@ -126,56 +132,78 @@ static void _hv_paneel_toggle(int paneel_idx) {
     dev_lokaal[paneel_idx] = !dev_lokaal[paneel_idx];
 }
 
-// ─── Generieke tegel-index (0=interieur, dan lampen, dan paneel) ──────────
-static void _hv_tile_teken(int i, int x, int y, int w, int h) {
-    if (i == 0) { _hv_interieur_teken(x, y, w, h); return; }
-    i -= 1;
-    if (i < hv_lamp_cnt) { _hv_lamp_teken(hv_lamp_nrs[i], x, y, w, h); return; }
-    i -= hv_lamp_cnt;
-    if (i < hv_paneel_cnt) _hv_paneel_teken(hv_paneel_idx[i], x, y, w, h);
+// Tekent de tegels van één sectie (grid vanaf y_top) en geeft de hoogte van
+// die sectie terug (rijen × tegelhoogte, exclusief de titelrij zelf).
+static int _hv_sectie_grid_teken(int y_top, int aantal, int cols, int tile_w,
+                                  bool is_verlichting) {
+    int rijen = (aantal + cols - 1) / cols;
+    for (int i = 0; i < aantal; i++) {
+        int col = i % cols, row = i / cols;
+        int tx = 8 + col * (tile_w + HV_GAP);
+        int ty = y_top + row * (HV_TILE_H + HV_GAP);
+        if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;  // buiten kijkvenster
+        if (is_verlichting) {
+            if (i == 0) _hv_interieur_teken(tx, ty, tile_w, HV_TILE_H);
+            else        _hv_lamp_teken(hv_lamp_nrs[i - 1], tx, ty, tile_w, HV_TILE_H);
+        } else {
+            _hv_paneel_teken(hv_paneel_idx[i], tx, ty, tile_w, HV_TILE_H);
+        }
+    }
+    return rijen * (HV_TILE_H + HV_GAP);
 }
 
-static void _hv_tile_toggle(int i) {
-    if (i == 0) { _hv_interieur_toggle(); return; }
-    i -= 1;
-    if (i < hv_lamp_cnt) { _hv_lamp_toggle(hv_lamp_nrs[i]); return; }
-    i -= hv_lamp_cnt;
-    if (i < hv_paneel_cnt) _hv_paneel_toggle(hv_paneel_idx[i]);
+static void _hv_sectie_titel_teken(const char* titel, int y) {
+    if (y + HV_SECTIE_H <= HV_START_Y || y >= HV_LIST_BOT) return;  // buiten kijkvenster
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(8, y + 5); tft.print(titel);
 }
 
 void screen_haven_teken() {
     _hv_scan();
     tft.fillRect(0, CONTENT_Y, TFT_W, NAV_Y - CONTENT_Y, C_BG);
+    ui_knop(HV_BACK_X, HV_BACK_Y, HV_BACK_W, HV_BACK_H, "<", C_SURFACE2, C_CYAN);
 
-    tft.fillRect(0, CONTENT_Y, TFT_W, HV_HDR_H, C_SURFACE2);
-    tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(10, CONTENT_Y + (HV_HDR_H - 16) / 2); tft.print("HAVEN");
+    int cols, tile_w;
+    _hv_layout(&cols, &tile_w);
 
-    int totaal  = 1 + hv_lamp_cnt + hv_paneel_cnt;
-    int cols    = _hv_cols();
-    int tile_w  = (TFT_W - UI_SB_W - 16 - (cols - 1) * HV_GAP) / cols;
+    int y = HV_START_Y - hv_scroll_y;
 
-    int y0 = HV_START_Y - hv_scroll_y;
-    for (int i = 0; i < totaal; i++) {
-        int col = i % cols, row = i / cols;
-        int tx = 8 + col * (tile_w + HV_GAP);
-        int ty = y0 + row * (HV_TILE_H + HV_GAP);
-        if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;  // buiten kijkvenster
-        _hv_tile_teken(i, tx, ty, tile_w, HV_TILE_H);
+    // ── VERLICHTING: interieurverlichting + alle genummerde lampgroepen ──
+    _hv_sectie_titel_teken("VERLICHTING", y);
+    y += HV_SECTIE_H;
+    y += _hv_sectie_grid_teken(y, 1 + hv_lamp_cnt, cols, tile_w, true);
+
+    // ── APPARATEN: PANEEL-knoppen die zelf geen lampgroep zijn ──
+    if (hv_paneel_cnt > 0) {
+        y += 10;
+        _hv_sectie_titel_teken("APPARATEN", y);
+        y += HV_SECTIE_H;
+        y += _hv_sectie_grid_teken(y, hv_paneel_cnt, cols, tile_w, false);
     }
 
-    int rijen     = (totaal + cols - 1) / cols;
-    int inhoud_h  = rijen * (HV_TILE_H + HV_GAP);
+    int inhoud_h  = y - (HV_START_Y - hv_scroll_y);
     hv_max_scroll = max(0, (HV_START_Y + inhoud_h) - HV_LIST_BOT);
     hv_scroll_y   = constrain(hv_scroll_y, 0, hv_max_scroll);
     ui_scrollbar(TFT_W - UI_SB_W, HV_START_Y, HV_LIST_BOT - HV_START_Y, hv_scroll_y, hv_max_scroll);
 
-    // Vaste "terug naar vaardashboard"-knop, net boven de navbar — tekent
-    // overheen zodra gescrolde inhoud er nog onder zat.
-    tft.fillRect(0, HV_LIST_BOT, TFT_W, HV_BACK_Y - HV_LIST_BOT, C_BG);
-    ui_knop(8, HV_BACK_Y, TFT_W - 16, HV_BACK_H, "TERUG NAAR VAARDASHBOARD", C_SURFACE2, C_CYAN);
-
     nav_bar_teken();
+}
+
+// Test of (x,y) een tegel in een sectie-grid raakt die bij y_top begint;
+// geeft de tegel-index (0-based binnen de sectie) of -1.
+static int _hv_grid_hit(int x, int y, int y_top, int aantal, int cols, int tile_w) {
+    if (y < y_top) return -1;
+    int row  = (y - y_top) / (HV_TILE_H + HV_GAP);
+    int rely = (y - y_top) % (HV_TILE_H + HV_GAP);
+    if (rely >= HV_TILE_H) return -1;  // in de tussenruimte tussen rijen
+    int col = -1;
+    for (int c = 0; c < cols; c++) {
+        int tx = 8 + c * (tile_w + HV_GAP);
+        if (x >= tx && x < tx + tile_w) { col = c; break; }
+    }
+    if (col < 0) return -1;
+    int i = row * cols + col;
+    return (i >= 0 && i < aantal) ? i : -1;
 }
 
 void screen_haven_run(int x, int y, bool aanraking) {
@@ -200,8 +228,9 @@ void screen_haven_run(int x, int y, bool aanraking) {
         return;
     }
 
-    // Terug naar het vaardashboard — vast, altijd op dezelfde plek
-    if (y >= HV_BACK_Y && y < HV_BACK_Y + HV_BACK_H) {
+    // Terug-knopje linksboven — vast, altijd op dezelfde plek
+    if (x >= HV_BACK_X && x < HV_BACK_X + HV_BACK_W &&
+        y >= HV_BACK_Y && y < HV_BACK_Y + HV_BACK_H) {
         actief_scherm = SCREEN_MAIN;
         scherm_bouwen = true;
         return;
@@ -209,25 +238,31 @@ void screen_haven_run(int x, int y, bool aanraking) {
 
     if (y < HV_START_Y || y >= HV_LIST_BOT) return;
 
-    int totaal = 1 + hv_lamp_cnt + hv_paneel_cnt;
-    int cols   = _hv_cols();
-    int tile_w = (TFT_W - UI_SB_W - 16 - (cols - 1) * HV_GAP) / cols;
+    int cols, tile_w;
+    _hv_layout(&cols, &tile_w);
 
     int y0 = HV_START_Y - hv_scroll_y;
-    if (y < y0) return;
-    int row  = (y - y0) / (HV_TILE_H + HV_GAP);
-    int rely = (y - y0) % (HV_TILE_H + HV_GAP);
-    if (rely >= HV_TILE_H) return;  // aanraking viel in de tussenruimte tussen rijen
 
-    int col = -1;
-    for (int c = 0; c < cols; c++) {
-        int tx = 8 + c * (tile_w + HV_GAP);
-        if (x >= tx && x < tx + tile_w) { col = c; break; }
+    // ── VERLICHTING ──
+    int verlicht_top = y0 + HV_SECTIE_H;
+    int verlicht_n    = 1 + hv_lamp_cnt;
+    int verlicht_h     = ((verlicht_n + cols - 1) / cols) * (HV_TILE_H + HV_GAP);
+    int i = _hv_grid_hit(x, y, verlicht_top, verlicht_n, cols, tile_w);
+    if (i >= 0) {
+        if (i == 0) _hv_interieur_toggle();
+        else        _hv_lamp_toggle(hv_lamp_nrs[i - 1]);
+        screen_haven_teken();
+        return;
     }
-    if (col < 0) return;
 
-    int i = row * cols + col;
-    if (i < 0 || i >= totaal) return;
-    _hv_tile_toggle(i);
-    screen_haven_teken();
+    // ── APPARATEN ──
+    if (hv_paneel_cnt > 0) {
+        int apparaten_top = verlicht_top + verlicht_h + 10 + HV_SECTIE_H;
+        int j = _hv_grid_hit(x, y, apparaten_top, hv_paneel_cnt, cols, tile_w);
+        if (j >= 0) {
+            _hv_paneel_toggle(hv_paneel_idx[j]);
+            screen_haven_teken();
+            return;
+        }
+    }
 }

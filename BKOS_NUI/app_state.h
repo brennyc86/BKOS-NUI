@@ -60,6 +60,7 @@
 #define LSTATE_ECHT_AAN      3
 
 extern int    actief_scherm;
+extern int    laatste_hoofdscherm;  // SCREEN_MAIN of SCREEN_HAVEN — laatst bezocht "thuis"-scherm (nav bar PANEEL-knop)
 extern bool   scherm_bouwen;
 
 extern byte   vaar_modus;

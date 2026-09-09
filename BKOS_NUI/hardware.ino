@@ -73,6 +73,9 @@ static void _gui_taak(void*) {
         // Scherm (her)bouwen
         if (scherm_bouwen) {
             scherm_bouwen = false;
+            // Onthoud welk van de twee "thuis"-schermen het laatst actief was —
+            // de nav bar PANEEL-knop keert daarnaar terug (zie nav_bar_klik()).
+            if (actief_scherm == SCREEN_MAIN || actief_scherm == SCREEN_HAVEN) laatste_hoofdscherm = actief_scherm;
             // Alleen resetten als er geen aanraking is — anders vuurt de touch opnieuw
             // zodra de (trage SPI-)redraw klaar is terwijl de vinger nog op het scherm ligt
             if (!aanraking_vast) touch_verwerkt = false;
@@ -452,6 +455,7 @@ void hw_loop() {
 
     if (scherm_bouwen) {
         scherm_bouwen = false;
+        if (actief_scherm == SCREEN_MAIN || actief_scherm == SCREEN_HAVEN) laatste_hoofdscherm = actief_scherm;
         if (!aanraking_vast) touch_verwerkt = false;
         if (tft_actief) tft_helderheid_zet(0);
         int app_idx = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)

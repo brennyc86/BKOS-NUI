@@ -13,7 +13,7 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define HV_GAP        8
 #define HV_TILE_H     UI_SCY(72)
 #define HV_SECTIE_H   18   // hoogte van een kolomtitel ("VERLICHTING"/"APPARATEN")
-#define HV_ALG_BTN_H  34
+#define HV_ALG_BTN_H  46
 #define HV_ALG_ROW_GAP 6
 
 // Terugknopje in de statusbalk (net als WIFI/INFO/TIJD) i.p.v. eigen ruimte
@@ -107,6 +107,29 @@ static void _hv_tile_frame(int x, int y, int w, int h, bool aan) {
     else       tft.drawRoundRect(x, y, w, h, KNOP_R, C_SURFACE2);
 }
 
+static void _hv_label_onder(int x, int y, int w, int h, const char* label, uint16_t kleur) {
+    tft.setTextSize(1); tft.setTextColor(kleur);
+    int tw = strlen(label) * 6;
+    tft.setCursor(x + (w - tw) / 2, y + h - 12);
+    tft.print(label);
+}
+
+// WIT/ROOD: hergebruikt het peertje-icoon (teken_icoon_lamp) — symbool i.p.v.
+// tekstknop, licht op in de eigen kleur zodra actief.
+static void _hv_kleur_knop(int x, int y, int w, int h, bool rood, const char* label, bool actief) {
+    _hv_tile_frame(x, y, w, h, actief);
+    teken_icoon_lamp(x + w / 2, y + h * 2 / 5, actief, rood);
+    _hv_label_onder(x, y, w, h, label, actief ? (rood ? C_LIGHT_ON_RED : C_WHITE) : C_TEXT_DIM);
+}
+
+// ALLES AAN/UIT: hergebruikt de bestaande AAN/UIT-verlichtingsiconen
+// (I_LICHT_AAN/I_LICHT_UIT) — momentane actie, geen "actief"-status.
+static void _hv_actie_knop(int x, int y, int w, int h, int icoon, uint16_t kleur, const char* label) {
+    _hv_tile_frame(x, y, w, h, false);
+    teken_icoon(icoon, x + w / 2, y + h * 2 / 5, kleur);
+    _hv_label_onder(x, y, w, h, label, C_TEXT_DIM);
+}
+
 // ─── Tegels: genummerde lampgroepen ────────────────────────────────────────
 // "aan" is de EFFECTIEVE stand (io_lamp_effectief_aan): een lamp die alleen
 // een **IL_wit<N> heeft toont UIT zodra de kleur op rood staat, ook als de
@@ -163,16 +186,14 @@ static int _hv_verlichting_teken(int x0, int w, int y_top, int cols, int tile_w)
     if (row1_y + HV_ALG_BTN_H > HV_START_Y && row1_y < HV_LIST_BOT) {
         bool wit_act  = (interieur_modus == INTERIEUR_WIT);
         bool rood_act = (interieur_modus == INTERIEUR_ROOD);
-        ui_knop(x0,              row1_y, bw, HV_ALG_BTN_H, "WIT",
-                wit_act  ? C_SURFACE2 : C_SURFACE, wit_act  ? C_WHITE        : C_TEXT_DIM);
-        ui_knop(x0 + bw + HV_GAP, row1_y, bw, HV_ALG_BTN_H, "ROOD",
-                rood_act ? C_SURFACE2 : C_SURFACE, rood_act ? C_LIGHT_ON_RED : C_TEXT_DIM);
+        _hv_kleur_knop(x0,              row1_y, bw, HV_ALG_BTN_H, false, "WIT",  wit_act);
+        _hv_kleur_knop(x0 + bw + HV_GAP, row1_y, bw, HV_ALG_BTN_H, true,  "ROOD", rood_act);
     }
 
     int row2_y = HV_ALG_ROW2_Y(y_top);
     if (row2_y + HV_ALG_BTN_H > HV_START_Y && row2_y < HV_LIST_BOT) {
-        ui_knop(x0,              row2_y, bw, HV_ALG_BTN_H, "ALLES AAN", C_SURFACE, C_GREEN);
-        ui_knop(x0 + bw + HV_GAP, row2_y, bw, HV_ALG_BTN_H, "ALLES UIT", C_SURFACE, C_TEXT_DIM);
+        _hv_actie_knop(x0,              row2_y, bw, HV_ALG_BTN_H, I_LICHT_AAN, C_GREEN,    "ALLES AAN");
+        _hv_actie_knop(x0 + bw + HV_GAP, row2_y, bw, HV_ALG_BTN_H, I_LICHT_UIT, C_TEXT_DIM, "ALLES UIT");
     }
 
     int grid_top = HV_VERLICHT_GRID_TOP(y_top);

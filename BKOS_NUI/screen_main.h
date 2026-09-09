@@ -116,6 +116,21 @@
 #define PICO_DKNOP_Y    (NAV_Y - 4 - PICO_DKNOP_H)
 #endif
 
+// ─── Icoon types (teken_icoon) ────────────────────────────────
+#define I_HAVEN      0
+#define I_ZEILEN     1
+#define I_MOTOR      2
+#define I_ANKER      3
+#define I_LICHT_UIT  4
+#define I_LICHT_AAN  5
+#define I_LICHT_AUTO 6
+#define I_USB        7
+#define I_230V       8
+#define I_TV         9
+#define I_WATER      10
+#define I_DEKLICHT   11
+#define I_LAMP       12  // genummerde IL-lampgroep ("**IL_<N>", zie lamp.h)
+
 void screen_main_teken();
 void screen_main_run(int x, int y, bool aanraking);
 void screen_main_update_boot();
@@ -125,6 +140,7 @@ void boot_teken();
 void boot_lichten_teken();
 
 // Gedeelde tegel-primitieven (ook gebruikt door screen_haven.ino)
+void teken_icoon(int type, int cx, int cy, uint16_t kleur);
 void teken_icoon_lamp(int cx, int cy, bool aan, bool rood);
 int  paneel_icoon(const char* naam);
 void paneel_knop_teken(int x, int y, int w, int h, const char* label,

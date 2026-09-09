@@ -9,22 +9,7 @@
 #include "bkos_net.h"
 #include "data_store.h"
 
-// ─── Icoon types ────────────────────────────────
-#define I_HAVEN      0
-#define I_ZEILEN     1
-#define I_MOTOR      2
-#define I_ANKER      3
-#define I_LICHT_UIT  4
-#define I_LICHT_AAN  5
-#define I_LICHT_AUTO 6
-#define I_USB        7
-#define I_230V       8
-#define I_TV         9
-#define I_WATER      10
-#define I_DEKLICHT   11
-#define I_LAMP       12  // genummerde IL-lampgroep ("**IL_<N>", zie lamp.h)
-
-static void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
+void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
     switch (type) {
         case I_HAVEN:
         case I_ANKER:

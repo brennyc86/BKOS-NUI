@@ -13,8 +13,12 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define HV_GAP        8
 #define HV_TILE_H     UI_SCY(72)
 #define HV_SECTIE_H   18   // hoogte van een kolomtitel ("VERLICHTING"/"APPARATEN")
-#define HV_ALG_BTN_H  46
-#define HV_ALG_ROW_GAP 6
+
+// ALGEMEEN-rij: 4 vierkante symboolknoppen (WIT, ROOD, ALLES AAN, ALLES UIT)
+// op één rij — WIT/ROOD vormen een paartje (kleine kloof), ALLES AAN/UIT ook,
+// met een grotere kloof tussen de twee paartjes zodat ze als 2 groepjes ogen.
+#define HV_ALG_GAP_KL  8
+#define HV_ALG_GAP_GR  24
 
 // Terugknopje in de statusbalk (net als WIFI/INFO/TIJD) i.p.v. eigen ruimte
 // in het content-gebied — kost dus geen extra hoogte.
@@ -35,10 +39,20 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define HV_LIST_BOT  (NAV_Y - 8)
 
 // Vaste offsets binnen de VERLICHTING-kolom — teken() en run() delen deze
-// macro's zodat ze nooit uit de pas kunnen lopen.
-#define HV_ALG_ROW1_Y(y_top)        ((y_top) + HV_SECTIE_H)
-#define HV_ALG_ROW2_Y(y_top)        (HV_ALG_ROW1_Y(y_top) + HV_ALG_BTN_H + HV_ALG_ROW_GAP)
-#define HV_VERLICHT_GRID_TOP(y_top) (HV_ALG_ROW2_Y(y_top) + HV_ALG_BTN_H + 10)
+// macro's/helper zodat ze nooit uit de pas kunnen lopen.
+#define HV_ALG_SQ(w)                (((w) - 2 * HV_ALG_GAP_KL - HV_ALG_GAP_GR) / 4)
+#define HV_ALG_ROW_Y(y_top)         ((y_top) + HV_SECTIE_H)
+#define HV_VERLICHT_GRID_TOP(y_top, w) (HV_ALG_ROW_Y(y_top) + HV_ALG_SQ(w) + 10)
+
+// Positie van de 4 ALGEMEEN-knoppen (WIT, ROOD, ALLES AAN, ALLES UIT).
+static void _hv_alg_layout(int x0, int w, int y_top, int* sq, int* row_y, int bx[4]) {
+    *sq    = HV_ALG_SQ(w);
+    *row_y = HV_ALG_ROW_Y(y_top);
+    bx[0]  = x0;
+    bx[1]  = bx[0] + *sq + HV_ALG_GAP_KL;
+    bx[2]  = bx[1] + *sq + HV_ALG_GAP_GR;
+    bx[3]  = bx[2] + *sq + HV_ALG_GAP_KL;
+}
 
 static int hv_lamp_nrs[LAMP_MAX];
 static int hv_lamp_cnt = 0;
@@ -107,27 +121,45 @@ static void _hv_tile_frame(int x, int y, int w, int h, bool aan) {
     else       tft.drawRoundRect(x, y, w, h, KNOP_R, C_SURFACE2);
 }
 
-static void _hv_label_onder(int x, int y, int w, int h, const char* label, uint16_t kleur) {
-    tft.setTextSize(1); tft.setTextColor(kleur);
-    int tw = strlen(label) * 6;
-    tft.setCursor(x + (w - tw) / 2, y + h - 12);
-    tft.print(label);
+// Schaalbaar peertje-symbool voor de WIT/ROOD-knoppen — anders dan
+// teken_icoon_lamp() (die alleen "aan" een kleur toont, "uit" altijd grijs)
+// blijft de OMTREK hier altijd in de eigen kleur staan, ook uit, zodat WIT en
+// ROOD ook zonder tekstlabel meteen herkenbaar zijn.
+static void _hv_peertje(int cx, int cy, int r, uint16_t kleur, bool aan) {
+    int by = cy - 2;
+    if (aan) { tft.fillCircle(cx, by, r, kleur); ui_glow(cx, by, r, kleur, 2); }
+    else       tft.drawCircle(cx, by, r, kleur);
+    tft.drawFastVLine(cx, by + r - 1, r / 2, kleur);
+    tft.drawFastHLine(cx - r / 2, by + r + r / 2 - 2, r, kleur);
+    if (aan) {
+        int e = r + r / 2;
+        tft.drawLine(cx,     by - r - 2, cx,     by - e - 2, kleur);
+        tft.drawLine(cx - r, by - r / 2, cx - e, by - r,     kleur);
+        tft.drawLine(cx + r, by - r / 2, cx + e, by - r,     kleur);
+        tft.drawLine(cx - e, by,         cx - r - 2, by,     kleur);
+        tft.drawLine(cx + e, by,         cx + r + 2, by,     kleur);
+    }
 }
 
-// WIT/ROOD: hergebruikt het peertje-icoon (teken_icoon_lamp) — symbool i.p.v.
-// tekstknop, licht op in de eigen kleur zodra actief.
-static void _hv_kleur_knop(int x, int y, int w, int h, bool rood, const char* label, bool actief) {
-    _hv_tile_frame(x, y, w, h, actief);
-    teken_icoon_lamp(x + w / 2, y + h * 2 / 5, actief, rood);
-    _hv_label_onder(x, y, w, h, label, actief ? (rood ? C_LIGHT_ON_RED : C_WHITE) : C_TEXT_DIM);
+// Schaalbare versies van I_LICHT_AAN (zonnetje)/I_LICHT_UIT (cirkel+kruis).
+static void _hv_aan_symbool(int cx, int cy, int r, uint16_t kleur) {
+    int core = r * 4 / 7;
+    tft.fillCircle(cx, cy, core, kleur);
+    tft.drawFastHLine(cx - r,     cy, r - core, kleur);
+    tft.drawFastHLine(cx + core,  cy, r - core, kleur);
+    tft.drawFastVLine(cx, cy - r,     r - core, kleur);
+    tft.drawFastVLine(cx, cy + core,  r - core, kleur);
+    int d1 = (int)(core * 0.9f), d2 = (int)(r * 0.9f);
+    tft.drawLine(cx - d2, cy - d2, cx - d1, cy - d1, kleur);
+    tft.drawLine(cx + d1, cy - d1, cx + d2, cy - d2, kleur);
+    tft.drawLine(cx - d2, cy + d2, cx - d1, cy + d1, kleur);
+    tft.drawLine(cx + d1, cy + d1, cx + d2, cy + d2, kleur);
 }
-
-// ALLES AAN/UIT: hergebruikt de bestaande AAN/UIT-verlichtingsiconen
-// (I_LICHT_AAN/I_LICHT_UIT) — momentane actie, geen "actief"-status.
-static void _hv_actie_knop(int x, int y, int w, int h, int icoon, uint16_t kleur, const char* label) {
-    _hv_tile_frame(x, y, w, h, false);
-    teken_icoon(icoon, x + w / 2, y + h * 2 / 5, kleur);
-    _hv_label_onder(x, y, w, h, label, C_TEXT_DIM);
+static void _hv_uit_symbool(int cx, int cy, int r, uint16_t kleur) {
+    tft.drawCircle(cx, cy, r, kleur);
+    int d = (int)(r * 0.7f);
+    tft.drawLine(cx - d, cy - d, cx + d, cy + d, kleur);
+    tft.drawLine(cx - d, cy + d, cx + d, cy - d, kleur);
 }
 
 // ─── Tegels: genummerde lampgroepen ────────────────────────────────────────
@@ -181,22 +213,27 @@ static int _hv_verlichting_teken(int x0, int w, int y_top, int cols, int tile_w)
         tft.setCursor(x0, y_top + 4); tft.print("VERLICHTING — ALGEMEEN");
     }
 
-    int bw = (w - HV_GAP) / 2;
-    int row1_y = HV_ALG_ROW1_Y(y_top);
-    if (row1_y + HV_ALG_BTN_H > HV_START_Y && row1_y < HV_LIST_BOT) {
+    int sq, row_y, bx[4];
+    _hv_alg_layout(x0, w, y_top, &sq, &row_y, bx);
+    if (row_y + sq > HV_START_Y && row_y < HV_LIST_BOT) {
         bool wit_act  = (interieur_modus == INTERIEUR_WIT);
         bool rood_act = (interieur_modus == INTERIEUR_ROOD);
-        _hv_kleur_knop(x0,              row1_y, bw, HV_ALG_BTN_H, false, "WIT",  wit_act);
-        _hv_kleur_knop(x0 + bw + HV_GAP, row1_y, bw, HV_ALG_BTN_H, true,  "ROOD", rood_act);
+        int r = max(4, sq / 5);
+
+        _hv_tile_frame(bx[0], row_y, sq, sq, wit_act);
+        _hv_peertje(bx[0] + sq / 2, row_y + sq / 2, r, C_WHITE, wit_act);
+
+        _hv_tile_frame(bx[1], row_y, sq, sq, rood_act);
+        _hv_peertje(bx[1] + sq / 2, row_y + sq / 2, r, C_LIGHT_ON_RED, rood_act);
+
+        _hv_tile_frame(bx[2], row_y, sq, sq, false);
+        _hv_aan_symbool(bx[2] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_GREEN);
+
+        _hv_tile_frame(bx[3], row_y, sq, sq, false);
+        _hv_uit_symbool(bx[3] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_TEXT_DIM);
     }
 
-    int row2_y = HV_ALG_ROW2_Y(y_top);
-    if (row2_y + HV_ALG_BTN_H > HV_START_Y && row2_y < HV_LIST_BOT) {
-        _hv_actie_knop(x0,              row2_y, bw, HV_ALG_BTN_H, I_LICHT_AAN, C_GREEN,    "ALLES AAN");
-        _hv_actie_knop(x0 + bw + HV_GAP, row2_y, bw, HV_ALG_BTN_H, I_LICHT_UIT, C_TEXT_DIM, "ALLES UIT");
-    }
-
-    int grid_top = HV_VERLICHT_GRID_TOP(y_top);
+    int grid_top = HV_VERLICHT_GRID_TOP(y_top, w);
     int totaal   = hv_lamp_cnt + hv_licht_paneel_cnt;
     int rijen    = (totaal + cols - 1) / cols;
     for (int i = 0; i < totaal; i++) {
@@ -305,32 +342,27 @@ void screen_haven_run(int x, int y, bool aanraking) {
     _hv_layout(col_w, &cols_r, &tw_r);
 
     int y0 = HV_START_Y - hv_scroll_y;
-    int bw = (col_w - HV_GAP) / 2;
 
-    // ── VERLICHTING: WIT/ROOD ──
-    int row1_y = HV_ALG_ROW1_Y(y0);
-    if (y >= row1_y && y < row1_y + HV_ALG_BTN_H) {
-        if (x >= 8 && x < 8 + bw) {
+    // ── VERLICHTING: ALGEMEEN-rij (WIT, ROOD, ALLES AAN, ALLES UIT) ──
+    int sq, row_y, bx[4];
+    _hv_alg_layout(8, col_w, y0, &sq, &row_y, bx);
+    if (y >= row_y && y < row_y + sq) {
+        if (x >= bx[0] && x < bx[0] + sq) {
             interieur_modus = (interieur_modus == INTERIEUR_WIT) ? INTERIEUR_UIT : INTERIEUR_WIT;
             io_verlichting_update(); net_app_staat_sturen(); state_save();
             screen_haven_teken(); return;
         }
-        if (x >= 8 + bw + HV_GAP && x < 8 + bw + HV_GAP + bw) {
+        if (x >= bx[1] && x < bx[1] + sq) {
             interieur_modus = (interieur_modus == INTERIEUR_ROOD) ? INTERIEUR_UIT : INTERIEUR_ROOD;
             io_verlichting_update(); net_app_staat_sturen(); state_save();
             screen_haven_teken(); return;
         }
-    }
-
-    // ── VERLICHTING: ALLES AAN/UIT ──
-    int row2_y = HV_ALG_ROW2_Y(y0);
-    if (y >= row2_y && y < row2_y + HV_ALG_BTN_H) {
-        if (x >= 8 && x < 8 + bw) { _hv_alles_aan(); screen_haven_teken(); return; }
-        if (x >= 8 + bw + HV_GAP && x < 8 + bw + HV_GAP + bw) { _hv_alles_uit(); screen_haven_teken(); return; }
+        if (x >= bx[2] && x < bx[2] + sq) { _hv_alles_aan(); screen_haven_teken(); return; }
+        if (x >= bx[3] && x < bx[3] + sq) { _hv_alles_uit(); screen_haven_teken(); return; }
     }
 
     // ── VERLICHTING: lampgroep-tegels + 'dek'-achtige lichten ──
-    int verlicht_grid_top = HV_VERLICHT_GRID_TOP(y0);
+    int verlicht_grid_top = HV_VERLICHT_GRID_TOP(y0, col_w);
     int vi = _hv_grid_hit(x, y, 8, verlicht_grid_top, hv_lamp_cnt + hv_licht_paneel_cnt, cols_l, tw_l);
     if (vi >= 0) {
         if (vi < hv_lamp_cnt) _hv_lamp_toggle(hv_lamp_nrs[vi]);

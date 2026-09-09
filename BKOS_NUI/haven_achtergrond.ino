@@ -26,7 +26,13 @@ static bool _hab_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* 
 static void _hab_init() {
     if (hav_bg_klaar) return;
     TJpgDec.setJpgScale(_hab_scale());
-    TJpgDec.setSwapBytes(true);
+    // BELANGRIJK: false, niet true — Arduino_GFX::writePixel()/draw16bitRGBBitmap()
+    // verwachten een gewone (niet byte-swapped) RGB565 uint16_t, exact hetzelfde
+    // formaat als het RGB565()-macro in ui_colors.h overal elders in de app
+    // produceert. Met swapBytes(true) staat r/g/b door elkaar — kleuren die dan
+    // totaal niet meer op de brontinten lijken (dat was de eerdere lelijke-
+    // kleuren-klacht, geen ditherprobleem).
+    TJpgDec.setSwapBytes(false);
     TJpgDec.setCallback(_hab_output);
     hav_bg_klaar = true;
 }

@@ -1,5 +1,5 @@
 #include "screen_haven.h"
-#include "screen_main.h"   // teken_icoon_lamp/paneel_icoon/paneel_knop_teken (gedeelde tegel-primitieven)
+#include "screen_main.h"   // teken_icoon/teken_icoon_lamp/paneel_icoon (gedeelde tegel-primitieven)
 #include "app_state.h"
 #include "io.h"
 #include "lamp.h"
@@ -63,6 +63,33 @@ static int hv_licht_paneel_cnt = 0;
 static int hv_scroll_y   = 0;
 static int hv_max_scroll = 0;
 
+// ─── "Doorschijnende tegels" — foto-kleur per tegel gecachet bij de laatste
+// volledige tekening (zie screen_haven_teken()), zodat een losse tegel-
+// hertekening (na een tik) diezelfde tint kan hergebruiken zonder de foto
+// opnieuw te hoeven decoderen. Cache ververst vanzelf bij elke volledige
+// hertekening (schermopen, slideshow-wissel) — precies wanneer de foto zelf
+// ook verandert.
+#define HV_BG_CAP 20   // max. aantal tegels per grid waarvoor een sample bewaard wordt
+#define HV_TILE_ALPHA 190  // 0-255: ondoorzichtigheid van de tegel (190 ≈ 75% dekkend)
+static uint16_t hv_bg_algemeen[4];
+static uint16_t hv_bg_verlicht[HV_BG_CAP];
+static uint16_t hv_bg_paneel[HV_BG_CAP];
+
+static uint16_t _hv_bg_verlicht(int i) { return (i >= 0 && i < HV_BG_CAP) ? hv_bg_verlicht[i] : C_BG; }
+static uint16_t _hv_bg_paneel(int i)   { return (i >= 0 && i < HV_BG_CAP) ? hv_bg_paneel[i]   : C_BG; }
+
+// Mengt een RGB565-fotokleur met een RGB565-oppervlaktekleur (HV_TILE_ALPHA
+// bepaalt de verhouding) — rechtstreeks in 5/6/5-precisie, ruim genoeg voor
+// een subtiel doorschijnend accent.
+static uint16_t _hv_blend(uint16_t foto, uint16_t surface) {
+    uint8_t fr = (foto >> 11) & 0x1F, fg = (foto >> 5) & 0x3F, fb = foto & 0x1F;
+    uint8_t sr = (surface >> 11) & 0x1F, sg = (surface >> 5) & 0x3F, sb = surface & 0x1F;
+    uint8_t r = (fr * (255 - HV_TILE_ALPHA) + sr * HV_TILE_ALPHA) / 255;
+    uint8_t g = (fg * (255 - HV_TILE_ALPHA) + sg * HV_TILE_ALPHA) / 255;
+    uint8_t b = (fb * (255 - HV_TILE_ALPHA) + sb * HV_TILE_ALPHA) / 255;
+    return (r << 11) | (g << 5) | b;
+}
+
 // PANEEL-knoppen waarvan de naam op een lichtfunctie duidt maar die geen
 // genummerde IL-lampgroep zijn (bv. een relais-uitgang "**deklicht") horen
 // qua gebruik bij VERLICHTING, niet bij de losse APPARATEN — zelfde
@@ -115,8 +142,9 @@ static void _hv_scan() {
     }
 }
 
-static void _hv_tile_frame(int x, int y, int w, int h, bool aan) {
-    tft.fillRoundRect(x, y, w, h, KNOP_R, aan ? C_SURFACE2 : C_SURFACE);
+static void _hv_tile_frame(int x, int y, int w, int h, bool aan, uint16_t bg_foto) {
+    uint16_t kleur = _hv_blend(bg_foto, aan ? C_SURFACE2 : C_SURFACE);
+    tft.fillRoundRect(x, y, w, h, KNOP_R, kleur);
     if (aan) { tft.drawRoundRect(x, y, w, h, KNOP_R, C_CYAN); tft.fillRoundRect(x, y, 5, h, 3, C_CYAN); }
     else       tft.drawRoundRect(x, y, w, h, KNOP_R, C_SURFACE2);
 }
@@ -167,9 +195,9 @@ static void _hv_uit_symbool(int cx, int cy, int r, uint16_t kleur) {
 // een **IL_wit<N> heeft toont UIT zodra de kleur op rood staat, ook als de
 // gebruiker 'm met lamp_aan[N] heeft "aangezet" — precies zoals de fysieke
 // uitgang zich gedraagt (zie io_verlichting_update()).
-static void _hv_lamp_teken(int nr, int x, int y, int w, int h) {
+static void _hv_lamp_teken(int nr, int x, int y, int w, int h, uint16_t bg_foto) {
     bool aan = io_lamp_effectief_aan(nr);
-    _hv_tile_frame(x, y, w, h, aan);
+    _hv_tile_frame(x, y, w, h, aan, bg_foto);
     teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood);
 
     char lbl[IO_NAAM_LEN]; lamp_label(nr, lbl, sizeof(lbl));
@@ -194,11 +222,33 @@ static void _hv_alles_uit() {
 }
 
 // ─── Tegels: PANEEL-apparaten (ook de 'dek'-achtige lichten) ──────────────
-static void _hv_paneel_teken(int paneel_idx, int x, int y, int w, int h) {
+// Eigen (niet-opake) variant van screen_main.ino's paneel_knop_teken() — die
+// gedeelde functie tekent zelf een opake achtergrond en wordt ook door het
+// hoofdscherm gebruikt, dus daar knoop ik de doorschijnendheid niet aan vast.
+static void _hv_paneel_tegel_teken(int x, int y, int w, int h, const char* label,
+                                    int icoon, bool aan, bool mix, uint16_t bg_foto) {
+    _hv_tile_frame(x, y, w, h, aan, bg_foto);
+    uint16_t fg = aan ? C_CYAN : C_TEXT_DIM;
+    tft.setTextSize(2); tft.setTextColor(fg);
+    int tw = strlen(label) * 12;
+    if (icoon == I_LAMP) {
+        teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood);
+        tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8);
+    } else if (icoon >= 0) {
+        teken_icoon(icoon, x + w / 2, y + h * 3 / 8, fg);
+        tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8);
+    } else {
+        tft.setCursor(x + (w - tw) / 2, y + h / 2 - 8);
+    }
+    tft.print(label);
+    if (mix) tft.fillRoundRect(x + 4, y + h - 6, w - 8, 4, 2, C_ORANGE);
+}
+
+static void _hv_paneel_teken(int paneel_idx, int x, int y, int w, int h, uint16_t bg_foto) {
     const char* naam = paneel_knop_naam(paneel_idx);
     byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[paneel_idx] ? 2 : 0);
     char lab[16]; paneel_label(naam, lab, sizeof(lab));
-    paneel_knop_teken(x, y, w, h, lab, paneel_icoon(naam), (s3 == 2), (s3 == 1));
+    _hv_paneel_tegel_teken(x, y, w, h, lab, paneel_icoon(naam), (s3 == 2), (s3 == 1), bg_foto);
 }
 
 static void _hv_paneel_toggle(int paneel_idx) {
@@ -231,16 +281,16 @@ static void _hv_redraw_algemeen(int x0, int w, int y_top) {
     bool rood_act = (overrule == 1);
     int r = max(4, sq / 5);
 
-    _hv_tile_frame(bx[0], row_y, sq, sq, wit_act);
+    _hv_tile_frame(bx[0], row_y, sq, sq, wit_act, hv_bg_algemeen[0]);
     _hv_peertje(bx[0] + sq / 2, row_y + sq / 2, r, C_WHITE, wit_act);
 
-    _hv_tile_frame(bx[1], row_y, sq, sq, rood_act);
+    _hv_tile_frame(bx[1], row_y, sq, sq, rood_act, hv_bg_algemeen[1]);
     _hv_peertje(bx[1] + sq / 2, row_y + sq / 2, r, C_LIGHT_ON_RED, rood_act);
 
-    _hv_tile_frame(bx[2], row_y, sq, sq, false);
+    _hv_tile_frame(bx[2], row_y, sq, sq, false, hv_bg_algemeen[2]);
     _hv_aan_symbool(bx[2] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_GREEN);
 
-    _hv_tile_frame(bx[3], row_y, sq, sq, false);
+    _hv_tile_frame(bx[3], row_y, sq, sq, false, hv_bg_algemeen[3]);
     _hv_uit_symbool(bx[3] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_TEXT_DIM);
 }
 
@@ -255,8 +305,9 @@ static void _hv_redraw_verlicht_grid(int x0, int w, int y_top, int cols, int til
     for (int i = 0; i < totaal; i++) {
         int tx, ty; _hv_tegel_rect(x0, grid_top, i, cols, tile_w, &tx, &ty);
         if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;
-        if (i < hv_lamp_cnt) _hv_lamp_teken(hv_lamp_nrs[i], tx, ty, tile_w, HV_TILE_H);
-        else                 _hv_paneel_teken(hv_licht_paneel_idx[i - hv_lamp_cnt], tx, ty, tile_w, HV_TILE_H);
+        uint16_t bg = _hv_bg_verlicht(i);
+        if (i < hv_lamp_cnt) _hv_lamp_teken(hv_lamp_nrs[i], tx, ty, tile_w, HV_TILE_H, bg);
+        else                 _hv_paneel_teken(hv_licht_paneel_idx[i - hv_lamp_cnt], tx, ty, tile_w, HV_TILE_H, bg);
     }
 }
 
@@ -287,24 +338,52 @@ static int _hv_apparaten_teken(int x0, int w, int y_top, int cols, int tile_w) {
     for (int i = 0; i < hv_paneel_cnt; i++) {
         int tx, ty; _hv_tegel_rect(x0, grid_top, i, cols, tile_w, &tx, &ty);
         if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;
-        _hv_paneel_teken(hv_paneel_idx[i], tx, ty, tile_w, HV_TILE_H);
+        _hv_paneel_teken(hv_paneel_idx[i], tx, ty, tile_w, HV_TILE_H, _hv_bg_paneel(i));
     }
     return HV_SECTIE_H + rijen * (HV_TILE_H + HV_GAP);
 }
 
 void screen_haven_teken() {
     _hv_scan();
-    haven_achtergrond_teken();   // achtergrondfoto (incl. letterbox-fill), tegels komen er overheen
-    sb_scherm_teken("HAVEN", C_CYAN);
-    ui_knop(HV_BACK_X, HV_BACK_Y, HV_BACK_W, HV_BACK_H, HV_BACK_LBL, C_SURFACE2, C_TEXT_DIM);
 
     int col_w   = (TFT_W - UI_SB_W - 24) / 2;   // 8px marge + 8px tussenruimte + 8px marge
     int right_x = 8 + col_w + HV_GAP;
     int cols_l, tw_l, cols_r, tw_r;
     _hv_layout(col_w, &cols_l, &tw_l);
     _hv_layout(col_w, &cols_r, &tw_r);
-
     int y0 = HV_START_Y - hv_scroll_y;
+
+    // Sample-punten (tegelmiddens) verzamelen VÓÓR de foto gedecodeerd wordt —
+    // de decoder pikt de fotokleur op elk punt onderweg op, zodat een latere
+    // losse tegel-hertekening die kleur kan hergebruiken (zie HV_BG_CAP hierboven).
+    int16_t sx[HAVEN_SAMPLE_MAX], sy[HAVEN_SAMPLE_MAX];
+    int scnt = 0;
+    int sq, row_y, bx[4];
+    _hv_alg_layout(8, col_w, y0, &sq, &row_y, bx);
+    for (int k = 0; k < 4; k++) { sx[scnt] = bx[k] + sq / 2; sy[scnt] = row_y + sq / 2; scnt++; }
+    int vgrid_top = HV_VERLICHT_GRID_TOP(y0, col_w);
+    int vtotaal   = min(hv_lamp_cnt + hv_licht_paneel_cnt, HV_BG_CAP);
+    for (int i = 0; i < vtotaal; i++) {
+        int tx, ty; _hv_tegel_rect(8, vgrid_top, i, cols_l, tw_l, &tx, &ty);
+        sx[scnt] = tx + tw_l / 2; sy[scnt] = ty + HV_TILE_H / 2; scnt++;
+    }
+    int agrid_top = y0 + HV_SECTIE_H;
+    int atotaal   = min(hv_paneel_cnt, HV_BG_CAP);
+    for (int i = 0; i < atotaal; i++) {
+        int tx, ty; _hv_tegel_rect(right_x, agrid_top, i, cols_r, tw_r, &tx, &ty);
+        sx[scnt] = tx + tw_r / 2; sy[scnt] = ty + HV_TILE_H / 2; scnt++;
+    }
+    haven_achtergrond_samples_zet(sx, sy, scnt);
+    haven_achtergrond_teken();   // achtergrondfoto (incl. letterbox-fill + sampling), tegels komen er overheen
+
+    int idx = 0;
+    for (int k = 0; k < 4; k++)      hv_bg_algemeen[k] = haven_achtergrond_sample(idx++);
+    for (int i = 0; i < vtotaal; i++) hv_bg_verlicht[i] = haven_achtergrond_sample(idx++);
+    for (int i = 0; i < atotaal; i++) hv_bg_paneel[i]   = haven_achtergrond_sample(idx++);
+
+    sb_scherm_teken("HAVEN", C_CYAN);
+    ui_knop(HV_BACK_X, HV_BACK_Y, HV_BACK_W, HV_BACK_H, HV_BACK_LBL, C_SURFACE2, C_TEXT_DIM);
+
     int h_links  = _hv_verlichting_teken(8,       col_w, y0, cols_l, tw_l);
     int h_rechts = _hv_apparaten_teken(right_x,   col_w, y0, cols_r, tw_r);
 
@@ -372,7 +451,8 @@ void screen_haven_run(int x, int y, bool aanraking) {
     // ── VERLICHTING: ALGEMEEN-rij (WIT, ROOD, ALLES AAN, ALLES UIT) ──
     // Gerichte hertekening i.p.v. screen_haven_teken(): de achtergrondfoto
     // (JPEG-decode) is duur en hoeft bij een tik niet opnieuw — alleen wat
-    // daadwerkelijk kan zijn veranderd wordt opnieuw getekend.
+    // daadwerkelijk kan zijn veranderd wordt opnieuw getekend (met de al
+    // gecachete foto-tint, zie HV_BG_CAP hierboven).
     int sq, row_y, bx[4];
     _hv_alg_layout(8, col_w, y0, &sq, &row_y, bx);
     if (y >= row_y && y < row_y + sq) {
@@ -412,13 +492,14 @@ void screen_haven_run(int x, int y, bool aanraking) {
     int vi = _hv_grid_hit(x, y, 8, verlicht_grid_top, hv_lamp_cnt + hv_licht_paneel_cnt, cols_l, tw_l);
     if (vi >= 0) {
         int tx, ty; _hv_tegel_rect(8, verlicht_grid_top, vi, cols_l, tw_l, &tx, &ty);
+        uint16_t bg = _hv_bg_verlicht(vi);
         if (vi < hv_lamp_cnt) {
             _hv_lamp_toggle(hv_lamp_nrs[vi]);
-            _hv_lamp_teken(hv_lamp_nrs[vi], tx, ty, tw_l, HV_TILE_H);
+            _hv_lamp_teken(hv_lamp_nrs[vi], tx, ty, tw_l, HV_TILE_H, bg);
         } else {
             int pidx = hv_licht_paneel_idx[vi - hv_lamp_cnt];
             _hv_paneel_toggle(pidx);
-            _hv_paneel_teken(pidx, tx, ty, tw_l, HV_TILE_H);
+            _hv_paneel_teken(pidx, tx, ty, tw_l, HV_TILE_H, bg);
         }
         return;
     }
@@ -430,7 +511,7 @@ void screen_haven_run(int x, int y, bool aanraking) {
         int tx, ty; _hv_tegel_rect(right_x, apparaten_grid_top, ai, cols_r, tw_r, &tx, &ty);
         int pidx = hv_paneel_idx[ai];
         _hv_paneel_toggle(pidx);
-        _hv_paneel_teken(pidx, tx, ty, tw_r, HV_TILE_H);
+        _hv_paneel_teken(pidx, tx, ty, tw_r, HV_TILE_H, _hv_bg_paneel(ai));
         return;
     }
 }

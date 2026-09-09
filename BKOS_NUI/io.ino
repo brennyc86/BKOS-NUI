@@ -832,6 +832,17 @@ int io_il_kanaal_lamp_nr(int kanaal) {
     return 0;
 }
 
+bool io_lamp_effectief_aan(int nr) {
+    // Scant io_output[] (al door io_verlichting_update() correct bepaald,
+    // incl. kleurmodus) i.p.v. die logica hier te herhalen — blijft zo
+    // gegarandeerd in sync met wat er daadwerkelijk aangestuurd wordt.
+    int n = io_zichtbaar();
+    for (int i = 0; i < n && i < MAX_IO_KANALEN; i++) {
+        if (io_il_kanaal_lamp_nr(i) == nr && io_output[i] == IO_AAN) return true;
+    }
+    return false;
+}
+
 String io_naam_clean(int kanaal) {
     String s = String(io_namen[kanaal]);
     s.trim();

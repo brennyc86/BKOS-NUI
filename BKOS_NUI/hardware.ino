@@ -197,9 +197,9 @@ static void _gui_taak(void*) {
                         }
                     } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
                                actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
-                               actief_scherm != SCREEN_TIJD) {
+                               actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN) {
                         // Klok in de statusbalk aantikken → tijd-instelmenu (elk scherm, behalve
-                        // WIFI/INFO die deze hoek al voor hun eigen "< TERUG"-knop gebruiken)
+                        // WIFI/INFO/HAVEN die deze hoek al voor hun eigen "< TERUG"-knop gebruiken)
                         tijd_scherm_openen();
                     } else {
                         hw_touch_drag_dy = ts_y - touch_start_y;
@@ -250,6 +250,7 @@ static void _gui_taak(void*) {
                     case SCREEN_CALIBRATIE: screen_calibratie_run(0, 0, false); break;
                     case SCREEN_VICTRON:    screen_victron_run(0, 0, false);    break;
                     case SCREEN_BRUG:       screen_brug_run(0, 0, false);       break;
+                    case SCREEN_HAVEN:      screen_haven_run(0, 0, false);      break;
                     default: break;
                 }
             }
@@ -571,7 +572,7 @@ void hw_loop() {
                     }
                 } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
                            actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
-                           actief_scherm != SCREEN_TIJD) {
+                           actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN) {
                     tijd_scherm_openen();
                 } else {
                     hw_touch_drag_dy = ts_y - touch_start_y;

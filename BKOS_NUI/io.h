@@ -38,6 +38,11 @@ int   io_il_lamp_nr(const char* naam);
 // **IL_rood<N>-uitgang is (welke kleur maakt niet uit), anders 0. Voor het
 // LAMPEN-instellingenscherm (bestaande genummerde kanalen opsporen).
 int   io_il_kanaal_lamp_nr(int kanaal);
+// Is lamp/lampgroep 'nr' op dit moment daadwerkelijk aangedreven? Houdt
+// rekening met de actuele kleurmodus (bv. lamp_aan[1]==true maar toch UIT als
+// alleen **IL_wit1 bestaat en de kleur op rood staat) — voor het HAVEN-
+// dashboard, dat de écht-actuele stand wil tonen, niet enkel lamp_aan[].
+bool  io_lamp_effectief_aan(int nr);
 void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
 void  io_attiny_slaap(bool aan);   // ATtiny slaap/wake commando via UART
 int         io_zichtbaar();

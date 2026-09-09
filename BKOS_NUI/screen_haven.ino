@@ -206,6 +206,56 @@ static void _hv_paneel_toggle(int paneel_idx) {
     dev_lokaal[paneel_idx] = !dev_lokaal[paneel_idx];
 }
 
+// Positie van tegel-index i (0-based) binnen een grid dat bij (x0, grid_top)
+// begint — gedeeld door alle drie de tekenplekken (volledige hertekening,
+// losse-tegel-hertekening, tik-hittest) zodat ze nooit uit de pas lopen.
+static void _hv_tegel_rect(int x0, int grid_top, int i, int cols, int tile_w, int* tx, int* ty) {
+    int col = i % cols, row = i / cols;
+    *tx = x0 + col * (tile_w + HV_GAP);
+    *ty = grid_top + row * (HV_TILE_H + HV_GAP);
+}
+
+// Tekent alleen de 4 ALGEMEEN-knoppen (WIT/ROOD/ALLES AAN/ALLES UIT) — los
+// aanroepbaar voor een gerichte hertekening na een tik, zonder de rest van
+// het scherm (en zeker niet de achtergrondfoto) opnieuw te tekenen.
+static void _hv_redraw_algemeen(int x0, int w, int y_top) {
+    int sq, row_y, bx[4];
+    _hv_alg_layout(x0, w, y_top, &sq, &row_y, bx);
+    if (row_y + sq <= HV_START_Y || row_y >= HV_LIST_BOT) return;  // buiten kijkvenster
+
+    bool wit_act  = (interieur_modus == INTERIEUR_WIT);
+    bool rood_act = (interieur_modus == INTERIEUR_ROOD);
+    int r = max(4, sq / 5);
+
+    _hv_tile_frame(bx[0], row_y, sq, sq, wit_act);
+    _hv_peertje(bx[0] + sq / 2, row_y + sq / 2, r, C_WHITE, wit_act);
+
+    _hv_tile_frame(bx[1], row_y, sq, sq, rood_act);
+    _hv_peertje(bx[1] + sq / 2, row_y + sq / 2, r, C_LIGHT_ON_RED, rood_act);
+
+    _hv_tile_frame(bx[2], row_y, sq, sq, false);
+    _hv_aan_symbool(bx[2] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_GREEN);
+
+    _hv_tile_frame(bx[3], row_y, sq, sq, false);
+    _hv_uit_symbool(bx[3] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_TEXT_DIM);
+}
+
+// Tekent alleen het lampgroep-grid (+ 'dek'-achtige lichten) binnen
+// VERLICHTING — los aanroepbaar zodat een WIT/ROOD- of ALLES AAN/UIT-tik niet
+// de foto en de rest van het scherm hoeft te herbouwen (elke lamptegel z'n
+// kleur/aan-status hangt af van de globale kleurmodus, dus bij zo'n tik moet
+// wél het hele grid opnieuw — maar de foto/kolomtitels/APPARATEN niet).
+static void _hv_redraw_verlicht_grid(int x0, int w, int y_top, int cols, int tile_w) {
+    int grid_top = HV_VERLICHT_GRID_TOP(y_top, w);
+    int totaal   = hv_lamp_cnt + hv_licht_paneel_cnt;
+    for (int i = 0; i < totaal; i++) {
+        int tx, ty; _hv_tegel_rect(x0, grid_top, i, cols, tile_w, &tx, &ty);
+        if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;
+        if (i < hv_lamp_cnt) _hv_lamp_teken(hv_lamp_nrs[i], tx, ty, tile_w, HV_TILE_H);
+        else                 _hv_paneel_teken(hv_licht_paneel_idx[i - hv_lamp_cnt], tx, ty, tile_w, HV_TILE_H);
+    }
+}
+
 // ─── VERLICHTING-kolom: ALGEMEEN (wit/rood + alles aan/uit) + lampgroepen ──
 static int _hv_verlichting_teken(int x0, int w, int y_top, int cols, int tile_w) {
     if (y_top + HV_SECTIE_H > HV_START_Y && y_top < HV_LIST_BOT) {
@@ -213,38 +263,12 @@ static int _hv_verlichting_teken(int x0, int w, int y_top, int cols, int tile_w)
         tft.setCursor(x0, y_top + 4); tft.print("VERLICHTING — ALGEMEEN");
     }
 
-    int sq, row_y, bx[4];
-    _hv_alg_layout(x0, w, y_top, &sq, &row_y, bx);
-    if (row_y + sq > HV_START_Y && row_y < HV_LIST_BOT) {
-        bool wit_act  = (interieur_modus == INTERIEUR_WIT);
-        bool rood_act = (interieur_modus == INTERIEUR_ROOD);
-        int r = max(4, sq / 5);
-
-        _hv_tile_frame(bx[0], row_y, sq, sq, wit_act);
-        _hv_peertje(bx[0] + sq / 2, row_y + sq / 2, r, C_WHITE, wit_act);
-
-        _hv_tile_frame(bx[1], row_y, sq, sq, rood_act);
-        _hv_peertje(bx[1] + sq / 2, row_y + sq / 2, r, C_LIGHT_ON_RED, rood_act);
-
-        _hv_tile_frame(bx[2], row_y, sq, sq, false);
-        _hv_aan_symbool(bx[2] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_GREEN);
-
-        _hv_tile_frame(bx[3], row_y, sq, sq, false);
-        _hv_uit_symbool(bx[3] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_TEXT_DIM);
-    }
+    _hv_redraw_algemeen(x0, w, y_top);
+    _hv_redraw_verlicht_grid(x0, w, y_top, cols, tile_w);
 
     int grid_top = HV_VERLICHT_GRID_TOP(y_top, w);
     int totaal   = hv_lamp_cnt + hv_licht_paneel_cnt;
     int rijen    = (totaal + cols - 1) / cols;
-    for (int i = 0; i < totaal; i++) {
-        int col = i % cols, row = i / cols;
-        int tx = x0 + col * (tile_w + HV_GAP);
-        int ty = grid_top + row * (HV_TILE_H + HV_GAP);
-        if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;
-        if (i < hv_lamp_cnt) _hv_lamp_teken(hv_lamp_nrs[i], tx, ty, tile_w, HV_TILE_H);
-        else                 _hv_paneel_teken(hv_licht_paneel_idx[i - hv_lamp_cnt], tx, ty, tile_w, HV_TILE_H);
-    }
-
     return (grid_top - y_top) + rijen * (HV_TILE_H + HV_GAP);
 }
 
@@ -257,9 +281,7 @@ static int _hv_apparaten_teken(int x0, int w, int y_top, int cols, int tile_w) {
     int grid_top = y_top + HV_SECTIE_H;
     int rijen = (hv_paneel_cnt + cols - 1) / cols;
     for (int i = 0; i < hv_paneel_cnt; i++) {
-        int col = i % cols, row = i / cols;
-        int tx = x0 + col * (tile_w + HV_GAP);
-        int ty = grid_top + row * (HV_TILE_H + HV_GAP);
+        int tx, ty; _hv_tegel_rect(x0, grid_top, i, cols, tile_w, &tx, &ty);
         if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;
         _hv_paneel_teken(hv_paneel_idx[i], tx, ty, tile_w, HV_TILE_H);
     }
@@ -344,30 +366,53 @@ void screen_haven_run(int x, int y, bool aanraking) {
     int y0 = HV_START_Y - hv_scroll_y;
 
     // ── VERLICHTING: ALGEMEEN-rij (WIT, ROOD, ALLES AAN, ALLES UIT) ──
+    // Gerichte hertekening i.p.v. screen_haven_teken(): de achtergrondfoto
+    // (JPEG-decode) is duur en hoeft bij een tik niet opnieuw — alleen wat
+    // daadwerkelijk kan zijn veranderd wordt opnieuw getekend.
     int sq, row_y, bx[4];
     _hv_alg_layout(8, col_w, y0, &sq, &row_y, bx);
     if (y >= row_y && y < row_y + sq) {
         if (x >= bx[0] && x < bx[0] + sq) {
             interieur_modus = (interieur_modus == INTERIEUR_WIT) ? INTERIEUR_UIT : INTERIEUR_WIT;
             io_verlichting_update(); net_app_staat_sturen(); state_save();
-            screen_haven_teken(); return;
+            // Kleurmodus beïnvloedt ook de tint van elke "aan" lamptegel — dus
+            // ALGEMEEN + het hele lampgrid opnieuw, niet alleen deze knop.
+            _hv_redraw_algemeen(8, col_w, y0);
+            _hv_redraw_verlicht_grid(8, col_w, y0, cols_l, tw_l);
+            return;
         }
         if (x >= bx[1] && x < bx[1] + sq) {
             interieur_modus = (interieur_modus == INTERIEUR_ROOD) ? INTERIEUR_UIT : INTERIEUR_ROOD;
             io_verlichting_update(); net_app_staat_sturen(); state_save();
-            screen_haven_teken(); return;
+            _hv_redraw_algemeen(8, col_w, y0);
+            _hv_redraw_verlicht_grid(8, col_w, y0, cols_l, tw_l);
+            return;
         }
-        if (x >= bx[2] && x < bx[2] + sq) { _hv_alles_aan(); screen_haven_teken(); return; }
-        if (x >= bx[3] && x < bx[3] + sq) { _hv_alles_uit(); screen_haven_teken(); return; }
+        if (x >= bx[2] && x < bx[2] + sq) {
+            _hv_alles_aan();
+            _hv_redraw_verlicht_grid(8, col_w, y0, cols_l, tw_l);
+            return;
+        }
+        if (x >= bx[3] && x < bx[3] + sq) {
+            _hv_alles_uit();
+            _hv_redraw_verlicht_grid(8, col_w, y0, cols_l, tw_l);
+            return;
+        }
     }
 
     // ── VERLICHTING: lampgroep-tegels + 'dek'-achtige lichten ──
     int verlicht_grid_top = HV_VERLICHT_GRID_TOP(y0, col_w);
     int vi = _hv_grid_hit(x, y, 8, verlicht_grid_top, hv_lamp_cnt + hv_licht_paneel_cnt, cols_l, tw_l);
     if (vi >= 0) {
-        if (vi < hv_lamp_cnt) _hv_lamp_toggle(hv_lamp_nrs[vi]);
-        else                  _hv_paneel_toggle(hv_licht_paneel_idx[vi - hv_lamp_cnt]);
-        screen_haven_teken();
+        int tx, ty; _hv_tegel_rect(8, verlicht_grid_top, vi, cols_l, tw_l, &tx, &ty);
+        if (vi < hv_lamp_cnt) {
+            _hv_lamp_toggle(hv_lamp_nrs[vi]);
+            _hv_lamp_teken(hv_lamp_nrs[vi], tx, ty, tw_l, HV_TILE_H);
+        } else {
+            int pidx = hv_licht_paneel_idx[vi - hv_lamp_cnt];
+            _hv_paneel_toggle(pidx);
+            _hv_paneel_teken(pidx, tx, ty, tw_l, HV_TILE_H);
+        }
         return;
     }
 
@@ -375,8 +420,10 @@ void screen_haven_run(int x, int y, bool aanraking) {
     int apparaten_grid_top = y0 + HV_SECTIE_H;
     int ai = _hv_grid_hit(x, y, right_x, apparaten_grid_top, hv_paneel_cnt, cols_r, tw_r);
     if (ai >= 0) {
-        _hv_paneel_toggle(hv_paneel_idx[ai]);
-        screen_haven_teken();
+        int tx, ty; _hv_tegel_rect(right_x, apparaten_grid_top, ai, cols_r, tw_r, &tx, &ty);
+        int pidx = hv_paneel_idx[ai];
+        _hv_paneel_toggle(pidx);
+        _hv_paneel_teken(pidx, tx, ty, tw_r, HV_TILE_H);
         return;
     }
 }

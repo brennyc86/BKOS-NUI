@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "hw_io.h"   // MAX_IO_KANALEN, IO_NAAM_LEN hier gedefinieerd
 #include "boot_modellen.h"  // BootModel/BootCategorie vroeg zichtbaar (prototype-hoisting)
+#include "paneel.h"  // PANEEL_KNOP_MAX (dev_lokaal[] moet daarmee meeschalen)
 
 // Actief scherm
 #define SCREEN_MAIN    0
@@ -24,6 +25,7 @@
 #define SCREEN_TIJD       17 // Tijd instellen (klok in statusbalk aantikken)
 #define SCREEN_LAMPEN     18 // Genummerde IL-lampgroepen: naam + opstartstand (via CONFIG → BOOT)
 #define SCREEN_KLEUR      19 // Eigen kleurpatroon bewerken (via CONFIG → WEERGAVE & ENERGIE)
+#define SCREEN_HAVEN      20 // Haven-dashboard (tegel-overzicht): lang indrukken op HAVEN/ANKER-knop
 
 // Vaarmodi
 #define MODE_HAVEN   0
@@ -85,8 +87,8 @@ extern String klok_tijd;
 extern volatile bool wifi_verbonden;  // geschreven door Core 0, gelezen door Core 1
 extern bool wifi_open_auto;           // auto-verbinden met open netwerken (tracking)
 
-// Apparaat lokale staat (fallback als geen IO module)
-extern bool dev_lokaal[6];
+// Apparaat lokale staat (fallback als geen IO module) — één per PANEEL-slot
+extern bool dev_lokaal[PANEEL_KNOP_MAX];
 
 // Weergave-instellingen
 #define ZEILNR_LEN 16

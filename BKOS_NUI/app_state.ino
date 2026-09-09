@@ -24,7 +24,7 @@ int   ota_check_interval_min = 30;  // standaard 30 minuten
 int   ota_check_tijd_uur     = 3;   // standaard 03:00 voor dagelijkse check
 String klok_tijd       = "--:--";
 volatile bool  wifi_verbonden   = false;
-bool  dev_lokaal[6]    = {false, false, false, false, false, false};
+bool  dev_lokaal[PANEEL_KNOP_MAX] = {false};
 byte  kleurenschema    = 0;
 byte  boot_cat         = 0;
 byte  boot_model       = 0;
@@ -117,7 +117,7 @@ void state_load() {
     held_dag              = 100;
     held_nacht_anker      = 50;
     held_nacht_varend     = 25;
-    for (int i = 0; i < 6; i++) dev_lokaal[i] = false;
+    for (int i = 0; i < PANEEL_KNOP_MAX; i++) dev_lokaal[i] = false;
 
     if (!SPIFFS.exists(CONFIG_BESTAND)) return;
     File f = SPIFFS.open(CONFIG_BESTAND, "r");

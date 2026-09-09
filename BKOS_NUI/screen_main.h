@@ -123,3 +123,9 @@ void screen_main_update_controls();
 void screen_main_lang_indruk(int x, int y);
 void boot_teken();
 void boot_lichten_teken();
+
+// Gedeelde tegel-primitieven (ook gebruikt door screen_haven.ino)
+void teken_icoon_lamp(int cx, int cy, bool aan, bool rood);
+int  paneel_icoon(const char* naam);
+void paneel_knop_teken(int x, int y, int w, int h, const char* label,
+                        int icoon, bool aan, bool mix);

@@ -106,7 +106,7 @@ static void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
 // Peertje: glazen bol (gevuld+oplichtend als 'aan', anders alleen omtrek) op
 // een voetje met schroefdraad; bij 'aan' een paar lichtstralen in de actuele
 // kleur (wit/rood) — gebruikt door PANEEL-knoppen die een IL-lampgroep zijn.
-static void teken_icoon_lamp(int cx, int cy, bool aan, bool rood) {
+void teken_icoon_lamp(int cx, int cy, bool aan, bool rood) {
     uint16_t kleur = aan ? (rood ? C_LIGHT_ON_RED : C_WHITE) : C_TEXT_DIM;
     int by = cy - 2;
     if (aan) { tft.fillCircle(cx, by, 6, kleur); ui_glow(cx, by, 6, kleur, 2); }
@@ -484,7 +484,7 @@ static void _paneel_rect(int idx, int totaal, int* bx, int* by, int* bw, int* bh
 }
 
 // Herken bekende apparaatnamen → icoon (na strippen van "**"); -1 = geen icoon
-static int paneel_icoon(const char* naam) {
+int paneel_icoon(const char* naam) {
     if (io_il_lamp_nr(naam) > 0) return I_LAMP;   // virtuele lampgroep-knop "**IL_<N>"
     char b[20]; int j = 0;
     const char* s = naam;
@@ -516,8 +516,8 @@ static void _paneel_label_effectief(const char* naam, char* buf, int len) {
     paneel_label(naam, buf, len);
 }
 
-static void _paneel_knop_teken(int x, int y, int w, int h, const char* label,
-                               int icoon, bool aan, bool mix) {
+void paneel_knop_teken(int x, int y, int w, int h, const char* label,
+                        int icoon, bool aan, bool mix) {
     tft.fillRoundRect(x, y, w, h, KNOP_R, aan ? C_SURFACE2 : C_SURFACE);
     if (aan) { tft.drawRoundRect(x, y, w, h, KNOP_R, C_CYAN); tft.fillRoundRect(x, y, 5, h, 3, C_CYAN); }
     else     { tft.drawRoundRect(x, y, w, h, KNOP_R, C_SURFACE2); }
@@ -549,7 +549,7 @@ static void apparaat_knoppen_teken() {
         int bx, by, bw, bh; _paneel_rect(i, totaal, &bx, &by, &bw, &bh);
         byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
         char lab[16]; _paneel_label_effectief(naam, lab, sizeof(lab));
-        _paneel_knop_teken(bx, by, bw, bh, lab, paneel_icoon(naam), (s3 == 2), (s3 == 1));
+        paneel_knop_teken(bx, by, bw, bh, lab, paneel_icoon(naam), (s3 == 2), (s3 == 1));
     }
 }
 
@@ -767,6 +767,34 @@ void screen_main_lang_indruk(int x, int y) {
         y >= LKNOP_Y  && y < LKNOP_Y  + LKNOP_H) {
         licht_auto_menu_open = true;
         licht_auto_menu_teken();
+        return;
+    }
+    {
+        const int cx[4] = {MKNOP_X1, MKNOP_X2, MKNOP_X1, MKNOP_X2};
+        const int cy[4] = {MKNOP_Y1, MKNOP_Y1, MKNOP_Y2, MKNOP_Y2};
+        uint8_t vis[4]; int n = vaarmodi_zichtbaar(vis);
+        for (int c = 0; c < n; c++) {
+            byte modus = VM_ALLE[vis[c]].modus;
+            if ((modus == MODE_HAVEN || modus == MODE_ANKER) &&
+                x >= cx[c] && x < cx[c] + MKNOP_W &&
+                y >= cy[c] && y < cy[c] + MKNOP_H) {
+                actief_scherm = SCREEN_HAVEN;
+                scherm_bouwen = true;
+                return;
+            }
+        }
+    }
+#else
+    uint8_t vis[4]; int n = vaarmodi_zichtbaar(vis);
+    for (int c = 0; c < n; c++) {
+        byte modus = VM_ALLE[vis[c]].modus;
+        if ((modus == MODE_HAVEN || modus == MODE_ANKER) &&
+            x >= PICO_MKNOP_X && x < PICO_MKNOP_X + PICO_MKNOP_W &&
+            y >= PICO_MKNOP_Y(c) && y < PICO_MKNOP_Y(c) + PICO_MKNOP_H) {
+            actief_scherm = SCREEN_HAVEN;
+            scherm_bouwen = true;
+            return;
+        }
     }
 #endif
 }

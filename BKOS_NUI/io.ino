@@ -1135,14 +1135,22 @@ void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
         case IO_ACTIE_MODUS_HAVEN:
             if (vaar_modus == MODE_HAVEN)  break;
             vaar_modus = MODE_HAVEN;  scherm_bouwen = true;
+            // Automatische overgang naar haven: open het HAVEN-dashboard, ongeacht
+            // welk scherm op dat moment actief was (zie screen_haven.h).
+            actief_scherm = SCREEN_HAVEN;
             io_verlichting_update(); net_app_staat_sturen(); break;
         case IO_ACTIE_MODUS_ZEILEN:
             if (vaar_modus == MODE_ZEILEN) break;
             vaar_modus = MODE_ZEILEN; scherm_bouwen = true;
+            // Vertrek uit de haven tijdens een automatische wissel: alleen het
+            // HAVEN-dashboard zelf wordt verlaten, andere schermen (CONFIG/METEO/…)
+            // worden niet weggekaapt.
+            if (actief_scherm == SCREEN_HAVEN) actief_scherm = SCREEN_MAIN;
             io_verlichting_update(); net_app_staat_sturen(); break;
         case IO_ACTIE_MODUS_MOTOR:
             if (vaar_modus == MODE_MOTOR)  break;
             vaar_modus = MODE_MOTOR;  scherm_bouwen = true;
+            if (actief_scherm == SCREEN_HAVEN) actief_scherm = SCREEN_MAIN;
             io_verlichting_update(); net_app_staat_sturen(); break;
         case IO_ACTIE_MODUS_ANKER:
             if (vaar_modus == MODE_ANKER)  break;

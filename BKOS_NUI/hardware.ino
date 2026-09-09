@@ -6,6 +6,7 @@
 #include "screen_meteo.h"
 #include "screen_config.h"
 #include "screen_kleur.h"
+#include "screen_haven.h"
 #include "screen_ota.h"
 #include "screen_info.h"
 #include "screen_apps.h"
@@ -102,6 +103,7 @@ static void _gui_taak(void*) {
                     case SCREEN_PANEEL:     screen_paneel_teken();      break;
                     case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                     case SCREEN_KLEUR:      screen_kleur_teken();       break;
+                    case SCREEN_HAVEN:      screen_haven_teken();       break;
                     case SCREEN_BERICHT:    screen_bericht_teken();     break;
                     case SCREEN_BRUG:       screen_brug_teken();        break;
                     case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -201,6 +203,7 @@ static void _gui_taak(void*) {
                             case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
                             case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                             case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
+                            case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;
                             case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                                     case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                             case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
@@ -474,6 +477,7 @@ void hw_loop() {
                 case SCREEN_PANEEL:     screen_paneel_teken();      break;
                 case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                 case SCREEN_KLEUR:      screen_kleur_teken();       break;
+                case SCREEN_HAVEN:      screen_haven_teken();       break;
                 case SCREEN_BERICHT:    screen_bericht_teken();     break;
                 case SCREEN_BRUG:       screen_brug_teken();        break;
                 case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -567,6 +571,7 @@ void hw_loop() {
                         case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
                         case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                         case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
+                        case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;
                         case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;

@@ -38,6 +38,17 @@ static int           touch_start_x       = -1;
 static int           touch_start_y       = -1;
 static bool          lang_druk_verwerkt  = false;
 
+// Flicker-tolerante aanraking-status: sommige touch-drivers (o.a. GT911) rapporteren
+// tijdens een langere, stilliggende aanraking af en toe heel even 'false' (sensor-
+// ruis) zonder dat de vinger echt loskomt. Zonder deze marge resetten touch_verwerkt/
+// lang_druk_verwerkt/vorige_touch zichzelf bij zo'n dropout, met als zichtbaar gevolg
+// dat een ingedrukt gehouden knop herhaaldelijk als nieuwe, losse tik gezien wordt
+// (bv. de AUTO-knop die blijft aan/uit klikken) en een lang-indruk de 700ms nooit haalt.
+// Alleen de sessie-boekhouding (reset-condities) gebruikt aanraking_vast; de eigenlijke
+// tik-afhandeling blijft op de ruwe 'aanraking' gebaseerd.
+#define TOUCH_FLICKER_MS 80
+static unsigned long touch_los_sinds_ms = 0;  // 0 = nu aangeraakt, of geen dropout bezig
+
 int hw_touch_drag_dy = 0;  // y-delta (touch_start → huidig) vóór elke screen_X_run call
 
 // ─── Dedicated GUI taak (Core 1, hoge prioriteit) ─────────────────────────────
@@ -50,6 +61,9 @@ static void _gui_taak(void*) {
     for (;;) {
         // Touch en scherm-wake altijd EERST lezen — vóór blokkerende achtergrond-calls
         bool aanraking = ts_touched();
+        if (aanraking) touch_los_sinds_ms = 0;
+        else if (touch_los_sinds_ms == 0) touch_los_sinds_ms = millis();
+        bool aanraking_vast = aanraking || (millis() - touch_los_sinds_ms < TOUCH_FLICKER_MS);
         tft_loop();
 
         io_loop();
@@ -61,7 +75,7 @@ static void _gui_taak(void*) {
             scherm_bouwen = false;
             // Alleen resetten als er geen aanraking is — anders vuurt de touch opnieuw
             // zodra de (trage SPI-)redraw klaar is terwijl de vinger nog op het scherm ligt
-            if (!aanraking) touch_verwerkt = false;
+            if (!aanraking_vast) touch_verwerkt = false;
             // lua_forceer_app heeft voorrang boven scherm-toewijzing
             int app_idx = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                           ? lua_forceer_app
@@ -118,17 +132,17 @@ static void _gui_taak(void*) {
         }
 
         // Nieuwe aanraking: reset verwerkt-vlag + begin lang-druk tracking
-        if (aanraking && !vorige_touch) {
+        if (aanraking_vast && !vorige_touch) {
             touch_verwerkt      = false;
             touch_start_ms      = millis();
             touch_start_x       = ts_x;
             touch_start_y       = ts_y;
             lang_druk_verwerkt  = false;
         }
-        if (!aanraking) lang_druk_verwerkt = false;
+        if (!aanraking_vast) lang_druk_verwerkt = false;
 
         // Lang indrukken detectie (alleen SCREEN_MAIN, vóór debounce verwerking)
-        if (aanraking && !lang_druk_verwerkt &&
+        if (aanraking_vast && !lang_druk_verwerkt &&
             millis() - touch_start_ms >= LANG_DRUK_MS &&
             actief_scherm == SCREEN_MAIN) {
             lang_druk_verwerkt = true;
@@ -218,7 +232,7 @@ static void _gui_taak(void*) {
         }
 
         // Geen aanraking: periodieke scherm-updates
-        if (!aanraking) {
+        if (!aanraking_vast) {
             touch_verwerkt = false;
             int app_upd = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                           ? lua_forceer_app
@@ -239,7 +253,7 @@ static void _gui_taak(void*) {
             tft_flush(false);   // dubbele buffering (indien actief): periodieke updates snelheidsbegrensd doorzetten
         }
 
-        vorige_touch = aanraking;
+        vorige_touch = aanraking_vast;
 
         // Yield 5ms zodat de achtergrondlus (hw_loop) kans krijgt te draaien.
         // Bij aanraking of hertekenen wordt de taak daarna meteen hervat.
@@ -424,6 +438,9 @@ void hw_loop() {
 #else
     // ─── Niet-ESP32 (Pico): originele lus zonder aparte GUI taak ──────────────
     bool aanraking = ts_touched();
+    if (aanraking) touch_los_sinds_ms = 0;
+    else if (touch_los_sinds_ms == 0) touch_los_sinds_ms = millis();
+    bool aanraking_vast = aanraking || (millis() - touch_los_sinds_ms < TOUCH_FLICKER_MS);
     tft_loop();
 
     io_loop();
@@ -435,7 +452,7 @@ void hw_loop() {
 
     if (scherm_bouwen) {
         scherm_bouwen = false;
-        if (!aanraking) touch_verwerkt = false;
+        if (!aanraking_vast) touch_verwerkt = false;
         if (tft_actief) tft_helderheid_zet(0);
         int app_idx = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                       ? lua_forceer_app
@@ -491,16 +508,16 @@ void hw_loop() {
         if (tft_actief) tft_helderheid_zet(tft_helderheid);
     }
 
-    if (aanraking && !vorige_touch) {
+    if (aanraking_vast && !vorige_touch) {
         touch_verwerkt      = false;
         touch_start_ms      = millis();
         touch_start_x       = ts_x;
         touch_start_y       = ts_y;
         lang_druk_verwerkt  = false;
     }
-    if (!aanraking) lang_druk_verwerkt = false;
+    if (!aanraking_vast) lang_druk_verwerkt = false;
 
-    if (aanraking && !lang_druk_verwerkt &&
+    if (aanraking_vast && !lang_druk_verwerkt &&
         millis() - touch_start_ms >= LANG_DRUK_MS &&
         actief_scherm == SCREEN_MAIN) {
         lang_druk_verwerkt = true;
@@ -584,7 +601,7 @@ void hw_loop() {
         }
     }
 
-    if (!aanraking) {
+    if (!aanraking_vast) {
         touch_verwerkt = false;
         int app_upd = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                       ? lua_forceer_app
@@ -629,6 +646,6 @@ void hw_loop() {
         wifi_ota_zet(ota_scherm || ota_push_actief);
     }
 
-    vorige_touch = aanraking;
+    vorige_touch = aanraking_vast;
 #endif  // PLATFORM_ESP32
 }

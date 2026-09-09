@@ -880,6 +880,28 @@ static bool _int_rood_auto_aan() {
     return !meteo_is_dag;
 }
 
+// Tijdelijke handmatige kleuroverrule op INTERIEUR_AUTO — voor het HAVEN-
+// dashboard: WIT/ROOD daar verlaat AUTO nooit (blijft "AUTO" op het
+// vaardashboard), maar overrult tijdelijk welke kleur auto momenteel geeft.
+// Vervalt vanzelf zodra vaar_modus verandert (zie io_verlichting_update()) —
+// zowel bij een handmatige als een automatische modus-wissel, want beide
+// lopen via dezelfde vaar_modus-toewijzing.
+static int  _int_overrule            = -1;   // -1 = geen overrule, 0 = wit, 1 = rood
+static byte _int_overrule_vaarmodus  = 255;  // vaar_modus toen de overrule werd gezet
+
+void interieur_kleur_overrulen(bool rood) {
+    int gewenst = rood ? 1 : 0;
+    if (interieur_modus == INTERIEUR_AUTO && _int_overrule == gewenst) {
+        _int_overrule = -1;  // zelfde kleur nogmaals gekozen: overrule opheffen, terug naar echte auto
+    } else {
+        interieur_modus       = INTERIEUR_AUTO;
+        _int_overrule         = gewenst;
+        _int_overrule_vaarmodus = vaar_modus;
+    }
+}
+
+int interieur_overrule_kleur() { return _int_overrule; }
+
 void io_verlichting_update() {
     int n = io_zichtbaar();
 
@@ -908,6 +930,16 @@ void io_verlichting_update() {
     // tijdens varen (ZEILEN/MOTOR) na zonsondergang, wit overdag/in de haven.
     bool navigeert = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR);
     bool auto_rood = navigeert && _int_rood_auto_aan();
+    if (_int_overrule >= 0) {
+        if (interieur_modus != INTERIEUR_AUTO || _int_overrule_vaarmodus != vaar_modus) {
+            // Overrule is alleen zinvol zolang interieur_modus AUTO is (zo houdt
+            // HAVEN 'm ook altijd) — handmatig wegnavigeren op het hoofdscherm of
+            // een vaarmodus-wissel maakt de overrule ongeldig.
+            _int_overrule = -1;
+        } else {
+            auto_rood = (_int_overrule == 1);  // overrult alleen de KLEUR, nooit int_aan hieronder
+        }
+    }
     bool int_aan, int_rood;
     switch (interieur_modus) {
         case INTERIEUR_UIT:  int_aan = false; int_rood = auto_rood; break;

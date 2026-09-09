@@ -223,8 +223,12 @@ static void _hv_redraw_algemeen(int x0, int w, int y_top) {
     _hv_alg_layout(x0, w, y_top, &sq, &row_y, bx);
     if (row_y + sq <= HV_START_Y || row_y >= HV_LIST_BOT) return;  // buiten kijkvenster
 
-    bool wit_act  = (interieur_modus == INTERIEUR_WIT);
-    bool rood_act = (interieur_modus == INTERIEUR_ROOD);
+    // WIT/ROOD blijven op AUTO gebaseerd (zie interieur_kleur_overrulen()) —
+    // "actief" betekent hier dus specifiek: is die kleur nu de handmatige
+    // overrule, niet zomaar toevallig de huidige auto-berekende kleur.
+    int overrule  = interieur_overrule_kleur();
+    bool wit_act  = (overrule == 0);
+    bool rood_act = (overrule == 1);
     int r = max(4, sq / 5);
 
     _hv_tile_frame(bx[0], row_y, sq, sq, wit_act);
@@ -373,7 +377,10 @@ void screen_haven_run(int x, int y, bool aanraking) {
     _hv_alg_layout(8, col_w, y0, &sq, &row_y, bx);
     if (y >= row_y && y < row_y + sq) {
         if (x >= bx[0] && x < bx[0] + sq) {
-            interieur_modus = (interieur_modus == INTERIEUR_WIT) ? INTERIEUR_UIT : INTERIEUR_WIT;
+            // Blijft altijd INTERIEUR_AUTO (zie interieur_kleur_overrulen) — het
+            // vaardashboard toont dus nooit "WIT"/"ROOD" door een HAVEN-tik, enkel
+            // een tijdelijke kleuroverrule die vervalt zodra vaar_modus wijzigt.
+            interieur_kleur_overrulen(false);
             io_verlichting_update(); net_app_staat_sturen(); state_save();
             // Kleurmodus beïnvloedt ook de tint van elke "aan" lamptegel — dus
             // ALGEMEEN + het hele lampgrid opnieuw, niet alleen deze knop.
@@ -382,7 +389,7 @@ void screen_haven_run(int x, int y, bool aanraking) {
             return;
         }
         if (x >= bx[1] && x < bx[1] + sq) {
-            interieur_modus = (interieur_modus == INTERIEUR_ROOD) ? INTERIEUR_UIT : INTERIEUR_ROOD;
+            interieur_kleur_overrulen(true);
             io_verlichting_update(); net_app_staat_sturen(); state_save();
             _hv_redraw_algemeen(8, col_w, y0);
             _hv_redraw_verlicht_grid(8, col_w, y0, cols_l, tw_l);

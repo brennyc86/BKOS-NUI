@@ -4,6 +4,12 @@
 extern byte licht_cfg_idx;
 extern bool interieur_kleur_rood;  // laatst berekende interieurkleur (true=rood); voor UI (lampje-icoon)
 
+// Tijdelijke handmatige kleuroverrule op INTERIEUR_AUTO (HAVEN-dashboard):
+// verlaat AUTO nooit, overrult alleen tijdelijk welke kleur auto nu geeft.
+// Vervalt vanzelf zodra vaar_modus wijzigt. Zie io_verlichting_update().
+void interieur_kleur_overrulen(bool rood);
+int  interieur_overrule_kleur();  // -1 = geen overrule actief, 0 = wit, 1 = rood
+
 // Cross-core signalering (Core 0 = io_taak, Core 1 = UI loop)
 extern volatile bool io_direct_aanvraag;  // Core 1 → Core 0: voer io_cyclus direct uit
 extern volatile bool io_staat_gewijzigd;  // Core 0 → Core 1: IO uitkomst beschikbaar

@@ -70,7 +70,7 @@ static int hv_max_scroll = 0;
 // hertekening (schermopen, slideshow-wissel) — precies wanneer de foto zelf
 // ook verandert.
 #define HV_BG_CAP 20   // max. aantal tegels per grid waarvoor een sample bewaard wordt
-#define HV_TILE_ALPHA 190  // 0-255: ondoorzichtigheid van de tegel (190 ≈ 75% dekkend)
+#define HV_TILE_LICHT 128  // 0-255: hoe ver de tegel-fotokleur richting wit opgelicht wordt (128 ≈ 50%)
 static uint16_t hv_bg_algemeen[4];
 static uint16_t hv_bg_verlicht[HV_BG_CAP];
 static uint16_t hv_bg_paneel[HV_BG_CAP];
@@ -78,15 +78,15 @@ static uint16_t hv_bg_paneel[HV_BG_CAP];
 static uint16_t _hv_bg_verlicht(int i) { return (i >= 0 && i < HV_BG_CAP) ? hv_bg_verlicht[i] : C_BG; }
 static uint16_t _hv_bg_paneel(int i)   { return (i >= 0 && i < HV_BG_CAP) ? hv_bg_paneel[i]   : C_BG; }
 
-// Mengt een RGB565-fotokleur met een RGB565-oppervlaktekleur (HV_TILE_ALPHA
-// bepaalt de verhouding) — rechtstreeks in 5/6/5-precisie, ruim genoeg voor
-// een subtiel doorschijnend accent.
-static uint16_t _hv_blend(uint16_t foto, uint16_t surface) {
+// Licht een RGB565-fotokleur op richting wit (HV_TILE_LICHT bepaalt hoeveel)
+// — rechtstreeks in 5/6/5-precisie. De foto zelf blijft zo herkenbaar op de
+// tegel te zien (i.p.v. er nauwelijks doorheen te schemeren tegen de donkere
+// paneelkleur), maar licht genoeg om icoon/tekst erboven leesbaar te houden.
+static uint16_t _hv_licht(uint16_t foto) {
     uint8_t fr = (foto >> 11) & 0x1F, fg = (foto >> 5) & 0x3F, fb = foto & 0x1F;
-    uint8_t sr = (surface >> 11) & 0x1F, sg = (surface >> 5) & 0x3F, sb = surface & 0x1F;
-    uint8_t r = (fr * (255 - HV_TILE_ALPHA) + sr * HV_TILE_ALPHA) / 255;
-    uint8_t g = (fg * (255 - HV_TILE_ALPHA) + sg * HV_TILE_ALPHA) / 255;
-    uint8_t b = (fb * (255 - HV_TILE_ALPHA) + sb * HV_TILE_ALPHA) / 255;
+    uint8_t r = fr + ((31 - fr) * HV_TILE_LICHT) / 255;
+    uint8_t g = fg + ((63 - fg) * HV_TILE_LICHT) / 255;
+    uint8_t b = fb + ((31 - fb) * HV_TILE_LICHT) / 255;
     return (r << 11) | (g << 5) | b;
 }
 
@@ -143,8 +143,7 @@ static void _hv_scan() {
 }
 
 static void _hv_tile_frame(int x, int y, int w, int h, bool aan, uint16_t bg_foto) {
-    uint16_t kleur = _hv_blend(bg_foto, aan ? C_SURFACE2 : C_SURFACE);
-    tft.fillRoundRect(x, y, w, h, KNOP_R, kleur);
+    tft.fillRoundRect(x, y, w, h, KNOP_R, _hv_licht(bg_foto));
     if (aan) { tft.drawRoundRect(x, y, w, h, KNOP_R, C_CYAN); tft.fillRoundRect(x, y, 5, h, 3, C_CYAN); }
     else       tft.drawRoundRect(x, y, w, h, KNOP_R, C_SURFACE2);
 }

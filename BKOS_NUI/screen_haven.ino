@@ -106,6 +106,23 @@ static bool _hv_bg_cache_klaar() {
     return false;
 }
 
+// Sample-coördinaten (x/y per mozaïekpunt, zie screen_haven_teken()) — ook op
+// de heap i.p.v. stack-lokaal: bij HAVEN_SAMPLE_MAX=7200 is dat 28,8KB, ruim
+// boven wat een taakstack aankan (veroorzaakte een stack-overflow-crash zodra
+// dit scherm geopend werd).
+static int16_t* hv_sample_sx = nullptr;
+static int16_t* hv_sample_sy = nullptr;
+
+static bool _hv_sample_buf_klaar() {
+    if (hv_sample_sx) return true;
+    hv_sample_sx = (int16_t*)malloc(HAVEN_SAMPLE_MAX * sizeof(int16_t));
+    hv_sample_sy = (int16_t*)malloc(HAVEN_SAMPLE_MAX * sizeof(int16_t));
+    if (hv_sample_sx && hv_sample_sy) return true;
+    free(hv_sample_sx); free(hv_sample_sy);
+    hv_sample_sx = nullptr; hv_sample_sy = nullptr;
+    return false;
+}
+
 // Schrijfbare cel-pointer voor ALGEMEEN-knop k (0..3) — gebruikt bij het
 // terugschrijven van de sample-resultaten na haven_achtergrond_teken().
 static uint16_t* _hv_bg_algemeen_cel(int k) {
@@ -428,28 +445,33 @@ void screen_haven_teken() {
     _hv_layout(col_w, &cols_r, &tw_r);
     int y0 = HV_START_Y - hv_scroll_y;
 
+    int vgrid_top = HV_VERLICHT_GRID_TOP(y0, col_w);
+    int vtotaal   = min(hv_lamp_cnt + hv_licht_paneel_cnt, HV_BG_CAP);
+    int agrid_top = y0 + HV_SECTIE_H;
+    int atotaal   = min(hv_paneel_cnt, HV_BG_CAP);
+
     // Mozaïek-sample-roosters (HV_MOZ_COLS×HV_MOZ_ROWS per tegel) verzamelen
     // VÓÓR de foto gedecodeerd wordt — de decoder pikt de fotokleur op elk
     // punt onderweg op, zodat een latere losse tegel-hertekening het echte
-    // fotomozaïek kan hergebruiken (zie HV_BG_CAP/HV_MOZ_N hierboven).
-    int16_t sx[HAVEN_SAMPLE_MAX], sy[HAVEN_SAMPLE_MAX];
+    // fotomozaïek kan hergebruiken (zie HV_BG_CAP/HV_MOZ_N hierboven). Op de
+    // heap i.p.v. stack-lokale arrays: bij HAVEN_SAMPLE_MAX=7200 is dat 28,8KB
+    // — ruim boven een taakstack, veroorzaakte een stack-overflow-crash/reboot
+    // zodra dit scherm werd geopend.
     int scnt = 0;
-    int sq, row_y, bx[4];
-    _hv_alg_layout(8, col_w, y0, &sq, &row_y, bx);
-    for (int k = 0; k < 4; k++) _hv_moz_punten(bx[k], row_y, sq, sq, sx, sy, &scnt);
-    int vgrid_top = HV_VERLICHT_GRID_TOP(y0, col_w);
-    int vtotaal   = min(hv_lamp_cnt + hv_licht_paneel_cnt, HV_BG_CAP);
-    for (int i = 0; i < vtotaal; i++) {
-        int tx, ty; _hv_tegel_rect(8, vgrid_top, i, cols_l, tw_l, &tx, &ty);
-        _hv_moz_punten(tx, ty, tw_l, HV_TILE_H, sx, sy, &scnt);
+    if (_hv_sample_buf_klaar()) {
+        int sq, row_y, bx[4];
+        _hv_alg_layout(8, col_w, y0, &sq, &row_y, bx);
+        for (int k = 0; k < 4; k++) _hv_moz_punten(bx[k], row_y, sq, sq, hv_sample_sx, hv_sample_sy, &scnt);
+        for (int i = 0; i < vtotaal; i++) {
+            int tx, ty; _hv_tegel_rect(8, vgrid_top, i, cols_l, tw_l, &tx, &ty);
+            _hv_moz_punten(tx, ty, tw_l, HV_TILE_H, hv_sample_sx, hv_sample_sy, &scnt);
+        }
+        for (int i = 0; i < atotaal; i++) {
+            int tx, ty; _hv_tegel_rect(right_x, agrid_top, i, cols_r, tw_r, &tx, &ty);
+            _hv_moz_punten(tx, ty, tw_r, HV_TILE_H, hv_sample_sx, hv_sample_sy, &scnt);
+        }
     }
-    int agrid_top = y0 + HV_SECTIE_H;
-    int atotaal   = min(hv_paneel_cnt, HV_BG_CAP);
-    for (int i = 0; i < atotaal; i++) {
-        int tx, ty; _hv_tegel_rect(right_x, agrid_top, i, cols_r, tw_r, &tx, &ty);
-        _hv_moz_punten(tx, ty, tw_r, HV_TILE_H, sx, sy, &scnt);
-    }
-    haven_achtergrond_samples_zet(sx, sy, scnt);
+    haven_achtergrond_samples_zet(hv_sample_sx, hv_sample_sy, scnt);  // scnt=0 als de heap-buffers ontbraken
     haven_achtergrond_teken();   // achtergrondfoto (incl. letterbox-fill + sampling), tegels komen er overheen
 
     int idx = 0;

@@ -5,6 +5,8 @@
 #include "hw_io.h"
 #include "io.h"
 #include "bkos_net.h"
+#include "fout_log.h"
+#include <Preferences.h>
 
 uint8_t       slaap_modus    = SLAAP_GEEN;
 uint32_t      slaap_tijd     = 60;    // standaard 60s na scherm-uit
@@ -65,6 +67,65 @@ bool slaap_was_deep_wake() {
 #else
     return false;
 #endif
+}
+
+#if PLATFORM_ESP32
+// Nederlandse omschrijving per esp_reset_reason_t — ESP_RST_UNKNOWN dekt ook
+// de ESP32-S3-specifieke "USB_UART_CHIP_RESET" (rst:0x15): een bekend
+// silicon-eigenaardigheid waarbij de native USB-CDC-poort een volledige
+// chip-reset triggert zodra die tijdens light sleep zijn klok verliest en de
+// USB-host (bv. een aangesloten PC) daarna een bus-reset/re-enumeratie doet —
+// dus met name te verwachten bij bankwerk-testen via een USB-kabel, niet bij
+// een los gevoed apparaat aan boord.
+static const char* _reset_reden_naam(esp_reset_reason_t r) {
+    switch (r) {
+        case ESP_RST_POWERON:   return "Koude start";
+        case ESP_RST_EXT:       return "Externe reset-pin";
+        case ESP_RST_SW:        return "Software-herstart (esp_restart/OTA)";
+        case ESP_RST_PANIC:     return "Panic/crash (exception)";
+        case ESP_RST_INT_WDT:   return "Interrupt-watchdog";
+        case ESP_RST_TASK_WDT:  return "Task-watchdog";
+        case ESP_RST_WDT:       return "Overige watchdog";
+        case ESP_RST_DEEPSLEEP: return "Wake uit deep sleep";
+        case ESP_RST_BROWNOUT:  return "Brownout (voedingsdip)";
+        case ESP_RST_SDIO:      return "SDIO-reset";
+        default:                return "Onbekend (mogelijk USB-CDC-reset tijdens sleep)";
+    }
+}
+#endif
+
+void slaap_reset_reden_verwerken() {
+#if PLATFORM_ESP32
+    esp_reset_reason_t reden = esp_reset_reason();
+    // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal
+    // — alleen alles daarbuiten is een ONVERWACHTE herstart die het waard is om
+    // te onthouden/melden.
+    if (reden == ESP_RST_POWERON || reden == ESP_RST_SW) return;
+
+    const char* omschrijving = _reset_reden_naam(reden);
+
+    Preferences prefs;
+    prefs.begin("diag", false);
+    prefs.putString("laatste_reset", omschrijving);
+    prefs.end();
+
+    fout_log_stuur(FOUT_APP_CRASH, omschrijving, "onverwachte herstart bij opstarten");  // bewaakt zelf fout_rapportage/token
+#endif
+}
+
+const char* slaap_laatste_onverwachte_reset() {
+    static char buf[40] = "";
+    static bool geladen = false;
+    if (!geladen) {
+        Preferences prefs;
+        prefs.begin("diag", true);
+        String s = prefs.getString("laatste_reset", "");
+        prefs.end();
+        strncpy(buf, s.c_str(), sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        geladen = true;
+    }
+    return buf[0] ? buf : "geen bekend";
 }
 
 void slaap_loop() {

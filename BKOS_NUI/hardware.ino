@@ -319,6 +319,7 @@ void hw_setup() {
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
     ota_setup();        // init OTA (snel)
     fout_log_setup();   // laad foutrapportage token uit Preferences
+    slaap_reset_reden_verwerken();  // onthoud/meld een eventuele onverwachte herstart
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
 #endif                      // op core 2.x: BLE-init bij boot overslaan (hangt op Bluedroid) — zie Route A

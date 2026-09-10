@@ -49,3 +49,12 @@ extern volatile bool slaap_actief;  // momenteel in slaapstand
 void slaap_setup();          // na state_load() aanroepen in hw_setup()
 void slaap_loop();           // aanroepen vanuit hw_loop()
 bool slaap_was_deep_wake();  // true als opgestart vanuit deep sleep
+
+// Diagnose voor spontane herstarts (bv. tijdens light sleep): leest bij opstart
+// esp_reset_reason() en onthoudt 'm persistent (Preferences) als de reden niet
+// een gewone koude start of bewuste esp_restart() (OTA) was — zodat na een
+// onverklaarde herstart alsnog te zien is wat de oorzaak was, ook zonder dat er
+// op dat moment een seriële monitor aangesloten was. Aanroepen ná fout_log_setup()
+// (heeft het foutrapportage-token nodig als fout_rapportage aanstaat).
+void slaap_reset_reden_verwerken();
+const char* slaap_laatste_onverwachte_reset();  // Nederlandse omschrijving, of "geen bekend"

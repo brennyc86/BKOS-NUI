@@ -4,6 +4,7 @@
 #include "platform_fs.h"
 #include "bkos_net.h"
 #include "ota.h"
+#include "slaap.h"
 
 #define INFO_BESTAND "/bkos_info.csv"
 
@@ -331,9 +332,22 @@ static void info_velden_teken() {
             tft.setCursor(LX + 60, ry + (RH - 8) / 2); tft.print(BKOS_NUI_VERSIE);
             ry += RH + 2;
         }
+        // Laatste onverwachte herstart (leeg gebleven zolang dit nooit gebeurde) —
+        // zie slaap_reset_reden_verwerken(); helpt spontane herstarts (bv. tijdens
+        // light sleep) achteraf te diagnosticeren zonder seriële monitor.
+        {
+            const char* rr = slaap_laatste_onverwachte_reset();
+            bool onbekend = (strcmp(rr, "geen bekend") == 0);
+            tft.fillRect(LX, ry, LW, RH, C_SURFACE);
+            tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+            tft.setCursor(LX + 8, ry + (RH - 8) / 2); tft.print("Reset:");
+            tft.setTextColor(onbekend ? C_TEXT_DIM : C_AMBER);
+            tft.setCursor(LX + 54, ry + (RH - 8) / 2); tft.print(rr);
+            ry += RH + 2;
+        }
         // BKOSS module
         {
-            tft.fillRect(LX, ry, LW, RH, C_SURFACE);
+            tft.fillRect(LX, ry, LW, RH, C_BG);
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(LX + 8, ry + (RH - 8) / 2); tft.print("BKOSS:");
             if (bkoss_actief) {
@@ -346,7 +360,7 @@ static void info_velden_teken() {
         }
         // WiFi
         {
-            tft.fillRect(LX, ry, LW, RH, C_BG);
+            tft.fillRect(LX, ry, LW, RH, C_SURFACE);
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(LX + 8, ry + (RH - 8) / 2); tft.print("WiFi:");
             tft.setTextColor(wifi_verbonden ? C_GREEN : C_AMBER);
@@ -356,7 +370,7 @@ static void info_velden_teken() {
         }
         // IO lokaal
         {
-            tft.fillRect(LX, ry, LW, RH, C_SURFACE);
+            tft.fillRect(LX, ry, LW, RH, C_BG);
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             tft.setCursor(LX + 8, ry + (RH - 8) / 2); tft.print("IO:");
             char io_buf[32];

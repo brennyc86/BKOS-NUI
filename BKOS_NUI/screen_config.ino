@@ -1393,11 +1393,12 @@ static void cfg_hoofd_teken() {
         tft.print("Tik om te ontgrendelen met pincode");
     }
 
-    // Helderheidbalk blijft vast bovenaan — tekent overheen zodra iets
-    // omhoog gescrold is, dekt dat gedeelte dus netjes af. Nav-balk onderaan
-    // om dezelfde reden: gescrolde categorieknoppen kunnen er tot voorbij
-    // NAV_Y in doorlopen (geen clipping), dus ook die na de inhoud opnieuw
-    // tekenen zodat 'ie altijd intact blijft.
+    // Statusbalk + helderheidbalk blijven vast bovenaan, nav-balk onderaan —
+    // gescrolde categorieknoppen kunnen er zonder clipping doorheen/overheen
+    // schuiven (ook tot boven CFG_CONT_Y, in de eígenlijke statusbalk, niet
+    // alleen de helderheidbalk eronder), dus alle drie na de inhoud opnieuw
+    // tekenen zodat ze altijd intact blijven.
+    sb_scherm_teken("CONFIG", C_CYAN);
     helderheid_balk_teken();
     ui_scrollbar(TFT_W - UI_SB_W, CFG_HOOFD_TOP, NAV_Y - CFG_HOOFD_TOP, cfg_hoofd_scroll_y, CFG_HOOFD_MAX_SCROLL);
     nav_bar_teken();
@@ -1528,9 +1529,12 @@ static void cfg_boot_teken() {
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_boot_scroll_y, CFG_BOOT_MAX_SCROLL);
 
-    // Header + nav-balk blijven vast: gescrolde inhoud heeft geen clipping en
-    // kan er dus overheen/doorheen lopen — na de inhoud opnieuw tekenen dekt
-    // dat netjes af (zelfde patroon als helderheid_balk_teken() in cfg_hoofd_teken()).
+    // Statusbalk + sub-header + nav-balk blijven vast: gescrolde inhoud heeft
+    // geen clipping en kan er dus overheen/doorheen lopen — ook tot boven
+    // CFG_CONT_Y in de eígenlijke statusbalk, niet alleen de sub-header eronder
+    // — na de inhoud opnieuw tekenen dekt dat netjes af (zelfde patroon als
+    // helderheid_balk_teken() in cfg_hoofd_teken()).
+    sb_scherm_teken("CONFIG", C_CYAN);
     cfg_sub_header("BOOT");
     nav_bar_teken();
 }
@@ -1538,10 +1542,18 @@ static void cfg_boot_teken() {
 // Totale content-hoogte van dit tabblad (som van alle y+= stappen + hoogte van
 // de laatste rij) — nodig voor de scrollbar. Bijwerken als er een rij bijkomt
 // of verdwijnt (zelfde aanpak als PICO_CFG_INS_H hierboven).
+// Was verouderd (miste 2 rijen — SCHERM 180° DRAAIEN en DUBBELE BUFFERING zijn
+// ooit toegevoegd zonder dit bij te werken), waardoor CFG_WE_MAX_SCROLL 92px te
+// laag uitkwam en de onderste rij (NACHT VAREND-slider) nooit volledig in beeld
+// kwam. Elke term hieronder komt 1-op-1 overeen met een "y +=" hieronder + de
+// hoogte van de allerlaatste rij (die zelf geen "y +=" meer heeft).
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
-  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+44+40)   // + EIGEN KLEURPATROON-rij + DUBBELE BUFFERING (S3-only) + HELDERHEID AUTO-rijen + OPSTARTINSTELLING-rijen (VAARMODUS/VERLICHTING, AUTOMODUS zit als vinkje bij VAARMODUS)
+  // palette(62) kleurpatroon(44) open-wifi(34) foutrap/lichtmodus(42) opstart-vaarmodus(44)
+  // opstart-verlichting(44) slaap(44) slaap-na(44) io+net(44) scherm-pclk(44)
+  // dubbele-buffering(44,S3) scherm-180(44) helderheid-auto(44) overdag(44) nacht-anker(44) nacht-varend(44)
+  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+44+44+44+44)
 #else
-  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+40)
+  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+44+44+44)
 #endif
 #define CFG_WE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_WE_INHOUD_H - (int)NAV_Y)
 
@@ -1833,9 +1845,12 @@ static void cfg_we_teken() {
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_we_scroll_y, CFG_WE_MAX_SCROLL);
 
-    // Header + nav-balk blijven vast: gescrolde inhoud heeft geen clipping en
-    // kan er dus overheen/doorheen lopen — na de inhoud opnieuw tekenen dekt
-    // dat netjes af (zelfde patroon als helderheid_balk_teken() in cfg_hoofd_teken()).
+    // Statusbalk + sub-header + nav-balk blijven vast: gescrolde inhoud heeft
+    // geen clipping en kan er dus overheen/doorheen lopen — ook tot boven
+    // CFG_CONT_Y in de eígenlijke statusbalk, niet alleen de sub-header eronder
+    // — na de inhoud opnieuw tekenen dekt dat netjes af (zelfde patroon als
+    // helderheid_balk_teken() in cfg_hoofd_teken()).
+    sb_scherm_teken("CONFIG", C_CYAN);
     cfg_sub_header("WEERGAVE & ENERGIE");
     nav_bar_teken();
 }
@@ -1872,9 +1887,12 @@ static void cfg_update_teken() {
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_update_scroll_y, CFG_UPDATE_MAX_SCROLL);
 
-    // Header + nav-balk blijven vast: gescrolde inhoud heeft geen clipping en
-    // kan er dus overheen/doorheen lopen — na de inhoud opnieuw tekenen dekt
-    // dat netjes af (zelfde patroon als helderheid_balk_teken() in cfg_hoofd_teken()).
+    // Statusbalk + sub-header + nav-balk blijven vast: gescrolde inhoud heeft
+    // geen clipping en kan er dus overheen/doorheen lopen — ook tot boven
+    // CFG_CONT_Y in de eígenlijke statusbalk, niet alleen de sub-header eronder
+    // — na de inhoud opnieuw tekenen dekt dat netjes af (zelfde patroon als
+    // helderheid_balk_teken() in cfg_hoofd_teken()).
+    sb_scherm_teken("CONFIG", C_CYAN);
     cfg_sub_header("VERBINDINGEN");
     nav_bar_teken();
 }

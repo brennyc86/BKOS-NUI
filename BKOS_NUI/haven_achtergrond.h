@@ -11,7 +11,8 @@
 // een tegel later (bij een losse hertekening, zónder de foto opnieuw te decoderen)
 // als een klein mozaïek van de echte fotoblokjes eronder getekend kan worden i.p.v.
 // als één platte gemiddelde kleur.
-#define HAVEN_SAMPLE_MAX 1100
+// (4 ALGEMEEN + 20 VERLICHTING + 20 APPARATEN) x HV_MOZ_N=160 cellen/tegel = 7040 — zie screen_haven.ino
+#define HAVEN_SAMPLE_MAX 7200
 void haven_achtergrond_samples_zet(const int16_t x[], const int16_t y[], int aantal);
 uint16_t haven_achtergrond_sample(int i);  // resultaat van de laatste teken()-aanroep
 

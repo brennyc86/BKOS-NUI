@@ -73,8 +73,14 @@ static int hv_max_scroll = 0;
 // textuur van de foto op die plek weer. Cache ververst vanzelf bij elke
 // volledige hertekening (schermopen, scroll, slideshow-wissel).
 #define HV_BG_CAP     20   // max. aantal tegels per grid waarvoor een mozaïek bewaard wordt
-#define HV_MOZ_COLS   6
-#define HV_MOZ_ROWS   4
+// 16x10 i.p.v. het eerdere 6x4 — ±9x7px per blokje op een tegel van ~150x72px,
+// merkbaar dichter bij de echte fotoresolutie. Verder omhoog kost vooral heap
+// (elke verdubbeling van cellen/tegel verdubbelt ook de sample-/cachebuffers,
+// zie haven_achtergrond.ino en HV_BG_CAP hierboven) — dit is bewust ruim onder
+// de werkelijke pixel-per-pixel resolutie gehouden, wat op de kleinste
+// platforms (WROOM/CYD*, minder heap dan de S3) niet haalbaar is.
+#define HV_MOZ_COLS   16
+#define HV_MOZ_ROWS   10
 #define HV_MOZ_N      (HV_MOZ_COLS * HV_MOZ_ROWS)
 #define HV_TILE_LICHT 128  // 0-255: hoe ver elk mozaïekblokje richting wit opgelicht wordt (128 ≈ 50%)
 

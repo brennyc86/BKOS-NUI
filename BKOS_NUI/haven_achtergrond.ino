@@ -10,13 +10,31 @@ static int  hav_bg_idx    = 0;
 static bool hav_bg_klaar  = false;
 
 // Sample-punten voor de "doorschijnende tegel"-optimalisatie (zie .h) — door
-// screen_haven.ino gezet vóór elke haven_achtergrond_teken()-aanroep.
-static int16_t hav_sample_x[HAVEN_SAMPLE_MAX];
-static int16_t hav_sample_y[HAVEN_SAMPLE_MAX];
-static uint16_t hav_sample_kleur[HAVEN_SAMPLE_MAX];
-static int      hav_sample_cnt = 0;
+// screen_haven.ino gezet vóór elke haven_achtergrond_teken()-aanroep. Op de
+// heap i.p.v. drie statische HAVEN_SAMPLE_MAX-arrays: de classic-ESP32-
+// platforms (WROOM/CYD*) hebben maar een klein vast DRAM-BSS-segment (los van
+// de veel ruimere heap) en zaten daar al bijna tegenaan — deze buffers zijn
+// groot genoeg (mozaïekroosters i.p.v. één sample per tegel) om dat segment
+// alsnog te laten overlopen als ze als vast static array waren gebleven.
+// Eén keer gealloceerd bij het eerste gebruik, daarna hergebruikt.
+static int16_t*  hav_sample_x     = nullptr;
+static int16_t*  hav_sample_y     = nullptr;
+static uint16_t* hav_sample_kleur = nullptr;
+static int       hav_sample_cnt   = 0;
+
+static bool _hab_buffers_klaar() {
+    if (hav_sample_x) return true;
+    hav_sample_x     = (int16_t*) malloc(HAVEN_SAMPLE_MAX * sizeof(int16_t));
+    hav_sample_y     = (int16_t*) malloc(HAVEN_SAMPLE_MAX * sizeof(int16_t));
+    hav_sample_kleur = (uint16_t*)malloc(HAVEN_SAMPLE_MAX * sizeof(uint16_t));
+    if (hav_sample_x && hav_sample_y && hav_sample_kleur) return true;
+    free(hav_sample_x); free(hav_sample_y); free(hav_sample_kleur);
+    hav_sample_x = nullptr; hav_sample_y = nullptr; hav_sample_kleur = nullptr;
+    return false;
+}
 
 void haven_achtergrond_samples_zet(const int16_t x[], const int16_t y[], int aantal) {
+    if (!_hab_buffers_klaar()) { hav_sample_cnt = 0; return; }  // heap vol — geen mozaïek, wel gewoon de foto
     hav_sample_cnt = min(aantal, HAVEN_SAMPLE_MAX);
     for (int i = 0; i < hav_sample_cnt; i++) { hav_sample_x[i] = x[i]; hav_sample_y[i] = y[i]; }
 }

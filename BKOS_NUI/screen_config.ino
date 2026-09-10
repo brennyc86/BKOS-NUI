@@ -1394,9 +1394,13 @@ static void cfg_hoofd_teken() {
     }
 
     // Helderheidbalk blijft vast bovenaan — tekent overheen zodra iets
-    // omhoog gescrold is, dekt dat gedeelte dus netjes af
+    // omhoog gescrold is, dekt dat gedeelte dus netjes af. Nav-balk onderaan
+    // om dezelfde reden: gescrolde categorieknoppen kunnen er tot voorbij
+    // NAV_Y in doorlopen (geen clipping), dus ook die na de inhoud opnieuw
+    // tekenen zodat 'ie altijd intact blijft.
     helderheid_balk_teken();
     ui_scrollbar(TFT_W - UI_SB_W, CFG_HOOFD_TOP, NAV_Y - CFG_HOOFD_TOP, cfg_hoofd_scroll_y, CFG_HOOFD_MAX_SCROLL);
+    nav_bar_teken();
 }
 
 // Rijhoogtes: categorie/model/zeilnr/naam module (44 elk) + IO-configuratierij
@@ -1523,6 +1527,12 @@ static void cfg_boot_teken() {
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_boot_scroll_y, CFG_BOOT_MAX_SCROLL);
+
+    // Header + nav-balk blijven vast: gescrolde inhoud heeft geen clipping en
+    // kan er dus overheen/doorheen lopen — na de inhoud opnieuw tekenen dekt
+    // dat netjes af (zelfde patroon als helderheid_balk_teken() in cfg_hoofd_teken()).
+    cfg_sub_header("BOOT");
+    nav_bar_teken();
 }
 
 // Totale content-hoogte van dit tabblad (som van alle y+= stappen + hoogte van
@@ -1822,6 +1832,12 @@ static void cfg_we_teken() {
     _held_slider_teken(y, "NACHT (VAREND)", held_nacht_varend);
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_we_scroll_y, CFG_WE_MAX_SCROLL);
+
+    // Header + nav-balk blijven vast: gescrolde inhoud heeft geen clipping en
+    // kan er dus overheen/doorheen lopen — na de inhoud opnieuw tekenen dekt
+    // dat netjes af (zelfde patroon als helderheid_balk_teken() in cfg_hoofd_teken()).
+    cfg_sub_header("WEERGAVE & ENERGIE");
+    nav_bar_teken();
 }
 
 // Vaste inhoud onafhankelijk van de (runtime) TOKEN-rij: FIRMWARE UPDATEN,
@@ -1855,6 +1871,12 @@ static void cfg_update_teken() {
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_update_scroll_y, CFG_UPDATE_MAX_SCROLL);
+
+    // Header + nav-balk blijven vast: gescrolde inhoud heeft geen clipping en
+    // kan er dus overheen/doorheen lopen — na de inhoud opnieuw tekenen dekt
+    // dat netjes af (zelfde patroon als helderheid_balk_teken() in cfg_hoofd_teken()).
+    cfg_sub_header("VERBINDINGEN");
+    nav_bar_teken();
 }
 
 static void cfg_instellingen_teken() {

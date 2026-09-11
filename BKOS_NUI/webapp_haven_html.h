@@ -1,10 +1,12 @@
 // webapp_haven_html.h — HAVEN-fotobeheerpagina (/haven). Puur HTML/CSS/JS,
-// geen externe dependencies (moet werken zonder internet). Verkleint/dithert
-// een gekozen foto in de browser naar exact de doelresolutie + het RGB565-
-// kleurenrooster van het apparaat (zelfde aanpak als eerder met Python/PIL
-// gedaan voor de ingebakken voorbeeldfoto's) vóórdat 'm geüpload wordt —
-// maakt uploaden iets trager, maar de foto komt al zo klein als mogelijk aan,
-// belangrijk gezien de kleine SPIFFS-partitie op de meeste platforms.
+// geen externe dependencies (moet werken zonder internet). Verkleint een
+// gekozen foto in de browser naar exact de doelresolutie (canvas "cover"-crop)
+// en encodeert 'm als JPEG op een kwaliteit die binnen de servergrens past
+// (maxUploadBytes, opgehaald via /haven/info) vóórdat 'm geüpload wordt —
+// dus vóór het versturen al zo klein als nodig, i.p.v. eerst het hele
+// bestand versturen en pas daarna te ontdekken dat het te groot is. GEEN
+// dithering meer (zie encodeerBinnenBudget hieronder): dat bleek de JPEG-
+// compressie juist tegen te werken en foto's onnodig groot te maken.
 #pragma once
 
 const char WEBAPP_HAVEN_HTML[] PROGMEM = R"HTMLPAGE(<!DOCTYPE html>
@@ -112,7 +114,7 @@ section h2{
 
 <script>
 'use strict';
-var doelW = 800, doelH = 480;
+var doelW = 800, doelH = 480, maxUploadBytes = 300 * 1024;
 
 function esc(s){ var d=document.createElement('div'); d.textContent=String(s); return d.innerHTML; }
 function fmtBytes(n){
@@ -126,7 +128,7 @@ function melding(tekst, klasse){
 
 function info(){
   fetch('/haven/info').then(function(r){ return r.json(); }).then(function(d){
-    doelW = d.w; doelH = d.h;
+    doelW = d.w; doelH = d.h; maxUploadBytes = d.maxBytes || maxUploadBytes;
     document.getElementById('hdrSub').textContent = doelW + '×' + doelH + ' · ' + d.aantal + ' foto\'s';
     document.getElementById('status').innerHTML =
       'Doelresolutie: <b>' + doelW + '×' + doelH + '</b><br>' +
@@ -174,38 +176,32 @@ document.getElementById('bestandInput').addEventListener('change', function(e){
   verwerkEnUpload(file);
 });
 
-// Vult de tegel op (x,y) met de gemiddelde/dichtstbijzijnde RGB565-kleur en
-// diffundeert de afrondingsfout naar de buren — Floyd-Steinberg, dezelfde
-// aanpak als eerder met Python/PIL gedaan voor de ingebakken voorbeeldfoto's.
-// Zonder dit laten gladde luchten/verlopen zichtbare banden zien op het
-// 16-bit scherm.
-function ditherRGB565(imgData){
-  var d = imgData.data, w = imgData.width, h = imgData.height;
-  function q(v, stap){ var r = Math.round(v / stap) * stap; return r < 0 ? 0 : (r > 255 ? 255 : r); }
-  function diffuse(x, y, er, eg, eb, f){
-    if (x < 0 || x >= w || y < 0 || y >= h) return;
-    var i = (y * w + x) * 4;
-    d[i]   = Math.max(0, Math.min(255, d[i]   + er * f));
-    d[i+1] = Math.max(0, Math.min(255, d[i+1] + eg * f));
-    d[i+2] = Math.max(0, Math.min(255, d[i+2] + eb * f));
-  }
-  for (var y = 0; y < h; y++){
-    for (var x = 0; x < w; x++){
-      var i = (y * w + x) * 4;
-      var or_ = d[i], og = d[i+1], ob = d[i+2];
-      var nr = q(or_, 8), ng = q(og, 4), nb = q(ob, 8);  // RGB565: 5/6/5 bit
-      d[i] = nr; d[i+1] = ng; d[i+2] = nb;
-      var er = or_ - nr, eg = og - ng, eb = ob - nb;
-      diffuse(x+1, y,   er, eg, eb, 7/16);
-      diffuse(x-1, y+1, er, eg, eb, 3/16);
-      diffuse(x,   y+1, er, eg, eb, 5/16);
-      diffuse(x+1, y+1, er, eg, eb, 1/16);
+// Geen dithering meer vóór het JPEG-encoderen: Floyd-Steinberg voegt fijne
+// pseudo-willekeurige ruis toe over de hele foto, en dat is precies wat een
+// DCT-gebaseerde codec (JPEG) het slechtst kan comprimeren — een gedithered
+// 800x480-foto werd daardoor makkelijk 3-10x groter dan dezelfde foto zonder
+// dithering, en liep zo alsnog tegen de servergrens aan. JPEG's eigen
+// kwantisatie doet al genoeg aan gladde verlopen; het risico op lichte
+// bandvorming weegt niet op tegen een upload die gewoon niet lukt.
+var KWALITEIT_STAPPEN = [0.75, 0.6, 0.45, 0.32, 0.22];
+
+// Probeert canvas.toBlob() op steeds lagere kwaliteit tot de blob binnen
+// maxUploadBytes past (of de laagste stap bereikt is — dan die maar, beter
+// een zichtbaar iets grovere foto dan een upload die blijft mislukken).
+function encodeerBinnenBudget(canvas, stapIdx, callback){
+  var kwaliteit = KWALITEIT_STAPPEN[stapIdx];
+  canvas.toBlob(function(blob){
+    var laatsteStap = stapIdx >= KWALITEIT_STAPPEN.length - 1;
+    if (blob && (blob.size <= maxUploadBytes || laatsteStap)){
+      callback(blob);
+    } else {
+      encodeerBinnenBudget(canvas, stapIdx + 1, callback);
     }
-  }
+  }, 'image/jpeg', kwaliteit);
 }
 
 function verwerkEnUpload(file){
-  melding('Foto wordt verkleind en gedithered…', '');
+  melding('Foto wordt verkleind…', '');
   document.getElementById('uploadBtn').disabled = true;
   var img = new Image();
   img.onload = function(){
@@ -218,11 +214,7 @@ function verwerkEnUpload(file){
     var sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, doelW, doelH);
 
-    var imgData = ctx.getImageData(0, 0, doelW, doelH);
-    ditherRGB565(imgData);
-    ctx.putImageData(imgData, 0, 0);
-
-    canvas.toBlob(function(blob){ uploadBlob(blob); }, 'image/jpeg', 0.65);
+    encodeerBinnenBudget(canvas, 0, function(blob){ uploadBlob(blob); });
   };
   img.onerror = function(){
     melding('Kon de foto niet lezen.', 'fout');
@@ -250,7 +242,10 @@ function uploadBlob(blob){
       melding('Foto opgeslagen als ' + d.naam + '.', 'ok');
       info(); lijst();
     } else {
-      melding('Upload mislukt (' + (xhr.status === 403 ? 'onjuiste pincode' : 'te groot of opslag vol') + ').', 'fout');
+      var reden = xhr.status === 403 ? 'onjuiste pincode'
+                : xhr.status === 413 ? 'bestand nog te groot, ook na verkleinen'
+                : 'opslag vol of bestand ongeldig';
+      melding('Upload mislukt (' + reden + ').', 'fout');
     }
   };
   xhr.onerror = function(){

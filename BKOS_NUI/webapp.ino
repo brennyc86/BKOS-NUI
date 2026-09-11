@@ -34,7 +34,11 @@ static bool _pin_ok(const String& ingevoerd) {
 static uint8_t* _hav_upload_buf = nullptr;
 static size_t   _hav_upload_cap = 0;
 static size_t   _hav_upload_len = 0;
-static bool     _hav_upload_ok  = false;   // PIN klopte + nog binnen de groottegrens
+// Los van elkaar bijgehouden i.p.v. één "ok"-vlag — anders krijgt een client
+// bij een te grote foto dezelfde HTTP 403 als bij een foute pincode, en toont
+// de webpagina dus ten onrechte "onjuiste pincode" i.p.v. "te groot".
+static bool     _hav_pin_ok    = false;
+static bool     _hav_te_groot  = false;
 
 void webapp_setup() {
     if (_http_gestart) return;
@@ -54,6 +58,7 @@ void webapp_setup() {
         s += ",\"h\":"; s += h;
         s += ",\"vrij\":"; s += (uint32_t)haven_spiffs_vrij();
         s += ",\"aantal\":"; s += haven_gebruikersfoto_aantal();
+        s += ",\"maxBytes\":"; s += (uint32_t)HAV_UPLOAD_MAX_BYTES;
         s += '}';
         _http.send(200, "application/json", s);
     });
@@ -87,33 +92,34 @@ void webapp_setup() {
     // vrijwel altijd losse 0x00-bytes, wat de foto stilletjes zou afkappen.
     _http.on("/haven/upload", HTTP_POST,
         []() {  // aangeroepen zodra de volledige body binnen is
+            if (!_hav_pin_ok)      { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}");    return; }
+            if (_hav_te_groot)     { _http.send(413, "application/json", "{\"ok\":false,\"reden\":\"groot\"}");  return; }
             char naam[24] = "";
-            bool opgeslagen = false;
-            if (_hav_upload_ok && _hav_upload_len > 0) {
-                opgeslagen = haven_gebruikersfoto_opslaan(_hav_upload_buf, _hav_upload_len, naam, sizeof(naam));
-            }
+            bool opgeslagen = _hav_upload_len > 0 &&
+                haven_gebruikersfoto_opslaan(_hav_upload_buf, _hav_upload_len, naam, sizeof(naam));
             if (opgeslagen) {
                 _http.send(200, "application/json", String("{\"ok\":true,\"naam\":\"") + naam + "\"}");
             } else {
-                _http.send(_hav_upload_ok ? 400 : 403, "application/json", "{\"ok\":false}");
+                _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"opslag\"}");
             }
         },
         []() {  // upload-handler: meerdere keren aangeroepen tijdens het streamen
             HTTPUpload& up = _http.upload();
             if (up.status == UPLOAD_FILE_START) {
                 _hav_upload_len = 0;
-                _hav_upload_ok  = _pin_ok(_http.arg("pin"));
+                _hav_te_groot   = false;
+                _hav_pin_ok     = _pin_ok(_http.arg("pin"));
             } else if (up.status == UPLOAD_FILE_WRITE) {
-                if (!_hav_upload_ok) return;  // PIN al fout: chunks negeren, geen zinloos werk
+                if (!_hav_pin_ok || _hav_te_groot) return;  // al afgekeurd: chunks negeren, geen zinloos werk
                 if (_hav_upload_len + up.currentSize > HAV_UPLOAD_MAX_BYTES) {
-                    _hav_upload_ok = false;  // te groot — rest van de stream negeren
+                    _hav_te_groot = true;  // rest van de stream negeren
                     return;
                 }
                 if (_hav_upload_len + up.currentSize > _hav_upload_cap) {
                     size_t nieuwe_cap = _hav_upload_cap ? _hav_upload_cap * 2 : 16384;
                     if (nieuwe_cap < _hav_upload_len + up.currentSize) nieuwe_cap = _hav_upload_len + up.currentSize;
                     uint8_t* nieuw = (uint8_t*)realloc(_hav_upload_buf, nieuwe_cap);
-                    if (!nieuw) { _hav_upload_ok = false; return; }
+                    if (!nieuw) { _hav_te_groot = true; return; }  // heap-tekort: als "te groot" behandelen
                     _hav_upload_buf = nieuw;
                     _hav_upload_cap = nieuwe_cap;
                 }

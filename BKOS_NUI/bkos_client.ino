@@ -32,6 +32,10 @@ static byte _ws_prev_modus = 255;
 static byte _ws_prev_licht = 255;
 static byte _ws_prev_paneel[PANEEL_KNOP_MAX];
 static bool _mdns_gestart = false;
+static bool _ws_gestart = false;
+// onEvent() hoeft maar één keer geregistreerd — bkos_client_setup()/_stop()
+// schakelen verder alleen begin()/close(), zelfde patroon als webapp.ino.
+static bool _ws_handler_klaar = false;
 
 // ─── JSON builders (String in handtekening: String = Arduino-type, geen probleem) ──
 
@@ -192,36 +196,50 @@ static void _mdns_start() {
 // ─── Setup: gebruik lambda zodat WStype_t NIET in standalone functie-handtekening staat ──
 
 void bkos_client_setup() {
+    if (_ws_gestart) return;
     memset(_ws_prev_output, 255, sizeof(_ws_prev_output));
     memset(_ws_prev_paneel, 255, sizeof(_ws_prev_paneel));
+    memset(_ws_klanten, 0, sizeof(_ws_klanten));
+    memset(_ws_ontgrendeld, 0, sizeof(_ws_ontgrendeld));
     _ws.begin();
-    // Lambda vermijdt auto-prototype met WStype_t in de handtekening
-    _ws.onEvent([](uint8_t num, WStype_t type, uint8_t* payload, unsigned int length) {
-        switch (type) {
-            case WStype_CONNECTED: {
-                _ws_klanten[num]     = true;
-                _ws_ontgrendeld[num] = false;
-                String m1 = _io_full_json(); _ws.sendTXT(num, m1);
-                String m2 = _state_json();   _ws.sendTXT(num, m2);
-                String m3 = _net_json();     _ws.sendTXT(num, m3);
-                String m4 = _info_json();    _ws.sendTXT(num, m4);
-                String m5 = _paneel_json();  _ws.sendTXT(num, m5);
-                break;
+    if (!_ws_handler_klaar) {
+        // Lambda vermijdt auto-prototype met WStype_t in de handtekening
+        _ws.onEvent([](uint8_t num, WStype_t type, uint8_t* payload, unsigned int length) {
+            switch (type) {
+                case WStype_CONNECTED: {
+                    _ws_klanten[num]     = true;
+                    _ws_ontgrendeld[num] = false;
+                    String m1 = _io_full_json(); _ws.sendTXT(num, m1);
+                    String m2 = _state_json();   _ws.sendTXT(num, m2);
+                    String m3 = _net_json();     _ws.sendTXT(num, m3);
+                    String m4 = _info_json();    _ws.sendTXT(num, m4);
+                    String m5 = _paneel_json();  _ws.sendTXT(num, m5);
+                    break;
+                }
+                case WStype_DISCONNECTED:
+                    _ws_klanten[num]     = false;
+                    _ws_ontgrendeld[num] = false;
+                    break;
+                case WStype_TEXT:
+                    _verwerk_cmd(num, String((char*)payload));
+                    break;
+                default: break;
             }
-            case WStype_DISCONNECTED:
-                _ws_klanten[num]     = false;
-                _ws_ontgrendeld[num] = false;
-                break;
-            case WStype_TEXT:
-                _verwerk_cmd(num, String((char*)payload));
-                break;
-            default: break;
-        }
-    });
+        });
+        _ws_handler_klaar = true;
+    }
+    _ws_gestart = true;
+}
+
+void bkos_client_stop() {
+    if (!_ws_gestart) return;
+    _ws.close();
+    if (_mdns_gestart) { MDNS.end(); _mdns_gestart = false; }
+    _ws_gestart = false;
 }
 
 void bkos_client_loop() {
-    if (!wifi_verbonden) return;
+    if (!_ws_gestart) return;
     _ws.loop();
     if (!_mdns_gestart) _mdns_start();
 

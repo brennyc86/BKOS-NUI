@@ -6,5 +6,6 @@
 #pragma once
 #ifdef ESP32
 void webapp_setup();
+void webapp_stop();   // sluit de listening-socket weer (hotspot gestopt)
 void webapp_loop();
 #endif // ESP32

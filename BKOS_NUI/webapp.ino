@@ -14,6 +14,10 @@
 
 static WebServer _http(80);
 static bool _http_gestart = false;
+// Handlers hoeven maar één keer geregistreerd — webapp_setup()/_stop() schakelen
+// verder alleen de listening-socket (begin/close), zodat een hotspot-sessie
+// meerdere keren aan/uit kan zonder de .on()-lijst telkens te laten aangroeien.
+static bool _http_handlers_klaar = false;
 
 static bool _pin_ok(const String& ingevoerd) {
     char opgeslagen[5];
@@ -33,6 +37,8 @@ static size_t   _hav_upload_len = 0;
 static bool     _hav_upload_ok  = false;   // PIN klopte + nog binnen de groottegrens
 
 void webapp_setup() {
+    if (_http_gestart) return;
+    if (_http_handlers_klaar) { _http.begin(); _http_gestart = true; return; }
     _http.on("/", HTTP_GET, []() {
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HTML);
     });
@@ -122,8 +128,15 @@ void webapp_setup() {
         _http.sendHeader("Location", "/", true);
         _http.send(302, "text/plain", "");
     });
+    _http_handlers_klaar = true;
     _http.begin();
     _http_gestart = true;
+}
+
+void webapp_stop() {
+    if (!_http_gestart) return;
+    _http.close();
+    _http_gestart = false;
 }
 
 void webapp_loop() {

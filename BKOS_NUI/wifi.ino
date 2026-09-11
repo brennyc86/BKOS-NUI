@@ -8,6 +8,8 @@
 #include "getijdata.h"
 #include "bkos_net.h"
 #include "melding.h"
+#include "bkos_client.h"    // bkos_client_setup/stop() — alleen actief tijdens de tijdelijke hotspot
+#include "webapp.h"         // webapp_setup/stop()
 
 bool wifi_aangesloten     = false;
 volatile bool wifi_ota_modus = false;
@@ -268,14 +270,14 @@ static uint32_t _hs_eind_ms   = 0;
 static char     _hs_ssid[24]  = "";
 static char     _hs_wachtwoord[13] = "";
 
+// Bewust een open netwerk (geen wachtwoord) — op Brendans expliciete verzoek,
+// zeker tijdens het testen. _hs_wachtwoord blijft leeg; wifi_hotspot_info()
+// geeft die leeg terug, en de aanroeper (screen_bestanden.ino) laat het
+// wachtwoorddeel dan weg i.p.v. een lege waarde te tonen.
 static void _hs_creds_genereren() {
-    String mac = WiFi.macAddress();  // "AA:BB:CC:DD:EE:FF"
-    mac.replace(":", "");
-    String staart = mac.substring(mac.length() - 4);
-    staart.toLowerCase();
     if (strlen(net_eigen_naam) > 0) snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-%s", net_eigen_naam);
     else                            snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-NUI");
-    snprintf(_hs_wachtwoord, sizeof(_hs_wachtwoord), "boot%s", staart.c_str());  // 8 tekens — WPA2-minimum
+    _hs_wachtwoord[0] = '\0';
 }
 
 bool wifi_hotspot_actief() { return _hs_actief; }
@@ -294,13 +296,24 @@ void wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, si
 void wifi_hotspot_starten(uint32_t duur_s) {
     _hs_creds_genereren();
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(_hs_ssid, _hs_wachtwoord);
+    WiFi.softAP(_hs_ssid);  // geen wachtwoord = open netwerk
     _hs_actief  = true;
     _hs_eind_ms = millis() + duur_s * 1000UL;
+
+    // Webapp + websocket-server UITSLUITEND tijdens de hotspot: bkos_client_setup()/
+    // webapp_setup() draaiden ooit synchroon in hw_setup() vóór de splash-vertraging,
+    // gelijktijdig met de asynchrone wifi-opstarttaak — dat gaf op echte hardware een
+    // boot-lus (zie bkos_client.h). Hier starten ze pas ruim ná het opstarten, op
+    // expliciete tik van de gebruiker, met de GUI/wifi-taken allang in rust — dus
+    // buiten het venster waarin die crash destijds optrad.
+    bkos_client_setup();
+    webapp_setup();
 }
 
 void wifi_hotspot_stoppen() {
     if (!_hs_actief) return;
+    webapp_stop();
+    bkos_client_stop();
     WiFi.softAPdisconnect(true);
     _hs_actief = false;
     WiFi.mode(wifi_verbonden ? WIFI_STA : WIFI_OFF);

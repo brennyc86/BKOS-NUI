@@ -6,6 +6,7 @@
 #include "nav_bar.h"        // sb_scherm_teken, SB_KLOK_X
 #include "wifi.h"           // wifi_hotspot_*
 #include <WiFi.h>
+#include <ctype.h>          // tolower() voor de bestandsformaat-filter
 
 extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
@@ -23,13 +24,41 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define BF_HOTSPOT_DUUR_S   (30UL * 60UL)   // 30 minuten per keer starten
 
 #define BF_HDR_H     30
+#define BF_INFO_Y    (CONTENT_Y + BF_HDR_H + 6)   // IP/webapp-regel
+#define BF_RUIMTE_Y  (BF_INFO_Y + 16)              // vrij/totaal-regel
+
+// Knoppenrij 1: SPIFFS/SD-wisselknop + HOTSPOT-knop naast elkaar
+#define BF_ROW1_Y    (BF_RUIMTE_Y + 20)
+#define BF_ROW1_H    28
+#define BF_TGL_W     90   // breedte SPIFFS/SD-knoppen
+
 #if BF_HOTSPOT_MOGELIJK
-  #define BF_TOP_H   122  // IP-regel + ruimte-regel + SPIFFS/SD-knoppen + hotspot-regels
+  #if BF_SD_MOGELIJK
+    #define BF_HOTSPOT_X (10 + 2 * (BF_TGL_W + 8))
+  #else
+    #define BF_HOTSPOT_X 10
+  #endif
+  #define BF_HOTSPOT_W 150
+  // Statusregel (SSID/wachtwoord/resterende tijd) — alleen tekst zichtbaar
+  // als de hotspot actief is, maar de ruimte blijft vast gereserveerd zodat
+  // rij 2 (filters) nooit verspringt.
+  #define BF_HS_STATUS_Y (BF_ROW1_Y + BF_ROW1_H + 4)
+  #define BF_HS_STATUS_H 16
 #else
-  #define BF_TOP_H   78   // IP-regel + ruimte-regel + SPIFFS/SD-knoppen samen
+  #define BF_HS_STATUS_H 0
 #endif
+
+// Knoppenrij 2: filter op bestandsformaat (i.p.v. echte submappen — SPIFFS/
+// LittleFS kennen geen mappen voor bestanden buiten /apps en /haven, dus de
+// meeste bestanden (config-csv's, wifi-json, enz.) staan sowieso plat in de
+// root; een filter houdt die lijst behapbaar zonder elke module's opslagpad
+// aan te hoeven passen).
+#define BF_FILTER_Y  (BF_ROW1_Y + BF_ROW1_H + BF_HS_STATUS_H + 4)
+#define BF_FILTER_H  28
+#define BF_FLT_W     140
+
 #define BF_ROW_H     40
-#define BF_START_Y   (CONTENT_Y + BF_HDR_H + BF_TOP_H)
+#define BF_START_Y   (BF_FILTER_Y + BF_FILTER_H + 6)
 #define BF_LIST_BOT  (NAV_Y - 8)
 
 #if SCREEN_SMALL
@@ -63,8 +92,27 @@ static int  bf_max_scroll = 0;
 static unsigned long bf_flits_tot = 0;
 static char bf_flits_msg[40] = "";
 
+#define BF_FILTER_AFBEELDING 0
+#define BF_FILTER_OVERIG     1
+static int bf_filter = BF_FILTER_AFBEELDING;   // welk formaat toont de lijst nu
+
 #define BF_PAD_LEN 64
 static char bf_pad[BF_PAD_LEN] = "/";   // huidige map, altijd zonder trailing slash behalve root
+
+// Het formaat waarin de HAVEN-achtergrondfoto's worden opgeslagen (zie
+// haven_achtergrond.ino) — de filter "AFBEELDINGEN" toont dit format (en de
+// gangbare varianten ervan), "OVERIG" toont al het andere (config-csv's,
+// wifi-json, Lua-apps, enz.).
+static bool _bf_is_afbeelding(const char* naam) {
+    const char* punt = strrchr(naam, '.');
+    if (!punt) return false;
+    char ext[6]; size_t n = strlen(punt);
+    if (n >= sizeof(ext)) return false;
+    for (size_t i = 0; i < n; i++) ext[i] = (char)tolower((unsigned char)punt[i]);
+    ext[n] = '\0';
+    return strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0 ||
+           strcmp(ext, ".png") == 0 || strcmp(ext, ".bmp") == 0;
+}
 
 static void _bf_fmt_bytes(uint32_t n, char* buf, size_t len) {
     if (n < 1024) snprintf(buf, len, "%u B", (unsigned)n);
@@ -100,11 +148,19 @@ static void _bf_scan() {
     if (!root || !root.isDirectory()) return;
     File f = root.openNextFile();
     while (f && bf_cnt < BF_MAX) {
-        strncpy(bf_lijst[bf_cnt].naam, _bf_basisnaam(f.name()), sizeof(bf_lijst[bf_cnt].naam) - 1);
-        bf_lijst[bf_cnt].naam[sizeof(bf_lijst[bf_cnt].naam) - 1] = '\0';
-        bf_lijst[bf_cnt].bytes = f.size();
-        bf_lijst[bf_cnt].map   = f.isDirectory();
-        bf_cnt++;
+        bool is_map = f.isDirectory();
+        const char* naam = _bf_basisnaam(f.name());
+        // Mappen tonen ongeacht filter (anders is er geen doorheen te navigeren);
+        // bestanden alleen als ze bij het actief gekozen formaat horen.
+        bool zichtbaar = is_map ||
+            (bf_filter == BF_FILTER_AFBEELDING ? _bf_is_afbeelding(naam) : !_bf_is_afbeelding(naam));
+        if (zichtbaar) {
+            strncpy(bf_lijst[bf_cnt].naam, naam, sizeof(bf_lijst[bf_cnt].naam) - 1);
+            bf_lijst[bf_cnt].naam[sizeof(bf_lijst[bf_cnt].naam) - 1] = '\0';
+            bf_lijst[bf_cnt].bytes = f.size();
+            bf_lijst[bf_cnt].map   = is_map;
+            bf_cnt++;
+        }
         f = root.openNextFile();
     }
 }
@@ -136,6 +192,7 @@ static void _bf_ga_omhoog() {
 void screen_bestanden_reset() {
     strncpy(bf_pad, "/", sizeof(bf_pad));
     bf_scroll_y = 0;
+    bf_filter   = BF_FILTER_AFBEELDING;
 }
 
 static bool _bf_verwijder(int i) {
@@ -176,66 +233,71 @@ void screen_bestanden_teken() {
         tft.print(bf_pad);
     }
 
-    int y = CONTENT_Y + BF_HDR_H + 6;
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(10, y);
+    tft.setCursor(10, BF_INFO_Y);
     if (WiFi.status() == WL_CONNECTED) {
         tft.print("Webapp: http://"); tft.print(WiFi.localIP().toString()); tft.print("/haven");
     } else {
         tft.print("Geen WiFi-verbinding — webapp niet bereikbaar");
     }
-    y += 16;
 
     uint32_t vrij, totaal;
     _bf_ruimte(&vrij, &totaal);
     char vb[16], tb[16];
-    tft.setCursor(10, y);
+    tft.setCursor(10, BF_RUIMTE_Y);
     if (totaal > 0) {
         _bf_fmt_bytes(vrij, vb, sizeof(vb)); _bf_fmt_bytes(totaal, tb, sizeof(tb));
         tft.print(vb); tft.print(" vrij van "); tft.print(tb);
     } else {
         tft.print("Opslaggrootte niet opvraagbaar op dit platform");
     }
-    y += 20;
 
+    // ─── Rij 1: SPIFFS/SD-wisselknop + HOTSPOT-knop ──────────────────────────
 #if BF_SD_MOGELIJK
-    int tb_w = 90, tb_h = 28;
-    tft.fillRoundRect(10, y, tb_w, tb_h, 6, !bf_toont_sd ? C_CYAN : C_SURFACE2);
+    tft.fillRoundRect(10, BF_ROW1_Y, BF_TGL_W, BF_ROW1_H, 6, !bf_toont_sd ? C_CYAN : C_SURFACE2);
     tft.setTextSize(1); tft.setTextColor(!bf_toont_sd ? C_BG : C_TEXT_DIM);
-    tft.setCursor(10 + (tb_w - 6 * 6) / 2, y + (tb_h - 8) / 2); tft.print("SPIFFS");
-    tft.fillRoundRect(10 + tb_w + 8, y, tb_w, tb_h, 6, bf_toont_sd ? C_CYAN : C_SURFACE2);
+    tft.setCursor(10 + (BF_TGL_W - 6 * 6) / 2, BF_ROW1_Y + (BF_ROW1_H - 8) / 2); tft.print("SPIFFS");
+    tft.fillRoundRect(10 + BF_TGL_W + 8, BF_ROW1_Y, BF_TGL_W, BF_ROW1_H, 6, bf_toont_sd ? C_CYAN : C_SURFACE2);
     tft.setTextColor(bf_toont_sd ? C_BG : C_TEXT_DIM);
-    tft.setCursor(10 + tb_w + 8 + (tb_w - 2 * 6) / 2, y + (tb_h - 8) / 2); tft.print("SD");
+    tft.setCursor(10 + BF_TGL_W + 8 + (BF_TGL_W - 2 * 6) / 2, BF_ROW1_Y + (BF_ROW1_H - 8) / 2); tft.print("SD");
     if (bf_toont_sd && !app_sd_aanwezig()) {
         tft.setTextColor(C_AMBER);
-        tft.setCursor(10 + 2 * tb_w + 24, y + (tb_h - 8) / 2); tft.print("geen SD-kaart gevonden");
+        tft.setCursor(10 + 2 * BF_TGL_W + 24, BF_ROW1_Y + (BF_ROW1_H - 8) / 2); tft.print("geen SD-kaart gevonden");
     }
 #endif
-    y += 34;  // vaste ruimte, ongeacht of BF_SD_MOGELIJK actief was — houdt lay-out gelijk
 
 #if BF_HOTSPOT_MOGELIJK
     bool hs_actief = wifi_hotspot_actief();
-    tft.setTextSize(1);
-    tft.setCursor(10, y);
+    // Donker/neutraal als uit, opvallend groen als aan — bewust GEEN rood
+    // (dat oogt als foutstatus, terwijl een lopende hotspot juist gewenst is).
+    tft.fillRoundRect(BF_HOTSPOT_X, BF_ROW1_Y, BF_HOTSPOT_W, BF_ROW1_H, 6, hs_actief ? C_GREEN : C_SURFACE3);
+    tft.setTextSize(1); tft.setTextColor(hs_actief ? C_BG : C_TEXT_DIM);
+    const char* hb_lbl = hs_actief ? "STOP HOTSPOT" : "START HOTSPOT";
+    tft.setCursor(BF_HOTSPOT_X + (BF_HOTSPOT_W - (int)strlen(hb_lbl) * 6) / 2, BF_ROW1_Y + (BF_ROW1_H - 8) / 2);
+    tft.print(hb_lbl);
+
+    // Statusregel — alleen tekst als de hotspot actief is, ruimte blijft vast.
     if (hs_actief) {
         char ssid[24], ww[13];
         wifi_hotspot_info(ssid, sizeof(ssid), ww, sizeof(ww));
-        tft.setTextColor(C_GREEN);
-        tft.print("Hotspot AAN: "); tft.print(ssid); tft.print(" / "); tft.print(ww);
-        tft.setCursor(10, y + 14); tft.setTextColor(C_TEXT_DIM);
         uint32_t rs = wifi_hotspot_resterend_s();
-        tft.print("IP 192.168.4.1  -  nog "); tft.print((rs + 59) / 60); tft.print(" min");
-    } else {
-        tft.setTextColor(C_TEXT_DIM);
-        tft.print("Geen normaal netwerk? Start een eigen hotspot:");
+        tft.setTextColor(C_GREEN);
+        tft.setCursor(10, BF_HS_STATUS_Y);
+        tft.print(ssid);
+        if (ww[0]) { tft.print(" / "); tft.print(ww); }
+        else       { tft.print(" (open netwerk)"); }
+        tft.print("  -  192.168.4.1  -  nog "); tft.print((rs + 59) / 60); tft.print(" min");
     }
-    int hb_y = y + 30, hb_w = 150, hb_h = 26;
-    tft.fillRoundRect(10, hb_y, hb_w, hb_h, 6, hs_actief ? C_RED_BRIGHT : C_CYAN);
-    tft.setTextColor(C_BG);
-    const char* hb_lbl = hs_actief ? "STOP HOTSPOT" : "START HOTSPOT";
-    tft.setCursor(10 + (hb_w - (int)strlen(hb_lbl) * 6) / 2, hb_y + (hb_h - 8) / 2);
-    tft.print(hb_lbl);
 #endif
+
+    // ─── Rij 2: filter op bestandsformaat (i.p.v. echte submappen) ───────────
+    bool flt_afb = (bf_filter == BF_FILTER_AFBEELDING);
+    tft.fillRoundRect(10, BF_FILTER_Y, BF_FLT_W, BF_FILTER_H, 6, flt_afb ? C_CYAN : C_SURFACE2);
+    tft.setTextSize(1); tft.setTextColor(flt_afb ? C_BG : C_TEXT_DIM);
+    tft.setCursor(10 + (BF_FLT_W - 12 * 6) / 2, BF_FILTER_Y + (BF_FILTER_H - 8) / 2); tft.print("AFBEELDINGEN");
+    tft.fillRoundRect(10 + BF_FLT_W + 8, BF_FILTER_Y, BF_FLT_W, BF_FILTER_H, 6, !flt_afb ? C_CYAN : C_SURFACE2);
+    tft.setTextColor(!flt_afb ? C_BG : C_TEXT_DIM);
+    tft.setCursor(10 + BF_FLT_W + 8 + (BF_FLT_W - 6 * 6) / 2, BF_FILTER_Y + (BF_FILTER_H - 8) / 2); tft.print("OVERIG");
 
     int y0 = BF_START_Y - bf_scroll_y;
     if (bf_cnt == 0) {
@@ -310,25 +372,32 @@ void screen_bestanden_run(int x, int y, bool aanraking) {
     }
 
 #if BF_SD_MOGELIJK
-    // SPIFFS/SD-wisselknop — zelfde vaste y als in screen_bestanden_teken()
-    int tgl_y = CONTENT_Y + BF_HDR_H + 6 + 16 + 20;
-    if (y >= tgl_y && y < tgl_y + 28) {
-        int tb_w = 90;
-        if (x >= 10 && x < 10 + tb_w) { bf_toont_sd = false; bf_scroll_y = 0; screen_bestanden_teken(); return; }
-        if (x >= 10 + tb_w + 8 && x < 10 + 2 * tb_w + 8) { bf_toont_sd = true; bf_scroll_y = 0; screen_bestanden_teken(); return; }
+    // SPIFFS/SD-wisselknop — zelfde macro's als in screen_bestanden_teken()
+    if (y >= BF_ROW1_Y && y < BF_ROW1_Y + BF_ROW1_H) {
+        if (x >= 10 && x < 10 + BF_TGL_W) { bf_toont_sd = false; bf_scroll_y = 0; screen_bestanden_teken(); return; }
+        if (x >= 10 + BF_TGL_W + 8 && x < 10 + 2 * BF_TGL_W + 8) { bf_toont_sd = true; bf_scroll_y = 0; screen_bestanden_teken(); return; }
     }
 #endif
 
 #if BF_HOTSPOT_MOGELIJK
-    // Hotspot start/stop-knop — zelfde vaste y als in screen_bestanden_teken()
-    int hb_y = CONTENT_Y + BF_HDR_H + 6 + 16 + 20 + 34 + 30, hb_w = 150, hb_h = 26;
-    if (y >= hb_y && y < hb_y + hb_h && x >= 10 && x < 10 + hb_w) {
+    // Hotspot start/stop-knop — zelfde macro's als in screen_bestanden_teken()
+    if (y >= BF_ROW1_Y && y < BF_ROW1_Y + BF_ROW1_H && x >= BF_HOTSPOT_X && x < BF_HOTSPOT_X + BF_HOTSPOT_W) {
         if (wifi_hotspot_actief()) wifi_hotspot_stoppen();
         else                       wifi_hotspot_starten(BF_HOTSPOT_DUUR_S);
         screen_bestanden_teken();
         return;
     }
 #endif
+
+    // Filter-knoppenrij — zelfde macro's als in screen_bestanden_teken()
+    if (y >= BF_FILTER_Y && y < BF_FILTER_Y + BF_FILTER_H) {
+        if (x >= 10 && x < 10 + BF_FLT_W) {
+            bf_filter = BF_FILTER_AFBEELDING; bf_scroll_y = 0; screen_bestanden_teken(); return;
+        }
+        if (x >= 10 + BF_FLT_W + 8 && x < 10 + 2 * BF_FLT_W + 8) {
+            bf_filter = BF_FILTER_OVERIG; bf_scroll_y = 0; screen_bestanden_teken(); return;
+        }
+    }
 
     if (bf_cnt == 0 || y < BF_START_Y || y >= BF_LIST_BOT) return;
     int y0 = BF_START_Y - bf_scroll_y;

@@ -60,8 +60,16 @@ static int hv_paneel_idx[PANEEL_KNOP_MAX];      // gewone apparaten
 static int hv_paneel_cnt = 0;
 static int hv_licht_paneel_idx[PANEEL_KNOP_MAX]; // PANEEL-knoppen die zelf een licht zijn (bv. deklicht), geen IL-nummer
 static int hv_licht_paneel_cnt = 0;
+static bool hv_overig_aanwezig = false;  // ongenummerd **IL_wit/**IL_rood ("hoofdverlichting") aanwezig?
 static int hv_scroll_y   = 0;
 static int hv_max_scroll = 0;
+
+// Totaal aantal tegels in het VERLICHTING-grid (genummerde lampen + dek-achtige
+// PANEEL-lichten + evt. de "OVERIGE LAMPEN"-tegel) — gedeeld tussen tekenen,
+// hertekenen en tik-hittest zodat ze nooit uit de pas lopen.
+static int _hv_verlicht_totaal() {
+    return hv_lamp_cnt + hv_licht_paneel_cnt + (hv_overig_aanwezig ? 1 : 0);
+}
 
 // ─── Fototegels op volle resolutie ──────────────────────────────────────────
 // haven_achtergrond.ino houdt een persistente kopie van de laatst gedecodeerde
@@ -198,6 +206,8 @@ static void _hv_scan() {
             hv_paneel_idx[hv_paneel_cnt++] = i;
         }
     }
+
+    hv_overig_aanwezig = io_hoofdverlichting_aanwezig();
 }
 
 // Tegelrand: fotovulling + afgeronde hoeken + rand/accent-balk (aan-status).
@@ -273,11 +283,48 @@ static void _hv_lamp_toggle(int nr) {
     net_io_apparaat_toggle(naam);
 }
 
+// ─── Tegel: "OVERIGE LAMPEN" — de ongenummerde **IL_wit/**IL_rood-kanalen
+// ("hoofdverlichting"), die anders nergens een eigen aan/uit-knop hebben (geen
+// lampnummer dus geen PANEEL-knop mogelijk). Alleen getekend/getikt als
+// hv_overig_aanwezig (zie _hv_scan()).
+static void _hv_overig_teken(int x, int y, int w, int h) {
+    bool aan = io_hoofdverlichting_aan();
+    _hv_tile_frame(x, y, w, h, aan);
+    teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood);
+
+    const char* lbl = "OVERIGE LAMPEN";
+    char buf[20]; strncpy(buf, lbl, sizeof(buf) - 1); buf[sizeof(buf) - 1] = '\0';
+    tft.setTextSize(1); tft.setTextColor(aan ? C_CYAN : C_TEXT_DIM);
+    int maxch = (w - 8) / 6;
+    if ((int)strlen(buf) > maxch && maxch > 0) buf[maxch] = '\0';
+    int tw = strlen(buf) * 6;
+    tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 2);
+    tft.print(buf);
+}
+
+// Forceert een PANEEL-apparaat naar een specifieke aan/uit-stand (i.p.v. altijd
+// toggelen) — nodig voor ALLES AAN/UIT, die de dek-achtige lichten moet kunnen
+// FORCEREN i.p.v. blind om te schakelen (dan zou een tweede druk op ALLES AAN
+// een al-aan lamp weer uitzetten). "mix" (s3==1) telt als "niet uit", dus wordt
+// bij ALLES UIT ook meegenomen.
+static void _hv_paneel_zet(int paneel_idx, bool aan_gewenst) {
+    const char* naam = paneel_knop_naam(paneel_idx);
+    byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[paneel_idx] ? 2 : 0);
+    bool nu_uit = (s3 == 0);
+    if (aan_gewenst == nu_uit) _hv_paneel_toggle(paneel_idx);
+}
+
 static void _hv_alles_aan() {
     for (int j = 0; j < hv_lamp_cnt; j++) if (!lamp_aan[hv_lamp_nrs[j]]) _hv_lamp_toggle(hv_lamp_nrs[j]);
+    for (int j = 0; j < hv_licht_paneel_cnt; j++) _hv_paneel_zet(hv_licht_paneel_idx[j], true);
+    if (hv_overig_aanwezig && !io_hoofdverlichting_aan()) io_hoofdverlichting_toggle();
+    io_verlichting_update(); net_app_staat_sturen(); state_save();
 }
 static void _hv_alles_uit() {
     for (int j = 0; j < hv_lamp_cnt; j++) if (lamp_aan[hv_lamp_nrs[j]]) _hv_lamp_toggle(hv_lamp_nrs[j]);
+    for (int j = 0; j < hv_licht_paneel_cnt; j++) _hv_paneel_zet(hv_licht_paneel_idx[j], false);
+    if (hv_overig_aanwezig && io_hoofdverlichting_aan()) io_hoofdverlichting_toggle();
+    io_verlichting_update(); net_app_staat_sturen(); state_save();
 }
 
 // ─── Tegels: PANEEL-apparaten (ook de 'dek'-achtige lichten) ──────────────
@@ -360,12 +407,13 @@ static void _hv_redraw_algemeen(int x0, int w, int y_top) {
 // wél het hele grid opnieuw — maar de foto/kolomtitels/APPARATEN niet).
 static void _hv_redraw_verlicht_grid(int x0, int w, int y_top, int cols, int tile_w) {
     int grid_top = HV_VERLICHT_GRID_TOP(y_top, w);
-    int totaal   = hv_lamp_cnt + hv_licht_paneel_cnt;
+    int totaal   = _hv_verlicht_totaal();
     for (int i = 0; i < totaal; i++) {
         int tx, ty; _hv_tegel_rect(x0, grid_top, i, cols, tile_w, &tx, &ty);
         if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;
         if (i < hv_lamp_cnt) _hv_lamp_teken(hv_lamp_nrs[i], tx, ty, tile_w, HV_TILE_H);
-        else                 _hv_paneel_teken(hv_licht_paneel_idx[i - hv_lamp_cnt], tx, ty, tile_w, HV_TILE_H);
+        else if (i < hv_lamp_cnt + hv_licht_paneel_cnt) _hv_paneel_teken(hv_licht_paneel_idx[i - hv_lamp_cnt], tx, ty, tile_w, HV_TILE_H);
+        else _hv_overig_teken(tx, ty, tile_w, HV_TILE_H);
     }
 }
 
@@ -380,7 +428,7 @@ static int _hv_verlichting_teken(int x0, int w, int y_top, int cols, int tile_w)
     _hv_redraw_verlicht_grid(x0, w, y_top, cols, tile_w);
 
     int grid_top = HV_VERLICHT_GRID_TOP(y_top, w);
-    int totaal   = hv_lamp_cnt + hv_licht_paneel_cnt;
+    int totaal   = _hv_verlicht_totaal();
     int rijen    = (totaal + cols - 1) / cols;
     return (grid_top - y_top) + rijen * (HV_TILE_H + HV_GAP);
 }
@@ -520,18 +568,22 @@ void screen_haven_run(int x, int y, bool aanraking) {
         }
     }
 
-    // ── VERLICHTING: lampgroep-tegels + 'dek'-achtige lichten ──
+    // ── VERLICHTING: lampgroep-tegels + 'dek'-achtige lichten + OVERIGE LAMPEN ──
     int verlicht_grid_top = HV_VERLICHT_GRID_TOP(y0, col_w);
-    int vi = _hv_grid_hit(x, y, 8, verlicht_grid_top, hv_lamp_cnt + hv_licht_paneel_cnt, cols_l, tw_l);
+    int vi = _hv_grid_hit(x, y, 8, verlicht_grid_top, _hv_verlicht_totaal(), cols_l, tw_l);
     if (vi >= 0) {
         int tx, ty; _hv_tegel_rect(8, verlicht_grid_top, vi, cols_l, tw_l, &tx, &ty);
         if (vi < hv_lamp_cnt) {
             _hv_lamp_toggle(hv_lamp_nrs[vi]);
             _hv_lamp_teken(hv_lamp_nrs[vi], tx, ty, tw_l, HV_TILE_H);
-        } else {
+        } else if (vi < hv_lamp_cnt + hv_licht_paneel_cnt) {
             int pidx = hv_licht_paneel_idx[vi - hv_lamp_cnt];
             _hv_paneel_toggle(pidx);
             _hv_paneel_teken(pidx, tx, ty, tw_l, HV_TILE_H);
+        } else {
+            io_hoofdverlichting_toggle();
+            io_verlichting_update(); net_app_staat_sturen(); state_save();
+            _hv_overig_teken(tx, ty, tw_l, HV_TILE_H);
         }
         return;
     }

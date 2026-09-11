@@ -843,6 +843,30 @@ bool io_lamp_effectief_aan(int nr) {
     return false;
 }
 
+// Ongenummerd exact "**IL_wit"/"**IL_rood" (_il_kleur_lamp_nr() == -1) — zie
+// io_verlichting_update() voor hoe dit onderscheiden wordt van de genummerde
+// lampgroepen hierboven.
+bool io_hoofdverlichting_aanwezig() {
+    int n = io_zichtbaar();
+    for (int i = 0; i < n && i < MAX_IO_KANALEN; i++) {
+        if (_il_kleur_lamp_nr(i, "**IL_wit") == -1 || _il_kleur_lamp_nr(i, "**IL_rood") == -1) return true;
+    }
+    return false;
+}
+
+bool io_hoofdverlichting_aan() {
+    int n = io_zichtbaar();
+    for (int i = 0; i < n && i < MAX_IO_KANALEN; i++) {
+        bool is_hoofd = (_il_kleur_lamp_nr(i, "**IL_wit") == -1) || (_il_kleur_lamp_nr(i, "**IL_rood") == -1);
+        if (is_hoofd && io_output[i] == IO_AAN) return true;
+    }
+    return false;
+}
+
+void io_hoofdverlichting_toggle() {
+    interieur_modus = (interieur_modus == INTERIEUR_UIT) ? INTERIEUR_AUTO : INTERIEUR_UIT;
+}
+
 String io_naam_clean(int kanaal) {
     String s = String(io_namen[kanaal]);
     s.trim();

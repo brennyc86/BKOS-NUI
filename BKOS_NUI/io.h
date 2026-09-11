@@ -49,6 +49,16 @@ int   io_il_kanaal_lamp_nr(int kanaal);
 // alleen **IL_wit1 bestaat en de kleur op rood staat) — voor het HAVEN-
 // dashboard, dat de écht-actuele stand wil tonen, niet enkel lamp_aan[].
 bool  io_lamp_effectief_aan(int nr);
+
+// "Hoofdverlichting" — de ongenummerde **IL_wit/**IL_rood-kanalen (géén
+// lampnummer, dus geen PANEEL-knop en geen eigen lamp_aan[]-status). Volgt tot
+// nu toe alleen interieur_modus/int_aan zonder eigen aan/uit-knop ergens in de
+// UI; het HAVEN-dashboard toont 'm als "OVERIGE LAMPEN"-tegel zodra zo'n
+// kanaal bestaat, zodat ook dit niet langer "ongedefinieerd" blijft.
+bool io_hoofdverlichting_aanwezig();       // bestaat er zo'n kanaal? (tegel alleen tonen als ja)
+bool io_hoofdverlichting_aan();            // effectieve aan-stand, zelfde aanpak als io_lamp_effectief_aan()
+void io_hoofdverlichting_toggle();         // wisselt interieur_modus tussen UIT en AUTO
+
 void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
 void  io_attiny_slaap(bool aan);   // ATtiny slaap/wake commando via UART
 int         io_zichtbaar();

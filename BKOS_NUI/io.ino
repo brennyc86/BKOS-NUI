@@ -6,6 +6,7 @@
 #include "bkos_net.h"
 #include "melding.h"
 #include "lamp.h"
+#include "wifi.h"   // ntp_synced() — fail-safe "neem donker aan" zolang de tijd niet bekend is
 
 byte licht_cfg_idx = 0;
 bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=rood, wit anders) — voor UI
@@ -887,21 +888,26 @@ byte io_licht_staat(int kanaal) {
     return LSTATE_ECHT_AAN;
 }
 
-// Tijdsgebaseerde helpers voor LICHT_AUTO
+// Tijdsgebaseerde helpers voor LICHT_AUTO. Zolang de klok nog nooit gesynchro-
+// niseerd is (geen NTP-fix gehad) OF er nog geen zonsondergangtijd bekend is
+// (geen weerdata opgehaald), kunnen we simpelweg niet weten of het dag of
+// nacht is — dan uit voorzorg AANNEMEN dat het donker is (liever onnodig
+// navigatie-/deklicht aan dan geen licht als het toch nacht blijkt: bij ANKER
+// betekent dit licht aan, bij ZEILEN/MOTOR licht aan + interieur op rood).
+// `time(nullptr)` zonder ntp_synced() geeft een zinloze waarde (sinds-boot-
+// seconden of epoch 0), dus die vergelijking mag dan sowieso niet gebeuren.
+static bool _tijd_onbekend() { return !ntp_synced() || meteo_zonsondergang <= 0; }
+
 static bool _nav_licht_auto_aan() {
-    if (meteo_zonsondergang > 0) {
-        time_t nu = time(nullptr);
-        return !meteo_is_dag && (nu >= meteo_zonsondergang + (long)licht_nav_offset_min * 60L);
-    }
-    return !meteo_is_dag;
+    if (_tijd_onbekend()) return true;
+    time_t nu = time(nullptr);
+    return !meteo_is_dag && (nu >= meteo_zonsondergang + (long)licht_nav_offset_min * 60L);
 }
 
 static bool _int_rood_auto_aan() {
-    if (meteo_zonsondergang > 0) {
-        time_t nu = time(nullptr);
-        return !meteo_is_dag && (nu >= meteo_zonsondergang + (long)licht_int_offset_min * 60L);
-    }
-    return !meteo_is_dag;
+    if (_tijd_onbekend()) return true;
+    time_t nu = time(nullptr);
+    return !meteo_is_dag && (nu >= meteo_zonsondergang + (long)licht_int_offset_min * 60L);
 }
 
 // Tijdelijke handmatige kleuroverrule op INTERIEUR_AUTO — voor het HAVEN-

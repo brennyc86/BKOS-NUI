@@ -31,6 +31,22 @@ uint16_t haven_achtergrond_pixel(int scherm_x, int scherm_y) {
     return hav_fb[ly * hav_fb_w + lx];
 }
 
+uint16_t haven_achtergrond_pixel_klem(int scherm_x, int scherm_y) {
+    if (!hav_fb) return C_BG;
+    int lx = constrain(scherm_x - hav_fb_bg_x, 0, hav_fb_w - 1);
+    int ly = constrain(scherm_y - hav_fb_bg_y, 0, hav_fb_h - 1);
+    return hav_fb[ly * hav_fb_w + lx];
+}
+
+uint16_t haven_kleur_meng(uint16_t foto, uint8_t r5_doel, uint8_t g6_doel, uint8_t b5_doel, uint8_t sterkte) {
+    int fr = (foto >> 11) & 0x1F, fg = (foto >> 5) & 0x3F, fb = foto & 0x1F;
+    // Signed rekenen: het doel kan onder ÉN boven de huidige waarde liggen.
+    int r = fr + ((int)r5_doel - fr) * (int)sterkte / 255;
+    int g = fg + ((int)g6_doel - fg) * (int)sterkte / 255;
+    int b = fb + ((int)b5_doel - fb) * (int)sterkte / 255;
+    return ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b;
+}
+
 // Downscale-factor (1/2/4/8, TJpgDec-beperking) o.b.v. schermbreedte — de
 // foto's zijn 800x480; op een klein scherm is het zonde (en te traag) om op
 // volle resolutie te decoderen. Gecentreerd getekend, geen randvervorming.

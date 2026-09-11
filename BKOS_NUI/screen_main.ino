@@ -468,9 +468,25 @@ static void _paneel_rect(int idx, int totaal, int* bx, int* by, int* bw, int* bh
     *by = rowY[rij];
 }
 
+// "**E_<omschrijving>" is Brendans gekozen standaard voor ELKE vorm van
+// exterieur/buitenverlichting (dek, navigatie, anker, hek, ...) — de
+// omschrijving ná E_ is vrij, alleen de prefix wordt herkend. "dek" blijft als
+// losse fallback herkend voor een kanaal dat dat woord bevat zonder de
+// E_-prefix (bv. een ouder, nog niet omgedoopt kanaal).
+bool paneel_naam_is_exterieur(const char* naam) {
+    char b[20]; int j = 0;
+    const char* s = naam;
+    if (s[0] == '*' && s[1] == '*') s += 2;
+    for (; s[j] && j < 19; j++) { char c = s[j]; if (c >= 'A' && c <= 'Z') c += 32; b[j] = c; }
+    b[j] = '\0';
+    if (b[0] == 'e' && b[1] == '_') return true;
+    return strstr(b, "dek") != nullptr;
+}
+
 // Herken bekende apparaatnamen → icoon (na strippen van "**"); -1 = geen icoon
 int paneel_icoon(const char* naam) {
     if (io_il_lamp_nr(naam) > 0) return I_LAMP;   // virtuele lampgroep-knop "**IL_<N>"
+    if (paneel_naam_is_exterieur(naam)) return I_DEKLICHT;
     char b[20]; int j = 0;
     const char* s = naam;
     if (s[0] == '*' && s[1] == '*') s += 2;
@@ -480,7 +496,6 @@ int paneel_icoon(const char* naam) {
     if (strstr(b, "230"))   return I_230V;
     if (strstr(b, "tv"))    return I_TV;
     if (strstr(b, "water")) return I_WATER;
-    if (strstr(b, "dek"))   return I_DEKLICHT;
     return -1;
 }
 

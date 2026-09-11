@@ -1,7 +1,61 @@
 #include "nav_bar.h"
 #include "screen_info.h"
 #include "app_manager.h"
+#include "haven_achtergrond.h"  // haven_achtergrond_pixel_klem/haven_kleur_meng — getinte HAVEN-achtergrond
 #include <math.h>
+
+// ─── Getinte achtergrond i.p.v. vlakke kleur op het HAVEN-dashboard ─────────
+// Elders (elk ander scherm) is dit exact een gewone fillRect — nul gedrags-
+// verandering. Alleen op SCREEN_HAVEN wordt de achtergrondfoto (die daar toch
+// al gedecodeerd/gecachet is, zie haven_achtergrond.ino) doorgetrokken achter
+// header/navigatiebalk, geblend richting `kleur` met `sterkte` (0-255, hoger =
+// dominanter de themakleur/minder foto zichtbaar) — zo blijft de foto zichtbaar
+// maar duidelijk "van het thema", en kan een geselecteerde knop met een hogere
+// sterkte richting de accentkleur juist wél opvallend afsteken.
+static uint16_t* nb_bar_buf     = nullptr;
+static size_t    nb_bar_buf_cap = 0;
+static bool _nb_buf_klaar(size_t nodig) {
+    if (nb_bar_buf && nb_bar_buf_cap >= nodig) return true;
+    free(nb_bar_buf);
+    nb_bar_buf = (uint16_t*)malloc(nodig * sizeof(uint16_t));
+    nb_bar_buf_cap = nb_bar_buf ? nodig : 0;
+    return nb_bar_buf != nullptr;
+}
+static void _nb_fill_getint(int x, int y, int w, int h, uint16_t doel, uint8_t sterkte) {
+    size_t nodig = (size_t)w * (size_t)h;
+    if (!_nb_buf_klaar(nodig)) { tft.fillRect(x, y, w, h, doel); return; }  // heap-tekort: nette terugval
+    uint8_t r5 = (doel >> 11) & 0x1F, g6 = (doel >> 5) & 0x3F, b5 = doel & 0x1F;
+    for (int ry = 0; ry < h; ry++) {
+        int sy = y + ry;
+        for (int rx = 0; rx < w; rx++) {
+            uint16_t foto = haven_achtergrond_pixel_klem(x + rx, sy);
+            nb_bar_buf[ry * w + rx] = haven_kleur_meng(foto, r5, g6, b5, sterkte);
+        }
+    }
+    tft.draw16bitRGBBitmap(x, y, nb_bar_buf, w, h);
+}
+// Sterktes: mild voor gewone achtergrond (foto blijft dominant, net genoeg
+// getint om "van het thema" te ogen), fors hoger voor een geselecteerde/actieve
+// knop (moet als een herkenbaar effen accentvlak afsteken tegen de foto).
+#define NB_TINT_NORMAAL 70
+#define NB_TINT_ACTIEF  175
+
+// Gewone achtergrond: elders (niet-HAVEN) exact een vlakke fillRect met
+// `kleur` — nul gedragsverandering; op HAVEN wordt de foto geblend richting
+// diezelfde `kleur`.
+static void nb_fill(int x, int y, int w, int h, uint16_t kleur, uint8_t sterkte = NB_TINT_NORMAAL) {
+    if (actief_scherm != SCREEN_HAVEN || w <= 0 || h <= 0) { tft.fillRect(x, y, w, h, kleur); return; }
+    _nb_fill_getint(x, y, w, h, kleur, sterkte);
+}
+
+// Achtergrond van een geselecteerde/actieve knop: elders (niet-HAVEN) exact de
+// bestaande vlakke `kleur_normaal` (bv. C_SURFACE2) — nul gedragsverandering
+// op alle andere schermen; op HAVEN wordt i.p.v. daarvan fors richting C_CYAN
+// (de themakleur) geblend, zodat de selectie ook tegen een drukke foto opvalt.
+static void nb_fill_actief(int x, int y, int w, int h, uint16_t kleur_normaal) {
+    if (actief_scherm != SCREEN_HAVEN || w <= 0 || h <= 0) { tft.fillRect(x, y, w, h, kleur_normaal); return; }
+    _nb_fill_getint(x, y, w, h, C_CYAN, NB_TINT_ACTIEF);
+}
 
 // ─── Navigatiebalk midden-items ───────────────────────────────────────────────
 NavMiddenItem nav_midden[NAV_MIDDEN_MAX];
@@ -116,15 +170,19 @@ static void _alert_icon(int x) {
 
 // ─── Status bar ───────────────────────────────────────────────────────────────
 void sb_teken_basis() {
-    tft.fillRect(0, 0, TFT_W, SB_H, C_STATUSBAR);
+    nb_fill(0, 0, TFT_W, SB_H, C_STATUSBAR, NB_TINT_NORMAAL);
     tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
 #if SCREEN_SMALL
+    // Klokvenster altijd puur zwart (uitzondering op de fototint hierboven) —
+    // leest op elke foto/thema meteen af, i.p.v. mee te vervagen met de tint.
+    tft.fillRect(SB_KLOK_X - 4, 2, TFT_W - (SB_KLOK_X - 4) - 2, SB_H - 4, C_BLACK);
     uint16_t wkl = wifi_verbonden ? C_GREEN : RGB565(80, 90, 100);
     tft.fillCircle(8, SB_H / 2, 3, wkl);
     tft.setTextSize(1); tft.setTextColor(C_TEXT);
     tft.setCursor(SB_KLOK_X, (SB_H - 8) / 2);
     tft.print(klok_tijd.c_str());
 #else
+    tft.fillRect(SB_KLOK_X - 6, 3, TFT_W - (SB_KLOK_X - 6) - 4, SB_H - 6, C_BLACK);
     _wifi_icon(8); _bt_icon(36); _alert_icon(56);
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
     tft.setCursor(SB_KLOK_X, (SB_H - 16) / 2);
@@ -364,7 +422,7 @@ static void _pnb_item_render(int ai, int cx, int cy, uint16_t kleur, uint16_t bg
 // ─── Navigatiebalk tekenen ────────────────────────────────────────────────────
 void nav_bar_teken() {
     int y = NAV_Y;
-    tft.fillRect(0, y, TFT_W, NAV_H, C_NAVBAR);
+    nb_fill(0, y, TFT_W, NAV_H, C_NAVBAR, NB_TINT_NORMAAL);
     tft.drawFastHLine(0, y, TFT_W, C_SURFACE2);
 
 #if SCREEN_SMALL
@@ -470,7 +528,8 @@ void nav_bar_teken() {
     int cy = y + NAV_H / 2;
 
     auto _sys_knop = [&](int x, bool act) -> bool {
-        tft.fillRect(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, act ? C_SURFACE2 : C_SURFACE);
+        if (act) nb_fill_actief(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE2);
+        else     nb_fill(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE);
         if (act) {
             tft.drawFastHLine(x + 4, y,     NB_SQ - 8, C_CYAN);
             tft.drawFastHLine(x + 4, y + 1, NB_SQ - 8, C_CYAN);
@@ -517,7 +576,7 @@ void nav_bar_teken() {
         app_zichtbaar = NB_MAX_V;
 
         uint16_t lp_c = (nav_midden_scroll > 0) ? C_TEXT : C_TEXT_DARK;
-        tft.fillRect(NB_MX, y, NB_AW, NAV_H, C_SURFACE);
+        nb_fill(NB_MX, y, NB_AW, NAV_H, C_SURFACE);
         tft.setTextSize(2); tft.setTextColor(lp_c);
         tft.setCursor(NB_MX + 3, y + (NAV_H - 16) / 2);
         tft.print("<");
@@ -525,7 +584,7 @@ void nav_bar_teken() {
         int rp_x = NB_MX + NB_AW + app_zichtbaar * NB_KW;
         bool kan_rechts = (nav_midden_scroll + app_zichtbaar < nav_midden_cnt);
         uint16_t rp_c = kan_rechts ? C_TEXT : C_TEXT_DARK;
-        tft.fillRect(rp_x, y, NB_AW, NAV_H, C_SURFACE);
+        nb_fill(rp_x, y, NB_AW, NAV_H, C_SURFACE);
         tft.setTextSize(2); tft.setTextColor(rp_c);
         tft.setCursor(rp_x + 3, y + (NAV_H - 16) / 2);
         tft.print(">");
@@ -535,7 +594,7 @@ void nav_bar_teken() {
         app_zichtbaar = nav_midden_cnt;
     }
 
-    tft.fillRect(NB_MX, y + 1, NB_MW, NAV_H - 2, C_SURFACE);
+    nb_fill(NB_MX, y + 1, NB_MW, NAV_H - 2, C_SURFACE);
     tft.drawFastHLine(NB_MX, y, NB_MW, C_SURFACE2);
 
     for (int vi = 0; vi < app_zichtbaar; vi++) {
@@ -552,7 +611,7 @@ void nav_bar_teken() {
         }
 
         if (act) {
-            tft.fillRect(bx + 1, y + 1, NB_KW - 2, NAV_H - 2, C_SURFACE2);
+            nb_fill_actief(bx + 1, y + 1, NB_KW - 2, NAV_H - 2, C_SURFACE2);
             tft.drawFastHLine(bx + 4, y,     NB_KW - 8, C_CYAN);
             tft.drawFastHLine(bx + 4, y + 1, NB_KW - 8, C_CYAN);
         } else {

@@ -30,7 +30,7 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #else
   #define HV_BACK_W  112
   #define HV_BACK_H  26
-  #define HV_BACK_X  (SB_KLOK_X - HV_BACK_W)
+  #define HV_BACK_X  (SB_KLOK_X - HV_BACK_W - 8)  // 8px lucht t.o.v. het klokvenster
   #define HV_BACK_LBL "< TERUG"
 #endif
 #define HV_BACK_Y  ((SB_H - HV_BACK_H) / 2)
@@ -98,24 +98,14 @@ static bool _hv_tegel_buf_klaar(size_t nodig) {
 #define HV_TILE_LICHT       128  // 0-255: hoe ver een INactieve tegel richting wit opgelicht wordt (128 ≈ 50%)
 #define HV_TILE_GROEN_LICHT 150  // 0-255: hoe ver een ACTIEVE tegel richting lichtgroen getint wordt
 
-// Mengt een RGB565-fotokleur naar een doelkleur (in dezelfde 5/6/5-precisie)
-// met een gegeven sterkte — gedeelde blend-kern voor zowel de "opgelicht"
-// (inactief) als de "lichtgroen" (actief) tint.
-static uint16_t _hv_blend(uint16_t foto, uint8_t r_doel, uint8_t g_doel, uint8_t b_doel, uint8_t sterkte) {
-    int fr = (foto >> 11) & 0x1F, fg = (foto >> 5) & 0x3F, fb = foto & 0x1F;
-    // Signed rekenen: het doel kan onder ÉN boven de huidige waarde liggen
-    // (wit-doel altijd erboven, groen-doel voor R/B vaak eronder).
-    int r = fr + ((int)r_doel - fr) * (int)sterkte / 255;
-    int g = fg + ((int)g_doel - fg) * (int)sterkte / 255;
-    int b = fb + ((int)b_doel - fb) * (int)sterkte / 255;
-    return ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b;
-}
 // Inactieve tegel: richting wit — de foto blijft herkenbaar, maar licht genoeg
-// om icoon/tekst erboven leesbaar te houden.
-static uint16_t _hv_licht(uint16_t foto)       { return _hv_blend(foto, 31, 63, 31, HV_TILE_LICHT); }
+// om icoon/tekst erboven leesbaar te houden. Blend-kern (haven_kleur_meng) zit
+// in haven_achtergrond.ino — ook gebruikt door nav_bar.ino voor de getinte
+// header/footer-achtergrond.
+static uint16_t _hv_licht(uint16_t foto)       { return haven_kleur_meng(foto, 31, 63, 31, HV_TILE_LICHT); }
 // Actieve tegel: richting een lichte groentint — duidelijk kleurverschil met
 // een inactieve tegel op het eerste gezicht, zonder de foto te verbergen.
-static uint16_t _hv_licht_groen(uint16_t foto)  { return _hv_blend(foto, 10, 63, 10, HV_TILE_GROEN_LICHT); }
+static uint16_t _hv_licht_groen(uint16_t foto)  { return haven_kleur_meng(foto, 10, 63, 10, HV_TILE_GROEN_LICHT); }
 
 // Vult hv_tegel_buf met de (opgelichte/getinte) fotopixels achter (x,y,w,h) en
 // tekent die in één keer — dit IS de tegelachtergrond, er komt verder nergens
@@ -156,17 +146,13 @@ static void _hv_hoeken_afronden(int x, int y, int w, int h, int r) {
     }
 }
 
-// PANEEL-knoppen waarvan de naam op een lichtfunctie duidt maar die geen
-// genummerde IL-lampgroep zijn (bv. een relais-uitgang "**deklicht") horen
-// qua gebruik bij VERLICHTING, niet bij de losse APPARATEN — zelfde
-// substring-herkenning als paneel_icoon()'s I_DEKLICHT-detectie.
+// PANEEL-knoppen waarvan de naam op een exterieur-lichtfunctie duidt maar die
+// geen genummerde IL-lampgroep zijn (bv. "**E_dek", "**E_navigatie") horen
+// qua gebruik bij VERLICHTING, niet bij de losse APPARATEN — gedeelde
+// herkenning met paneel_icoon()'s I_DEKLICHT-detectie (screen_main.ino), zodat
+// tegel-groepering en icoon nooit uit de pas kunnen lopen.
 static bool _hv_is_licht_naam(const char* naam) {
-    char b[20]; int j = 0;
-    const char* s = naam;
-    if (s[0] == '*' && s[1] == '*') s += 2;
-    for (; s[j] && j < 19; j++) { char c = s[j]; if (c >= 'A' && c <= 'Z') c += 32; b[j] = c; }
-    b[j] = '\0';
-    return strstr(b, "dek") != nullptr;
+    return paneel_naam_is_exterieur(naam);
 }
 
 // Aantal kolommen + tegelbreedte binnen een kolom van breedte 'w' — 1 op de
@@ -302,27 +288,18 @@ static void _hv_overig_teken(int x, int y, int w, int h) {
     tft.print(buf);
 }
 
-// Forceert een PANEEL-apparaat naar een specifieke aan/uit-stand (i.p.v. altijd
-// toggelen) — nodig voor ALLES AAN/UIT, die de dek-achtige lichten moet kunnen
-// FORCEREN i.p.v. blind om te schakelen (dan zou een tweede druk op ALLES AAN
-// een al-aan lamp weer uitzetten). "mix" (s3==1) telt als "niet uit", dus wordt
-// bij ALLES UIT ook meegenomen.
-static void _hv_paneel_zet(int paneel_idx, bool aan_gewenst) {
-    const char* naam = paneel_knop_naam(paneel_idx);
-    byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[paneel_idx] ? 2 : 0);
-    bool nu_uit = (s3 == 0);
-    if (aan_gewenst == nu_uit) _hv_paneel_toggle(paneel_idx);
-}
-
+// ALLES AAN/UIT is uitsluitend bedoeld voor de BINNENverlichting (**IL_...) —
+// genummerde lampgroepen + de ongenummerde hoofdverlichting. Exterieur-lichten
+// (hv_licht_paneel_idx, "**E_..."/"dek") doen NIET mee: die blijven los per
+// tegel schakelbaar, zodat bv. het deklicht niet per ongeluk meeschakelt met
+// een "alles uit" voor binnen.
 static void _hv_alles_aan() {
     for (int j = 0; j < hv_lamp_cnt; j++) if (!lamp_aan[hv_lamp_nrs[j]]) _hv_lamp_toggle(hv_lamp_nrs[j]);
-    for (int j = 0; j < hv_licht_paneel_cnt; j++) _hv_paneel_zet(hv_licht_paneel_idx[j], true);
     if (hv_overig_aanwezig && !io_hoofdverlichting_aan()) io_hoofdverlichting_toggle();
     io_verlichting_update(); net_app_staat_sturen(); state_save();
 }
 static void _hv_alles_uit() {
     for (int j = 0; j < hv_lamp_cnt; j++) if (lamp_aan[hv_lamp_nrs[j]]) _hv_lamp_toggle(hv_lamp_nrs[j]);
-    for (int j = 0; j < hv_licht_paneel_cnt; j++) _hv_paneel_zet(hv_licht_paneel_idx[j], false);
     if (hv_overig_aanwezig && io_hoofdverlichting_aan()) io_hoofdverlichting_toggle();
     io_verlichting_update(); net_app_staat_sturen(); state_save();
 }
@@ -379,19 +356,21 @@ static void _hv_redraw_algemeen(int x0, int w, int y_top) {
     _hv_alg_layout(x0, w, y_top, &sq, &row_y, bx);
     if (row_y + sq <= HV_START_Y || row_y >= HV_LIST_BOT) return;  // buiten kijkvenster
 
-    // WIT/ROOD blijven op AUTO gebaseerd (zie interieur_kleur_overrulen()) —
-    // "actief" betekent hier dus specifiek: is die kleur nu de handmatige
-    // overrule, niet zomaar toevallig de huidige auto-berekende kleur.
+    // Het peertje zelf toont de EFFECTIEVE kleur (interieur_kleur_rood) — ook
+    // puur op AUTO, zonder handmatige overrule, zodat altijd zichtbaar is welke
+    // kleur er nu geldt. Het kader (cyaan rand, zie _hv_tile_frame) blijft
+    // gereserveerd voor "is dit een BEWUSTE handmatige keuze" (overrule) —
+    // beide zijn los van elkaar afleesbaar.
     int overrule  = interieur_overrule_kleur();
     bool wit_act  = (overrule == 0);
     bool rood_act = (overrule == 1);
     int r = max(4, sq / 5);
 
     _hv_tile_frame(bx[0], row_y, sq, sq, wit_act);
-    _hv_peertje(bx[0] + sq / 2, row_y + sq / 2, r, C_WHITE, wit_act);
+    _hv_peertje(bx[0] + sq / 2, row_y + sq / 2, r, C_WHITE, !interieur_kleur_rood);
 
     _hv_tile_frame(bx[1], row_y, sq, sq, rood_act);
-    _hv_peertje(bx[1] + sq / 2, row_y + sq / 2, r, C_LIGHT_ON_RED, rood_act);
+    _hv_peertje(bx[1] + sq / 2, row_y + sq / 2, r, C_LIGHT_ON_RED, interieur_kleur_rood);
 
     _hv_tile_frame(bx[2], row_y, sq, sq, false);
     _hv_aan_symbool(bx[2] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_GREEN);

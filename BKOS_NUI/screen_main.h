@@ -128,7 +128,7 @@
 #define I_230V       8
 #define I_TV         9
 #define I_WATER      10
-#define I_DEKLICHT   11
+#define I_DEKLICHT   11  // exterieur/buitenverlichting in het algemeen (zie paneel_naam_is_exterieur)
 #define I_LAMP       12  // genummerde IL-lampgroep ("**IL_<N>", zie lamp.h)
 
 void screen_main_teken();
@@ -143,5 +143,11 @@ void boot_lichten_teken();
 void teken_icoon(int type, int cx, int cy, uint16_t kleur);
 void teken_icoon_lamp(int cx, int cy, bool aan, bool rood);
 int  paneel_icoon(const char* naam);
+// Herkent Brendans "**E_..."-standaard voor exterieur/buitenverlichting (dek,
+// navigatie, anker, hek, enz. — vrij te kiezen naam ná de E_) + "dek" als losse
+// fallback voor kanalen die dat woord bevatten zonder de E_-prefix. Gedeeld
+// door screen_main.ino (paneel_icoon) en screen_haven.ino (ALLES AAN/UIT-scope)
+// zodat beide nooit uit de pas kunnen lopen.
+bool paneel_naam_is_exterieur(const char* naam);
 void paneel_knop_teken(int x, int y, int w, int h, const char* label,
                         int icoon, bool aan, bool mix);

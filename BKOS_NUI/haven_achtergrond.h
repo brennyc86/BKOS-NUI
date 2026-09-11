@@ -14,6 +14,19 @@
 // beschikbaar kon worden (heap-tekort — degradeert dan gracieus, geen crash).
 uint16_t haven_achtergrond_pixel(int scherm_x, int scherm_y);
 
+// Zelfde als hierboven, maar klemt (x,y) eerst vast binnen de daadwerkelijke
+// fotogrenzen — geeft dus de dichtstbijzijnde randpixel terug i.p.v. C_BG voor
+// een coördinaat buiten de foto (bv. de status-/navigatiebalk, die buiten het
+// content-gebied vallen waar de foto zelf getekend wordt). Gebruikt door
+// nav_bar.ino om de HAVEN-achtergrondfoto door te laten lopen in header/footer.
+uint16_t haven_achtergrond_pixel_klem(int scherm_x, int scherm_y);
+
+// Mengt een RGB565-fotokleur naar een doelkleur (r/g/b al in 5/6/5-precisie)
+// met een gegeven sterkte (0-255, hoger = dominanter de doelkleur) — gedeelde
+// blend-kern voor zowel de HAVEN-tegels (screen_haven.ino) als de getinte
+// header/footer-achtergrond (nav_bar.ino).
+uint16_t haven_kleur_meng(uint16_t foto, uint8_t r5_doel, uint8_t g6_doel, uint8_t b5_doel, uint8_t sterkte);
+
 void haven_achtergrond_teken();  // decodeert + tekent de huidige foto (content-gebied)
 void haven_achtergrond_tick();   // periodieke check: tijd om te wisselen naar de volgende foto?
 

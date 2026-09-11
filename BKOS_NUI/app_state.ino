@@ -37,7 +37,7 @@ int   licht_int_offset_min  = 15;
 bool  onthoud_licht_modus   = false;
 byte  boot_vaar_modus       = MODE_HAVEN;
 byte  boot_licht_instelling = LICHT_AUTO;
-bool  boot_vaarmodus_auto   = false;
+bool  boot_vaarmodus_auto   = true;   // standaard alles automatisch (verlichting + modus-wissel)
 
 #define CONFIG_BESTAND "/bkos_config.csv"
 
@@ -109,7 +109,7 @@ void state_load() {
     onthoud_licht_modus   = false;
     boot_vaar_modus       = MODE_HAVEN;
     boot_licht_instelling = LICHT_AUTO;
-    boot_vaarmodus_auto   = false;
+    boot_vaarmodus_auto   = true;   // standaard alles automatisch (verlichting + modus-wissel)
     wifi_open_auto        = false;
     dynamo_puls_min       = 0;
     tijdzone_idx          = 0;   // Midden-Europa (CET/CEST)

@@ -22,10 +22,13 @@ static bool     _sd_aanwezig     = false;
 static SPIClass _spi_sd(FSPI);
 #endif
 
-// SPIFFS heeft geen echte mappen — bestanden worden plat opgeslagen:
-//   /app_<id>_manifest.json
-//   /app_<id>_main.lua
-//   /bkos_apps.json       ← lijst van geïnstalleerde app-IDs
+// Mappenstructuur (virtueel op SPIFFS, echt op Pico's LittleFS):
+//   /apps/index.json          ← lijst van geïnstalleerde app-IDs
+//   /apps/<id>/manifest.json
+//   /apps/<id>/main.lua
+// Oudere platte bestanden (/app_<id>_m.json, /app_<id>_main.lua,
+// /bkos_apps.json) worden bij het inlezen automatisch gemigreerd —
+// zie _app_migreer_indien_nodig().
 
 AppManifest apps[APP_MAX];
 int         apps_cnt = 0;
@@ -39,16 +42,32 @@ char app_master_namen[APP_MASTER_MAX][APP_NAAM_LEN] = {};
 int  app_master_cnt  = 0;
 
 // ─── Bestandspaden ───────────────────────────────────────────────────────────
-static String _manifest_pad(const char* id) {
-    // "_m.json" i.p.v. "_manifest.json" — SPIFFS max 31 tekens (excl. /)
-    return String("/app_") + id + "_m.json";
-}
+static String _app_map(const char* id)      { return String("/apps/") + id; }
+static String _manifest_pad(const char* id) { return _app_map(id) + "/manifest.json"; }
+static String _lua_pad(const char* id)      { return _app_map(id) + "/main.lua"; }
+static String _index_pad()                  { return "/apps/index.json"; }
 
-static String _lua_pad(const char* id) {
-    return String("/app_") + id + "_main.lua";
-}
+// Zorgt dat de map voor deze app bestaat (mkdir is op SPIFFS een no-op/virtueel,
+// op Pico's LittleFS echt nodig) en migreert oude platte bestandsnamen ernaartoe
+// als ze nog bestaan. Idempotent — mag bij elke laad/opslaan-actie aangeroepen.
+static void _app_migreer_indien_nodig(const char* id) {
+    if (!SPIFFS.exists("/apps")) SPIFFS.mkdir("/apps");
+    String map = _app_map(id);
+    if (!SPIFFS.exists(map)) SPIFFS.mkdir(map);
 
-static String _index_pad() { return "/bkos_apps.json"; }
+    String nieuwM = _manifest_pad(id);
+    if (!SPIFFS.exists(nieuwM)) {
+        String oud1 = String("/app_") + id + "_m.json";
+        String oud2 = String("/app_") + id + "_manifest.json";
+        if (SPIFFS.exists(oud1))      SPIFFS.rename(oud1, nieuwM);
+        else if (SPIFFS.exists(oud2)) SPIFFS.rename(oud2, nieuwM);
+    }
+    String nieuwL = _lua_pad(id);
+    if (!SPIFFS.exists(nieuwL)) {
+        String oudL = String("/app_") + id + "_main.lua";
+        if (SPIFFS.exists(oudL)) SPIFFS.rename(oudL, nieuwL);
+    }
+}
 
 // ─── JSON ↔ manifest ─────────────────────────────────────────────────────────
 static void _json_naar_manifest(JsonObject obj, AppManifest& m) {
@@ -88,6 +107,7 @@ static void _manifest_naar_json(AppManifest& m, JsonObject obj) {
 
 // ─── Index opslaan/laden ──────────────────────────────────────────────────────
 static void _index_opslaan() {
+    if (!SPIFFS.exists("/apps")) SPIFFS.mkdir("/apps");
     JsonDocument doc;
     JsonArray arr = doc["ids"].to<JsonArray>();
     for (int i = 0; i < apps_cnt; i++) arr.add(apps[i].id);
@@ -105,6 +125,12 @@ void app_setup() {
 void app_manifesten_laden() {
     apps_cnt = 0;
 
+    if (!SPIFFS.exists("/apps")) SPIFFS.mkdir("/apps");
+
+    // Migratie: oude platte index-naam nog aanwezig, nieuwe nog niet
+    if (!SPIFFS.exists(_index_pad()) && SPIFFS.exists("/bkos_apps.json"))
+        SPIFFS.rename("/bkos_apps.json", _index_pad());
+
     // Lees de index van geïnstalleerde app-IDs
     if (!SPIFFS.exists(_index_pad())) return;
     File idx = SPIFFS.open(_index_pad(), "r");
@@ -117,13 +143,9 @@ void app_manifesten_laden() {
     JsonArray ids = idoc["ids"].as<JsonArray>();
     for (const char* id : ids) {
         if (!id || apps_cnt >= APP_MAX) break;
+        _app_migreer_indien_nodig(id);
         String pad = _manifest_pad(id);
-        if (!SPIFFS.exists(pad)) {
-            // Migratie: probeer oude naam "_manifest.json"
-            String oud = String("/app_") + id + "_manifest.json";
-            if (SPIFFS.exists(oud)) pad = oud;
-            else continue;
-        }
+        if (!SPIFFS.exists(pad)) continue;
         File mf = SPIFFS.open(pad, "r");
         if (!mf) continue;
         JsonDocument doc;
@@ -135,6 +157,7 @@ void app_manifesten_laden() {
 
 void app_manifest_opslaan(int idx) {
     if (idx < 0 || idx >= apps_cnt) return;
+    _app_migreer_indien_nodig(apps[idx].id);
     File f = SPIFFS.open(_manifest_pad(apps[idx].id), "w");
     if (!f) return;
     JsonDocument doc;
@@ -167,6 +190,7 @@ void app_verwijder(int idx) {
     if (idx < 0 || idx >= apps_cnt) return;
     SPIFFS.remove(_manifest_pad(apps[idx].id));
     SPIFFS.remove(_lua_pad(apps[idx].id));
+    SPIFFS.rmdir(_app_map(apps[idx].id));  // no-op/virtueel op SPIFFS, echt op Pico
     for (int i = idx; i < apps_cnt - 1; i++) apps[i] = apps[i + 1];
     apps_cnt--;
     _index_opslaan();
@@ -314,6 +338,7 @@ static void _installeer_taak(void* param) {
     app_ins_status = APP_INS_SCHRIJVEN;
     strncpy(app_ins_bericht, "Opslaan op SPIFFS...", sizeof(app_ins_bericht) - 1);
 
+    _app_migreer_indien_nodig(wm.id);
     File lf = SPIFFS.open(_lua_pad(wm.id), "w");
     if (!lf) {
         strncpy(app_ins_bericht, "SPIFFS: bestand niet te openen", sizeof(app_ins_bericht) - 1);

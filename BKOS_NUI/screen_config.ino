@@ -7,6 +7,7 @@
 #include "platform_fs.h"
 #include "bkos_net.h"    // net_eigen_naam, NET_NAAM_LEN, net_opslaan()
 #include "slaap.h"
+#include "screen_bestanden.h"  // screen_bestanden_reset()
 extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
 // ─── PIN code helpers ────────────────────────────────────────────────────
@@ -946,6 +947,7 @@ static void pico_cfg_instellingen_run(int x, int y) {
     // BESTANDEN (PIN vereist)
     if (y >= y0 && y < y0 + 26) {
         if (!ontg) { pin_vereist_tonen(); return; }
+        screen_bestanden_reset();
         actief_scherm = SCREEN_BESTANDEN; scherm_bouwen = true;
         return;
     }
@@ -1989,6 +1991,7 @@ static void cfg_hoofd_run(int x, int y) {
                 cfg_boot_scroll_y = cfg_we_scroll_y = cfg_update_scroll_y = 0;
                 cfg_instellingen_teken();
             } else if (i == 3) {
+                screen_bestanden_reset();
                 actief_scherm = SCREEN_BESTANDEN; scherm_bouwen = true;
             } else {
                 pin_stap = 1; pin_invoer[0] = '\0';

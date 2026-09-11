@@ -179,7 +179,7 @@ bool wifi_internet_ok() {
 // ─── WiFi verbinden (intern, vanuit background task) ─────────────────────────
 static void _wifi_verbinden_intern() {
     if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(wifi_hotspot_actief() ? WIFI_AP_STA : WIFI_STA);
 #if PLATFORM_ESP32
     WiFi.setAutoReconnect(false);
 
@@ -261,9 +261,69 @@ static void _wifi_verbinden_intern() {
     wifi_verbonden = (WiFi.status() == WL_CONNECTED);
 }
 
+// ─── Tijdelijke hotspot (BESTANDEN-scherm) ───────────────────────────────────
+#if PLATFORM_ESP32
+static bool     _hs_actief    = false;
+static uint32_t _hs_eind_ms   = 0;
+static char     _hs_ssid[24]  = "";
+static char     _hs_wachtwoord[13] = "";
+
+static void _hs_creds_genereren() {
+    String mac = WiFi.macAddress();  // "AA:BB:CC:DD:EE:FF"
+    mac.replace(":", "");
+    String staart = mac.substring(mac.length() - 4);
+    staart.toLowerCase();
+    if (strlen(net_eigen_naam) > 0) snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-%s", net_eigen_naam);
+    else                            snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-NUI");
+    snprintf(_hs_wachtwoord, sizeof(_hs_wachtwoord), "boot%s", staart.c_str());  // 8 tekens — WPA2-minimum
+}
+
+bool wifi_hotspot_actief() { return _hs_actief; }
+
+uint32_t wifi_hotspot_resterend_s() {
+    if (!_hs_actief) return 0;
+    long resterend = (long)(_hs_eind_ms - millis());
+    return resterend > 0 ? (uint32_t)(resterend / 1000) : 0;
+}
+
+void wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, size_t wachtwoord_len) {
+    if (ssid_out && ssid_len)             { strncpy(ssid_out, _hs_ssid, ssid_len - 1); ssid_out[ssid_len - 1] = '\0'; }
+    if (wachtwoord_out && wachtwoord_len) { strncpy(wachtwoord_out, _hs_wachtwoord, wachtwoord_len - 1); wachtwoord_out[wachtwoord_len - 1] = '\0'; }
+}
+
+void wifi_hotspot_starten(uint32_t duur_s) {
+    _hs_creds_genereren();
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(_hs_ssid, _hs_wachtwoord);
+    _hs_actief  = true;
+    _hs_eind_ms = millis() + duur_s * 1000UL;
+}
+
+void wifi_hotspot_stoppen() {
+    if (!_hs_actief) return;
+    WiFi.softAPdisconnect(true);
+    _hs_actief = false;
+    WiFi.mode(wifi_verbonden ? WIFI_STA : WIFI_OFF);
+}
+
+void wifi_hotspot_tick() {
+    if (_hs_actief && (long)(_hs_eind_ms - millis()) <= 0) wifi_hotspot_stoppen();
+}
+#else  // PLATFORM_PICO — geen concurrent AP+STA ondersteund, functie is een no-op
+bool     wifi_hotspot_actief() { return false; }
+uint32_t wifi_hotspot_resterend_s() { return 0; }
+void     wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, size_t wachtwoord_len) {
+    if (ssid_out && ssid_len) ssid_out[0] = '\0';
+    if (wachtwoord_out && wachtwoord_len) wachtwoord_out[0] = '\0';
+}
+void wifi_hotspot_starten(uint32_t) {}
+void wifi_hotspot_stoppen() {}
+void wifi_hotspot_tick() {}
+#endif
+
 // ─── WiFi verbreken (energiebesparing) ───────────────────────────────────────
 static void _wifi_verbreken_intern() {
-    if (wifi_ota_modus) return;
+    if (wifi_ota_modus || wifi_hotspot_actief()) return;
 #if PLATFORM_ESP32
     if (net_modus != NET_STANDALONE) {
         WiFi.disconnect(false);

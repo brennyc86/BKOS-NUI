@@ -28,7 +28,7 @@ void haven_doel_afmeting(int* w, int* h);
 // zodat de gebruiker niet blind tegen een volle opslag aan loopt.
 size_t haven_spiffs_vrij();
 
-// (Her)scan SPIFFS op eigen foto's (bestandsnamen "/haven_u<n>.jpg") — bij
+// (Her)scan SPIFFS op eigen foto's (bestandsnamen "/haven/foto_<n>.jpg") — bij
 // opstart, en na elke upload/verwijdering. Zodra er minstens één eigen foto
 // is, vervangen die de ingebakken voorbeeldfoto's in de slideshow volledig
 // (voelt persoonlijker aan dan demo-foto's tussen de eigen foto's door).

@@ -401,6 +401,7 @@ void hw_loop() {
     // die geen directe schermtoegang nodig hebben.
 
     net_loop();          // ESP-NOW queue verwerken + heartbeat
+    wifi_hotspot_tick();  // sluit de tijdelijke bestandsdeel-hotspot na afloop vanzelf af
 #if BKOS_REMOTE_ENABLED
     bkos_client_loop();  // WebSocket server tick + mDNS (status/besturing)
     webapp_loop();       // HTTP server tick (afstandsbediening-pagina)

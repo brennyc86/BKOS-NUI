@@ -7,3 +7,4 @@
 // en is het vanuit beide varianten met één knopje te openen.
 void screen_bestanden_teken();
 void screen_bestanden_run(int x, int y, bool aanraking);
+void screen_bestanden_reset();  // terug naar root ("/") — aanroepen bij binnenkomst vanuit CONFIG

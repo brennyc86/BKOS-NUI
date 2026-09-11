@@ -60,10 +60,24 @@ static int hav_user_cnt = 0;
 static int hav_user_slot[HAVEN_USER_FOTO_MAX];  // welke slotnummers daadwerkelijk een bestand hebben
 
 static void _hav_user_naam(int slot, char* buf, size_t buflen) {
-    snprintf(buf, buflen, "/haven_u%d.jpg", slot);
+    snprintf(buf, buflen, "/haven/foto_%d.jpg", slot);
+}
+
+// Eenmalige migratie van de oude platte naam "/haven_u<N>.jpg" naar de map
+// "/haven/foto_<N>.jpg" — mkdir is op SPIFFS een no-op/virtueel, verder identiek
+// aan de app-migratie in app_manager.cpp.
+static void _hav_map_migreren() {
+    if (!SPIFFS.exists("/haven")) SPIFFS.mkdir("/haven");
+    for (int slot = 0; slot < HAVEN_USER_FOTO_MAX; slot++) {
+        char oud[24]; snprintf(oud, sizeof(oud), "/haven_u%d.jpg", slot);
+        if (!SPIFFS.exists(oud)) continue;
+        char nieuw[24]; _hav_user_naam(slot, nieuw, sizeof(nieuw));
+        if (!SPIFFS.exists(nieuw)) SPIFFS.rename(oud, nieuw);
+    }
 }
 
 void haven_gebruikersfotos_scannen() {
+    _hav_map_migreren();
     hav_user_cnt = 0;
     char naam[24];
     for (int slot = 0; slot < HAVEN_USER_FOTO_MAX; slot++) {
@@ -96,6 +110,7 @@ size_t haven_spiffs_vrij() {
 
 bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len) {
     if (haven_spiffs_vrij() < len + HAVEN_USER_FOTO_MIN_VRIJ) return false;
+    if (!SPIFFS.exists("/haven")) SPIFFS.mkdir("/haven");
     for (int slot = 0; slot < HAVEN_USER_FOTO_MAX; slot++) {
         char naam[24];
         _hav_user_naam(slot, naam, sizeof(naam));

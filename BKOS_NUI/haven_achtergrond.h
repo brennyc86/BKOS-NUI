@@ -5,16 +5,13 @@
 // een paar ingebakken voorbeeldfoto's (zie haven_fotos.h) — later te
 // vervangen door zelf geüploade foto's (SPIFFS/SD, nog niet gebouwd).
 
-// Sample-punten — vóór haven_achtergrond_teken() registreren; de decoder vult
-// de bijbehorende fotokleur op elk punt tijdens het decoderen. screen_haven.ino
-// registreert per tegel een heel roostertje van punten (niet slechts één), zodat
-// een tegel later (bij een losse hertekening, zónder de foto opnieuw te decoderen)
-// als een klein mozaïek van de echte fotoblokjes eronder getekend kan worden i.p.v.
-// als één platte gemiddelde kleur.
-// (4 ALGEMEEN + 20 VERLICHTING + 20 APPARATEN) x HV_MOZ_N=160 cellen/tegel = 7040 — zie screen_haven.ino
-#define HAVEN_SAMPLE_MAX 7200
-void haven_achtergrond_samples_zet(const int16_t x[], const int16_t y[], int aantal);
-uint16_t haven_achtergrond_sample(int i);  // resultaat van de laatste teken()-aanroep
+// Exacte fotokleur op een scherm-coördinaat, uit een persistente kopie van de
+// laatst gedecodeerde foto op display-resolutie (zie haven_achtergrond.ino) —
+// zodat screen_haven.ino elke tegel op de VOLLE fotoresolutie kan (her)tekenen,
+// ook bij een losse tegel-hertekening na een tik, zonder opnieuw te decoderen.
+// Geeft C_BG als het punt buiten de foto valt (letterbox) of als de cache niet
+// beschikbaar kon worden (heap-tekort — degradeert dan gracieus, geen crash).
+uint16_t haven_achtergrond_pixel(int scherm_x, int scherm_y);
 
 void haven_achtergrond_teken();  // decodeert + tekent de huidige foto (content-gebied)
 void haven_achtergrond_tick();   // periodieke check: tijd om te wisselen naar de volgende foto?

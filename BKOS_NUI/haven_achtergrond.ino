@@ -2,6 +2,7 @@
 #include "haven_fotos.h"
 #include "ui_draw.h"
 #include "app_state.h"
+#include "platform.h"      // PLATFORM_MALLOC/FREE (PSRAM op de S3, gewone heap elders)
 #include <TJpg_Decoder.h>
 
 #define HAVEN_BG_INTERVAL_MS  60000UL   // "langzame slideshow" — elke 60s de volgende foto
@@ -9,38 +10,24 @@
 static int  hav_bg_idx    = 0;
 static bool hav_bg_klaar  = false;
 
-// Sample-punten voor de "doorschijnende tegel"-optimalisatie (zie .h) — door
-// screen_haven.ino gezet vóór elke haven_achtergrond_teken()-aanroep. Op de
-// heap i.p.v. drie statische HAVEN_SAMPLE_MAX-arrays: de classic-ESP32-
-// platforms (WROOM/CYD*) hebben maar een klein vast DRAM-BSS-segment (los van
-// de veel ruimere heap) en zaten daar al bijna tegenaan — deze buffers zijn
-// groot genoeg (mozaïekroosters i.p.v. één sample per tegel) om dat segment
-// alsnog te laten overlopen als ze als vast static array waren gebleven.
-// Eén keer gealloceerd bij het eerste gebruik, daarna hergebruikt.
-static int16_t*  hav_sample_x     = nullptr;
-static int16_t*  hav_sample_y     = nullptr;
-static uint16_t* hav_sample_kleur = nullptr;
-static int       hav_sample_cnt   = 0;
+// Persistente kopie van de laatst gedecodeerde foto, op precies de resolutie
+// waarop 'm ook getekend wordt (zie _hab_scale()) — zodat screen_haven.ino
+// elke tegel achteraf op de VOLLE fotoresolutie kan tekenen zonder opnieuw te
+// decoderen. PLATFORM_MALLOC gebruikt PSRAM op de S3 (daar is dat de volle
+// 800x480 foto, ±750KB — past ruim); op de overige (geen-PSRAM) platforms is
+// de decodeerschaal toch al lager (_hab_scale() volgt TFT_W), dus blijft de
+// buffer daar ruim binnen de gewone heap (±47-192KB, afhankelijk van scherm).
+static uint16_t* hav_fb      = nullptr;
+static int       hav_fb_w    = 0;
+static int       hav_fb_h    = 0;
+static int       hav_fb_bg_x = 0;
+static int       hav_fb_bg_y = 0;
 
-static bool _hab_buffers_klaar() {
-    if (hav_sample_x) return true;
-    hav_sample_x     = (int16_t*) malloc(HAVEN_SAMPLE_MAX * sizeof(int16_t));
-    hav_sample_y     = (int16_t*) malloc(HAVEN_SAMPLE_MAX * sizeof(int16_t));
-    hav_sample_kleur = (uint16_t*)malloc(HAVEN_SAMPLE_MAX * sizeof(uint16_t));
-    if (hav_sample_x && hav_sample_y && hav_sample_kleur) return true;
-    free(hav_sample_x); free(hav_sample_y); free(hav_sample_kleur);
-    hav_sample_x = nullptr; hav_sample_y = nullptr; hav_sample_kleur = nullptr;
-    return false;
-}
-
-void haven_achtergrond_samples_zet(const int16_t x[], const int16_t y[], int aantal) {
-    if (!_hab_buffers_klaar()) { hav_sample_cnt = 0; return; }  // heap vol — geen mozaïek, wel gewoon de foto
-    hav_sample_cnt = min(aantal, HAVEN_SAMPLE_MAX);
-    for (int i = 0; i < hav_sample_cnt; i++) { hav_sample_x[i] = x[i]; hav_sample_y[i] = y[i]; }
-}
-
-uint16_t haven_achtergrond_sample(int i) {
-    return (i >= 0 && i < hav_sample_cnt) ? hav_sample_kleur[i] : C_BG;
+uint16_t haven_achtergrond_pixel(int scherm_x, int scherm_y) {
+    if (!hav_fb) return C_BG;
+    int lx = scherm_x - hav_fb_bg_x, ly = scherm_y - hav_fb_bg_y;
+    if (lx < 0 || ly < 0 || lx >= hav_fb_w || ly >= hav_fb_h) return C_BG;  // letterbox / buiten de foto
+    return hav_fb[ly * hav_fb_w + lx];
 }
 
 // Downscale-factor (1/2/4/8, TJpgDec-beperking) o.b.v. schermbreedte — de
@@ -53,12 +40,21 @@ static uint8_t _hab_scale() {
 }
 
 static bool _hab_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
-    // Sample-punten die in dit blok vallen oppikken vóórdat het blok getekend
-    // wordt — geen extra kosten buiten een paar vergelijkingen per blok.
-    for (int i = 0; i < hav_sample_cnt; i++) {
-        int16_t sx = hav_sample_x[i], sy = hav_sample_y[i];
-        if (sx >= x && sx < x + (int16_t)w && sy >= y && sy < y + (int16_t)h) {
-            hav_sample_kleur[i] = bitmap[(sy - y) * w + (sx - x)];
+    if (hav_fb) {
+        // Elk gedecodeerd blok ook in de framebuffer kopiëren, per rij (sneller
+        // dan per pixel) en begrensd op wat er daadwerkelijk in past.
+        for (int row = 0; row < (int)h; row++) {
+            int fy = (y - hav_fb_bg_y) + row;
+            if (fy < 0 || fy >= hav_fb_h) continue;
+            int fx0 = x - hav_fb_bg_x;
+            int col0 = 0, col1 = (int)w;
+            if (fx0 < 0) col0 = -fx0;
+            if (fx0 + (int)w > hav_fb_w) col1 = hav_fb_w - fx0;
+            if (col1 > col0) {
+                memcpy(&hav_fb[(size_t)fy * hav_fb_w + fx0 + col0],
+                       &bitmap[(size_t)row * w + col0],
+                       (size_t)(col1 - col0) * sizeof(uint16_t));
+            }
         }
     }
     tft.draw16bitRGBBitmap(x, y, bitmap, w, h);
@@ -88,10 +84,18 @@ void haven_achtergrond_teken() {
     int bg_y    = CONTENT_Y + (inhoud_h - bg_h) / 2;
 
     tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, C_BG);  // letterbox rond de foto
-    // Standaard op de letterbox-kleur — een sample-punt buiten de foto zelf
-    // (bij een smal/hoog scherm) wordt anders nooit door het blok hieronder
-    // bijgewerkt en zou een oude waarde van een vorige aanroep tonen.
-    for (int i = 0; i < hav_sample_cnt; i++) hav_sample_kleur[i] = C_BG;
+
+    // Framebuffer (her)alloceren als de afmetingen nog niet kloppen (eerste
+    // keer op dit platform — de schaal ligt daarna vast, dus normaliter maar
+    // één keer per opstart).
+    if (!hav_fb || hav_fb_w != bg_w || hav_fb_h != bg_h) {
+        PLATFORM_FREE(hav_fb);
+        hav_fb   = (uint16_t*)PLATFORM_MALLOC((size_t)bg_w * bg_h * sizeof(uint16_t));
+        hav_fb_w = hav_fb ? bg_w : 0;
+        hav_fb_h = hav_fb ? bg_h : 0;
+    }
+    hav_fb_bg_x = bg_x;
+    hav_fb_bg_y = bg_y;
 
     const HavenFoto& f = haven_fotos[hav_bg_idx % HAVEN_FOTO_CNT];
     TJpgDec.drawJpg(bg_x, bg_y, f.data, f.len);

@@ -26,6 +26,7 @@
 #define SCREEN_LAMPEN     18 // Genummerde IL-lampgroepen: naam + opstartstand (via CONFIG → BOOT)
 #define SCREEN_KLEUR      19 // Eigen kleurpatroon bewerken (via CONFIG → WEERGAVE & ENERGIE)
 #define SCREEN_HAVEN      20 // Haven-dashboard (tegel-overzicht): lang indrukken op HAVEN/ANKER-knop
+#define SCREEN_BESTANDEN  21 // Bestandsbeheer: SPIFFS/SD inzien + verwijderen, via CONFIG
 
 // Vaarmodi
 #define MODE_HAVEN   0

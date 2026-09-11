@@ -8,6 +8,7 @@
 #include "screen_kleur.h"
 #include "screen_haven.h"
 #include "haven_achtergrond.h"
+#include "screen_bestanden.h"
 #include "screen_ota.h"
 #include "screen_info.h"
 #include "screen_apps.h"
@@ -122,6 +123,7 @@ static void _gui_taak(void*) {
                     case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                     case SCREEN_KLEUR:      screen_kleur_teken();       break;
                     case SCREEN_HAVEN:      screen_haven_teken();       break;
+                    case SCREEN_BESTANDEN:  screen_bestanden_teken();   break;
                     case SCREEN_BERICHT:    screen_bericht_teken();     break;
                     case SCREEN_BRUG:       screen_brug_teken();        break;
                     case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -198,7 +200,8 @@ static void _gui_taak(void*) {
                         }
                     } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
                                actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
-                               actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN) {
+                               actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN &&
+                               actief_scherm != SCREEN_BESTANDEN) {
                         // Klok in de statusbalk aantikken → tijd-instelmenu (elk scherm, behalve
                         // WIFI/INFO/HAVEN die deze hoek al voor hun eigen "< TERUG"-knop gebruiken)
                         tijd_scherm_openen();
@@ -222,6 +225,7 @@ static void _gui_taak(void*) {
                             case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                             case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
                             case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;
+                            case SCREEN_BESTANDEN:  screen_bestanden_run(ts_x, ts_y, true); break;
                             case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                                     case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                             case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
@@ -503,6 +507,7 @@ void hw_loop() {
                 case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                 case SCREEN_KLEUR:      screen_kleur_teken();       break;
                 case SCREEN_HAVEN:      screen_haven_teken();       break;
+                case SCREEN_BESTANDEN:  screen_bestanden_teken();   break;
                 case SCREEN_BERICHT:    screen_bericht_teken();     break;
                 case SCREEN_BRUG:       screen_brug_teken();        break;
                 case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -575,7 +580,8 @@ void hw_loop() {
                     }
                 } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
                            actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
-                           actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN) {
+                           actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN &&
+                               actief_scherm != SCREEN_BESTANDEN) {
                     tijd_scherm_openen();
                 } else {
                     hw_touch_drag_dy = ts_y - touch_start_y;
@@ -597,6 +603,7 @@ void hw_loop() {
                         case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                         case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
                         case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;
+                        case SCREEN_BESTANDEN:  screen_bestanden_run(ts_x, ts_y, true); break;
                         case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;

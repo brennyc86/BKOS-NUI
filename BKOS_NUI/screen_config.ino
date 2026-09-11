@@ -128,7 +128,7 @@ static const char* cfg_chips_r2[] = {
 #if SCREEN_SMALL
 
 // Totale virtuele inhoudshoogte instellingen (som van alle y += stappen + 26px laatste rij)
-#define PICO_CFG_INS_H  (282 + 120 + 120 + 30 + (PLATFORM_ESP32 ? 90 : 0))  // +120 voor HELDERHEID AUTO-rijen, +90 voor slaap-rijen (ESP32), +120 voor MODUS ONTHOUDEN + OPSTARTINSTELLING-rijen, +30 voor EIGEN KLEUR-rij
+#define PICO_CFG_INS_H  (282 + 120 + 120 + 30 + 30 + (PLATFORM_ESP32 ? 90 : 0))  // +120 voor HELDERHEID AUTO-rijen, +90 voor slaap-rijen (ESP32), +120 voor MODUS ONTHOUDEN + OPSTARTINSTELLING-rijen, +30 voor EIGEN KLEUR-rij, +30 voor BESTANDEN-rij
 static int pico_cfg_scroll_y = 0;  // pixels omhoog verschoven
 
 // PIN overlay voor 240×320
@@ -710,6 +710,10 @@ static void pico_cfg_instellingen_teken() {
     }
     y += 30;
 
+    // BESTANDEN (PIN vereist, net als de andere rijen hier — kan bestanden verwijderen)
+    ui_knop(4, y, TFT_W - 8, 26, "BESTANDEN  >", C_SURFACE2, ontg ? C_CYAN : C_TEXT_DIM);
+    y += 30;
+
     // PIN
     ui_knop(4, y, TFT_W - 8, 26, "PINCODE WIJZIGEN  >",
             C_SURFACE2, ontg ? C_AMBER : C_TEXT_DIM);
@@ -937,6 +941,13 @@ static void pico_cfg_instellingen_run(int x, int y) {
         if (!ontg) { pin_vereist_tonen(); return; }
         boot_vaarmodus_auto = !boot_vaarmodus_auto;
         state_save(); pico_cfg_instellingen_teken(); return;
+    }
+    y0 += 30;
+    // BESTANDEN (PIN vereist)
+    if (y >= y0 && y < y0 + 26) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_BESTANDEN; scherm_bouwen = true;
+        return;
     }
     y0 += 30;
     // PIN
@@ -1337,7 +1348,7 @@ static void _slot_icoon(int cx, int cy, bool dicht, uint16_t k, uint16_t bg) {
 // categorieknoppen kunnen op een klein/liggend scherm zoals CYD40H — dat de
 // 800×480-referentielayout ongeschaald hergebruikt — buiten NAV_Y vallen)
 #define CFG_HOOFD_TOP        (HLD_Y + HLD_H + 4)
-#define CFG_HOOFD_INHOUD_H   (44 + 4 * 72 + 3 * 8)   // WiFi-rij-gat + 4 categorieknoppen (72px elk)
+#define CFG_HOOFD_INHOUD_H   (44 + 5 * 72 + 4 * 8)   // WiFi-rij-gat + 5 categorieknoppen (72px elk)
 #define CFG_HOOFD_MAX_SCROLL max(0, CFG_HOOFD_TOP + CFG_HOOFD_INHOUD_H - (int)NAV_Y)
 
 static void cfg_hoofd_teken() {
@@ -1352,11 +1363,11 @@ static void cfg_hoofd_teken() {
     tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
 
     // ── Categorieknoppen ──────────────────────────────────────────────────
-    const char* cats[]   = {"BOOT  >", "WEERGAVE & ENERGIE  >", "VERBINDINGEN  >", "PINCODE WIJZIGEN  >"};
-    uint16_t cat_kleur[] = {C_CYAN, C_CYAN, C_CYAN, C_AMBER};
+    const char* cats[]   = {"BOOT  >", "WEERGAVE & ENERGIE  >", "VERBINDINGEN  >", "BESTANDEN  >", "PINCODE WIJZIGEN  >"};
+    uint16_t cat_kleur[] = {C_CYAN, C_CYAN, C_CYAN, C_CYAN, C_AMBER};
     int cat_y = fr_y + 44;
     int cat_h = 72, cat_gap = 8;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         int cy = cat_y + i * (cat_h + cat_gap);
         tft.fillRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE);
         tft.drawRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE3);
@@ -1368,7 +1379,7 @@ static void cfg_hoofd_teken() {
     if (!ontg) {
         // ── VERGRENDELD: waas over knoppen + BEVEILIGD-paneel gecentreerd ──
         int waas_top = cat_y;
-        int waas_bot = cat_y + 4 * cat_h + 3 * cat_gap;
+        int waas_bot = cat_y + 5 * cat_h + 4 * cat_gap;
         for (int dy = waas_top; dy < waas_bot; dy += 2)
             tft.drawFastHLine(0, dy, TFT_W, C_BG);
 
@@ -1958,7 +1969,7 @@ static void cfg_hoofd_run(int x, int y) {
     // Categorieknop-gebied (vergrendeld of niet)
     int cat_y = fr_y + 44;
     int cat_h = 72, cat_gap = 8;
-    int cat_bot = cat_y + 4 * cat_h + 3 * cat_gap;
+    int cat_bot = cat_y + 5 * cat_h + 4 * cat_gap;
 
     if (!ontg) {
         // Vergrendeld: elk tik in het knopgebied vraagt om pincode
@@ -1968,8 +1979,8 @@ static void cfg_hoofd_run(int x, int y) {
         return;
     }
 
-    // Ontgrendeld: categorieknoppen
-    for (int i = 0; i < 4; i++) {
+    // Ontgrendeld: categorieknoppen (0=BOOT,1=WEERGAVE,2=VERBINDINGEN,3=BESTANDEN,4=PIN)
+    for (int i = 0; i < 5; i++) {
         int cy = cat_y + i * (cat_h + cat_gap);
         if (y >= cy && y < cy + cat_h) {
             if (i < 3) {
@@ -1977,6 +1988,8 @@ static void cfg_hoofd_run(int x, int y) {
                 // begin bovenaan bij het openen van een tabblad
                 cfg_boot_scroll_y = cfg_we_scroll_y = cfg_update_scroll_y = 0;
                 cfg_instellingen_teken();
+            } else if (i == 3) {
+                actief_scherm = SCREEN_BESTANDEN; scherm_bouwen = true;
             } else {
                 pin_stap = 1; pin_invoer[0] = '\0';
                 pin_overlay_actief = true; pin_overlay_teken();

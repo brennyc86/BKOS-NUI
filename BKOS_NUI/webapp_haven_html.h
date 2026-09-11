@@ -183,17 +183,27 @@ document.getElementById('bestandInput').addEventListener('change', function(e){
 // dithering, en liep zo alsnog tegen de servergrens aan. JPEG's eigen
 // kwantisatie doet al genoeg aan gladde verlopen; het risico op lichte
 // bandvorming weegt niet op tegen een upload die gewoon niet lukt.
-var KWALITEIT_STAPPEN = [0.75, 0.6, 0.45, 0.32, 0.22];
+// Ruime, tot laag doorlopende ladder — verschillende browsers/besturings-
+// systemen gebruiken elk hun eigen JPEG-encoder met een eigen kwaliteit-naar-
+// bestandsgrootte-curve, dus dezelfde foto kan op de ene computer bij 0.32 al
+// ruim onder de grens zitten en op een andere pas bij 0.15. Vandaar tot ver
+// onder wat op één machine getest ooit nodig leek doorlopen, i.p.v. te vroeg
+// opgeven en de foto toch (te groot) te versturen.
+var KWALITEIT_STAPPEN = [0.75, 0.6, 0.45, 0.32, 0.22, 0.14, 0.08, 0.04];
 
 // Probeert canvas.toBlob() op steeds lagere kwaliteit tot de blob binnen
-// maxUploadBytes past (of de laagste stap bereikt is — dan die maar, beter
-// een zichtbaar iets grovere foto dan een upload die blijft mislukken).
+// maxUploadBytes past. callback(blob, gelukt) — gelukt=false als zelfs de
+// laagste stap nog te groot is (op een 800x480-foto in de praktijk zo goed
+// als nooit); dan NIET alsnog uploaden (dat weet de server toch af te wijzen),
+// gewoon meteen een duidelijke melding tonen.
 function encodeerBinnenBudget(canvas, stapIdx, callback){
   var kwaliteit = KWALITEIT_STAPPEN[stapIdx];
   canvas.toBlob(function(blob){
     var laatsteStap = stapIdx >= KWALITEIT_STAPPEN.length - 1;
-    if (blob && (blob.size <= maxUploadBytes || laatsteStap)){
-      callback(blob);
+    if (blob && blob.size <= maxUploadBytes){
+      callback(blob, true);
+    } else if (laatsteStap){
+      callback(blob, false);
     } else {
       encodeerBinnenBudget(canvas, stapIdx + 1, callback);
     }
@@ -214,7 +224,13 @@ function verwerkEnUpload(file){
     var sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, doelW, doelH);
 
-    encodeerBinnenBudget(canvas, 0, function(blob){ uploadBlob(blob); });
+    encodeerBinnenBudget(canvas, 0, function(blob, gelukt){
+      if (gelukt) uploadBlob(blob);
+      else {
+        melding('Deze foto blijft te groot, ook na maximale compressie. Probeer een andere foto.', 'fout');
+        document.getElementById('uploadBtn').disabled = false;
+      }
+    });
   };
   img.onerror = function(){
     melding('Kon de foto niet lezen.', 'fout');

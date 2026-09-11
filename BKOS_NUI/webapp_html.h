@@ -151,6 +151,10 @@ button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);
     <h2>Verbonden modules</h2>
     <div id="netInfo">—</div>
   </section>
+
+  <section>
+    <a href="/haven" style="display:block;text-align:center;font-size:.82rem;color:var(--text-dim);padding:6px;">HAVEN-foto's beheren &#8594;</a>
+  </section>
 </div>
 
 <div id="overlay" class="hidden">

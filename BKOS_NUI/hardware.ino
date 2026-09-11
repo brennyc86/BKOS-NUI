@@ -7,6 +7,7 @@
 #include "screen_config.h"
 #include "screen_kleur.h"
 #include "screen_haven.h"
+#include "haven_achtergrond.h"
 #include "screen_ota.h"
 #include "screen_info.h"
 #include "screen_apps.h"
@@ -314,6 +315,7 @@ void hw_setup() {
     }
 
     info_laden();       // boot naam en eigenaar uit SPIFFS (voor status bar)
+    haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload)
     data_setup();       // gestructureerde data-opslag laden
     meteo_setup();      // laadt NVS-instellingen (snel, geen netwerk)
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)

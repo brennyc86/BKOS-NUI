@@ -15,9 +15,11 @@
 #include "paneel.h"
 #include "lamp.h"            // genummerde lampgroepen — Huis-tab in de webapp
 #include "gast.h"            // pin_niveau() — eigenaar vs. gastcode
+#include "wifi.h"            // ntp_synced() — gasten-vervaldatum, zie gast.h
 
 #include <WebSocketsServer.h>
 #include <ESPmDNS.h>
+#include <time.h>
 
 static WebSocketsServer _ws(BKOS_WS_POORT);
 // Array-grootte moet WEBSOCKETS_SERVER_CLIENT_MAX volgen (library-default 5),
@@ -178,6 +180,72 @@ static String _lamp_json() {
     return s;
 }
 
+// Kleine, generieke JSON-veldextractie (zelfde grove maar consistente aanpak
+// als de rest van dit bestand — geen ArduinoJson hier, dit is een hete pad
+// zonder allocatie). Werkt voor elke waarde die tussen aanhalingstekens staat
+// zolang de waarde zelf geen losse "-teken bevat (net als elders in dit
+// bestand, bv. de bestaande "pin"-extractie in de auth-case).
+static String _veld_uit(const String& t, const char* sleutel) {
+    String zoek = String('"') + sleutel + "\":\"";
+    int idx = t.indexOf(zoek);
+    if (idx < 0) return String();
+    int start = idx + zoek.length();
+    int eind = t.indexOf('"', start);
+    if (eind < 0) return String();
+    return t.substring(start, eind);
+}
+static bool _veld_aanwezig(const String& t, const char* sleutel) {
+    return t.indexOf(String('"') + sleutel + "\":\"") >= 0;
+}
+static long _getal_uit(const String& t, const char* sleutel) {
+    String zoek = String('"') + sleutel + "\":";
+    int idx = t.indexOf(zoek);
+    if (idx < 0) return -1;
+    return t.substring(idx + zoek.length()).toInt();
+}
+
+// ─── Instellingen-tab in de webapp (eigenaar-only) — boot/eigenaar-info,
+// zeilnummer en apparaatnaam in één keer op-/afhalen. eig_vals bevat privé
+// gegevens (adres/telefoon/e-mail), vandaar dat dit uitsluitend op expliciet
+// verzoek van een reeds-eigenaar-geverifieerde klant verstuurd wordt (zie
+// de niveau-check in _verwerk_cmd()), nooit automatisch bij het verbinden.
+static String _instellingen_json() {
+    String s = F("{\"t\":\"instellingen\",\"zeilnr\":\"");
+    s += zeilnummer;
+    s += F("\",\"naam\":\""); s += net_eigen_naam;
+    s += F("\",\"boot\":[");
+    for (int i = 0; i < INFO_BOOT_VELDEN; i++) {
+        if (i) s += ',';
+        s += F("{\"label\":\""); s += info_boot_label(i);
+        s += F("\",\"waarde\":\""); s += info_boot_veld(i);
+        s += F("\",\"num\":"); s += info_boot_numeriek(i) ? 1 : 0;
+        s += '}';
+    }
+    s += F("],\"eig\":[");
+    for (int i = 0; i < INFO_EIG_VELDEN; i++) {
+        if (i) s += ',';
+        s += F("{\"label\":\""); s += info_eig_label(i);
+        s += F("\",\"waarde\":\""); s += info_eig_veld(i);
+        s += F("\"}");
+    }
+    s += F("]}");
+    return s;
+}
+
+static String _gast_json() {
+    String s = F("{\"t\":\"gastlijst\",\"items\":[");
+    for (int i = 0; i < gast_pin_cnt; i++) {
+        if (i) s += ',';
+        char rest[24]; gast_resterend_tekst(i, rest, sizeof(rest));
+        s += F("{\"code\":\""); s += gast_pin[i].code;
+        s += F("\",\"naam\":\""); s += gast_pin[i].naam;
+        s += F("\",\"resterend\":\""); s += rest;
+        s += F("\"}");
+    }
+    s += F("]}");
+    return s;
+}
+
 // _verwerk_cmd: alleen Arduino-types in handtekening → prototype OK
 static void _verwerk_cmd(uint8_t num, const String& t) {
     if (t.indexOf(F("\"auth\"")) >= 0) {
@@ -269,6 +337,73 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         io_hoofdverlichting_toggle();
         io_verlichting_update();
         net_app_staat_sturen();
+
+    // ─── INSTELLINGEN-tab (webapp) — allemaal eigenaar-only: een gastcode
+    // komt hier nooit voorbij de niveau-check hierboven (GAST_NIVEAU_GAST),
+    // dus deze extra check is strikt genomen dubbel op, maar maakt elke case
+    // hier zelfstandig leesbaar/veilig ook als de volgorde ooit verandert.
+    } else if (t.indexOf(F("\"instellingen_get\"")) >= 0) {
+        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        String s = _instellingen_json(); _ws.sendTXT(num, s);
+
+    } else if (t.indexOf(F("\"instellingen_set\"")) >= 0) {
+        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        for (int i = 0; i < INFO_BOOT_VELDEN; i++) {
+            char sleutel[6]; snprintf(sleutel, sizeof(sleutel), "b%d", i);
+            if (_veld_aanwezig(t, sleutel)) info_boot_veld_zet(i, _veld_uit(t, sleutel).c_str());
+        }
+        for (int i = 0; i < INFO_EIG_VELDEN; i++) {
+            char sleutel[6]; snprintf(sleutel, sizeof(sleutel), "e%d", i);
+            if (_veld_aanwezig(t, sleutel)) info_eig_veld_zet(i, _veld_uit(t, sleutel).c_str());
+        }
+        if (_veld_aanwezig(t, "zeilnr")) {
+            String zn = _veld_uit(t, "zeilnr");
+            strncpy(zeilnummer, zn.c_str(), ZEILNR_LEN - 1); zeilnummer[ZEILNR_LEN - 1] = '\0';
+        }
+        if (_veld_aanwezig(t, "naam")) {
+            String nm = _veld_uit(t, "naam");
+            strncpy(net_eigen_naam, nm.c_str(), NET_NAAM_LEN - 1); net_eigen_naam[NET_NAAM_LEN - 1] = '\0';
+        }
+        info_opslaan();
+        state_save();
+        String s = _instellingen_json(); _ws.sendTXT(num, s);
+
+    } else if (t.indexOf(F("\"pin_wijzig\"")) >= 0) {
+        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        String oud = _veld_uit(t, "oud");
+        String nieuw = _veld_uit(t, "nieuw");
+        char opgeslagen[5]; pin_lezen_pub(opgeslagen, sizeof(opgeslagen));
+        bool ok = oud.equals(opgeslagen) && nieuw.length() == 4;
+        if (ok) pin_schrijven_pub(nieuw.c_str());
+        String r = String(F("{\"t\":\"pin_wijzig_res\",\"ok\":")) + (ok ? "true" : "false") + "}";
+        _ws.sendTXT(num, r);
+
+    } else if (t.indexOf(F("\"gast_get\"")) >= 0) {
+        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        String s = _gast_json(); _ws.sendTXT(num, s);
+
+    } else if (t.indexOf(F("\"gast_toevoegen\"")) >= 0) {
+        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        String naam = _veld_uit(t, "naam");
+        long dagen = _getal_uit(t, "dagen");  // 0 = onbeperkt
+        if (dagen > 0 && !ntp_synced()) {
+            String r = F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"tijd\"}");
+            _ws.sendTXT(num, r);
+        } else {
+            uint32_t verloopt = (dagen > 0) ? (uint32_t)time(nullptr) + (uint32_t)dagen * 86400UL : 0;
+            char code[GAST_CODE_LEN];
+            bool ok = gast_toevoegen(verloopt, naam.c_str(), code, sizeof(code));
+            String r = ok ? (String(F("{\"t\":\"gast_nieuw\",\"ok\":true,\"code\":\"")) + code + "\"}")
+                          : String(F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"vol\"}"));
+            _ws.sendTXT(num, r);
+            if (ok) { String lijst = _gast_json(); _ws.sendTXT(num, lijst); }
+        }
+
+    } else if (t.indexOf(F("\"gast_verwijderen\"")) >= 0) {
+        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        long idx = _getal_uit(t, "idx");
+        if (idx >= 0) gast_verwijderen((int)idx);
+        String lijst = _gast_json(); _ws.sendTXT(num, lijst);
     }
 }
 

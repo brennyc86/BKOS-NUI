@@ -60,6 +60,29 @@ const char* info_eigenaar_naam() {
     if (!info_geladen) info_laden();
     return eig_vals[0];  // e_naam
 }
+
+const char* info_boot_veld(int i) {
+    if (!info_geladen) info_laden();
+    return (i >= 0 && i < 6) ? boot_vals[i] : "";
+}
+const char* info_boot_label(int i) { return (i >= 0 && i < 6) ? boot_labels[i] : ""; }
+bool        info_boot_numeriek(int i) { return (i >= 0 && i < 6) ? boot_numeriek[i] : false; }
+void        info_boot_veld_zet(int i, const char* waarde) {
+    if (i < 0 || i >= 6 || !waarde) return;
+    strncpy(boot_vals[i], waarde, INFO_VELD_LEN - 1);
+    boot_vals[i][INFO_VELD_LEN - 1] = '\0';
+}
+const char* info_eig_veld(int i) {
+    if (!info_geladen) info_laden();
+    return (i >= 0 && i < 5) ? eig_vals[i] : "";
+}
+const char* info_eig_label(int i) { return (i >= 0 && i < 5) ? eig_labels[i] : ""; }
+void        info_eig_veld_zet(int i, const char* waarde) {
+    if (i < 0 || i >= 5 || !waarde) return;
+    strncpy(eig_vals[i], waarde, INFO_VELD_LEN - 1);
+    eig_vals[i][INFO_VELD_LEN - 1] = '\0';
+}
+
 static bool info_kb_actief      = false;
 static bool info_naam_kb_actief = false;  // apparaatnaam toetsenbord (altijd bewerkbaar)
 static int  info_kb_idx         = -1;

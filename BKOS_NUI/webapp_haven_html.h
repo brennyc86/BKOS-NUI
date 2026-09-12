@@ -429,20 +429,29 @@ function cropBevestig(){
   melding('Foto wordt verkleind…', '');
   document.getElementById('uploadBtn').disabled = true;
 
-  var canvas = document.createElement('canvas');
-  canvas.width = doelW; canvas.height = doelH;
-  var ctx = canvas.getContext('2d');
-  // cropImgEl staat al geladen in de modal (dat is precies wat de gebruiker
-  // net zag) — drawImage gebruikt sowieso altijd de volle fotoresolutie,
-  // ongeacht de CSS-weergavegrootte, dus geen nieuwe Image() nodig.
-  ctx.drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, doelW, doelH);
-  encodeerBinnenBudget(canvas, 0, function(blob, gelukt){
-    if (gelukt) uploadBlob(blob);
-    else {
-      melding('Deze foto blijft te groot, ook na maximale compressie. Probeer een andere foto.', 'fout');
-      document.getElementById('uploadBtn').disabled = false;
-    }
-  });
+  try {
+    if (!(sw > 0) || !(sh > 0)) throw new Error('leeg kader');
+    var canvas = document.createElement('canvas');
+    canvas.width = doelW; canvas.height = doelH;
+    var ctx = canvas.getContext('2d');
+    // cropImgEl staat al geladen in de modal (dat is precies wat de gebruiker
+    // net zag) — drawImage gebruikt sowieso altijd de volle fotoresolutie,
+    // ongeacht de CSS-weergavegrootte, dus geen nieuwe Image() nodig.
+    ctx.drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, doelW, doelH);
+    encodeerBinnenBudget(canvas, 0, function(blob, gelukt){
+      if (gelukt) uploadBlob(blob);
+      else {
+        melding('Deze foto blijft te groot, ook na maximale compressie. Probeer een andere foto.', 'fout');
+        document.getElementById('uploadBtn').disabled = false;
+      }
+    });
+  } catch (e) {
+    // Voorheen kon een fout hier (bv. een leeg kader) de upload stil laten
+    // hangen op "wordt verkleind…" zonder ooit een netwerkverzoek te doen —
+    // nu altijd een zichtbare melding i.p.v. een oneindige stille status.
+    melding('Bijsnijden mislukt (' + e.message + '). Probeer het opnieuw.', 'fout');
+    document.getElementById('uploadBtn').disabled = false;
+  }
 }
 
 function uploadBlob(blob){

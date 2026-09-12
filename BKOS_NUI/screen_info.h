@@ -24,6 +24,21 @@ const char* info_eigenaar_tel(); // geeft eigenaar-telefoonnummer terug (key "e_
 const char* info_boot_type();     // key "b_type"
 const char* info_eigenaar_naam(); // key "e_naam"
 
+// Generieke veld-toegang (index-gebaseerd) — voor de webapp-INSTELLINGEN-tab,
+// die alle boot/eigenaar-velden tegelijk moet kunnen tonen/bewerken zonder
+// voor elk veld een losse public wrapper nodig te hebben. Alleen bereikbaar
+// achter de eigenaars-pincode (zie bkos_client.ino) — eig_vals bevat privé
+// gegevens (adres/telefoon/e-mail) die nooit publiek getoond mogen worden.
+#define INFO_BOOT_VELDEN 6
+#define INFO_EIG_VELDEN  5
+const char* info_boot_veld(int i);
+const char* info_boot_label(int i);
+bool        info_boot_numeriek(int i);
+void        info_boot_veld_zet(int i, const char* waarde);
+const char* info_eig_veld(int i);
+const char* info_eig_label(int i);
+void        info_eig_veld_zet(int i, const char* waarde);
+
 void info_sync_verwerken(uint8_t chunk, const uint8_t* data);
 void info_update_verwerken(uint8_t chunk, const uint8_t* data);
 void net_info_sync_sturen();    // master: broadcast info naar slaves

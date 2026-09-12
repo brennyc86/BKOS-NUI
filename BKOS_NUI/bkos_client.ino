@@ -402,16 +402,22 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
     } else if (t.indexOf(F("\"gast_toevoegen\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         String naam = _veld_uit(t, "naam");
+        String gewenste_code = _veld_uit(t, "code");  // "" = automatisch genereren
         long dagen = _getal_uit(t, "dagen");   // 0 = onbeperkt
         long niveau = _getal_uit(t, "niveau"); // NIVEAU_GAST/LOGE/DELER
         if (niveau < NIVEAU_GAST || niveau > NIVEAU_DELER) niveau = NIVEAU_GAST;
-        if (dagen > 0 && !ntp_synced()) {
+        if (gewenste_code.length() && !gast_code_beschikbaar(gewenste_code.c_str(), -1)) {
+            String r = F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"bezet\"}");
+            _ws.sendTXT(num, r);
+        } else if (dagen > 0 && !ntp_synced()) {
             String r = F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"tijd\"}");
             _ws.sendTXT(num, r);
         } else {
             uint32_t verloopt = (dagen > 0) ? (uint32_t)time(nullptr) + (uint32_t)dagen * 86400UL : 0;
             char code[GAST_CODE_LEN];
-            bool ok = gast_toevoegen(verloopt, naam.c_str(), (uint8_t)niveau, code, sizeof(code));
+            bool ok = gast_toevoegen(verloopt, naam.c_str(), (uint8_t)niveau,
+                                     gewenste_code.length() ? gewenste_code.c_str() : nullptr,
+                                     code, sizeof(code));
             String r = ok ? (String(F("{\"t\":\"gast_nieuw\",\"ok\":true,\"code\":\"")) + code + "\"}")
                           : String(F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"vol\"}"));
             _ws.sendTXT(num, r);
@@ -422,15 +428,20 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         long idx = _getal_uit(t, "idx");
         String naam = _veld_uit(t, "naam");
+        String nieuwe_code = _veld_uit(t, "code");  // "" = code ongewijzigd laten
         long dagen = _getal_uit(t, "dagen");
         long niveau = _getal_uit(t, "niveau");
         if (niveau < NIVEAU_GAST || niveau > NIVEAU_DELER) niveau = NIVEAU_GAST;
-        if (dagen > 0 && !ntp_synced()) {
+        if (nieuwe_code.length() && !gast_code_beschikbaar(nieuwe_code.c_str(), (int)idx)) {
+            String r = F("{\"t\":\"gast_bewerkt\",\"ok\":false,\"reden\":\"bezet\"}");
+            _ws.sendTXT(num, r);
+        } else if (dagen > 0 && !ntp_synced()) {
             String r = F("{\"t\":\"gast_bewerkt\",\"ok\":false,\"reden\":\"tijd\"}");
             _ws.sendTXT(num, r);
         } else {
             uint32_t verloopt = (dagen > 0) ? (uint32_t)time(nullptr) + (uint32_t)dagen * 86400UL : 0;
-            bool ok = (idx >= 0) && gast_bewerken((int)idx, naam.c_str(), verloopt, (uint8_t)niveau);
+            bool ok = (idx >= 0) && gast_bewerken((int)idx, naam.c_str(), verloopt, (uint8_t)niveau,
+                                                  nieuwe_code.length() ? nieuwe_code.c_str() : nullptr);
             String r = String(F("{\"t\":\"gast_bewerkt\",\"ok\":")) + (ok ? "true" : "false") + "}";
             _ws.sendTXT(num, r);
             if (ok) { String lijst = _gast_json(); _ws.sendTXT(num, lijst); }

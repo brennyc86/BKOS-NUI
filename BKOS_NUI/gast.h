@@ -54,17 +54,28 @@ extern int      gast_pin_cnt;
 void gast_laden();
 bool gast_opslaan();   // false = schrijven mislukt (bv. opslag vol) — zie paneel_opslaan() voor het patroon
 
-// Maakt een nieuwe gastcode aan met een willekeurige, nog ongebruikte
-// 4-cijferige code (uniek t.o.v. andere gastcodes én de eigenaars-pincode) —
-// de gebruiker hoeft dus zelf geen code te bedenken, enkel naam+duur+niveau
-// te kiezen. `verloopt` is een kant-en-klare epoch-waarde (0 = onbeperkt),
-// door de aanroeper berekend (bv. time(nullptr) + N*86400). `niveau` moet
+// Is deze 4-cijferige code nog vrij te gebruiken voor een gastcode? Nee als
+// hij niet uit exact 4 cijfers bestaat, gelijk is aan de eigenaars-pincode,
+// of al in gebruik is door een ANDERE gastcode. `negeer_idx` slaat die ene
+// index in gast_pin[] over bij de vergelijking (-1 = geen) — nodig om bij het
+// bewerken van code X te mogen concluderen dat code X "nog beschikbaar" is
+// (hij botst alleen met zichzelf, wat geen echte botsing is).
+bool gast_code_beschikbaar(const char* code, int negeer_idx);
+
+// Maakt een nieuwe gastcode aan. `gewenste_code`: NULL of "" laat een
+// willekeurige, nog ongebruikte 4-cijferige code genereren (de gebruiker
+// hoeft dan zelf niets te bedenken); anders wordt exact deze code gebruikt
+// — moet dan al `gast_code_beschikbaar()` zijn, anders faalt de aanroep.
+// `verloopt` is een kant-en-klare epoch-waarde (0 = onbeperkt), door de
+// aanroeper berekend (bv. time(nullptr) + N*86400). `niveau` moet
 // NIVEAU_GAST/LOGE/DELER zijn (nooit EIGENAAR — wordt geclampt). Geeft de
-// nieuwe code terug via code_out (om aan de gast te geven).
-bool gast_toevoegen(uint32_t verloopt, const char* naam, uint8_t niveau, char* code_out, size_t code_out_len);
-// Bewerkt een bestaande code (naam/vervaltermijn/niveau) — de code zelf blijft
-// hetzelfde, alleen deze drie velden zijn wijzigbaar.
-bool gast_bewerken(int idx, const char* naam, uint32_t verloopt, uint8_t niveau);
+// (gekozen of gegenereerde) code terug via code_out.
+bool gast_toevoegen(uint32_t verloopt, const char* naam, uint8_t niveau, const char* gewenste_code, char* code_out, size_t code_out_len);
+// Bewerkt een bestaande code (naam/vervaltermijn/niveau/code zelf).
+// `nieuwe_code`: NULL of "" laat de huidige code ongewijzigd; anders wordt
+// de code gewijzigd naar deze waarde (moet beschikbaar zijn, zie hierboven —
+// de eigen huidige code telt daarbij niet als bezet).
+bool gast_bewerken(int idx, const char* naam, uint32_t verloopt, uint8_t niveau, const char* nieuwe_code);
 void gast_verwijderen(int idx);
 
 // Resterende geldigheid als leesbare tekst ("onbeperkt", "3d 4u", "verlopen",

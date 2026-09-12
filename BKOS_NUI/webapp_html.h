@@ -241,6 +241,7 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
       <section>
         <h2>Foto HAVEN-dashboard</h2>
         <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Achtergrondfoto van het HAVEN-scherm op de boordcomputer zelf. Elke upload voegt een nieuwe foto toe aan de diashow.</p>
+        <div id="fotosStatus" style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">—</div>
         <input type="file" id="fotoInputHaven" accept="image/*" style="display:none">
         <button class="mbtn" id="fotoBtnHaven" onclick="document.getElementById('fotoInputHaven').click()">FOTO KIEZEN &amp; BIJSNIJDEN</button>
         <div id="fotosMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
@@ -292,6 +293,7 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
         <h2>Gasten pincodes</h2>
         <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">GAST = HUIS+BOOT. LOGE = ook kanalen die minimaal LOGE vereisen (bv. een slot). DELER = ook kanalen die minimaal DELER vereisen. Nooit IO/FOTOS/INSTELLINGEN — dat blijft de eigenaar.</p>
         <input id="gastNaam" type="text" placeholder="naam (optioneel)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+        <input id="gastCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="code (optioneel — leeg = automatisch)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
         <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Niveau</label>
         <div class="grid3" id="gastNiveauKeuze" style="margin-bottom:8px;"></div>
         <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Geldigheid</label>
@@ -904,10 +906,11 @@ function uploadHavenFoto(blob){
   xhr.open('POST', '/fotos/upload?pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
   xhr.onload = function(){
     var d = {}; try { d = JSON.parse(xhr.responseText); } catch(e){}
-    if (xhr.status === 200 && d.ok) { cropMelding('haven', 'Foto opgeslagen als ' + d.naam + '.', false); fotosLijst(); }
+    if (xhr.status === 200 && d.ok) { cropMelding('haven', 'Foto opgeslagen als ' + d.naam + '.', false); fotosLijst(); fotosInfo(); }
     else {
-      var reden = xhr.status === 403 ? 'geen toegang' : xhr.status === 413 ? 'te groot' : 'opslag vol of ongeldig bestand';
+      var reden = xhr.status === 403 ? 'geen toegang' : xhr.status === 413 ? 'te groot' : 'opslag vol of ongeldig bestand (zie teller hierboven)';
       cropMelding('haven', 'Upload mislukt (' + reden + ').', true);
+      fotosInfo();
     }
   };
   xhr.onerror = function(){ cropMelding('haven', 'Upload mislukt (verbinding).', true); };
@@ -929,6 +932,12 @@ function fotosInfo(){
   fetch('/fotos/info').then(function(r){ return r.json(); }).then(function(d){
     if (d.w && d.h) { CROP_TARGETS.haven.doelW = d.w; CROP_TARGETS.haven.doelH = d.h; }
     if (d.maxBytes) CROP_TARGETS.haven.maxBytes = d.maxBytes;
+    var st = document.getElementById('fotosStatus');
+    if (!st) return;
+    var vol = (d.aantal >= d.maxAantal) || (d.vrij < 20000);
+    st.style.color = vol ? 'var(--red)' : 'var(--text-dim)';
+    st.textContent = d.aantal + '/' + d.maxAantal + ' foto\'s · ' + fmtBytes(d.vrij) + ' vrij op het apparaat'
+      + (vol ? ' — verwijder een oude foto of maak ruimte vrij vóór het uploaden' : '');
   }).catch(function(){});
 }
 function fotosLijst(){
@@ -1044,6 +1053,7 @@ function renderGast(){
 function gastFormReset(){
   gastBewerkIdx = -1;
   document.getElementById('gastNaam').value = '';
+  document.getElementById('gastCode').value = '';
   gastDuurIdx = 0; gastNiveau = NIVEAU_GAST;
   renderGastDuur(); renderGastNiveau();
   document.getElementById('gastActieBtn').textContent = 'CODE AANMAKEN';
@@ -1055,6 +1065,7 @@ function gastBewerken(i){
   if (!g) return;
   gastBewerkIdx = i;
   document.getElementById('gastNaam').value = g.naam || '';
+  document.getElementById('gastCode').value = g.code || '';
   gastNiveau = g.niveau || NIVEAU_GAST;
   // De precieze resterende duur laat zich niet 1-op-1 terugvertalen naar een
   // van de vaste duur-knoppen — standaard op ONBEPERKT laten staan, tenzij de
@@ -1065,14 +1076,20 @@ function gastBewerken(i){
   document.getElementById('gastActieBtn').textContent = 'WIJZIGEN OPSLAAN';
   document.getElementById('gastAnnuleerBtn').style.display = '';
   var el = document.getElementById('gastMelding');
-  el.style.color = ''; el.textContent = 'Code ' + g.code + ' bewerken — kies evt. een nieuwe geldigheidsduur (telt vanaf nu).';
+  el.style.color = ''; el.textContent = 'Code ' + g.code + ' bewerken — pas evt. de code zelf of de geldigheid aan (telt vanaf nu).';
 }
 function gastActie(){
   if (needAuth()) return;
   var naam = document.getElementById('gastNaam').value;
+  var code = document.getElementById('gastCode').value.trim();
+  if (code && (code.length !== 4 || !/^[0-9]{4}$/.test(code))) {
+    var el = document.getElementById('gastMelding');
+    el.style.color = 'var(--red)'; el.textContent = 'Code moet leeg zijn (automatisch) of precies 4 cijfers.';
+    return;
+  }
   var dagen = GAST_DUUR_OPTIES[gastDuurIdx].dagen;
-  if (gastBewerkIdx < 0) send({t:'gast_toevoegen', naam:naam, dagen:dagen, niveau:gastNiveau});
-  else send({t:'gast_bewerken', idx:gastBewerkIdx, naam:naam, dagen:dagen, niveau:gastNiveau});
+  if (gastBewerkIdx < 0) send({t:'gast_toevoegen', naam:naam, code:code, dagen:dagen, niveau:gastNiveau});
+  else send({t:'gast_bewerken', idx:gastBewerkIdx, naam:naam, code:code, dagen:dagen, niveau:gastNiveau});
 }
 function renderGastNieuw(msg){
   var el = document.getElementById('gastMelding');
@@ -1081,8 +1098,9 @@ function renderGastNieuw(msg){
     gastFormReset();
     gastLaden();
   } else {
-    var reden = msg.reden === 'tijd' ? 'tijd nog onbekend, kies ONBEPERKT'
-              : msg.reden === 'vol'  ? 'maximum (20) bereikt' : 'onbekende fout';
+    var reden = msg.reden === 'tijd'  ? 'tijd nog onbekend, kies ONBEPERKT'
+              : msg.reden === 'bezet' ? 'die code is al in gebruik'
+              : msg.reden === 'vol'   ? 'maximum (20) bereikt' : 'onbekende fout';
     el.style.color = 'var(--red)'; el.textContent = 'Aanmaken mislukt (' + reden + ').';
   }
 }
@@ -1093,7 +1111,8 @@ function renderGastBewerkt(msg){
     gastFormReset();
     gastLaden();
   } else {
-    var reden = msg.reden === 'tijd' ? 'tijd nog onbekend, kies ONBEPERKT' : 'onbekende fout';
+    var reden = msg.reden === 'tijd'  ? 'tijd nog onbekend, kies ONBEPERKT'
+              : msg.reden === 'bezet' ? 'die code is al in gebruik' : 'onbekende fout';
     el.style.color = 'var(--red)'; el.textContent = 'Wijzigen mislukt (' + reden + ').';
   }
 }

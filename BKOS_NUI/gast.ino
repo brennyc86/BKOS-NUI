@@ -3,6 +3,7 @@
 #include "screen_config.h"  // pin_lezen_pub() — eigenaars-pincode, voor botsing/vergelijking
 #include "wifi.h"           // ntp_synced() — zie niveau-toelichting in gast.h
 #include <time.h>
+#include <ctype.h>          // isdigit() — gast_code_beschikbaar()
 
 #define GAST_BESTAND "/bkos_gast.csv"
 
@@ -89,38 +90,65 @@ static void _gast_naam_zet(char* dst, const char* naam) {
     for (char* p = dst; *p; p++) if (*p == ',') *p = ' ';
 }
 
-bool gast_toevoegen(uint32_t verloopt, const char* naam, uint8_t niveau, char* code_out, size_t code_out_len) {
-    if (!_gast_buf_klaar()) return false;
-    if (gast_pin_cnt >= GAST_MAX) return false;
+bool gast_code_beschikbaar(const char* code, int negeer_idx) {
+    if (!code || strlen(code) != 4) return false;
+    for (int i = 0; i < 4; i++) if (!isdigit((unsigned char)code[i])) return false;
     char eigen[5]; pin_lezen_pub(eigen, sizeof(eigen));
-    char code[5];
-    for (int poging = 0; poging < 200; poging++) {
-        snprintf(code, sizeof(code), "%04d", (int)random(0, 10000));
-        if (strcmp(code, eigen) == 0) continue;
-        bool botst = false;
-        for (int i = 0; i < gast_pin_cnt; i++)
-            if (strcmp(gast_pin[i].code, code) == 0) { botst = true; break; }
-        if (botst) continue;
-
-        GastPin& g = gast_pin[gast_pin_cnt];
-        strncpy(g.code, code, sizeof(g.code) - 1); g.code[sizeof(g.code) - 1] = '\0';
-        _gast_naam_zet(g.naam, naam);
-        g.verloopt = verloopt;
-        g.niveau = (uint8_t)constrain((int)niveau, NIVEAU_GAST, NIVEAU_DELER);
-        gast_pin_cnt++;
-
-        if (code_out && code_out_len > 0) {
-            strncpy(code_out, code, code_out_len - 1);
-            code_out[code_out_len - 1] = '\0';
-        }
-        return gast_opslaan();
+    if (strcmp(code, eigen) == 0) return false;
+    for (int i = 0; i < gast_pin_cnt; i++) {
+        if (i == negeer_idx) continue;
+        if (strcmp(gast_pin[i].code, code) == 0) return false;
     }
-    return false;  // (nagenoeg onmogelijk bij max 20 codes) geen vrije code binnen 200 pogingen
+    return true;
 }
 
-bool gast_bewerken(int idx, const char* naam, uint32_t verloopt, uint8_t niveau) {
+bool gast_toevoegen(uint32_t verloopt, const char* naam, uint8_t niveau, const char* gewenste_code,
+                    char* code_out, size_t code_out_len) {
+    if (!_gast_buf_klaar()) return false;
+    if (gast_pin_cnt >= GAST_MAX) return false;
+
+    char code[5];
+    if (gewenste_code && gewenste_code[0]) {
+        // Zelf gekozen code: moet al vrij zijn — geen automatisch alternatief
+        // zoeken als 'm toch bezet blijkt, dan weet de aanroeper tenminste
+        // zeker welke code daadwerkelijk is aangemaakt.
+        if (!gast_code_beschikbaar(gewenste_code, -1)) return false;
+        strncpy(code, gewenste_code, 4); code[4] = '\0';
+    } else {
+        char eigen[5]; pin_lezen_pub(eigen, sizeof(eigen));
+        bool gevonden = false;
+        for (int poging = 0; poging < 200 && !gevonden; poging++) {
+            snprintf(code, sizeof(code), "%04d", (int)random(0, 10000));
+            if (strcmp(code, eigen) == 0) continue;
+            bool botst = false;
+            for (int i = 0; i < gast_pin_cnt; i++)
+                if (strcmp(gast_pin[i].code, code) == 0) { botst = true; break; }
+            if (!botst) gevonden = true;
+        }
+        if (!gevonden) return false;  // (nagenoeg onmogelijk bij max 20 codes) geen vrije code binnen 200 pogingen
+    }
+
+    GastPin& g = gast_pin[gast_pin_cnt];
+    strncpy(g.code, code, sizeof(g.code) - 1); g.code[sizeof(g.code) - 1] = '\0';
+    _gast_naam_zet(g.naam, naam);
+    g.verloopt = verloopt;
+    g.niveau = (uint8_t)constrain((int)niveau, NIVEAU_GAST, NIVEAU_DELER);
+    gast_pin_cnt++;
+
+    if (code_out && code_out_len > 0) {
+        strncpy(code_out, code, code_out_len - 1);
+        code_out[code_out_len - 1] = '\0';
+    }
+    return gast_opslaan();
+}
+
+bool gast_bewerken(int idx, const char* naam, uint32_t verloopt, uint8_t niveau, const char* nieuwe_code) {
     if (idx < 0 || idx >= gast_pin_cnt) return false;
     GastPin& g = gast_pin[idx];
+    if (nieuwe_code && nieuwe_code[0]) {
+        if (!gast_code_beschikbaar(nieuwe_code, idx)) return false;
+        strncpy(g.code, nieuwe_code, sizeof(g.code) - 1); g.code[sizeof(g.code) - 1] = '\0';
+    }
     _gast_naam_zet(g.naam, naam);
     g.verloopt = verloopt;
     g.niveau = (uint8_t)constrain((int)niveau, NIVEAU_GAST, NIVEAU_DELER);

@@ -68,7 +68,7 @@ void haven_doel_afmeting(int* w, int* h) {
 // (haven_gebruikersfoto_aantal() blijft dan altijd 0, de slideshow gebruikt
 // gewoon de ingebakken voorbeeldfoto's, exact als voorheen).
 #if !PLATFORM_PICO
-#define HAVEN_USER_FOTO_MAX      30     // veiligheidsgrens; de échte grens is vrije SPIFFS-ruimte
+// HAVEN_USER_FOTO_MAX staat in haven_achtergrond.h (ook nodig in webapp.ino)
 #define HAVEN_USER_FOTO_MIN_VRIJ 8192   // laat altijd wat marge over voor overige app-data in SPIFFS
 
 static int hav_user_cnt = 0;

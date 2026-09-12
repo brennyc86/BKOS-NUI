@@ -144,6 +144,7 @@ void webapp_setup() {
         s += ",\"h\":"; s += h;
         s += ",\"vrij\":"; s += (uint32_t)haven_spiffs_vrij();
         s += ",\"aantal\":"; s += haven_gebruikersfoto_aantal();
+        s += ",\"maxAantal\":"; s += HAVEN_USER_FOTO_MAX;
         s += ",\"maxBytes\":"; s += (uint32_t)HAV_UPLOAD_MAX_BYTES;
         s += '}';
         _http.send(200, "application/json", s);

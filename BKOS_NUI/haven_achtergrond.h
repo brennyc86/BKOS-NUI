@@ -31,6 +31,12 @@ void haven_achtergrond_teken();  // decodeert + tekent de huidige foto (content-
 void haven_achtergrond_tick();   // periodieke check: tijd om te wisselen naar de volgende foto?
 
 // ─── Eigen foto's (SPIFFS) ─────────────────────────────────────────────────
+// Max. aantal eigen foto's (vast aantal slots — de échte grens is vrije
+// SPIFFS-ruimte, dit is enkel een veiligheidsbovengrens). Hier gedefinieerd
+// i.p.v. lokaal in haven_achtergrond.ino zodat webapp.ino 'm ook kan gebruiken
+// (getoond in /fotos/info, zodat de webapp "vol"-meldingen kan verduidelijken
+// i.p.v. de gebruiker te laten gissen of het om ruimte of om het aantal gaat).
+#define HAVEN_USER_FOTO_MAX 30
 // De doelresolutie waarop de foto's gedecodeerd/getekend worden — de webapp
 // vraagt dit op zodat een geüploade foto altijd EXACT op maat (en dus zo klein
 // mogelijk qua bestandsgrootte) aankomt, in plaats van dat het apparaat zelf

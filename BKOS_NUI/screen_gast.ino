@@ -5,6 +5,7 @@
 #include "nav_bar.h"
 #include "wifi.h"            // ntp_synced()
 #include <time.h>
+#include <ctype.h>           // isdigit() — code-invoer valideren
 
 extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
@@ -12,7 +13,9 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define GA_UITLEG_H  32
 #define GA_NAAM_Y    (CONTENT_Y + GA_HDR_H + GA_UITLEG_H)
 #define GA_NAAM_H    36
-#define GA_NIVEAU_Y  (GA_NAAM_Y + GA_NAAM_H + 6)
+#define GA_CODE_Y    (GA_NAAM_Y + GA_NAAM_H + 6)
+#define GA_CODE_H    36
+#define GA_NIVEAU_Y  (GA_CODE_Y + GA_CODE_H + 6)
 #define GA_NIVEAU_H  36
 #define GA_DUUR_Y    (GA_NIVEAU_Y + GA_NIVEAU_H + 6)
 #define GA_DUUR_H    36
@@ -31,7 +34,9 @@ static const uint8_t GA_NIVEAU_OPTIES[] = {NIVEAU_GAST, NIVEAU_LOGE, NIVEAU_DELE
 #define GA_NIVEAU_CNT 3
 
 static bool ga_kb_actief = false;
+static bool ga_kb_voor_code = false;  // true = het toetsenbord bewerkt ga_code, false = ga_naam
 static char ga_naam[GAST_NAAM_LEN] = "";
+static char ga_code[GAST_CODE_LEN] = "";  // "" = automatisch genereren bij aanmaken
 static int  ga_duur_idx = 0;
 static uint8_t ga_niveau = NIVEAU_GAST;
 static int  ga_bewerk_idx = -1;   // -1 = nieuwe code, anders index in gast_pin[] die bewerkt wordt
@@ -39,11 +44,12 @@ static int  ga_scroll_y = 0;
 static int  ga_max_scroll = 0;
 static unsigned long ga_flits_tot = 0;
 static bool ga_flits_fout = false;
-static char ga_flits_msg[40] = "";
+static char ga_flits_msg[32] = "";
 
 static void _ga_form_reset() {
     ga_bewerk_idx = -1;
     ga_naam[0] = '\0';
+    ga_code[0] = '\0';
     ga_duur_idx = 0;
     ga_niveau = NIVEAU_GAST;
 }
@@ -70,6 +76,14 @@ void screen_gast_teken() {
     tft.setTextSize(2); tft.setTextColor(ga_naam[0] ? C_TEXT : C_DARK_GRAY);
     tft.setCursor(220, GA_NAAM_Y + (GA_NAAM_H - 4 - 16) / 2);
     tft.print(ga_naam[0] ? ga_naam : "(tik om te typen)");
+
+    // Code (optioneel — leeg = automatisch een willekeurige, vrije code)
+    tft.fillRoundRect(8, GA_CODE_Y, TFT_W - 16, GA_CODE_H - 4, 6, C_SURFACE);
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(16, GA_CODE_Y + (GA_CODE_H - 4 - 8) / 2); tft.print("Code:");
+    tft.setTextSize(2); tft.setTextColor(ga_code[0] ? C_TEXT : C_DARK_GRAY);
+    tft.setCursor(220, GA_CODE_Y + (GA_CODE_H - 4 - 16) / 2);
+    tft.print(ga_code[0] ? ga_code : "(automatisch, tik om zelf te kiezen)");
 
     // Niveau — 3 pills
     {
@@ -169,14 +183,16 @@ void screen_gast_teken() {
     nav_bar_teken();
 }
 
-static void _ga_open_kb() {
-    strncpy(cfg_invoer, ga_naam, CFG_INVOER_LEN - 1); cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
-    snprintf(cfg_kb_label, 24, "Naam gast:");
-    cfg_kb_numeriek  = false;
+static void _ga_open_kb(bool voor_code) {
+    ga_kb_voor_code = voor_code;
+    strncpy(cfg_invoer, voor_code ? ga_code : ga_naam, CFG_INVOER_LEN - 1);
+    cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+    snprintf(cfg_kb_label, 24, voor_code ? "Code (4 cijfers):" : "Naam gast:");
+    cfg_kb_numeriek   = voor_code;
     cfg_kb_wachtwoord = false;
     cfg_bewerk_zeilnr = false;
     cfg_geselecteerd  = -1;
-    cfg_kb_info_mode = true; cfg_kb_chips = false; cfg_kb_opgeslagen = false; kb_sym = false;
+    cfg_kb_info_mode = !voor_code; cfg_kb_chips = false; cfg_kb_opgeslagen = false; kb_sym = false;
     ga_kb_actief = true;
     screen_config_toetsenbord_teken();
 }
@@ -187,8 +203,28 @@ void screen_gast_run(int x, int y, bool aanraking) {
     if (ga_kb_actief) {
         if (screen_config_toetsenbord_run(x, y)) {
             if (cfg_kb_opgeslagen) {
-                strncpy(ga_naam, cfg_invoer, GAST_NAAM_LEN - 1);
-                ga_naam[GAST_NAAM_LEN - 1] = '\0';
+                if (ga_kb_voor_code) {
+                    // Leeg = terug naar automatisch genereren; anders moet het
+                    // exact 4 cijfers zijn — bij een ongeldige invoer de oude
+                    // waarde laten staan en dat duidelijk melden i.p.v. iets
+                    // half-ingevoerds op te slaan.
+                    size_t len = strlen(cfg_invoer);
+                    bool alleen_cijfers = true;
+                    for (size_t i = 0; i < len; i++) if (!isdigit((unsigned char)cfg_invoer[i])) alleen_cijfers = false;
+                    if (len == 0) {
+                        ga_code[0] = '\0';
+                    } else if (len == 4 && alleen_cijfers) {
+                        strncpy(ga_code, cfg_invoer, GAST_CODE_LEN - 1);
+                        ga_code[GAST_CODE_LEN - 1] = '\0';
+                    } else {
+                        ga_flits_fout = true;
+                        snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Code moet 4 cijfers zijn");
+                        ga_flits_tot = millis() + 3000;
+                    }
+                } else {
+                    strncpy(ga_naam, cfg_invoer, GAST_NAAM_LEN - 1);
+                    ga_naam[GAST_NAAM_LEN - 1] = '\0';
+                }
             }
             ga_kb_actief  = false;
             cfg_kb_chips  = false;
@@ -216,7 +252,8 @@ void screen_gast_run(int x, int y, bool aanraking) {
         return;
     }
 
-    if (y >= GA_NAAM_Y && y < GA_NAAM_Y + GA_NAAM_H - 4) { _ga_open_kb(); return; }
+    if (y >= GA_NAAM_Y && y < GA_NAAM_Y + GA_NAAM_H - 4) { _ga_open_kb(false); return; }
+    if (y >= GA_CODE_Y && y < GA_CODE_Y + GA_CODE_H - 4) { _ga_open_kb(true); return; }
 
     if (y >= GA_NIVEAU_Y && y < GA_NIVEAU_Y + GA_NIVEAU_H - 4) {
         int w = (TFT_W - 16 - (GA_NIVEAU_CNT - 1) * 6) / GA_NIVEAU_CNT;
@@ -247,16 +284,25 @@ void screen_gast_run(int x, int y, bool aanraking) {
             screen_gast_teken();
             return;
         }
+        // Zelf gekozen code eerst apart controleren — geeft een gerichte
+        // foutmelding ("bestaat al") i.p.v. de generieke aanmaak/wijzig-fout.
+        if (ga_code[0] && !gast_code_beschikbaar(ga_code, ga_bewerk_idx)) {
+            ga_flits_fout = true;
+            snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Code %s is al in gebruik", ga_code);
+            ga_flits_tot = millis() + 4000;
+            screen_gast_teken();
+            return;
+        }
         uint32_t verloopt = (ga_duur_idx == 0) ? 0
                            : (uint32_t)time(nullptr) + (uint32_t)GA_DUUR_DAGEN[ga_duur_idx] * 86400UL;
         bool ok;
         if (ga_bewerk_idx >= 0) {
-            ok = gast_bewerken(ga_bewerk_idx, ga_naam, verloopt, ga_niveau);
+            ok = gast_bewerken(ga_bewerk_idx, ga_naam, verloopt, ga_niveau, ga_code);
             snprintf(ga_flits_msg, sizeof(ga_flits_msg), "%s", ok ? "Gewijzigd" : "Wijzigen mislukt (opslag vol?)");
         } else {
             if (gast_pin_cnt >= GAST_MAX) return;
             char code[GAST_CODE_LEN];
-            ok = gast_toevoegen(verloopt, ga_naam, ga_niveau, code, sizeof(code));
+            ok = gast_toevoegen(verloopt, ga_naam, ga_niveau, ga_code, code, sizeof(code));
             if (ok) snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Nieuwe code: %s", code);
             else    snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Aanmaken mislukt (vol?)");
         }
@@ -278,10 +324,12 @@ void screen_gast_run(int x, int y, bool aanraking) {
         if (was_bewerkt || ga_bewerk_idx > r) _ga_form_reset();
         screen_gast_teken();
     } else {
-        // Bestaande code bewerken: vult het formulier hierboven — de code zelf
-        // blijft ongewijzigd, alleen naam/duur/niveau zijn aan te passen.
+        // Bestaande code bewerken: vult het formulier hierboven, inclusief de
+        // code zelf (aanpasbaar via het Code-veld — ongewijzigd laten staan
+        // laat 'm gewoon zoals-ie was).
         ga_bewerk_idx = r;
         strncpy(ga_naam, gast_pin[r].naam, GAST_NAAM_LEN - 1); ga_naam[GAST_NAAM_LEN - 1] = '\0';
+        strncpy(ga_code, gast_pin[r].code, GAST_CODE_LEN - 1); ga_code[GAST_CODE_LEN - 1] = '\0';
         ga_niveau = gast_pin[r].niveau;
         ga_duur_idx = 0;  // resterende duur laat zich niet 1-op-1 terugvertalen; telt bij opslaan opnieuw vanaf nu
         screen_gast_teken();

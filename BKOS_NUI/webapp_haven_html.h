@@ -55,6 +55,10 @@ section h2{
   flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;
   color:var(--text);font-size:1.1rem;letter-spacing:.4em;text-align:center;padding:10px 0 10px 0.4em;
 }
+#ontgrendelBtn{
+  flex:none;background:var(--cyan);color:#04121c;border:1px solid var(--cyan);
+  border-radius:10px;padding:0 18px;font-size:.85rem;font-weight:600;
+}
 #uploadBtn, .filerow button.del{
   background:var(--surface2);border:1px solid var(--border);color:var(--text);
   border-radius:10px;padding:12px 16px;font-size:.88rem;font-weight:600;
@@ -93,7 +97,19 @@ section h2{
   <a class="terug" href="/">&#8592; besturing</a>
 </header>
 
-<div class="wrap">
+<div class="wrap" id="gate">
+  <section>
+    <h2>Pincode vereist</h2>
+    <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:12px;">Dezelfde pincode als op het scherm van de boordcomputer en de afstandsbediening — eenmaal invoeren, ook geldig voor uploaden en verwijderen.</p>
+    <div id="pinRow">
+      <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="pincode" autocomplete="off">
+      <button id="ontgrendelBtn" onclick="ontgrendel()">ONTGRENDEL</button>
+    </div>
+    <div id="pinErr" style="color:var(--red);font-size:.8rem;margin-top:8px;min-height:1.1em;"></div>
+  </section>
+</div>
+
+<div class="wrap" id="inhoud" style="display:none">
   <section>
     <h2>Status</h2>
     <div id="status">—</div>
@@ -101,9 +117,6 @@ section h2{
 
   <section>
     <h2>Nieuwe foto toevoegen</h2>
-    <div id="pinRow">
-      <input id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="pincode" autocomplete="off">
-    </div>
     <input type="file" id="bestandInput" accept="image/*" style="display:none">
     <button id="uploadBtn" onclick="kiesBestand()">FOTO KIEZEN &amp; VERKLEINEN</button>
     <div id="voortgang"><b></b></div>
@@ -114,11 +127,19 @@ section h2{
     <h2>Opgeslagen foto's</h2>
     <div id="lijst"><div id="leeg">Laden…</div></div>
   </section>
+
+  <section>
+    <a href="#" onclick="uitloggen();return false;" style="display:block;text-align:center;font-size:.8rem;color:var(--text-dim);padding:6px;">Uitloggen</a>
+  </section>
 </div>
 
 <script>
 'use strict';
 var doelW = 800, doelH = 480, maxUploadBytes = 300 * 1024;
+
+// Zelfde pincode/opslagsleutel als de afstandsbedieningspagina ("/") — eenmaal
+// daar (of hier) ontgrendeld werkt overal, zonder opnieuw in te loggen.
+var PIN_KEY = 'bkos_pin';
 
 function esc(s){ var d=document.createElement('div'); d.textContent=String(s); return d.innerHTML; }
 function fmtBytes(n){
@@ -156,10 +177,48 @@ function lijst(){
   }).catch(function(){});
 }
 
-function pin(){ return document.getElementById('pinInput').value; }
+function pin(){ return localStorage.getItem(PIN_KEY) || ''; }
+
+// ─── Toegang: één pincode, gedeeld met "/" via localStorage ────────────────
+function toonInhoud(){
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('inhoud').style.display = '';
+  info(); lijst();
+}
+function toonGate(){
+  document.getElementById('inhoud').style.display = 'none';
+  document.getElementById('gate').style.display = '';
+  document.getElementById('pinInput').value = '';
+}
+function ontgrendel(){
+  var v = document.getElementById('pinInput').value;
+  if (v.length !== 4){ document.getElementById('pinErr').textContent = '4 cijfers invoeren'; return; }
+  var fd = new URLSearchParams(); fd.set('pin', v);
+  fetch('/verify', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok){ localStorage.setItem(PIN_KEY, v); toonInhoud(); }
+      else document.getElementById('pinErr').textContent = 'Onjuiste pincode';
+    }).catch(function(){ document.getElementById('pinErr').textContent = 'Verbindingsfout'; });
+}
+document.getElementById('pinInput').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') ontgrendel();
+});
+function uitloggen(){ localStorage.removeItem(PIN_KEY); toonGate(); }
+
+// Bij het laden: een eerder opgeslagen pincode (bv. via "/") in stilte
+// bevestigen — geen nieuwe promptvraag als hij nog klopt.
+(function(){
+  var saved = pin();
+  if (!saved){ toonGate(); return; }
+  var fd = new URLSearchParams(); fd.set('pin', saved);
+  fetch('/verify', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if (d.ok) toonInhoud(); else { localStorage.removeItem(PIN_KEY); toonGate(); } })
+    .catch(function(){ toonGate(); });
+})();
 
 function verwijder(naam){
-  if (pin().length !== 4){ melding('Voer eerst de 4-cijferige pincode in.', 'fout'); return; }
   if (!confirm('Foto "' + naam + '" verwijderen?')) return;
   var fd = new URLSearchParams(); fd.set('pin', pin()); fd.set('naam', naam);
   fetch('/haven/verwijder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
@@ -171,7 +230,6 @@ function verwijder(naam){
 }
 
 function kiesBestand(){
-  if (pin().length !== 4){ melding('Voer eerst de 4-cijferige pincode in.', 'fout'); return; }
   document.getElementById('bestandInput').click();
 }
 
@@ -278,7 +336,8 @@ function uploadBlob(blob){
   xhr.send(fd);
 }
 
-info(); lijst();
+// info()/lijst() draaien pas ná ontgrendelen (zie toonInhoud() hierboven) —
+// vóór dat moment is er niets te laden, de gate staat nog in de weg.
 </script>
 </body>
 </html>

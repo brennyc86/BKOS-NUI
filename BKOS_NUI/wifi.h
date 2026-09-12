@@ -69,15 +69,16 @@ void ntp_vanaf_net(time_t epoch);               // tijdstip ontvangen van netwer
 void getijdata_ophalen_aanvragen(int station);      // vraag directe getijdata fetch aan (2 mnd)
 void getijdata_meer_laden_aanvragen(int station);   // vraag uitgebreide fetch aan (4 mnd)
 
-// ─── Tijdelijke hotspot (BESTANDEN-scherm) ───────────────────────────────────
-// Boordcomputer zendt tijdelijk zijn eigen wifi-netwerk uit, zodat een telefoon
-// er direct op kan inloggen zonder tethering/marina-wifi — nuttig op het water
-// waar geen "normaal" netwerk beschikbaar is. Alleen op ESP32 (Pico: no-op/altijd
-// uit) en alleen op aanvraag (schakelt na de ingestelde duur vanzelf weer uit,
-// zodat het bestaande stroombesparende wifi-aan/uit-schema intact blijft).
+// ─── Hotspot (afstandsbediening via telefoon) ───────────────────────────────
+// Boordcomputer zendt zijn eigen wifi-netwerk uit zodat een telefoon er direct
+// op kan inloggen zonder tethering/marina-wifi — nuttig op het water waar geen
+// "normaal" netwerk beschikbaar is, en zo is de webapp altijd bereikbaar als
+// afstandsbediening. Standaard AAN zodra het apparaat opstart (wifi_hotspot_
+// tick()'s eenmalige vertraagde auto-start); handmatig uit/aan blijft mogelijk
+// via het BESTANDEN-scherm, zonder tijdslimiet. Alleen op ESP32 (Pico: no-op/
+// altijd uit — geen concurrent AP+STA ondersteund).
 bool     wifi_hotspot_actief();
-uint32_t wifi_hotspot_resterend_s();
-void     wifi_hotspot_starten(uint32_t duur_s);
+void     wifi_hotspot_starten();
 void     wifi_hotspot_stoppen();
 void     wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, size_t wachtwoord_len);
-void     wifi_hotspot_tick();  // aanroepen vanuit de hoofdlus — sluit automatisch af na afloop
+void     wifi_hotspot_tick();  // aanroepen vanuit de hoofdlus — auto-start bij opstarten + captive-portal DNS

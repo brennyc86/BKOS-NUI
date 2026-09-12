@@ -123,45 +123,63 @@ button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);
     <b>BKOS</b>
     <span id="hdrSub">verbinden…</span>
   </div>
-  <button class="lock" id="lockBtn" onclick="openPin()">&#128274;</button>
+  <button class="lock" id="lockBtn" onclick="lockClick()">&#128274;</button>
 </header>
 
 <div class="wrap">
   <section>
-    <h2>Vaarmodus</h2>
-    <div class="grid4" id="modusGrid"></div>
+    <h2>Boot &amp; eigenaar</h2>
+    <div id="pubInfo">—</div>
   </section>
 
   <section>
-    <h2>Verlichting</h2>
-    <div class="grid3" id="lichtGrid"></div>
+    <h2>Iets aan de hand?</h2>
+    <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Stuur direct een berichtje naar de eigenaar — geen pincode nodig.</p>
+    <div class="grid2" id="berichtGrid"></div>
+    <div id="berichtOk" style="font-size:.78rem;color:var(--green);min-height:1.1em;margin-top:8px;"></div>
   </section>
 
-  <section id="paneelSection" style="display:none">
-    <h2>Paneel</h2>
-    <div class="grid3" id="paneelGrid"></div>
-  </section>
+  <div id="gated" style="display:none">
+    <section>
+      <h2>Vaarmodus</h2>
+      <div class="grid4" id="modusGrid"></div>
+    </section>
 
-  <section>
-    <h2>IO kanalen</h2>
-    <div id="ioList"></div>
-  </section>
+    <section>
+      <h2>Verlichting</h2>
+      <div class="grid3" id="lichtGrid"></div>
+    </section>
 
-  <section>
-    <h2>Verbonden modules</h2>
-    <div id="netInfo">—</div>
-  </section>
+    <section id="paneelSection" style="display:none">
+      <h2>Paneel</h2>
+      <div class="grid3" id="paneelGrid"></div>
+    </section>
 
-  <section>
-    <a href="/haven" style="display:block;text-align:center;font-size:.82rem;color:var(--text-dim);padding:6px;">HAVEN-foto's beheren &#8594;</a>
+    <section>
+      <h2>IO kanalen</h2>
+      <div id="ioList"></div>
+    </section>
+
+    <section>
+      <h2>Verbonden modules</h2>
+      <div id="netInfo">—</div>
+    </section>
+
+    <section>
+      <a href="/haven" style="display:block;text-align:center;font-size:.82rem;color:var(--text-dim);padding:6px;">HAVEN-foto's beheren &#8594;</a>
+    </section>
+  </div>
+
+  <section id="lockedHint">
+    <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;">Vaarmodus, verlichting, paneel, IO en HAVEN-foto's vereisen de pincode. <a href="#" onclick="openPin();return false;">Ontgrendelen &#8594;</a></p>
   </section>
 </div>
 
 <div id="overlay" class="hidden">
   <div id="pinCard">
     <h3>Pincode vereist</h3>
-    <p>Voor bediening is dezelfde pincode nodig als op het scherm van de boordcomputer.</p>
-    <input id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    <p>Eén keer invoeren geeft toegang tot bediening én HAVEN-foto's — dezelfde pincode als op het scherm van de boordcomputer.</p>
+    <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
     <div id="pinErr"></div>
     <div class="row">
       <button class="cancel" onclick="closePin(false)">ANNULEER</button>
@@ -179,6 +197,13 @@ var paneelData = [];
 var stateData = {m:0,l:0};
 var infoData = {};
 var netData = {peers:[]};
+
+// Eén PIN, gedeeld met /haven (localStorage is per host, dus zelfde apparaat) —
+// eenmaal invoeren ontgrendelt zowel bediening hier als uploaden/verwijderen
+// op de HAVEN-pagina, zonder daar opnieuw te hoeven inloggen.
+var PIN_KEY = 'bkos_pin';
+var pendingPin = '';       // welke pin het laatste auth-verzoek gebruikte
+var autoPinSilent = false; // true = automatische poging met opgeslagen pin (geen foutmelding tonen als hij niet meer klopt)
 
 var MODI = [
   {id:0,naam:'HAVEN',kleur:'var(--haven)'},
@@ -198,7 +223,11 @@ function wsUrl(){
 
 function connect(){
   try{ ws = new WebSocket(wsUrl()); }catch(e){ setTimeout(connect, 2000); return; }
-  ws.onopen = function(){ setConn(true); };
+  ws.onopen = function(){
+    setConn(true);
+    var saved = localStorage.getItem(PIN_KEY);
+    if (saved && !unlocked) { pendingPin = saved; autoPinSilent = true; send({t:'auth', pin:saved}); }
+  };
   ws.onclose = function(){ setConn(false); unlocked=false; setLock(false); setTimeout(connect, 2000); };
   ws.onerror = function(){ try{ ws.close(); }catch(e){} };
   ws.onmessage = function(ev){
@@ -218,6 +247,15 @@ function setLock(on){
   var b = document.getElementById('lockBtn');
   b.className = 'lock' + (on ? ' open' : '');
   b.innerHTML = on ? '&#128275;' : '&#128274;';
+  document.getElementById('gated').style.display = on ? '' : 'none';
+  document.getElementById('lockedHint').style.display = on ? 'none' : '';
+}
+
+// Klik op het hangslot: ontgrendeld → uitloggen (opgeslagen pin vergeten),
+// vergrendeld → pincode vragen.
+function lockClick(){
+  if (unlocked) { localStorage.removeItem(PIN_KEY); setLock(false); }
+  else openPin();
 }
 
 function handleMsg(msg){
@@ -236,11 +274,14 @@ function handleMsg(msg){
     case 'paneel':
       paneelData = msg.items || []; renderPaneel(); break;
     case 'auth_ok':
+      if (pendingPin) localStorage.setItem(PIN_KEY, pendingPin);
       setLock(true); closePin(true); break;
     case 'auth_fout':
-      document.getElementById('pinErr').textContent = 'Onjuiste pincode'; break;
+      localStorage.removeItem(PIN_KEY);
+      if (!autoPinSilent) document.getElementById('pinErr').textContent = 'Onjuiste pincode';
+      autoPinSilent = false; break;
     case 'auth_vereist':
-      setLock(false); openPin(); break;
+      setLock(false); break;
     default: break;
   }
 }
@@ -271,6 +312,7 @@ function closePin(){
 function submitPin(){
   var v = document.getElementById('pinInput').value;
   if (v.length !== 4){ document.getElementById('pinErr').textContent = '4 cijfers invoeren'; return; }
+  pendingPin = v; autoPinSilent = false;
   send({t:'auth', pin:v});
 }
 document.getElementById('pinInput').addEventListener('keydown', function(e){
@@ -332,6 +374,37 @@ function renderNet(){
   }).join('');
 }
 
+// ─── Openbaar (geen PIN): boot/eigenaar-info + "iets is los"-berichtje ─────
+function ladenPubliek(){
+  fetch('/info/publiek').then(function(r){ return r.json(); }).then(function(d){
+    document.getElementById('pubInfo').innerHTML =
+      '<div style="font-size:.9rem;"><b>' + esc(d.boot || '?') + '</b>' +
+      (d.type ? ' — ' + esc(d.type) : '') + '</div>' +
+      (d.eigenaar ? '<div style="color:var(--text-dim);font-size:.8rem;margin-top:2px;">Eigenaar: ' + esc(d.eigenaar) + '</div>' : '');
+  }).catch(function(){});
+}
+
+function ladenBericht(){
+  fetch('/bericht/lijst').then(function(r){ return r.json(); }).then(function(d){
+    var presets = d.presets || [];
+    document.getElementById('berichtGrid').innerHTML = presets.map(function(t, i){
+      return '<button class="mbtn" onclick="stuurBericht(' + i + ')">' + esc(t) + '</button>';
+    }).join('');
+  }).catch(function(){});
+}
+
+function stuurBericht(i){
+  var fd = new URLSearchParams(); fd.set('idx', i);
+  var el = document.getElementById('berichtOk');
+  fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ el.textContent = d.ok ? 'Bericht verzonden.' : 'Versturen mislukt.'; })
+    .catch(function(){ el.textContent = 'Versturen mislukt.'; })
+    .finally(function(){ setTimeout(function(){ el.textContent = ''; }, 4000); });
+}
+
+ladenPubliek();
+ladenBericht();
 connect();
 </script>
 </body>

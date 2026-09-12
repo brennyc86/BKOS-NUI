@@ -263,12 +263,19 @@ static void _wifi_verbinden_intern() {
     wifi_verbonden = (WiFi.status() == WL_CONNECTED);
 }
 
-// ─── Tijdelijke hotspot (BESTANDEN-scherm) ───────────────────────────────────
+// ─── Hotspot (afstandsbediening via telefoon, zonder marina-wifi) ───────────
+// Was een tijdelijke 30-minuten-knop (BESTANDEN-scherm); op Brendans verzoek nu
+// standaard AAN zolang de boordcomputer aan staat, zodat een telefoon altijd
+// met de webapp kan verbinden — de handmatige START/STOP-knop blijft bestaan
+// om 'm desgewenst uit te zetten (bv. stroombesparing), maar heeft geen tijds-
+// limiet meer.
 #if PLATFORM_ESP32
-static bool     _hs_actief    = false;
-static uint32_t _hs_eind_ms   = 0;
-static char     _hs_ssid[24]  = "";
-static char     _hs_wachtwoord[13] = "";
+#include <DNSServer.h>
+static bool      _hs_actief    = false;
+static char      _hs_ssid[24]  = "";
+static char      _hs_wachtwoord[13] = "";
+static DNSServer _hs_dns;
+#define HS_DNS_POORT 53
 
 // Bewust een open netwerk (geen wachtwoord) — op Brendans expliciete verzoek,
 // zeker tijdens het testen. _hs_wachtwoord blijft leeg; wifi_hotspot_info()
@@ -282,36 +289,38 @@ static void _hs_creds_genereren() {
 
 bool wifi_hotspot_actief() { return _hs_actief; }
 
-uint32_t wifi_hotspot_resterend_s() {
-    if (!_hs_actief) return 0;
-    long resterend = (long)(_hs_eind_ms - millis());
-    return resterend > 0 ? (uint32_t)(resterend / 1000) : 0;
-}
-
 void wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, size_t wachtwoord_len) {
     if (ssid_out && ssid_len)             { strncpy(ssid_out, _hs_ssid, ssid_len - 1); ssid_out[ssid_len - 1] = '\0'; }
     if (wachtwoord_out && wachtwoord_len) { strncpy(wachtwoord_out, _hs_wachtwoord, wachtwoord_len - 1); wachtwoord_out[wachtwoord_len - 1] = '\0'; }
 }
 
-void wifi_hotspot_starten(uint32_t duur_s) {
+void wifi_hotspot_starten() {
+    if (_hs_actief) return;
     _hs_creds_genereren();
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(_hs_ssid);  // geen wachtwoord = open netwerk
-    _hs_actief  = true;
-    _hs_eind_ms = millis() + duur_s * 1000UL;
+    _hs_actief = true;
 
-    // Webapp + websocket-server UITSLUITEND tijdens de hotspot: bkos_client_setup()/
-    // webapp_setup() draaiden ooit synchroon in hw_setup() vóór de splash-vertraging,
-    // gelijktijdig met de asynchrone wifi-opstarttaak — dat gaf op echte hardware een
-    // boot-lus (zie bkos_client.h). Hier starten ze pas ruim ná het opstarten, op
-    // expliciete tik van de gebruiker, met de GUI/wifi-taken allang in rust — dus
-    // buiten het venster waarin die crash destijds optrad.
+    // Captive portal: alle DNS-namen wijzen naar dit apparaat zelf, zodat
+    // telefoon/computer bij het verbinden met de hotspot uit zichzelf een
+    // "Log in op netwerk"-melding tonen die naar de webapp doorstuurt (samen
+    // met webapp.ino's onNotFound()-redirect naar "/" voor élk verzoek).
+    _hs_dns.start(HS_DNS_POORT, "*", WiFi.softAPIP());
+
+    // Webapp + websocket-server: bkos_client_setup()/webapp_setup() draaiden
+    // ooit synchroon in hw_setup() vóór de splash-vertraging, gelijktijdig met
+    // de asynchrone wifi-opstarttaak — dat gaf op echte hardware een boot-lus
+    // (zie bkos_client.h). Hier starten ze pas via wifi_hotspot_tick()'s
+    // vertraagde auto-start (of een latere handmatige tik), ruim ná het
+    // opstarten, met de GUI/wifi-taken allang in rust — dus buiten het venster
+    // waarin die crash destijds optrad.
     bkos_client_setup();
     webapp_setup();
 }
 
 void wifi_hotspot_stoppen() {
     if (!_hs_actief) return;
+    _hs_dns.stop();
     webapp_stop();
     bkos_client_stop();
     WiFi.softAPdisconnect(true);
@@ -320,16 +329,23 @@ void wifi_hotspot_stoppen() {
 }
 
 void wifi_hotspot_tick() {
-    if (_hs_actief && (long)(_hs_eind_ms - millis()) <= 0) wifi_hotspot_stoppen();
+    // Eenmalige auto-start kort ná opstarten — niet synchroon in hw_setup()
+    // zelf (zie toelichting hierboven), maar hier vanuit de achtergrondlus,
+    // die pas na de eerste paar seconden voor het eerst draait.
+    static bool auto_gedaan = false;
+    if (!auto_gedaan && millis() > 3000) {
+        auto_gedaan = true;
+        wifi_hotspot_starten();
+    }
+    if (_hs_actief) _hs_dns.processNextRequest();
 }
 #else  // PLATFORM_PICO — geen concurrent AP+STA ondersteund, functie is een no-op
 bool     wifi_hotspot_actief() { return false; }
-uint32_t wifi_hotspot_resterend_s() { return 0; }
 void     wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, size_t wachtwoord_len) {
     if (ssid_out && ssid_len) ssid_out[0] = '\0';
     if (wachtwoord_out && wachtwoord_len) wachtwoord_out[0] = '\0';
 }
-void wifi_hotspot_starten(uint32_t) {}
+void wifi_hotspot_starten() {}
 void wifi_hotspot_stoppen() {}
 void wifi_hotspot_tick() {}
 #endif

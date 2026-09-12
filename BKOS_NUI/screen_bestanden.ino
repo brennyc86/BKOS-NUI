@@ -20,9 +20,10 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
   #define BF_SD_MOGELIJK 0
 #endif
 
-// Tijdelijke hotspot alleen op ESP32 (Pico ondersteunt geen concurrent AP+STA)
+// Hotspot alleen op ESP32 (Pico ondersteunt geen concurrent AP+STA) — staat
+// standaard AAN (wifi.ino's auto-start), deze knop is alleen nog om 'm
+// desgewenst handmatig uit/weer aan te zetten.
 #define BF_HOTSPOT_MOGELIJK PLATFORM_ESP32
-#define BF_HOTSPOT_DUUR_S   (30UL * 60UL)   // 30 minuten per keer starten
 
 #define BF_HDR_H     30
 #define BF_INFO_Y    (CONTENT_Y + BF_HDR_H + 6)   // IP/webapp-regel
@@ -289,25 +290,26 @@ static void _bf_thumb_teken(const char* pad, int x, int y) {
 #else
         fs::FS* fs = &SPIFFS;
 #endif
-        File f = fs->open(pad, "r");
-        if (f) {
-            // Werkelijke afmetingen opvragen om de dichtstbijzijnde ondersteunde
-            // schaal (1/2/4/8) te kiezen — bestanden buiten /haven (bv. handmatig
-            // op SD gezette foto's) hebben geen bekende vaste resolutie.
-            uint16_t bron_w = 0, bron_h = 0;
-            TJpgDec.getFsJpgSize(&bron_w, &bron_h, f);
-            uint8_t schaal = 1;
-            while (schaal < 8 && bron_w > 0 && (bron_w / (schaal * 2)) >= BF_THUMB_W) schaal *= 2;
+        // Werkelijke afmetingen opvragen om de dichtstbijzijnde ondersteunde
+        // schaal (1/2/4/8) te kiezen — bestanden buiten /haven (bv. handmatig
+        // op SD gezette foto's) hebben geen bekende vaste resolutie. LET OP:
+        // TJpg_Decoder::getFsJpgSize(File) sluit het meegegeven bestand ZELF af
+        // aan het einde — hetzelfde handle daarna hergebruiken voor drawFsJpg()
+        // faalt dus stilletjes (decodeert een al gesloten stream). Vandaar de
+        // filename+fs-variant hier (die intern zijn EIGEN, weggegooide handle
+        // opent) en straks een VERS handle voor de echte decode.
+        uint16_t bron_w = 0, bron_h = 0;
+        TJpgDec.getFsJpgSize(&bron_w, &bron_h, pad, *fs);
+        uint8_t schaal = 1;
+        while (schaal < 8 && bron_w > 0 && (bron_w / (schaal * 2)) >= BF_THUMB_W) schaal *= 2;
 
-            TJpgDec.setJpgScale(schaal);
-            TJpgDec.setSwapBytes(false);
-            TJpgDec.setCallback(_bf_thumb_output);
-            bf_thumb_doel = c->pix;
-            f.seek(0);
-            c->geldig = (TJpgDec.drawFsJpg(0, 0, f) == JDR_OK);
-            bf_thumb_doel = nullptr;
-            f.close();
-        }
+        TJpgDec.setJpgScale(schaal);
+        TJpgDec.setSwapBytes(false);
+        TJpgDec.setCallback(_bf_thumb_output);
+        bf_thumb_doel = c->pix;
+        File f = fs->open(pad, "r");  // vers handle — zie toelichting hierboven
+        c->geldig = f && (TJpgDec.drawFsJpg(0, 0, f) == JDR_OK);  // drawFsJpg sluit f zelf af
+        bf_thumb_doel = nullptr;
     }
     if (c->geldig) tft.draw16bitRGBBitmap(x, y, c->pix, BF_THUMB_W, BF_THUMB_H);
     else           tft.fillRect(x, y, BF_THUMB_W, BF_THUMB_H, C_SURFACE3);  // kon niet decoderen: neutraal vlak i.p.v. niets
@@ -384,13 +386,12 @@ void screen_bestanden_teken() {
     if (hs_actief) {
         char ssid[24], ww[13];
         wifi_hotspot_info(ssid, sizeof(ssid), ww, sizeof(ww));
-        uint32_t rs = wifi_hotspot_resterend_s();
         tft.setTextColor(C_GREEN);
         tft.setCursor(10, BF_HS_STATUS_Y);
         tft.print(ssid);
         if (ww[0]) { tft.print(" / "); tft.print(ww); }
         else       { tft.print(" (open netwerk)"); }
-        tft.print("  -  192.168.4.1  -  nog "); tft.print((rs + 59) / 60); tft.print(" min");
+        tft.print("  -  192.168.4.1");
     }
 #endif
 
@@ -517,7 +518,7 @@ void screen_bestanden_run(int x, int y, bool aanraking) {
         screen_bestanden_teken();
         tft_flush(true);
         if (wifi_hotspot_actief()) wifi_hotspot_stoppen();
-        else                       wifi_hotspot_starten(BF_HOTSPOT_DUUR_S);
+        else                       wifi_hotspot_starten();
         bf_hotspot_bezig = false;
         screen_bestanden_teken();
         return;

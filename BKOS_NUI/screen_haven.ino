@@ -21,7 +21,11 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define HV_ALG_GAP_GR  24
 
 // Terugknopje in de statusbalk (net als WIFI/INFO/TIJD) i.p.v. eigen ruimte
-// in het content-gebied — kost dus geen extra hoogte.
+// in het content-gebied — kost dus geen extra hoogte. HV_BACK_GAP is zowel de
+// marge vanaf de bovenkant van het scherm tot de knop, als de tussenruimte
+// tussen de knop en het (nu volledig-hoog getekende) zwarte klokvenster —
+// bewust dezelfde waarde voor een rustig, symmetrisch geheel.
+#define HV_BACK_GAP 8
 #if SCREEN_SMALL
   #define HV_BACK_W  52
   #define HV_BACK_H  18
@@ -30,10 +34,10 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #else
   #define HV_BACK_W  112
   #define HV_BACK_H  26
-  #define HV_BACK_X  (SB_KLOK_X - HV_BACK_W - 8)  // 8px lucht t.o.v. het klokvenster
+  #define HV_BACK_X  (SB_KLOK_ZWART_X - HV_BACK_W - HV_BACK_GAP)
   #define HV_BACK_LBL "< TERUG"
 #endif
-#define HV_BACK_Y  ((SB_H - HV_BACK_H) / 2)
+#define HV_BACK_Y  HV_BACK_GAP
 
 #define HV_START_Y   CONTENT_Y
 #define HV_LIST_BOT  (NAV_Y - 8)

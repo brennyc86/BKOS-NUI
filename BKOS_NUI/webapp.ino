@@ -10,6 +10,8 @@
 #include "webapp_haven_html.h"
 #include "haven_achtergrond.h"
 #include "screen_config.h"  // pin_lezen_pub()
+#include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
+#include "bericht.h"        // bericht_preset/bericht_verzend — "iets is los"-berichtje, openbaar
 #include <WebServer.h>
 #include <SPIFFS.h>         // /haven/foto — ruwe fotobytes serveren voor thumbnails
 
@@ -46,6 +48,42 @@ void webapp_setup() {
     if (_http_handlers_klaar) { _http.begin(); _http_gestart = true; return; }
     _http.on("/", HTTP_GET, []() {
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HTML);
+    });
+
+    // ─── Openbaar (geen PIN): boot/eigenaar-info + "iets is los"-berichtje ───
+    // Bewust een zeer beperkte publieke set — verder vereist alles dezelfde
+    // PIN als het CONFIG-scherm (zie _pin_ok/pin_lezen_pub hierboven).
+    _http.on("/info/publiek", HTTP_GET, []() {
+        String s = "{\"boot\":\"";     s += info_boot_naam();
+        s += "\",\"type\":\"";         s += info_boot_type();
+        s += "\",\"eigenaar\":\"";     s += info_eigenaar_naam();
+        s += "\"}";
+        _http.send(200, "application/json", s);
+    });
+
+    _http.on("/bericht/lijst", HTTP_GET, []() {
+        String s = "{\"presets\":[";
+        for (int i = 0; i < BERICHT_AANTAL; i++) {
+            if (i) s += ',';
+            s += "\""; s += bericht_preset[i]; s += "\"";
+        }
+        s += "]}";
+        _http.send(200, "application/json", s);
+    });
+
+    _http.on("/bericht/verzend", HTTP_POST, []() {
+        int idx = _http.arg("idx").toInt();
+        if (idx < 0 || idx >= BERICHT_AANTAL) { _http.send(400, "application/json", "{\"ok\":false}"); return; }
+        bericht_verzend(idx);
+        _http.send(200, "application/json", "{\"ok\":true}");
+    });
+
+    // Losse PIN-verificatie (geen websocket nodig) — gebruikt door beide
+    // webpagina's om een uit localStorage teruggehaalde PIN in de achtergrond
+    // te bevestigen (of net zo stil weer te vergeten als 'm niet meer klopt).
+    _http.on("/verify", HTTP_POST, []() {
+        bool ok = _pin_ok(_http.arg("pin"));
+        _http.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
     });
 
     // ─── HAVEN-fotobeheer ───────────────────────────────────────────────────

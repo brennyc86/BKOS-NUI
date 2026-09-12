@@ -19,6 +19,10 @@ void info_laden();
 void info_opslaan();
 const char* info_boot_naam();  // geeft boot naam terug (key "b_naam"), laadt indien nodig
 const char* info_eigenaar_tel(); // geeft eigenaar-telefoonnummer terug (key "e_tel")
+// Openbaar tonen in de webapp (geen PIN): boottype + eigenaarnaam. BEWUST NIET
+// adres/stad/telefoon/e-mail — dat blijft alleen op het apparaat zelf zichtbaar.
+const char* info_boot_type();     // key "b_type"
+const char* info_eigenaar_naam(); // key "e_naam"
 
 void info_sync_verwerken(uint8_t chunk, const uint8_t* data);
 void info_update_verwerken(uint8_t chunk, const uint8_t* data);

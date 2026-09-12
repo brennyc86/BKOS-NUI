@@ -50,6 +50,16 @@ const char* info_eigenaar_tel() {
     if (!info_geladen) info_laden();
     return eig_vals[1];  // e_tel
 }
+
+const char* info_boot_type() {
+    if (!info_geladen) info_laden();
+    return boot_vals[1];  // b_type
+}
+
+const char* info_eigenaar_naam() {
+    if (!info_geladen) info_laden();
+    return eig_vals[0];  // e_naam
+}
 static bool info_kb_actief      = false;
 static bool info_naam_kb_actief = false;  // apparaatnaam toetsenbord (altijd bewerkbaar)
 static int  info_kb_idx         = -1;

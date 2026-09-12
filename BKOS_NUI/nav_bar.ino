@@ -2,6 +2,7 @@
 #include "screen_info.h"
 #include "app_manager.h"
 #include "haven_achtergrond.h"  // haven_achtergrond_pixel_klem/haven_kleur_meng — getinte HAVEN-achtergrond
+#include "wifi.h"               // wifi_hotspot_actief() — statusbalk-icoon
 #include <math.h>
 
 // ─── Getinte achtergrond i.p.v. vlakke kleur op het HAVEN-dashboard ─────────
@@ -37,8 +38,11 @@ static void _nb_fill_getint(int x, int y, int w, int h, uint16_t doel, uint8_t s
 // Sterktes: mild voor gewone achtergrond (foto blijft dominant, net genoeg
 // getint om "van het thema" te ogen), fors hoger voor een geselecteerde/actieve
 // knop (moet als een herkenbaar effen accentvlak afsteken tegen de foto).
-#define NB_TINT_NORMAAL 70
-#define NB_TINT_ACTIEF  175
+// Brendan vond de eerste versie (70/175) nauwelijks leesbaar tegen de foto —
+// fors opgehoogd zodat de themakleur duidelijk domineert, met nog net genoeg
+// foto zichtbaar om "erdoorheen" te ogen i.p.v. een vlakke kleur.
+#define NB_TINT_NORMAAL 165
+#define NB_TINT_ACTIEF  215
 
 // Gewone achtergrond: elders (niet-HAVEN) exact een vlakke fillRect met
 // `kleur` — nul gedragsverandering; op HAVEN wordt de foto geblend richting
@@ -148,14 +152,15 @@ static void _wifi_icon(int x) {
     }
 }
 
-static void _bt_icon(int x) {
-    uint16_t c = RGB565(55, 70, 90);
-    int cx = x + 6, cy = SB_H / 2;
-    tft.drawFastVLine(cx, cy - 9, 18, c);
-    tft.drawLine(cx, cy - 9, cx + 6, cy - 4, c);
-    tft.drawLine(cx + 6, cy - 4, cx,  cy,     c);
-    tft.drawLine(cx,     cy,     cx + 6, cy + 4, c);
-    tft.drawLine(cx + 6, cy + 4, cx,  cy + 9, c);
+// Hotspot-icoon (vervangt het oude, nooit aan een echte status gekoppelde
+// bluetooth-icoontje op dezelfde plek) — "broadcast"-stippenbogen, groen
+// zodra de telefoon-hotspot (wifi.ino) actief is, anders gedimd.
+static void _hotspot_icon(int x) {
+    uint16_t c = wifi_hotspot_actief() ? C_GREEN : RGB565(55, 70, 90);
+    int cx = x + 7, cy = SB_H / 2 + 2;
+    tft.fillCircle(cx, cy, 2, c);
+    tft.drawCircle(cx, cy, 5, c);
+    tft.drawCircle(cx, cy, 8, c);
 }
 
 static void _alert_icon(int x) {
@@ -175,15 +180,16 @@ void sb_teken_basis() {
 #if SCREEN_SMALL
     // Klokvenster altijd puur zwart (uitzondering op de fototint hierboven) —
     // leest op elke foto/thema meteen af, i.p.v. mee te vervagen met de tint.
-    tft.fillRect(SB_KLOK_X - 4, 2, TFT_W - (SB_KLOK_X - 4) - 2, SB_H - 4, C_BLACK);
+    // Volle hoogte + tot de rechterrand, zie SB_KLOK_ZWART_X (nav_bar.h).
+    tft.fillRect(SB_KLOK_ZWART_X, 0, TFT_W - SB_KLOK_ZWART_X, SB_H, C_BLACK);
     uint16_t wkl = wifi_verbonden ? C_GREEN : RGB565(80, 90, 100);
     tft.fillCircle(8, SB_H / 2, 3, wkl);
     tft.setTextSize(1); tft.setTextColor(C_TEXT);
     tft.setCursor(SB_KLOK_X, (SB_H - 8) / 2);
     tft.print(klok_tijd.c_str());
 #else
-    tft.fillRect(SB_KLOK_X - 6, 3, TFT_W - (SB_KLOK_X - 6) - 4, SB_H - 6, C_BLACK);
-    _wifi_icon(8); _bt_icon(36); _alert_icon(56);
+    tft.fillRect(SB_KLOK_ZWART_X, 0, TFT_W - SB_KLOK_ZWART_X, SB_H, C_BLACK);
+    _wifi_icon(8); _hotspot_icon(36); _alert_icon(56);
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
     tft.setCursor(SB_KLOK_X, (SB_H - 16) / 2);
     tft.print(klok_tijd.c_str());

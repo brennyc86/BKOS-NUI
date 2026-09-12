@@ -924,8 +924,13 @@ void interieur_kleur_overrulen(bool rood) {
     if (interieur_modus == INTERIEUR_AUTO && _int_overrule == gewenst) {
         _int_overrule = -1;  // zelfde kleur nogmaals gekozen: overrule opheffen, terug naar echte auto
     } else {
-        interieur_modus       = INTERIEUR_AUTO;
-        _int_overrule         = gewenst;
+        // Een kleurkeuze mag nooit zelf de hoofdverlichting AANZETTEN — staat
+        // 'm UIT, dan blijft dat zo en wordt alleen de gewenste kleur onthouden
+        // voor zodra iemand 'm (via ALLES AAN of het hoofdscherm) weer aanzet.
+        // Stond 'm al aan (AUTO/WIT/ROOD), dan gaat 'm naar AUTO zodat de
+        // overrule hieronder ook echt toegepast wordt (io_verlichting_update()).
+        if (interieur_modus != INTERIEUR_UIT) interieur_modus = INTERIEUR_AUTO;
+        _int_overrule           = gewenst;
         _int_overrule_vaarmodus = vaar_modus;
     }
 }
@@ -961,12 +966,19 @@ void io_verlichting_update() {
     bool navigeert = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR);
     bool auto_rood = navigeert && _int_rood_auto_aan();
     if (_int_overrule >= 0) {
-        if (interieur_modus != INTERIEUR_AUTO || _int_overrule_vaarmodus != vaar_modus) {
-            // Overrule is alleen zinvol zolang interieur_modus AUTO is (zo houdt
-            // HAVEN 'm ook altijd) — handmatig wegnavigeren op het hoofdscherm of
-            // een vaarmodus-wissel maakt de overrule ongeldig.
+        // UIT (hoofdverlichting gewoon uit, bv. via ALLES UIT) mag de overrule
+        // NIET ongeldig maken — dat zou een kleurkeuze laten "vergeten" zodra
+        // iemand de lampen weer aanzet (gemeld: ALLES AAN gaf dan weer wit
+        // i.p.v. de eerder gekozen rood). Alleen een bewuste WIT/ROOD-keuze op
+        // het hoofdscherm zelf (interieur_modus expliciet niet AUTO én niet
+        // UIT) of een vaarmodus-wissel maakt de overrule ongeldig.
+        if ((interieur_modus != INTERIEUR_AUTO && interieur_modus != INTERIEUR_UIT)
+                || _int_overrule_vaarmodus != vaar_modus) {
             _int_overrule = -1;
         } else {
+            // Ongeacht AUTO of UIT toepassen: genummerde lampen (lamp_aan[])
+            // zijn onafhankelijk van hoofdverlichting-aan/uit en moeten de
+            // gekozen kleur ook volgen als de hoofdverlichting zelf uit staat.
             auto_rood = (_int_overrule == 1);  // overrult alleen de KLEUR, nooit int_aan hieronder
         }
     }

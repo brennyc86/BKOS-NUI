@@ -64,6 +64,17 @@ void nav_midden_bouwen();
   #define SB_KLOK_X  (TFT_W - 68)
 #endif
 
+// Linkerrand van het zwarte klokvenster (nav_bar.ino, sb_teken_basis) — een
+// losse macro (i.p.v. impliciet "SB_KLOK_X - vaste marge" in dat bestand) zodat
+// andere schermen (bv. screen_haven.ino's TERUG-knop) hun eigen tussenruimte
+// t.o.v. het klokvenster kunnen uitrekenen zonder dat tekenen/positionering
+// uit de pas kan lopen. Loopt tot de rechterrand van het scherm door.
+#if SCREEN_SMALL
+  #define SB_KLOK_ZWART_X (SB_KLOK_X - 4)
+#else
+  #define SB_KLOK_ZWART_X (SB_KLOK_X - 14)
+#endif
+
 void nav_bar_teken();
 int  nav_bar_klik(int x, int y);
 void sb_teken_basis();

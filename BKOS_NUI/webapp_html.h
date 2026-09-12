@@ -171,33 +171,40 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
 </header>
 
 <div class="wrap">
-  <section>
-    <h2>Boot &amp; eigenaar</h2>
-    <div id="pubInfo">—</div>
-  </section>
+  <div class="tabbar">
+    <button class="tabbtn active" data-tab="info" onclick="setTab('info')">INFO</button>
+    <button class="tabbtn" id="tabBtnHuis" data-tab="huis" onclick="setTab('huis')" style="display:none;">HUIS</button>
+    <button class="tabbtn" id="tabBtnBoot" data-tab="boot" onclick="setTab('boot')" style="display:none;">BOOT</button>
+    <button class="tabbtn" id="tabBtnIo" data-tab="io" onclick="setTab('io')" style="display:none;">IO</button>
+    <button class="tabbtn" id="tabBtnFotos" data-tab="fotos" onclick="setTab('fotos')" style="display:none;">FOTOS</button>
+    <button class="tabbtn" id="tabBtnInstellingen" data-tab="instellingen" onclick="setTab('instellingen')" style="display:none;">INSTELL.</button>
+  </div>
 
-  <section>
-    <h2 id="berichtKop" onclick="berichtToggle()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-      <span>Iets aan de hand?</span>
-      <span id="berichtChevron">&#9660;</span>
-    </h2>
-    <div id="berichtBody">
-      <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Stuur direct een berichtje naar de eigenaar — geen pincode nodig.</p>
-      <div class="grid2" id="berichtGrid"></div>
-      <div id="berichtOk" style="font-size:.78rem;color:var(--green);min-height:1.1em;margin-top:8px;"></div>
-    </div>
-  </section>
+  <div id="tabInfo" class="tabpane">
+    <section>
+      <h2>Boot &amp; eigenaar</h2>
+      <div id="pubInfo">—</div>
+    </section>
 
-  <div id="gated" style="display:none">
-    <div class="tabbar">
-      <button class="tabbtn active" data-tab="huis" onclick="setTab('huis')">HUIS</button>
-      <button class="tabbtn" data-tab="boot" onclick="setTab('boot')">BOOT</button>
-      <button class="tabbtn" id="tabBtnIo" data-tab="io" onclick="setTab('io')">IO</button>
-      <button class="tabbtn" id="tabBtnFotos" data-tab="fotos" onclick="setTab('fotos')">FOTOS</button>
-      <button class="tabbtn" id="tabBtnInstellingen" data-tab="instellingen" onclick="setTab('instellingen')">INSTELL.</button>
-    </div>
+    <section>
+      <h2 id="berichtKop" onclick="berichtToggle()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <span>Iets aan de hand?</span>
+        <span id="berichtChevron">&#9660;</span>
+      </h2>
+      <div id="berichtBody">
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Stuur direct een berichtje naar de eigenaar — geen pincode nodig.</p>
+        <div class="grid2" id="berichtGrid"></div>
+        <div id="berichtOk" style="font-size:.78rem;color:var(--green);min-height:1.1em;margin-top:8px;"></div>
+      </div>
+    </section>
 
-    <div id="tabHuis" class="tabpane">
+    <section id="lockedHint">
+      <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;">Bediening vereist de eigenaars- of een gastpincode. <a href="#" onclick="openPin();return false;">Ontgrendelen &#8594;</a></p>
+    </section>
+  </div>
+
+  <div>
+    <div id="tabHuis" class="tabpane" style="display:none">
       <section>
         <h2>Interieurverlichting</h2>
         <div class="grid3" id="huisAlgemeen"></div>
@@ -270,47 +277,66 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
     </div>
 
     <div id="tabInstellingen" class="tabpane" style="display:none">
-      <section>
-        <h2>Boot</h2>
-        <div id="instBoot"></div>
-      </section>
-      <section>
-        <h2>Eigenaar</h2>
-        <div id="instEig"></div>
-        <button class="mbtn" style="margin-top:8px;" onclick="instellingenOpslaan()">OPSLAAN</button>
-        <div id="instMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
-      </section>
+      <div class="tabbar" style="margin-top:0;">
+        <button class="tabbtn active" data-subtab="boot" onclick="setSubTab('boot')">BOOT</button>
+        <button class="tabbtn" data-subtab="verbindingen" onclick="setSubTab('verbindingen')">VERBINDINGEN</button>
+        <button class="tabbtn" data-subtab="toegang" onclick="setSubTab('toegang')">TOEGANG</button>
+      </div>
 
-      <section>
-        <h2>Pincode wijzigen</h2>
-        <input id="pinOud" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="huidige pincode" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1rem;padding:10px;margin-bottom:8px;">
-        <input id="pinNieuw" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="nieuwe pincode" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1rem;padding:10px;margin-bottom:8px;">
-        <button class="mbtn" onclick="pinWijzigen()">PINCODE WIJZIGEN</button>
-        <div id="pinWijzMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
-      </section>
+      <div id="instSubBoot" class="tabpane">
+        <section>
+          <h2>Boot</h2>
+          <div id="instBoot"></div>
+        </section>
+        <section>
+          <h2>Eigenaar</h2>
+          <div id="instEig"></div>
+          <button class="mbtn" style="margin-top:8px;" onclick="instellingenOpslaan()">OPSLAAN</button>
+          <div id="instMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+      </div>
 
-      <section>
-        <h2>Gasten pincodes</h2>
-        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">GAST = HUIS+BOOT. LOGE = ook kanalen die minimaal LOGE vereisen (bv. een slot). DELER = ook kanalen die minimaal DELER vereisen. Nooit IO/FOTOS/INSTELLINGEN — dat blijft de eigenaar.</p>
-        <input id="gastNaam" type="text" placeholder="naam (optioneel)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
-        <input id="gastCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="code (optioneel — leeg = automatisch)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
-        <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Niveau</label>
-        <div class="grid3" id="gastNiveauKeuze" style="margin-bottom:8px;"></div>
-        <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Geldigheid</label>
-        <div class="grid3" id="gastDuurKeuze" style="margin-bottom:8px;"></div>
-        <div class="grid2">
-          <button class="mbtn" id="gastActieBtn" onclick="gastActie()">CODE AANMAKEN</button>
-          <button class="mbtn" id="gastAnnuleerBtn" onclick="gastFormReset()" style="display:none;">ANNULEER</button>
-        </div>
-        <div id="gastMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
-        <div id="gastLijst" style="margin-top:8px;"></div>
-      </section>
+      <div id="instSubVerbindingen" class="tabpane" style="display:none">
+        <section>
+          <h2>Meldingen (Signal / WhatsApp)</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Berichten via CallMeBot bij opstart/alarm/hartslag. De lange Signal-/WhatsApp-code van CallMeBot kun je hier makkelijker plakken dan intypen op het scherm van de boordcomputer.</p>
+          <div id="meldingVelden"></div>
+          <div class="grid2" style="margin-top:8px;">
+            <button class="mbtn" onclick="meldingOpslaan()">OPSLAAN</button>
+            <button class="mbtn" onclick="meldingTest()">TESTBERICHT STUREN</button>
+          </div>
+          <div id="meldingMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+      </div>
+
+      <div id="instSubToegang" class="tabpane" style="display:none">
+        <section>
+          <h2>Pincode wijzigen</h2>
+          <input id="pinOud" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="huidige pincode" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1rem;padding:10px;margin-bottom:8px;">
+          <input id="pinNieuw" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="nieuwe pincode" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1rem;padding:10px;margin-bottom:8px;">
+          <button class="mbtn" onclick="pinWijzigen()">PINCODE WIJZIGEN</button>
+          <div id="pinWijzMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+
+        <section>
+          <h2>Gasten pincodes</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">GAST = HUIS+BOOT. LOGE = ook kanalen die minimaal LOGE vereisen (bv. een slot). DELER = ook kanalen die minimaal DELER vereisen. Nooit IO/FOTOS/INSTELLINGEN — dat blijft de eigenaar.</p>
+          <input id="gastNaam" type="text" placeholder="naam (optioneel)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <input id="gastCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="code (optioneel — leeg = automatisch)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Niveau</label>
+          <div class="grid3" id="gastNiveauKeuze" style="margin-bottom:8px;"></div>
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Geldigheid</label>
+          <div class="grid3" id="gastDuurKeuze" style="margin-bottom:8px;"></div>
+          <div class="grid2">
+            <button class="mbtn" id="gastActieBtn" onclick="gastActie()">CODE AANMAKEN</button>
+            <button class="mbtn" id="gastAnnuleerBtn" onclick="gastFormReset()" style="display:none;">ANNULEER</button>
+          </div>
+          <div id="gastMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+          <div id="gastLijst" style="margin-top:8px;"></div>
+        </section>
+      </div>
     </div>
   </div>
-
-  <section id="lockedHint">
-    <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;">Bediening vereist de eigenaars- of een gastpincode. <a href="#" onclick="openPin();return false;">Ontgrendelen &#8594;</a></p>
-  </section>
 </div>
 
 <div id="overlay" class="hidden">
@@ -355,10 +381,11 @@ var lampData = {hoofdAanwezig:false,hoofdAan:false,kleur:0,overrule:-1,items:[]}
 var NIVEAU_GEEN = 0, NIVEAU_GAST = 1, NIVEAU_LOGE = 2, NIVEAU_DELER = 3, NIVEAU_EIGENAAR = 4;
 var NIVEAU_NAMEN = ['GEEN', 'GAST', 'LOGE', 'DELER', 'EIGENAAR'];
 var niveau = 0;
-var actieveTab = 'huis';
+var actieveTab = 'info';
 var berichtOpen = true;
 var instellingenData = {zeilnr:'',naam:'',boot:[],eig:[]};
 var gastData = [];
+var meldingData = null;
 
 // Eén PIN, gedeeld met /haven (localStorage is per host, dus zelfde apparaat) —
 // eenmaal invoeren ontgrendelt zowel bediening hier als uploaden/verwijderen
@@ -417,35 +444,50 @@ function setLock(on, niv){
   var b = document.getElementById('lockBtn');
   b.className = 'lock' + (on ? ' open' : '');
   b.innerHTML = on ? '&#128275;' : '&#128274;';
-  document.getElementById('gated').style.display = on ? '' : 'none';
   document.getElementById('lockedHint').style.display = on ? 'none' : '';
   // Ingelogd: het berichtje-blok is dan niet meer de enige manier om iets
   // te melden, dus mag ingeklapt — uitgelogd blijft het vanzelf open (de
   // enige publieke functie op deze pagina).
   berichtSetOpen(!on);
-  // Een gastcode (niveau 1) mag alleen HUIS+BOOT — IO/FOTOS/INSTELLINGEN
-  // blijven voor de eigenaar (niveau 2). Server dwingt dit sowieso zelf af;
-  // dit is puur zodat een gast geen tabblad ziet dat toch niets zou doen.
-  var eigenaar = (niveau >= NIVEAU_EIGENAAR);
+  // INFO is altijd zichtbaar (ook uitgelogd). Een gastcode (niveau 1-3) mag
+  // HUIS+BOOT; IO/FOTOS/INSTELLINGEN blijven voorbehouden aan de eigenaar
+  // (niveau 4). Server dwingt dit sowieso zelf af; dit is puur zodat iemand
+  // geen tabblad ziet dat toch niets zou doen.
+  var magHuisBoot = (niveau >= NIVEAU_GAST);
+  var eigenaar    = (niveau >= NIVEAU_EIGENAAR);
+  document.getElementById('tabBtnHuis').style.display = magHuisBoot ? '' : 'none';
+  document.getElementById('tabBtnBoot').style.display = magHuisBoot ? '' : 'none';
   document.getElementById('tabBtnIo').style.display = eigenaar ? '' : 'none';
   document.getElementById('tabBtnFotos').style.display = eigenaar ? '' : 'none';
   document.getElementById('tabBtnInstellingen').style.display = eigenaar ? '' : 'none';
-  var eigenaarTabs = ['io','fotos','instellingen'];
-  if (on && !eigenaar && eigenaarTabs.indexOf(actieveTab) >= 0) setTab('huis');
-  else if (on) setTab(actieveTab);
+  var verbergTabs = eigenaar ? [] : magHuisBoot ? ['io','fotos','instellingen'] : ['huis','boot','io','fotos','instellingen'];
+  if (verbergTabs.indexOf(actieveTab) >= 0) setTab('info');
+  else setTab(actieveTab);
 }
 
 function setTab(naam){
   actieveTab = naam;
-  var tabs = ['huis','boot','io','fotos','instellingen'];
+  var tabs = ['info','huis','boot','io','fotos','instellingen'];
   tabs.forEach(function(t){
     var pane = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (pane) pane.style.display = (t === naam) ? '' : 'none';
   });
   if (naam === 'fotos') { fotosInfo(); fotosLijst(); bfInfo(); bfLijst(); }
-  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); }
-  document.querySelectorAll('.tabbtn').forEach(function(btn){
+  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); setSubTab(subTab); }
+  document.querySelectorAll('.tabbar')[0].querySelectorAll('.tabbtn').forEach(function(btn){
     btn.classList.toggle('active', btn.getAttribute('data-tab') === naam);
+  });
+}
+
+var subTab = 'boot';
+function setSubTab(naam){
+  subTab = naam;
+  ['boot','verbindingen','toegang'].forEach(function(t){
+    var pane = document.getElementById('instSub' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (pane) pane.style.display = (t === naam) ? '' : 'none';
+  });
+  document.getElementById('tabInstellingen').querySelector('.tabbar').querySelectorAll('.tabbtn').forEach(function(btn){
+    btn.classList.toggle('active', btn.getAttribute('data-subtab') === naam);
   });
 }
 
@@ -481,6 +523,11 @@ function handleMsg(msg){
       renderGastNieuw(msg); break;
     case 'gast_bewerkt':
       renderGastBewerkt(msg); break;
+    case 'melding':
+      meldingData = msg; renderMelding(); break;
+    case 'melding_test_res':
+      { var mm = document.getElementById('meldingMelding'); if (mm) { mm.style.color = 'var(--green)'; mm.textContent = 'Testbericht verstuurd.'; } }
+      break;
     case 'pin_wijzig_res':
       renderPinRes(msg.ok); break;
     case 'auth_ok':
@@ -1120,6 +1167,88 @@ function gastVerwijderen(i){
   if (needAuth()) return;
   if (gastBewerkIdx === i) gastFormReset();
   send({t:'gast_verwijderen', idx:i});
+}
+
+// ─── INSTELLINGEN → VERBINDINGEN: Meldingen (CallMeBot Signal/WhatsApp) ────
+// De lange Signal-/WhatsApp-code is vervelend intypen op het scherm van de
+// boordcomputer — vanaf hier gewoon te plakken.
+function meldingLaden(){ send({t:'melding_get'}); }
+var MEL_HARTSLAG_LBL = ['UIT', 'DAGELIJKS', 'WEKELIJKS'];
+function renderMelHartslag(){
+  if (!meldingData) return;
+  document.getElementById('melHartslagKeuze').innerHTML = MEL_HARTSLAG_LBL.map(function(l, i){
+    return '<button class="mbtn' + (meldingData.hartslag===i?' active':'') + '" onclick="melHartslagKiezen(' + i + ')">' + l + '</button>';
+  }).join('');
+}
+function melHartslagKiezen(i){ meldingData.hartslag = i; renderMelHartslag(); }
+function melVeldRij(label, id, waarde, numeriek){
+  return '<label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">' + esc(label) + '</label>' +
+         '<input id="' + id + '" type="' + (numeriek?'number':'text') +
+         '" value="' + escAttr(waarde) + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:10px;">';
+}
+function renderMelding(){
+  var d = meldingData;
+  if (!d) return;
+  var h = '';
+  h += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><input type="checkbox" id="melAan"' + (d.aan?' checked':'') + '> Meldingen aan</label>';
+  h += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><input type="checkbox" id="melBijOpstart"' + (d.bijOpstart?' checked':'') + '> Bericht bij opstart</label>';
+  h += '<label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Hartslag</label>';
+  h += '<div class="grid3" id="melHartslagKeuze" style="margin-bottom:10px;"></div>';
+  h += melVeldRij('Hartslag-uur (0-23)', 'melHartslagUur', d.hartslagUur, true);
+  h += melVeldRij('Hartslag-dag (0=ma .. 6=zo, alleen wekelijks)', 'melHartslagDag', d.hartslagDag, true);
+  h += melVeldRij('Eigenaar — Signal-code', 'melEigSignalKey', d.eigSignalKey, false);
+  h += melVeldRij('Eigenaar — WhatsApp-code', 'melEigWhatsappKey', d.eigWhatsappKey, false);
+  h += melVeldRij('Eigenaar — Signal alt.nr (optioneel)', 'melEigSignalTel', d.eigSignalTel, false);
+  h += melVeldRij('Eigenaar — WhatsApp alt.nr (optioneel)', 'melEigWhatsappTel', d.eigWhatsappTel, false);
+  for (var i = 0; i < 4; i++){
+    var e = (d.extra && d.extra[i]) || {};
+    h += '<h2 style="margin-top:16px;">Extra ontvanger ' + (i+1) + '</h2>';
+    h += melVeldRij('Naam', 'mel' + i + 'naam', e.naam, false);
+    h += melVeldRij('Telefoon', 'mel' + i + 'tel', e.tel, false);
+    h += melVeldRij('Signal-code', 'mel' + i + 'sk', e.signalKey, false);
+    h += melVeldRij('WhatsApp-code', 'mel' + i + 'wk', e.whatsappKey, false);
+    h += melVeldRij('Signal alt.nr (optioneel)', 'mel' + i + 'st', e.signalTel, false);
+    h += melVeldRij('WhatsApp alt.nr (optioneel)', 'mel' + i + 'wt', e.whatsappTel, false);
+    h += '<div class="grid3" style="margin-bottom:10px;">' +
+         '<label style="font-size:.78rem;"><input type="checkbox" id="mel' + i + 'c0"' + (e.cat&&e.cat[0]?' checked':'') + '> Status</label>' +
+         '<label style="font-size:.78rem;"><input type="checkbox" id="mel' + i + 'c1"' + (e.cat&&e.cat[1]?' checked':'') + '> Alarm</label>' +
+         '<label style="font-size:.78rem;"><input type="checkbox" id="mel' + i + 'c2"' + (e.cat&&e.cat[2]?' checked':'') + '> Eigenaar</label></div>';
+  }
+  document.getElementById('meldingVelden').innerHTML = h;
+  renderMelHartslag();
+}
+function meldingOpslaan(){
+  if (needAuth()) return;
+  var obj = {t:'melding_set'};
+  obj.aan = document.getElementById('melAan').checked ? 1 : 0;
+  obj.bijOpstart = document.getElementById('melBijOpstart').checked ? 1 : 0;
+  obj.hartslag = (meldingData && meldingData.hartslag) || 0;
+  obj.hartslagUur = parseInt(document.getElementById('melHartslagUur').value, 10) || 0;
+  obj.hartslagDag = parseInt(document.getElementById('melHartslagDag').value, 10) || 0;
+  obj.eigSignalKey = document.getElementById('melEigSignalKey').value;
+  obj.eigWhatsappKey = document.getElementById('melEigWhatsappKey').value;
+  obj.eigSignalTel = document.getElementById('melEigSignalTel').value;
+  obj.eigWhatsappTel = document.getElementById('melEigWhatsappTel').value;
+  for (var i = 0; i < 4; i++){
+    obj['e'+i+'naam'] = document.getElementById('mel'+i+'naam').value;
+    obj['e'+i+'tel']  = document.getElementById('mel'+i+'tel').value;
+    obj['e'+i+'sk']   = document.getElementById('mel'+i+'sk').value;
+    obj['e'+i+'wk']   = document.getElementById('mel'+i+'wk').value;
+    obj['e'+i+'st']   = document.getElementById('mel'+i+'st').value;
+    obj['e'+i+'wt']   = document.getElementById('mel'+i+'wt').value;
+    obj['e'+i+'c0']   = document.getElementById('mel'+i+'c0').checked ? 1 : 0;
+    obj['e'+i+'c1']   = document.getElementById('mel'+i+'c1').checked ? 1 : 0;
+    obj['e'+i+'c2']   = document.getElementById('mel'+i+'c2').checked ? 1 : 0;
+  }
+  send(obj);
+  var el = document.getElementById('meldingMelding');
+  el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.';
+}
+function meldingTest(){
+  if (needAuth()) return;
+  send({t:'melding_test'});
+  var el = document.getElementById('meldingMelding');
+  el.style.color = ''; el.textContent = 'Testbericht versturen…';
 }
 
 achtergrondToepassen();

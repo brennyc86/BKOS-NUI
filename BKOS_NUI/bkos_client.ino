@@ -16,6 +16,7 @@
 #include "lamp.h"            // genummerde lampgroepen — Huis-tab in de webapp
 #include "gast.h"            // pin_niveau() — eigenaar vs. gastcode
 #include "wifi.h"            // ntp_synced() — gasten-vervaldatum, zie gast.h
+#include "melding.h"         // CallMeBot Signal/WhatsApp — INSTELLINGEN → VERBINDINGEN in de webapp
 
 #include <WebSocketsServer.h>
 #include <ESPmDNS.h>
@@ -250,6 +251,38 @@ static String _gast_json() {
     return s;
 }
 
+// ─── INSTELLINGEN → VERBINDINGEN (webapp) — Meldingen (CallMeBot). Eigenaar-
+// only; de lange Signal-/WhatsApp-code is nu vanaf een computer/telefoon te
+// plakken i.p.v. op het scherm van de boordcomputer te moeten intypen.
+static String _melding_json() {
+    String s = F("{\"t\":\"melding\",\"aan\":");
+    s += melding_aan ? F("true") : F("false");
+    s += F(",\"bijOpstart\":"); s += melding_bij_opstart ? F("true") : F("false");
+    s += F(",\"hartslag\":"); s += melding_hartslag;
+    s += F(",\"hartslagUur\":"); s += melding_hartslag_uur;
+    s += F(",\"hartslagDag\":"); s += melding_hartslag_dag;
+    s += F(",\"eigSignalKey\":\""); s += melding_eigenaar_signal_key;
+    s += F("\",\"eigWhatsappKey\":\""); s += melding_eigenaar_whatsapp_key;
+    s += F("\",\"eigSignalTel\":\""); s += melding_eigenaar_signal_tel;
+    s += F("\",\"eigWhatsappTel\":\""); s += melding_eigenaar_whatsapp_tel;
+    s += F("\",\"extra\":[");
+    for (int i = 0; i < MELDING_MAX_EXTRA; i++) {
+        if (i) s += ',';
+        MeldingOntvanger& m = melding_extra[i];
+        s += F("{\"naam\":\""); s += m.naam;
+        s += F("\",\"tel\":\""); s += m.tel;
+        s += F("\",\"signalKey\":\""); s += m.signal_key;
+        s += F("\",\"whatsappKey\":\""); s += m.whatsapp_key;
+        s += F("\",\"signalTel\":\""); s += m.signal_tel;
+        s += F("\",\"whatsappTel\":\""); s += m.whatsapp_tel;
+        s += F("\",\"cat\":[");
+        for (int c = 0; c < MELDING_CAT_N; c++) { if (c) s += ','; s += m.cat[c] ? "true" : "false"; }
+        s += F("]}");
+    }
+    s += F("]}");
+    return s;
+}
+
 // _verwerk_cmd: alleen Arduino-types in handtekening → prototype OK
 static void _verwerk_cmd(uint8_t num, const String& t) {
     if (t.indexOf(F("\"auth\"")) >= 0) {
@@ -452,6 +485,48 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         long idx = _getal_uit(t, "idx");
         if (idx >= 0) gast_verwijderen((int)idx);
         String lijst = _gast_json(); _ws.sendTXT(num, lijst);
+
+    } else if (t.indexOf(F("\"melding_get\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        String s = _melding_json(); _ws.sendTXT(num, s);
+
+    } else if (t.indexOf(F("\"melding_set\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
+        melding_aan         = (_getal_uit(t, "aan") == 1);
+        melding_bij_opstart = (_getal_uit(t, "bijOpstart") == 1);
+        long hb  = _getal_uit(t, "hartslag");    if (hb  >= 0 && hb  <= 2)  melding_hartslag     = (uint8_t)hb;
+        long hbu = _getal_uit(t, "hartslagUur"); if (hbu >= 0 && hbu <= 23) melding_hartslag_uur = (uint8_t)hbu;
+        long hbd = _getal_uit(t, "hartslagDag"); if (hbd >= 0 && hbd <= 6)  melding_hartslag_dag = (uint8_t)hbd;
+        strncpy(melding_eigenaar_signal_key, _veld_uit(t, "eigSignalKey").c_str(), MELDING_KEY_LEN - 1);
+        melding_eigenaar_signal_key[MELDING_KEY_LEN - 1] = '\0';
+        strncpy(melding_eigenaar_whatsapp_key, _veld_uit(t, "eigWhatsappKey").c_str(), MELDING_KEY_LEN - 1);
+        melding_eigenaar_whatsapp_key[MELDING_KEY_LEN - 1] = '\0';
+        strncpy(melding_eigenaar_signal_tel, _veld_uit(t, "eigSignalTel").c_str(), MELDING_TEL2_LEN - 1);
+        melding_eigenaar_signal_tel[MELDING_TEL2_LEN - 1] = '\0';
+        strncpy(melding_eigenaar_whatsapp_tel, _veld_uit(t, "eigWhatsappTel").c_str(), MELDING_TEL2_LEN - 1);
+        melding_eigenaar_whatsapp_tel[MELDING_TEL2_LEN - 1] = '\0';
+        for (int i = 0; i < MELDING_MAX_EXTRA; i++) {
+            char k[8];
+            MeldingOntvanger& m = melding_extra[i];
+            snprintf(k, sizeof(k), "e%dnaam", i); strncpy(m.naam, _veld_uit(t, k).c_str(), MELDING_NAAM_LEN - 1); m.naam[MELDING_NAAM_LEN - 1] = '\0';
+            snprintf(k, sizeof(k), "e%dtel", i);  strncpy(m.tel, _veld_uit(t, k).c_str(), MELDING_TEL_LEN - 1);   m.tel[MELDING_TEL_LEN - 1] = '\0';
+            snprintf(k, sizeof(k), "e%dsk", i);   strncpy(m.signal_key, _veld_uit(t, k).c_str(), MELDING_KEY_LEN - 1);   m.signal_key[MELDING_KEY_LEN - 1] = '\0';
+            snprintf(k, sizeof(k), "e%dwk", i);   strncpy(m.whatsapp_key, _veld_uit(t, k).c_str(), MELDING_KEY_LEN - 1); m.whatsapp_key[MELDING_KEY_LEN - 1] = '\0';
+            snprintf(k, sizeof(k), "e%dst", i);   strncpy(m.signal_tel, _veld_uit(t, k).c_str(), MELDING_TEL2_LEN - 1);   m.signal_tel[MELDING_TEL2_LEN - 1] = '\0';
+            snprintf(k, sizeof(k), "e%dwt", i);   strncpy(m.whatsapp_tel, _veld_uit(t, k).c_str(), MELDING_TEL2_LEN - 1); m.whatsapp_tel[MELDING_TEL2_LEN - 1] = '\0';
+            for (int c = 0; c < MELDING_CAT_N; c++) {
+                snprintf(k, sizeof(k), "e%dc%d", i, c);
+                m.cat[c] = (_getal_uit(t, k) == 1);
+            }
+        }
+        melding_opslaan();
+        String s = _melding_json(); _ws.sendTXT(num, s);
+
+    } else if (t.indexOf(F("\"melding_test\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
+        melding_test();
+        String r = F("{\"t\":\"melding_test_res\"}");
+        _ws.sendTXT(num, r);
     }
 }
 

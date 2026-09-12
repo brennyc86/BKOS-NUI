@@ -23,6 +23,12 @@
 #include "screen_bericht.h"
 #include "screen_tijd.h"
 #include "recovery.h"
+// screen_bestanden.h vroeg zichtbaar nodig (niet alleen via screen_bestanden.ino) —
+// de BfThumb-struct daarin wordt door een functie geretourneerd; zonder dit hier
+// te includen plaatst Arduino's auto-prototype-generator die forward declaration
+// vóór de struct-definitie ("BfThumb does not name a type"), zie
+// [[project_arduino_prototype_hoisting]].
+#include "screen_bestanden.h"
 
 void hw_setup();
 void hw_loop();

@@ -9,7 +9,6 @@
 #define HAVEN_BG_INTERVAL_MS  60000UL   // "langzame slideshow" — elke 60s de volgende foto
 
 static int  hav_bg_idx    = 0;
-static bool hav_bg_klaar  = false;
 
 // Persistente kopie van de laatst gedecodeerde foto, op precies de resolutie
 // waarop 'm ook getekend wordt (zie _hab_scale()) — zodat screen_haven.ino
@@ -184,8 +183,12 @@ static bool _hab_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* 
     return true;
 }
 
+// Zet scale/swapBytes/callback ALTIJD opnieuw (geen "eenmalig ingesteld"-guard
+// meer) — TJpgDec is een gedeelde, globale decoder-instantie die screen_
+// bestanden.ino inmiddels ook gebruikt (thumbnails); zonder dit zou een
+// thumbnail-decode daarna stiekem de verkeerde scale/callback voor de HAVEN-
+// achtergrondfoto laten staan.
 static void _hab_init() {
-    if (hav_bg_klaar) return;
     TJpgDec.setJpgScale(_hab_scale());
     // BELANGRIJK: false, niet true — Arduino_GFX::writePixel()/draw16bitRGBBitmap()
     // verwachten een gewone (niet byte-swapped) RGB565 uint16_t, exact hetzelfde
@@ -195,7 +198,6 @@ static void _hab_init() {
     // kleuren-klacht, geen ditherprobleem).
     TJpgDec.setSwapBytes(false);
     TJpgDec.setCallback(_hab_output);
-    hav_bg_klaar = true;
 }
 
 void haven_achtergrond_teken() {

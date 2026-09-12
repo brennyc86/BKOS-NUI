@@ -73,6 +73,10 @@ section h2{
   background:var(--surface);border:1px solid var(--border);border-radius:8px;
   padding:10px 12px;margin-bottom:6px;
 }
+.filerow img.thumb{
+  width:48px;height:29px;object-fit:cover;border-radius:5px;flex:none;
+  background:var(--surface2);border:1px solid var(--border);
+}
 .filerow .naam{flex:1;font-size:.85rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .filerow .grootte{font-size:.72rem;color:var(--text-dim);flex:none;}
 .filerow button.del{padding:6px 12px;font-size:.78rem;color:var(--red);border-color:var(--red);}
@@ -143,7 +147,9 @@ function lijst(){
     var box = document.getElementById('lijst');
     if (!fotos.length){ box.innerHTML = '<div id="leeg">Nog geen eigen foto\'s — de ingebakken voorbeeldfoto\'s worden getoond.</div>'; return; }
     box.innerHTML = fotos.map(function(f){
-      return '<div class="filerow"><div class="naam">' + esc(f.naam) + '</div>' +
+      var src = '/haven/foto?naam=' + encodeURIComponent(f.naam);
+      return '<div class="filerow"><img class="thumb" src="' + src + '" loading="lazy" alt="">' +
+             '<div class="naam">' + esc(f.naam) + '</div>' +
              '<div class="grootte">' + fmtBytes(f.bytes) + '</div>' +
              '<button class="del" onclick="verwijder(\'' + esc(f.naam) + '\')">VERWIJDER</button></div>';
     }).join('');

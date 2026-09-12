@@ -7,6 +7,7 @@
 #include "wifi.h"           // wifi_hotspot_*
 #include <WiFi.h>
 #include <ctype.h>          // tolower() voor de bestandsformaat-filter
+#include <TJpg_Decoder.h>   // thumbnails in de AFBEELDINGEN-lijst
 
 extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
@@ -91,12 +92,30 @@ static int  bf_scroll_y   = 0;
 static int  bf_max_scroll = 0;
 static unsigned long bf_flits_tot = 0;
 static char bf_flits_msg[40] = "";
+#if BF_HOTSPOT_MOGELIJK
+// Tijdelijke "bezig"-status tussen de tik op START/STOP HOTSPOT en het
+// daadwerkelijke resultaat — WiFi.softAP()/bkos_client_setup()/webapp_setup()
+// zijn blokkerend en kunnen merkbaar duren, dus zonder dit lijkt het scherm
+// even te bevriezen na de tik.
+static bool bf_hotspot_bezig = false;
+#endif
 
 #define BF_FILTER_AFBEELDING 0
 #define BF_FILTER_OVERIG     1
 static int bf_filter = BF_FILTER_AFBEELDING;   // welk formaat toont de lijst nu
 
-#define BF_PAD_LEN 64
+// De daadwerkelijke scan (SPIFFS/SD-mapinhoud opvragen) is de trage stap, niet
+// het tekenen zelf. Om dat niet de hele UI te laten bevriezen: elke actie die
+// de getoonde lijst laat wijzigen (scherm openen, van map wisselen, SPIFFS/SD
+// omschakelen, filter wisselen, na verwijderen) zet bf_geladen alleen op false
+// en tekent meteen een "wordt geladen"-melding; de echte _bf_scan() gebeurt
+// pas in de eerstvolgende periodieke tik (screen_bestanden_run(0,0,false),
+// hardware.ino) — dus buiten de tik-afhandeling om, ná een tussentijdse
+// hertekening die de gebruiker meteen laat zien dat er iets gebeurt.
+static bool bf_geladen = false;
+static void _bf_herladen() { bf_geladen = false; bf_cnt = 0; bf_scroll_y = 0; }
+
+// BF_PAD_LEN staat in screen_bestanden.h (nodig voor de BfThumb-struct daar).
 static char bf_pad[BF_PAD_LEN] = "/";   // huidige map, altijd zonder trailing slash behalve root
 
 // Het formaat waarin de HAVEN-achtergrondfoto's worden opgeslagen (zie
@@ -176,7 +195,7 @@ static void _bf_ga_naar_map(int i) {
     _bf_volledig_pad(i, nieuw, sizeof(nieuw));
     strncpy(bf_pad, nieuw, sizeof(bf_pad) - 1);
     bf_pad[sizeof(bf_pad) - 1] = '\0';
-    bf_scroll_y = 0;
+    _bf_herladen();
     screen_bestanden_teken();
 }
 
@@ -185,28 +204,113 @@ static void _bf_ga_omhoog() {
     char* slash = strrchr(bf_pad, '/');
     if (!slash || slash == bf_pad) bf_pad[1] = '\0';  // terug naar root
     else *slash = '\0';
-    bf_scroll_y = 0;
+    _bf_herladen();
     screen_bestanden_teken();
 }
 
 void screen_bestanden_reset() {
     strncpy(bf_pad, "/", sizeof(bf_pad));
-    bf_scroll_y = 0;
     bf_filter   = BF_FILTER_AFBEELDING;
+    _bf_herladen();
 }
 
+// Verwijdert meteen (snel, één bestand) maar scant NIET meteen opnieuw — dat
+// gebeurt via dezelfde deferred-herlaad-stap als de rest van dit bestand.
 static bool _bf_verwijder(int i) {
     if (i < 0 || i >= bf_cnt || bf_lijst[i].map) return false;
     char pad[BF_PAD_LEN + 40]; _bf_volledig_pad(i, pad, sizeof(pad));
-    bool ok;
 #if BF_SD_MOGELIJK
-    if (bf_toont_sd) ok = SD.remove(pad);
-    else             ok = SPIFFS.remove(pad);
+    if (bf_toont_sd) return SD.remove(pad);
+    else             return SPIFFS.remove(pad);
 #else
-    ok = SPIFFS.remove(pad);
+    return SPIFFS.remove(pad);
 #endif
-    if (ok) _bf_scan();
-    return ok;
+}
+
+// ─── Thumbnails in de AFBEELDINGEN-lijst ────────────────────────────────────
+// TJpg_Decoder is een gedeelde, globale decoder-instantie (ook gebruikt door
+// haven_achtergrond.ino voor de HAVEN-achtergrondfoto) — scale/callback worden
+// daarom hier ALTIJD expliciet gezet vlak vóór het decoderen, i.p.v. te
+// vertrouwen op een "eenmalig ingesteld" aanname die met een ander scherm zou
+// kunnen botsen. (BF_THUMB_W/H en struct BfThumb staan in screen_bestanden.h.)
+// Heap i.p.v. static array: 12 * sizeof(BfThumb) (~31KB) zou het krappe vaste
+// DRAM-BSS-segment op classic ESP32 (WROOM/CYD*) laten overlopen — zelfde
+// afweging als bf_lijst hierboven en de eerdere HAVEN-fotobuffers.
+#define BF_THUMB_CACHE_N 12   // ruim boven het aantal tegelijk zichtbare rijen
+static BfThumb* bf_thumbs = nullptr;
+static bool _bf_thumbs_klaar() {
+    if (bf_thumbs) return true;
+    bf_thumbs = (BfThumb*)calloc(BF_THUMB_CACHE_N, sizeof(BfThumb));
+    return bf_thumbs != nullptr;
+}
+static int     bf_thumb_volgende = 0;   // ronde-robin: bij een volle cache de oudste overschrijven
+static uint16_t* bf_thumb_doel = nullptr;  // waar de actieve decode-callback naartoe schrijft
+
+static bool _bf_thumb_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
+    if (!bf_thumb_doel) return false;
+    for (int row = 0; row < h; row++) {
+        int ty = y + row;
+        if (ty < 0 || ty >= BF_THUMB_H) continue;
+        for (int col = 0; col < (int)w; col++) {
+            int tx = x + col;
+            if (tx < 0 || tx >= BF_THUMB_W) continue;
+            bf_thumb_doel[ty * BF_THUMB_W + tx] = bitmap[row * w + col];
+        }
+    }
+    return true;
+}
+
+static BfThumb* _bf_thumb_zoek(const char* pad) {
+    for (int i = 0; i < BF_THUMB_CACHE_N; i++)
+        if (bf_thumbs[i].geldig && strcmp(bf_thumbs[i].pad, pad) == 0) return &bf_thumbs[i];
+    return nullptr;
+}
+
+// Decodeert (of haalt uit cache) een thumbnail voor `pad` en tekent 'm op
+// (x,y). Alleen aangeroepen voor rijen die daadwerkelijk zichtbaar zijn (het
+// scroll-venster clipt dit al) — dus hooguit een handvol decodes per redraw,
+// en dankzij de cache worden dezelfde bestanden niet steeds opnieuw gedecodeerd
+// tijdens scrollen.
+static void _bf_thumb_teken(const char* pad, int x, int y) {
+    if (!_bf_thumbs_klaar()) {  // heap-tekort: gracieus vlak vak i.p.v. crashen
+        tft.fillRect(x, y, BF_THUMB_W, BF_THUMB_H, C_SURFACE3);
+        return;
+    }
+    BfThumb* c = _bf_thumb_zoek(pad);
+    if (!c) {
+        c = &bf_thumbs[bf_thumb_volgende];
+        bf_thumb_volgende = (bf_thumb_volgende + 1) % BF_THUMB_CACHE_N;
+        strncpy(c->pad, pad, sizeof(c->pad) - 1); c->pad[sizeof(c->pad) - 1] = '\0';
+        memset(c->pix, 0, sizeof(c->pix));
+        c->geldig = false;
+
+#if BF_SD_MOGELIJK
+        fs::FS* fs = bf_toont_sd ? (fs::FS*)&SD : (fs::FS*)&SPIFFS;
+#else
+        fs::FS* fs = &SPIFFS;
+#endif
+        File f = fs->open(pad, "r");
+        if (f) {
+            // Werkelijke afmetingen opvragen om de dichtstbijzijnde ondersteunde
+            // schaal (1/2/4/8) te kiezen — bestanden buiten /haven (bv. handmatig
+            // op SD gezette foto's) hebben geen bekende vaste resolutie.
+            uint16_t bron_w = 0, bron_h = 0;
+            TJpgDec.getFsJpgSize(&bron_w, &bron_h, f);
+            uint8_t schaal = 1;
+            while (schaal < 8 && bron_w > 0 && (bron_w / (schaal * 2)) >= BF_THUMB_W) schaal *= 2;
+
+            TJpgDec.setJpgScale(schaal);
+            TJpgDec.setSwapBytes(false);
+            TJpgDec.setCallback(_bf_thumb_output);
+            bf_thumb_doel = c->pix;
+            f.seek(0);
+            c->geldig = (TJpgDec.drawFsJpg(0, 0, f) == JDR_OK);
+            bf_thumb_doel = nullptr;
+            f.close();
+        }
+    }
+    if (c->geldig) tft.draw16bitRGBBitmap(x, y, c->pix, BF_THUMB_W, BF_THUMB_H);
+    else           tft.fillRect(x, y, BF_THUMB_W, BF_THUMB_H, C_SURFACE3);  // kon niet decoderen: neutraal vlak i.p.v. niets
 }
 
 // vrij/totaal == 0 betekent "onbekend op dit platform" (RP2040 LittleFS heeft
@@ -219,8 +323,6 @@ static void _bf_ruimte(uint32_t* vrij, uint32_t* totaal) {
 }
 
 void screen_bestanden_teken() {
-    haven_gebruikersfotos_scannen();  // zorgt dat /haven bestaat en gemigreerd is
-    _bf_scan();
     tft.fillRect(0, CONTENT_Y, TFT_W, NAV_Y - CONTENT_Y, C_BG);
 
     tft.fillRect(0, CONTENT_Y, TFT_W, BF_HDR_H, C_SURFACE2);
@@ -268,11 +370,13 @@ void screen_bestanden_teken() {
 
 #if BF_HOTSPOT_MOGELIJK
     bool hs_actief = wifi_hotspot_actief();
-    // Donker/neutraal als uit, opvallend groen als aan — bewust GEEN rood
-    // (dat oogt als foutstatus, terwijl een lopende hotspot juist gewenst is).
-    tft.fillRoundRect(BF_HOTSPOT_X, BF_ROW1_Y, BF_HOTSPOT_W, BF_ROW1_H, 6, hs_actief ? C_GREEN : C_SURFACE3);
-    tft.setTextSize(1); tft.setTextColor(hs_actief ? C_BG : C_TEXT_DIM);
-    const char* hb_lbl = hs_actief ? "STOP HOTSPOT" : "START HOTSPOT";
+    // Donker/neutraal als uit, opvallend groen als aan, amber tijdens het
+    // opstarten/stoppen zelf (bezig) — bewust GEEN rood (dat oogt als
+    // foutstatus, terwijl een lopende hotspot juist gewenst is).
+    uint16_t hb_bg = bf_hotspot_bezig ? C_AMBER : (hs_actief ? C_GREEN : C_SURFACE3);
+    tft.fillRoundRect(BF_HOTSPOT_X, BF_ROW1_Y, BF_HOTSPOT_W, BF_ROW1_H, 6, hb_bg);
+    tft.setTextSize(1); tft.setTextColor((bf_hotspot_bezig || hs_actief) ? C_BG : C_TEXT_DIM);
+    const char* hb_lbl = bf_hotspot_bezig ? "BEZIG..." : (hs_actief ? "STOP HOTSPOT" : "START HOTSPOT");
     tft.setCursor(BF_HOTSPOT_X + (BF_HOTSPOT_W - (int)strlen(hb_lbl) * 6) / 2, BF_ROW1_Y + (BF_ROW1_H - 8) / 2);
     tft.print(hb_lbl);
 
@@ -300,7 +404,10 @@ void screen_bestanden_teken() {
     tft.setCursor(10 + BF_FLT_W + 8 + (BF_FLT_W - 6 * 6) / 2, BF_FILTER_Y + (BF_FILTER_H - 8) / 2); tft.print("OVERIG");
 
     int y0 = BF_START_Y - bf_scroll_y;
-    if (bf_cnt == 0) {
+    if (!bf_geladen) {
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(16, y0 + 4); tft.print("Bestanden worden geladen...");
+    } else if (bf_cnt == 0) {
         tft.setTextColor(C_DARK_GRAY);
         tft.setCursor(16, y0 + 4); tft.print("Geen bestanden gevonden.");
     } else {
@@ -309,16 +416,24 @@ void screen_bestanden_teken() {
             if (ry + BF_ROW_H <= BF_START_Y || ry >= BF_LIST_BOT) continue;
             tft.fillRect(8, ry, TFT_W - 16, BF_ROW_H - 4, (i % 2 == 0) ? C_SURFACE : C_BG);
 
-            bool omhoog = (strcmp(bf_lijst[i].naam, "..") == 0);
+            bool omhoog     = (strcmp(bf_lijst[i].naam, "..") == 0);
+            bool toon_thumb = (bf_filter == BF_FILTER_AFBEELDING && !bf_lijst[i].map);
+            int  tekst_x    = 14;
+            if (toon_thumb) {
+                char pad[BF_PAD_LEN + 40]; _bf_volledig_pad(i, pad, sizeof(pad));
+                _bf_thumb_teken(pad, 14, ry + (BF_ROW_H - 4 - BF_THUMB_H) / 2);
+                tekst_x = 14 + BF_THUMB_W + 8;
+            }
+
             char naam[28]; strncpy(naam, bf_lijst[i].naam, sizeof(naam) - 1); naam[sizeof(naam) - 1] = '\0';
             tft.setTextSize(1); tft.setTextColor(bf_lijst[i].map ? C_CYAN : C_TEXT);
-            tft.setCursor(14, ry + 6);
+            tft.setCursor(tekst_x, ry + 6);
             tft.print(naam);
             if (bf_lijst[i].map && !omhoog) tft.print("/");
 
             char gb[16]; _bf_fmt_bytes(bf_lijst[i].bytes, gb, sizeof(gb));
             tft.setTextColor(C_TEXT_DIM);
-            tft.setCursor(14, ry + 20);
+            tft.setCursor(tekst_x, ry + 20);
             tft.print(omhoog ? "vorige map" : (bf_lijst[i].map ? "map" : gb));
 
             if (!bf_lijst[i].map) {
@@ -348,7 +463,19 @@ void screen_bestanden_teken() {
 }
 
 void screen_bestanden_run(int x, int y, bool aanraking) {
-    if (!aanraking) return;
+    if (!aanraking) {
+        // Periodieke tik (hardware.ino, geen aanraking) — hier pas de trage
+        // scan doen, ná de "wordt geladen"-hertekening die de tik-handler al
+        // getoond heeft. Zo bevriest de UI niet zichtbaar op het moment van
+        // de tik zelf.
+        if (!bf_geladen) {
+            haven_gebruikersfotos_scannen();  // zorgt dat /haven bestaat en gemigreerd is
+            _bf_scan();
+            bf_geladen = true;
+            screen_bestanden_teken();
+        }
+        return;
+    }
 
     // Swipe scrollen (vóór klik-detectie)
     if (bf_max_scroll > 0 && abs(hw_touch_drag_dy) >= 25) {
@@ -374,16 +501,24 @@ void screen_bestanden_run(int x, int y, bool aanraking) {
 #if BF_SD_MOGELIJK
     // SPIFFS/SD-wisselknop — zelfde macro's als in screen_bestanden_teken()
     if (y >= BF_ROW1_Y && y < BF_ROW1_Y + BF_ROW1_H) {
-        if (x >= 10 && x < 10 + BF_TGL_W) { bf_toont_sd = false; bf_scroll_y = 0; screen_bestanden_teken(); return; }
-        if (x >= 10 + BF_TGL_W + 8 && x < 10 + 2 * BF_TGL_W + 8) { bf_toont_sd = true; bf_scroll_y = 0; screen_bestanden_teken(); return; }
+        if (x >= 10 && x < 10 + BF_TGL_W) { bf_toont_sd = false; _bf_herladen(); screen_bestanden_teken(); return; }
+        if (x >= 10 + BF_TGL_W + 8 && x < 10 + 2 * BF_TGL_W + 8) { bf_toont_sd = true; _bf_herladen(); screen_bestanden_teken(); return; }
     }
 #endif
 
 #if BF_HOTSPOT_MOGELIJK
-    // Hotspot start/stop-knop — zelfde macro's als in screen_bestanden_teken()
+    // Hotspot start/stop-knop — zelfde macro's als in screen_bestanden_teken().
+    // WiFi.softAP()/bkos_client_setup()/webapp_setup() zijn blokkerend, dus
+    // eerst de "BEZIG..."-kleur tekenen + geforceerd doorsturen (anders blijft
+    // die in de schaduw-buffer staan als dubbele buffering aan staat) vóórdat
+    // de daadwerkelijke (trage) aanroep gebeurt.
     if (y >= BF_ROW1_Y && y < BF_ROW1_Y + BF_ROW1_H && x >= BF_HOTSPOT_X && x < BF_HOTSPOT_X + BF_HOTSPOT_W) {
+        bf_hotspot_bezig = true;
+        screen_bestanden_teken();
+        tft_flush(true);
         if (wifi_hotspot_actief()) wifi_hotspot_stoppen();
         else                       wifi_hotspot_starten(BF_HOTSPOT_DUUR_S);
+        bf_hotspot_bezig = false;
         screen_bestanden_teken();
         return;
     }
@@ -392,10 +527,10 @@ void screen_bestanden_run(int x, int y, bool aanraking) {
     // Filter-knoppenrij — zelfde macro's als in screen_bestanden_teken()
     if (y >= BF_FILTER_Y && y < BF_FILTER_Y + BF_FILTER_H) {
         if (x >= 10 && x < 10 + BF_FLT_W) {
-            bf_filter = BF_FILTER_AFBEELDING; bf_scroll_y = 0; screen_bestanden_teken(); return;
+            bf_filter = BF_FILTER_AFBEELDING; _bf_herladen(); screen_bestanden_teken(); return;
         }
         if (x >= 10 + BF_FLT_W + 8 && x < 10 + 2 * BF_FLT_W + 8) {
-            bf_filter = BF_FILTER_OVERIG; bf_scroll_y = 0; screen_bestanden_teken(); return;
+            bf_filter = BF_FILTER_OVERIG; _bf_herladen(); screen_bestanden_teken(); return;
         }
     }
 
@@ -416,6 +551,7 @@ void screen_bestanden_run(int x, int y, bool aanraking) {
         bool ok = _bf_verwijder(i);
         snprintf(bf_flits_msg, sizeof(bf_flits_msg), ok ? "Verwijderd" : "Verwijderen mislukt");
         bf_flits_tot = millis() + 1800;
+        if (ok) _bf_herladen();  // lijst is niet meer actueel — opnieuw scannen (deferred)
         screen_bestanden_teken();
     }
 }

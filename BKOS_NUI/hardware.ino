@@ -256,6 +256,7 @@ static void _gui_taak(void*) {
                     case SCREEN_VICTRON:    screen_victron_run(0, 0, false);    break;
                     case SCREEN_BRUG:       screen_brug_run(0, 0, false);       break;
                     case SCREEN_HAVEN:      screen_haven_run(0, 0, false);      break;
+                    case SCREEN_BESTANDEN:  screen_bestanden_run(0, 0, false);  break;
                     default: break;
                 }
             }

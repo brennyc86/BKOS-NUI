@@ -11,6 +11,7 @@
 #include "haven_achtergrond.h"
 #include "screen_config.h"  // pin_lezen_pub()
 #include <WebServer.h>
+#include <SPIFFS.h>         // /haven/foto — ruwe fotobytes serveren voor thumbnails
 
 static WebServer _http(80);
 static bool _http_gestart = false;
@@ -76,6 +77,25 @@ void webapp_setup() {
         }
         s += "]}";
         _http.send(200, "application/json", s);
+    });
+
+    // Ruwe fotobytes — gebruikt door de webpagina om een thumbnail te tonen
+    // (<img src="/haven/foto?naam=...">). `naam` wordt tegen de bekende lijst
+    // gevalideerd i.p.v. blind geopend, zodat dit geen willekeurig SPIFFS-
+    // bestand kan lekken.
+    _http.on("/haven/foto", HTTP_GET, []() {
+        String naam = _http.arg("naam");
+        int n = haven_gebruikersfoto_aantal();
+        bool geldig = false;
+        for (int i = 0; i < n; i++) {
+            char bekend[24];
+            if (haven_gebruikersfoto_naam(i, bekend, sizeof(bekend)) && naam.equals(bekend)) { geldig = true; break; }
+        }
+        if (!geldig) { _http.send(404, "text/plain", "niet gevonden"); return; }
+        File f = SPIFFS.open(naam, "r");
+        if (!f) { _http.send(404, "text/plain", "niet gevonden"); return; }
+        _http.streamFile(f, "image/jpeg");
+        f.close();
     });
 
     _http.on("/haven/verwijder", HTTP_POST, []() {

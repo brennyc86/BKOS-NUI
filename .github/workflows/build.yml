@@ -8,6 +8,7 @@ on:
       - 'BKOS_NUI/**.h'
       - 'BKOS_NUI/**.cpp'
       - 'BKOS_NUI/**.c'
+      - 'BKOS_NUI/**.csv'
       - '.github/workflows/build.yml'
 
 permissions:
@@ -42,6 +43,16 @@ jobs:
           arduino-cli lib install "ArduinoJson"
           arduino-cli lib install "WebSockets"
           arduino-cli lib install "TJpg_Decoder"
+
+      - name: Installeer 16MB-partitieschema (grote SPIFFS)
+        run: |
+          # Zet de custom partitietabel als "partitions.csv" in de sketchmap —
+          # de arduino-esp32 prebuild-hook gebruikt die dan i.p.v. het
+          # PartitionScheme-menu, ongeacht de FQBN-waarde hieronder. Dit
+          # gebeurt uitsluitend in de S3-job (fresh checkout per job), dus de
+          # andere 4MB-platforms (WROOM/CYD28/CYD40H/CYD40V) zien dit bestand
+          # nooit en blijven op hun eigen partitieschema.
+          cp BKOS_NUI/partitions_s3_16mb.csv BKOS_NUI/partitions.csv
 
       - name: Compile ESP32-S3 firmware
         run: |

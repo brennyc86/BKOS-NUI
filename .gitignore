@@ -3,3 +3,8 @@ build/
 bin/
 include/
 *.cache
+
+# Lokaal (of CI-tijdelijk) actief partitieschema — nooit committen, anders
+# breekt dat de andere ESP32-platforms die dezelfde sketchmap gebruiken.
+# Zie BKOS_NUI/partitions_s3_16mb.csv voor het bewaarde S3-schema.
+BKOS_NUI/partitions.csv

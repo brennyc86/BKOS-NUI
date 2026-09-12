@@ -61,7 +61,7 @@ door hem geteste beta.
   - De code is **dual-compatibel** via `#if ESP_ARDUINO_VERSION_MAJOR >= 3` guards (o.a.
     de RGB-panel-constructor in `hw_scherm.ino`), zodat core 3.x later weer kan zonder code-surgery.
 - Board: `ESP32S3 Dev Module` (of ESP32-8048S070C profiel)
-- Partition scheme: **8M Flash (3MB APP / 2MB SPIFFS)** — standaard voor zowel 8MB als 16MB modules
+- Partition scheme: **eigen 16MB-schema** (`BKOS_NUI/partitions_s3_16mb.csv`) — zie *Partitieschema S3 (16MB)* hieronder. FQBN-optie `PartitionScheme=default_8MB` staat nog in `build.yml`/de boardinstellingen maar is functioneel genegeerd zodra dit bestand als `partitions.csv` in de sketchmap staat.
 - Upload speed: 921600
 - Flash mode: **DIO** (S3 op core 2.x; QIO gaf instabiliteit bij sommige S3-modules)
 
@@ -72,6 +72,40 @@ door hem geteste beta.
 - `ArduinoOTA`
 - `HTTPClient` (onderdeel van ESP32 core)
 - `Preferences` (onderdeel van ESP32 core)
+
+### Partitieschema S3 (16MB)
+De 7" S3-module heeft fysiek 16MB flash, maar de firmware gebruikte tot Sessie 41 het
+`default_8MB`-schema (3MB/3MB APP, 1,5MB SPIFFS) — de resterende ~8MB boven de eerste
+8MB werd domweg niet aangesproken. Nieuw `BKOS_NUI/partitions_s3_16mb.csv`: identieke
+APP-slotgrootte als `default_8MB` (2× 0x330000 = 3264KB, dus **OTA-gedrag/grootte-limiet
+ongewijzigd**), maar SPIFFS is opgerekt tot het complete restdeel van de 16MB
+(0x980000 = **9728KB**, was 1536KB) + coredump-partitie behouden.
+
+```
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x330000,
+app1,     app,  ota_1,   0x340000, 0x330000,
+spiffs,   data, spiffs,  0x670000, 0x980000,
+coredump, data, coredump,0xFF0000, 0x10000,
+```
+
+**Waarom geen boards.txt-aanpassing**: de arduino-esp32 prebuild-hook kopieert automatisch
+een bestand met de exacte naam `partitions.csv` uit de sketchmap (`BKOS_NUI/`) naar de
+build-map, ongeacht de `PartitionScheme`-FQBN-waarde. Dat werkt zowel lokaal (Arduino IDE
+of arduino-cli) als in CI, zonder boards.txt te hoeven wijzigen (niet portable/versioned).
+
+**Waarom niet permanent als `BKOS_NUI/partitions.csv` in de repo**: alle 6 platforms
+compileren dezelfde sketchmap. Een permanent aanwezig `partitions.csv` zou ook de andere,
+kleinere ESP32-platforms (WROOM/CYD28/CYD40H/CYD40V, 4MB flash) dit 16MB-schema opleggen
+en hun build laten falen ("partition table exceeds flash size"). Daarom:
+- Bewaard onder de andere naam `BKOS_NUI/partitions_s3_16mb.csv` (git-getrackt, ongevaarlijk).
+- **CI** (`build.yml`, job `build_esp32s3`): een losse stap kopieert dit bestand naar
+  `BKOS_NUI/partitions.csv` vlak vóór de compile-stap — alleen in die job's (verse) checkout.
+- **Lokaal compileren voor S3** (Arduino IDE of losse arduino-cli-run): kopieer zelf eerst
+  `BKOS_NUI/partitions_s3_16mb.csv` → `BKOS_NUI/partitions.csv` in de sketchmap. Dit pad
+  staat in `.gitignore` — nooit per ongeluk meecommitten (zou dezelfde CI-breuk geven voor
+  de andere platforms als iemand toevallig van deze checkout pusht).
 
 ### Scherm-stabiliteit (S3 RGB paneel)
 De ESP32-S3 RGB-paneel deelt de Octal SPI bus met PSRAM. De **bounce buffer** (LCD-DMA via
@@ -365,6 +399,7 @@ Recente taken:
 | 232 | Sessie 40 | **Eigen HAVEN-foto's uploaden via de webapp (SPIFFS)**: Brendan vroeg hoe een gebruiker (en later, als product, andere gebruikers) eigen foto's naar de boordcomputer kunnen sturen, met expliciete wens: verkleinen/ditheren naar de doelresolutie + het 16-bit RGB565-kleurenrooster gebeurt AL bij het uploaden (client-side), niet pas op het apparaat. Eerst de daadwerkelijke SPIFFS-partitiegroottes opgezocht (Brendans intuïtie dat mijn eerdere "2MB"-aanname niet klopte bleek terecht, al in de andere richting): `default_8MB` (S3) geeft 0x180000 = **1,5MB** SPIFFS; `min_spiffs` (WROOM/CYD28/CYD40H/CYD40V) geeft maar 0x20000 = **128KB** — fors kleiner dan gedacht, al is dat in verhouding minder erg dan het lijkt omdat die platforms de foto ook op een veel lagere resolutie decoderen (zie `_hab_scale()`). Nieuwe route `/haven` (webapp.ino + nieuw `webapp_haven_html.h`, puur HTML/CSS/JS zonder CDN-dependencies) laat de BROWSER het zware werk doen: canvas "cover"-crop naar exact de doelresolutie (opgevraagd bij `/haven/info`), gevolgd door een JS Floyd-Steinberg-ditherimplementatie die naar het RGB565-rooster kwantiseert (dezelfde aanpak als eerder met Python/PIL voor de ingebakken voorbeeldfoto's) vóór `canvas.toBlob(...,'image/jpeg',0.65)` en upload — maakt uploaden trager, maar de foto komt al zo klein mogelijk aan. **Belangrijke valkuil ontdekt en vermeden**: de voor de hand liggende route (`_http.arg("plain")` voor de ruwe POST-body) blijkt in de ESP32 WebServer-library de body via een **null-getermineerde String** te lezen (`String(plainBuf)`) — JPEG-bytes bevatten vrijwel altijd losse 0x00-bytes, dus dat zou de foto stilletjes afkappen/corrumperen. Opgelost door de standaard multipart/form-data-uploadroute te gebruiken (`HTTPUpload.buf`, een echte binaire `uint8_t[]`-buffer met expliciete lengte, geen String) — de PIN gaat daarom bewust via de query-string (`?pin=1234`, al bekend vóór de multipart-body begint) i.p.v. als form-veld, om onduidelijkheid over de volgorde waarin multipart-velden intern beschikbaar komen te vermijden. Nieuw in `haven_achtergrond.h/.ino`: `haven_doel_afmeting()`, `haven_spiffs_vrij()`, `haven_gebruikersfotos_scannen()` (bij boot + na elke upload/verwijdering, bestandsnamen `/haven_u<slot>.jpg`) — zodra er minstens één eigen foto is, vervangt die de ingebakken voorbeeldfoto's volledig in de slideshow. Bewust **niet** op Pico: geen webapp/upload-pad dat platform, en `TJpg_Decoder`'s `drawFsJpg()`-default-argument verwijst naar het ESP32-only `SPIFFS`-symbool — user-fotofuncties daar simpelweg gestubd (`aantal()` altijd 0, gedraagt zich exact als voorheen). `/haven/verwijder` en de nieuwe link vanaf de bestaande afstandsbediening-pagina (`webapp_html.h`) erbij. Lokaal gecompileerd en groen op alle 6 platforms. Beta `0.2.260911.2` |
 | 233 | Sessie 40 | **HAVEN-verlichting: ALLES AAN/UIT miste dek-lichten + nieuwe OVERIGE LAMPEN-tegel voor de hoofdverlichting**: Brendan meldde dat lampen "in de hoofdgroep" niet mee aan/uit gingen bij ALLES AAN/ALLES UIT, en dat er "ongedefinieerde lampen" bestaan die nergens een knop hebben. Onderzoek wees uit: (1) **echte bug** — `_hv_alles_aan()`/`_hv_alles_uit()` liepen alleen over `hv_lamp_nrs[]` (de genummerde `**IL_wit<N>`/`**IL_rood<N>`-groepen); de 'dek'-achtige PANEEL-lichten (`hv_licht_paneel_idx[]`, wél zichtbaar in dezelfde VERLICHTING-grid) werden domweg overgeslagen. Nieuwe `_hv_paneel_zet(idx, aan_gewenst)` FORCEERT i.p.v. toggelt (nodig zodat een tweede druk op ALLES AAN een al-aan lamp niet weer uitzet) en wordt nu ook in beide functies meegenomen. (2) Brendan bevestigde (via verduidelijkingsvraag) dat "ongedefinieerde lampen" de ongenummerde `**IL_wit`/`**IL_rood`-kanalen zijn (exact, geen suffix) — de "hoofdverlichting" die volgens `io_verlichting_update()` altijd al bestond (aan/uit via `int_aan`, kleur via `int_rood`) maar nooit een eigen bedienpunt kreeg: geen lampnummer dus geen PANEEL-knop mogelijk, dus onzichtbaar in zowel HAVEN als het hoofdscherm. Nieuw in io.h/.ino: `io_hoofdverlichting_aanwezig()` (bestaat zo'n kanaal — bepaalt of de tegel getoond wordt), `io_hoofdverlichting_aan()` (effectieve stand, zelfde scan-aanpak als `io_lamp_effectief_aan()`), `io_hoofdverlichting_toggle()` (wisselt `interieur_modus` tussen UIT en AUTO — vervalt dus nooit de kleuroverrule-logica uit taak 223, die blijft ongewijzigd werken). Nieuwe `_hv_overig_teken()`-tegel in screen_haven.ino, toegevoegd als laatste slot in het VERLICHTING-grid (`_hv_verlicht_totaal()` nieuwe gedeelde teller) — alleen zichtbaar als zo'n kanaal bestaat, en doet nu ook mee met ALLES AAN/UIT. De kleur-consistentieklacht ("kleur van lampen niet gelijk bij een andere vaarmodus") kon ik niet los reproduceren uit de code — `interieur_kleur_rood` is één centrale variabele die alle schermen delen, dat lijkt al correct; mogelijk was dit gewoon hetzelfde ALLES AAN/UIT-symptoom (een lamp die nooit uitging oogde ook "verkeerd gekleurd"). Brendan gevraagd opnieuw te testen na deze fix. Lokaal gecompileerd en groen op alle 6 platforms. Beta `0.2.260911.3` |
 | 234 | Sessie 40 | **Nieuw bestandsbeheerscherm (CONFIG → BESTANDEN)**: Brendan wilde in de instellingen het IP-adres kunnen zien (voor de HAVEN-webapp uit taak 232) en op het apparaat zelf inzicht in/verwijderen van opgeslagen bestanden — generiek voor SPIFFS én (waar aanwezig) de SD-kaart, met een wisselknop erboven, en bewust "uitbreidbaar" voor later. Bewust een zelfstandig topniveau-scherm (nieuwe `SCREEN_BESTANDEN`, `screen_bestanden.h/.ino`) net als HAVEN, i.p.v. genest in een van de TWEE bestaande CONFIG-implementaties — er blijkt namelijk zowel een categorie-gebaseerd groot-scherm-CONFIG (`cfg_hoofd_teken()`/`cfg_instellingen_teken()`) als een volledig aparte, monolithische eenpagina-variant voor SCREEN_SMALL (`pico_cfg_instellingen_teken()`) te bestaan; een zelfstandig scherm hoeft maar één keer geschreven te worden en is vanuit beide met één knopje te openen (nieuwe "BESTANDEN >"-categorie/regel in allebei, PIN-gated net als de andere categorieën/rijen daar). Toont: IP-adres + webapp-link, vrije/totale opslagruimte (`app_spiffs_vrij/totaal()`, hergebruikt uit app_manager — bestond al voor de Lua-appwinkel), een SPIFFS/SD-wisselknop (SD alleen zichtbaar/mogelijk op de S3, zelfde platformcheck als `app_manager.cpp`'s bestaande `app_sd_aanwezig()`), en een scrollbare bestandenlijst (root-scan via `fs->open("/", "r")` + `openNextFile()` — SPIFFS/LittleFS hebben geen echte submappen, dus dit toont in de praktijk alles) met VERWIJDER per rij. **Twee compile-valkuilen**: (1) de bestandenlijst-array (60 slots) zat eerst als static array — liet de krappe DRAM-BSS-segment op WROOM opnieuw overlopen (1808 bytes), zelfde patroon als eerder deze sessie met de HAVEN-fotobuffers — opgelost met dezelfde heap-malloc-aanpak; (2) RP2040's `fs::FS::open()` heeft geen 1-argument-overload (verplicht een mode-parameter, anders dan ESP32's SPIFFS-wrapper) — `fs->open("/")` werd `fs->open("/", "r")`. Lokaal gecompileerd en groen op alle 6 platforms. Beta `0.2.260911.4` |
+| 235 | Sessie 41 | **S3 16MB-partitieschema (grote SPIFFS)**: nieuw `BKOS_NUI/partitions_s3_16mb.csv` — APP-slots identiek aan `default_8MB` (2×3264KB, OTA-limiet ongewijzigd) maar SPIFFS opgerekt van 1,5MB naar 9,5MB (0x980000), het volledige restdeel van de fysieke 16MB flash die de 7"-module al had maar tot nu toe niet aansprak. Alleen relevant voor de S3-build; de andere 4 ESP32-platforms (WROOM/CYD28/CYD40H/CYD40V) hebben fysiek 4MB flash en blijven op hun eigen schema. Geïnstalleerd via de arduino-esp32 prebuild-hook (bestand met exacte naam `partitions.csv` in de sketchmap overschrijft het PartitionScheme-menu) — `build.yml`'s `build_esp32s3`-job kopieert het bestand daar nu naartoe vlak vóór het compileren; lokaal compileren voor S3 vereist dezelfde handmatige kopieerstap (zie *Partitieschema S3 (16MB)* hierboven). Rechtstreekse aanleiding: veel meer ruimte nodig voor Lua-apps/HAVEN-foto's/algemene bestanden (BESTANDEN-scherm, taak 234) dan de oude 1,5MB toeliet. Lokaal gecompileerd en groen op S3 (2.142.000 bytes firmware = 64% van de ongewijzigde 3.342.336-byte APP-limiet; gegenereerde partitietabel met `gen_esp32part.py` geverifieerd: app0/app1 3264K, spiffs 9728K, coredump 64K — exact zoals bedoeld) |
 
 ---
 

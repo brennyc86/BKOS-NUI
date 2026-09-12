@@ -69,7 +69,7 @@ void screen_bericht_run(int x, int y, bool aanraking) {
     for (int i = 0; i < BERICHT_AANTAL; i++) {
         int bx, by, bw, bh; _ber_rect(i, &bx, &by, &bw, &bh);
         if (x >= bx && x < bx + bw && y >= by && y < by + bh) {
-            bericht_verzend(i);
+            bericht_verzend(i, "Boordscherm", "");  // vanaf het eigen scherm: afzender staat vast
             ber_flits_txt = "Verstuurd naar eigenaar";
             ber_flits_tot = millis() + 1600;
             scherm_bouwen = true;

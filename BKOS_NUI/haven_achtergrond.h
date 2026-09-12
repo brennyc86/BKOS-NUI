@@ -59,5 +59,13 @@ size_t haven_gebruikersfoto_grootte(int i);
 // Slaat `len` bytes JPEG-data op in de eerstvolgende vrije slot; `naam_out`
 // krijgt de gekozen bestandsnaam (voor bevestiging naar de webapp). Weigert
 // als er onvoldoende vrije SPIFFS-ruimte is of alle slots bezet zijn.
-bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len);
+// `reden_out` (optioneel, mag nullptr) krijgt bij een weigering een korte,
+// machineleesbare reden zodat de webapp precies kan tonen wát er misging i.p.v.
+// altijd dezelfde generieke "opslag vol of ongeldig bestand": "ruimte" (te
+// weinig gerapporteerde vrije SPIFFS-ruimte), "vol" (alle slots bezet), of
+// "schrijffout" (SPIFFS weigerde de bytes daadwerkelijk weg te schrijven —
+// een bekend SPIFFS-verschijnsel bij een bijna volle/gefragmenteerde
+// partitie, ook als de gerapporteerde vrije ruimte op dat moment genoeg leek).
+bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len,
+                                   char* reden_out = nullptr, size_t reden_out_len = 0);
 bool haven_gebruikersfoto_verwijderen(const char* naam);

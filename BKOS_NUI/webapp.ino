@@ -12,6 +12,7 @@
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
 #include "bericht.h"        // bericht_preset/bericht_verzend — "iets is los"-berichtje, openbaar
+#include "app_state.h"      // vaar_modus, MODE_ANKER — noodgeval "op drift" alleen tonen/sturen in ankermodus
 #include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /fotos/foto, webapp-achtergrond
 #include "gast.h"           // pin_niveau() — eigenaar vs. gastcode (HUIS/BOOT-toegang)
 #include "app_manager.h"    // app_spiffs_vrij/totaal, app_sd_aanwezig/vrij — Bestanden-tab
@@ -116,10 +117,55 @@ void webapp_setup() {
         _http.send(200, "application/json", s);
     });
 
+    // Naam + telefoonnummer van de afzender zijn verplicht (server-side
+    // afgedwongen, niet alleen client-side) — zie bericht.h.
     _http.on("/bericht/verzend", HTTP_POST, []() {
+        String naam = _http.arg("naam"); naam.trim();
+        String tel  = _http.arg("tel");  tel.trim();
+        if (naam.length() == 0 || tel.length() == 0) {
+            _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"afzender\"}"); return;
+        }
+        if ((int)naam.length() > BERICHT_AFZ_NAAM_LEN - 1) naam = naam.substring(0, BERICHT_AFZ_NAAM_LEN - 1);
+        if ((int)tel.length()  > BERICHT_AFZ_TEL_LEN - 1)  tel  = tel.substring(0, BERICHT_AFZ_TEL_LEN - 1);
+        String vrij = _http.arg("tekst"); vrij.trim();
+        if (vrij.length() > 0) {
+            bericht_verzend_vrij(vrij.c_str(), naam.c_str(), tel.c_str());
+        } else {
+            int idx = _http.arg("idx").toInt();
+            if (idx < 0 || idx >= BERICHT_AANTAL) { _http.send(400, "application/json", "{\"ok\":false}"); return; }
+            bericht_verzend(idx, naam.c_str(), tel.c_str());
+        }
+        _http.send(200, "application/json", "{\"ok\":true}");
+    });
+
+    // ─── Noodgevallen: aparte, vaste knoppenset — naam/telefoon hier BEWUST
+    // optioneel (zie bericht.h). "alleenAnker" laat de webapp zelf al de knop
+    // verbergen die buiten die modus niet van toepassing is; de server
+    // controleert dat bovendien zelf nogmaals bij het versturen.
+    _http.on("/bericht/nood/lijst", HTTP_GET, []() {
+        String s = "{\"presets\":[";
+        for (int i = 0; i < BERICHT_NOOD_AANTAL; i++) {
+            if (i) s += ',';
+            s += "{\"tekst\":\""; s += bericht_nood_preset[i];
+            s += "\",\"alleenAnker\":"; s += bericht_nood_alleen_anker[i] ? "true" : "false";
+            s += '}';
+        }
+        s += "],\"anker\":"; s += (vaar_modus == MODE_ANKER) ? "true" : "false";
+        s += '}';
+        _http.send(200, "application/json", s);
+    });
+
+    _http.on("/bericht/nood/verzend", HTTP_POST, []() {
         int idx = _http.arg("idx").toInt();
-        if (idx < 0 || idx >= BERICHT_AANTAL) { _http.send(400, "application/json", "{\"ok\":false}"); return; }
-        bericht_verzend(idx);
+        if (idx < 0 || idx >= BERICHT_NOOD_AANTAL) { _http.send(400, "application/json", "{\"ok\":false}"); return; }
+        if (bericht_nood_alleen_anker[idx] && vaar_modus != MODE_ANKER) {
+            _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"modus\"}"); return;
+        }
+        String naam = _http.arg("naam"); naam.trim();
+        String tel  = _http.arg("tel");  tel.trim();
+        if ((int)naam.length() > BERICHT_AFZ_NAAM_LEN - 1) naam = naam.substring(0, BERICHT_AFZ_NAAM_LEN - 1);
+        if ((int)tel.length()  > BERICHT_AFZ_TEL_LEN - 1)  tel  = tel.substring(0, BERICHT_AFZ_TEL_LEN - 1);
+        bericht_verzend_nood(idx, naam.c_str(), tel.c_str());
         _http.send(200, "application/json", "{\"ok\":true}");
     });
 
@@ -201,12 +247,14 @@ void webapp_setup() {
             if (!_hav_pin_ok)      { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}");    return; }
             if (_hav_te_groot)     { _http.send(413, "application/json", "{\"ok\":false,\"reden\":\"groot\"}");  return; }
             char naam[24] = "";
+            char reden[16] = "";
             bool opgeslagen = _hav_upload_len > 0 &&
-                haven_gebruikersfoto_opslaan(_hav_upload_buf, _hav_upload_len, naam, sizeof(naam));
+                haven_gebruikersfoto_opslaan(_hav_upload_buf, _hav_upload_len, naam, sizeof(naam), reden, sizeof(reden));
             if (opgeslagen) {
                 _http.send(200, "application/json", String("{\"ok\":true,\"naam\":\"") + naam + "\"}");
             } else {
-                _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"opslag\"}");
+                if (!reden[0]) strncpy(reden, "leeg", sizeof(reden) - 1);
+                _http.send(400, "application/json", String("{\"ok\":false,\"reden\":\"") + reden + "\"}");
             }
         },
         []() {  // upload-handler: meerdere keren aangeroepen tijdens het streamen

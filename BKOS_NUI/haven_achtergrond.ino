@@ -128,22 +128,39 @@ size_t haven_spiffs_vrij() {
     return (size_t)bkos_fs_totaal() - (size_t)bkos_fs_gebruikt();
 }
 
-bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len) {
-    if (haven_spiffs_vrij() < len + HAVEN_USER_FOTO_MIN_VRIJ) return false;
+static void _hav_reden(char* reden_out, size_t reden_out_len, const char* reden) {
+    if (!reden_out || !reden_out_len) return;
+    strncpy(reden_out, reden, reden_out_len - 1);
+    reden_out[reden_out_len - 1] = '\0';
+}
+
+bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len,
+                                   char* reden_out, size_t reden_out_len) {
+    if (reden_out && reden_out_len) reden_out[0] = '\0';
+    if (haven_spiffs_vrij() < len + HAVEN_USER_FOTO_MIN_VRIJ) { _hav_reden(reden_out, reden_out_len, "ruimte"); return false; }
     if (!SPIFFS.exists("/fotos")) SPIFFS.mkdir("/fotos");
     for (int slot = 0; slot < HAVEN_USER_FOTO_MAX; slot++) {
         char naam[24];
         _hav_user_naam(slot, naam, sizeof(naam));
         if (SPIFFS.exists(naam)) continue;  // slot al bezet, volgende proberen
         File f = SPIFFS.open(naam, "w");
-        if (!f) return false;
+        if (!f) { _hav_reden(reden_out, reden_out_len, "schrijffout"); return false; }
         size_t geschreven = f.write(data, len);
         f.close();
-        if (geschreven != len) { SPIFFS.remove(naam); return false; }
+        if (geschreven != len) {
+            SPIFFS.remove(naam);
+            // Vrijwel altijd SPIFFS die weigert een aaneengesloten blok van
+            // deze grootte te vinden ondanks "genoeg" gerapporteerde vrije
+            // ruimte (bekende SPIFFS-fragmentatiebeperking) — dus expliciet
+            // onderscheiden van de ruimte-precheck hierboven.
+            _hav_reden(reden_out, reden_out_len, "schrijffout");
+            return false;
+        }
         if (naam_out) { strncpy(naam_out, naam, naam_out_len - 1); naam_out[naam_out_len - 1] = '\0'; }
         haven_gebruikersfotos_scannen();
         return true;
     }
+    _hav_reden(reden_out, reden_out_len, "vol");
     return false;  // alle slots bezet
 }
 
@@ -161,7 +178,10 @@ int  haven_gebruikersfoto_aantal() { return 0; }
 bool haven_gebruikersfoto_naam(int, char*, size_t) { return false; }
 size_t haven_gebruikersfoto_grootte(int) { return 0; }
 size_t haven_spiffs_vrij() { return 0; }  // niet relevant — geen webapp/upload-pad op Pico
-bool haven_gebruikersfoto_opslaan(const uint8_t*, size_t, char*, size_t) { return false; }
+bool haven_gebruikersfoto_opslaan(const uint8_t*, size_t, char*, size_t, char* reden_out, size_t reden_out_len) {
+    if (reden_out && reden_out_len) { strncpy(reden_out, "platform", reden_out_len - 1); reden_out[reden_out_len - 1] = '\0'; }
+    return false;
+}
 bool haven_gebruikersfoto_verwijderen(const char*) { return false; }
 
 #endif

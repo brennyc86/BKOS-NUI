@@ -184,11 +184,13 @@ function info(){
   fetch('/fotos/info').then(function(r){ return r.json(); }).then(function(d){
     doelW = d.w; doelH = d.h; maxUploadBytes = d.maxBytes || maxUploadBytes;
     document.getElementById('cropViewport').style.aspectRatio = doelW + '/' + doelH;
-    document.getElementById('hdrSub').textContent = doelW + '×' + doelH + ' · ' + d.aantal + ' foto\'s';
+    document.getElementById('hdrSub').textContent = doelW + '×' + doelH + ' · ' + d.aantal + '/' + d.maxAantal + ' foto\'s';
+    var vol = (d.aantal >= d.maxAantal) || (d.vrij < 20000);
     document.getElementById('status').innerHTML =
       'Doelresolutie: <b>' + doelW + '×' + doelH + '</b><br>' +
-      'Vrije opslag: <b>' + fmtBytes(d.vrij) + '</b><br>' +
-      'Eigen foto\'s: <b>' + d.aantal + '</b> (vervangen de voorbeeldfoto\'s zodra er minstens één is)';
+      'Vrije opslag: <b' + (vol ? ' style="color:var(--red)"' : '') + '>' + fmtBytes(d.vrij) + '</b><br>' +
+      'Eigen foto\'s: <b' + (vol ? ' style="color:var(--red)"' : '') + '>' + d.aantal + ' / ' + d.maxAantal + '</b>' +
+      (vol ? ' — verwijder eerst een foto hieronder' : ' (vervangen de voorbeeldfoto\'s zodra er minstens één is)');
   }).catch(function(){ document.getElementById('status').textContent = 'Kon status niet ophalen.'; });
 }
 
@@ -331,10 +333,16 @@ var cropBaseScale = 1;             // schaal bij zoom=100% (dekt het kader net)
 var cropScale = 1;                 // daadwerkelijke schaal (baseScale × zoom%)
 var cropPanX = 0, cropPanY = 0;    // positie linkerbovenhoek foto t.o.v. kader, in CSS-pixels
 var cropSlepen = false, cropStartX = 0, cropStartY = 0, cropStartPanX = 0, cropStartPanY = 0;
+// Twee-vinger pinch-to-zoom naast de schuif — cropPointers houdt actieve
+// aanrakingen bij (pointerId -> {x,y}); zodra er 2 zijn, bepaalt de
+// afstandsverandering tussen die twee de zoom (i.p.v. slepen).
+var cropPointers = {};
+var cropPinchStartDist = 0, cropPinchStartScale = 1;
 
 function verwerkEnUpload(file){
   cropImgEl = document.getElementById('cropImg');
   cropVp = document.getElementById('cropViewport');
+  cropPointers = {}; cropSlepen = false; cropPinchStartDist = 0;
   var img = new Image();
   img.onload = function(){
     cropNatW = img.naturalWidth; cropNatH = img.naturalHeight;
@@ -386,20 +394,61 @@ document.getElementById('cropZoom').addEventListener('input', function(e){
   cropToon();
 });
 
+function _cropPinchDist(){
+  var ids = Object.keys(cropPointers);
+  var a = cropPointers[ids[0]], b = cropPointers[ids[1]];
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
 function cropPointerDown(e){
-  cropSlepen = true;
-  cropStartX = e.clientX; cropStartY = e.clientY;
-  cropStartPanX = cropPanX; cropStartPanY = cropPanY;
   cropVp.setPointerCapture(e.pointerId);
+  cropPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPointers);
+  if (ids.length >= 2) {
+    cropSlepen = false;
+    cropPinchStartDist = _cropPinchDist();
+    cropPinchStartScale = cropScale;
+  } else {
+    cropSlepen = true;
+    cropStartX = e.clientX; cropStartY = e.clientY;
+    cropStartPanX = cropPanX; cropStartPanY = cropPanY;
+  }
 }
 function cropPointerMove(e){
-  if (!cropSlepen) return;
-  cropPanX = cropStartPanX + (e.clientX - cropStartX);
-  cropPanY = cropStartPanY + (e.clientY - cropStartY);
-  cropKlem();
-  cropToon();
+  if (!(e.pointerId in cropPointers)) return;
+  cropPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPointers);
+  if (ids.length >= 2) {
+    if (cropPinchStartDist <= 0) return;
+    var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+    var midXvoor = (vpW / 2 - cropPanX) / cropScale;
+    var midYvoor = (vpH / 2 - cropPanY) / cropScale;
+    var nieuweScale = cropPinchStartScale * (_cropPinchDist() / cropPinchStartDist);
+    var nieuwZoom = Math.min(400, Math.max(100, (nieuweScale / cropBaseScale) * 100));
+    document.getElementById('cropZoom').value = nieuwZoom;
+    cropScale = cropBaseScale * (nieuwZoom / 100);
+    cropPanX = vpW / 2 - midXvoor * cropScale;
+    cropPanY = vpH / 2 - midYvoor * cropScale;
+    cropKlem();
+    cropToon();
+  } else if (cropSlepen) {
+    cropPanX = cropStartPanX + (e.clientX - cropStartX);
+    cropPanY = cropStartPanY + (e.clientY - cropStartY);
+    cropKlem();
+    cropToon();
+  }
 }
-function cropPointerUp(){ cropSlepen = false; }
+function cropPointerUp(e){
+  delete cropPointers[e.pointerId];
+  var ids = Object.keys(cropPointers);
+  if (ids.length === 1) {
+    var p = cropPointers[ids[0]];
+    cropSlepen = true;
+    cropStartX = p.x; cropStartY = p.y;
+    cropStartPanX = cropPanX; cropStartPanY = cropPanY;
+  } else {
+    cropSlepen = false;
+  }
+}
 document.getElementById('cropViewport').addEventListener('pointerdown', cropPointerDown);
 document.getElementById('cropViewport').addEventListener('pointermove', cropPointerMove);
 document.getElementById('cropViewport').addEventListener('pointerup', cropPointerUp);
@@ -475,8 +524,12 @@ function uploadBlob(blob){
     } else {
       var reden = xhr.status === 403 ? 'onjuiste pincode'
                 : xhr.status === 413 ? 'bestand nog te groot, ook na verkleinen'
-                : 'opslag vol of bestand ongeldig';
+                : d.reden === 'ruimte' ? 'te weinig vrije opslag over'
+                : d.reden === 'vol' ? 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder'
+                : d.reden === 'schrijffout' ? 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw'
+                : 'onbekende fout';
       melding('Upload mislukt (' + reden + ').', 'fout');
+      info();
     }
   };
   xhr.onerror = function(){

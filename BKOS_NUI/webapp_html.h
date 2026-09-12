@@ -61,6 +61,11 @@ button.mbtn{
   transition:background .15s,color .15s,border-color .15s;
 }
 button.mbtn.active{background:var(--acc,var(--cyan));color:#04121c;border-color:var(--acc,var(--cyan));}
+button.mbtn.nood{border-color:var(--red);color:var(--red);}
+button.mbtn.nood:active{background:var(--red);color:#fff;}
+.taalRij{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:14px;}
+.taalRij button{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:1.15rem;line-height:1;}
+.taalRij button.actief{border-color:var(--cyan);background:var(--surface3);}
 
 button.pbtn{
   background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
@@ -181,25 +186,52 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
   </div>
 
   <div id="tabInfo" class="tabpane">
+    <div class="taalRij">
+      <button onclick="taalZet('nl')" data-taal="nl" title="Nederlands">🇳🇱</button>
+      <button onclick="taalZet('en')" data-taal="en" title="English">🇬🇧</button>
+      <button onclick="taalZet('de')" data-taal="de" title="Deutsch">🇩🇪</button>
+      <button onclick="taalZet('fr')" data-taal="fr" title="Français">🇫🇷</button>
+      <button onclick="taalZet('es')" data-taal="es" title="Español">🇪🇸</button>
+      <button onclick="taalZet('uk')" data-taal="uk" title="Українська">🇺🇦</button>
+      <button onclick="taalZet('pl')" data-taal="pl" title="Polski">🇵🇱</button>
+      <button onclick="taalZet('cs')" data-taal="cs" title="Čeština">🇨🇿</button>
+      <button onclick="taalZet('da')" data-taal="da" title="Dansk">🇩🇰</button>
+      <button onclick="taalZet('pt')" data-taal="pt" title="Português">🇵🇹</button>
+      <button onclick="taalZet('it')" data-taal="it" title="Italiano">🇮🇹</button>
+    </div>
+
     <section>
-      <h2>Boot &amp; eigenaar</h2>
+      <h2 data-i18n="kopBoot">Boot &amp; eigenaar</h2>
       <div id="pubInfo">—</div>
     </section>
 
     <section>
+      <h2 style="color:var(--red);" data-i18n="kopNood">Noodgeval?</h2>
+      <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;" data-i18n="noodUitleg">Direct naar de eigenaar — geen pincode nodig. Naam en telefoonnummer zijn hier niet verplicht, maar worden meegestuurd als je ze hieronder al hebt ingevuld.</p>
+      <div class="grid2" id="noodGrid"></div>
+      <div id="noodOk" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+    </section>
+
+    <section>
       <h2 id="berichtKop" onclick="berichtToggle()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-        <span>Iets aan de hand?</span>
+        <span data-i18n="kopBericht">Iets aan de hand?</span>
         <span id="berichtChevron">&#9660;</span>
       </h2>
       <div id="berichtBody">
-        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Stuur direct een berichtje naar de eigenaar — geen pincode nodig.</p>
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;" data-i18n="berichtUitleg">Stuur direct een berichtje naar de eigenaar — geen pincode nodig. Vul je naam en telefoonnummer in zodat de eigenaar weet van wie het is.</p>
+        <input id="berichtAfzNaam" type="text" placeholder="jouw naam" data-i18n-ph="phNaam" maxlength="19" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+        <input id="berichtAfzTel" type="tel" placeholder="jouw telefoonnummer" data-i18n-ph="phTel" maxlength="15" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
         <div class="grid2" id="berichtGrid"></div>
-        <div id="berichtOk" style="font-size:.78rem;color:var(--green);min-height:1.1em;margin-top:8px;"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <input id="berichtVrijeTekst" type="text" placeholder="of typ zelf een bericht…" data-i18n-ph="phVrij" maxlength="70" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;">
+          <button class="mbtn" style="flex:none;" data-i18n="btnStuur" onclick="stuurBerichtVrij()">STUUR</button>
+        </div>
+        <div id="berichtOk" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
       </div>
     </section>
 
     <section id="lockedHint">
-      <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;">Bediening vereist de eigenaars- of een gastpincode. <a href="#" onclick="openPin();return false;">Ontgrendelen &#8594;</a></p>
+      <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;"><span data-i18n="lockedHint">Bediening vereist de eigenaars- of een gastpincode.</span> <a href="#" onclick="openPin();return false;" data-i18n="ontgrendelen">Ontgrendelen &#8594;</a></p>
     </section>
   </div>
 
@@ -748,33 +780,253 @@ function bfVerwijder(naam){
     .catch(function(){});
 }
 
+// ─── Taalkeuze (INFO-tab) — vertaalt de vaste UI-teksten, de vaste
+// noodgeval-knoppen en de standaard-berichtpresets. Een door de eigenaar zelf
+// aangepaste presettekst kan niet automatisch vertaald worden (geen
+// internetvertaaldienst aan boord) en verschijnt dan gewoon in het
+// Nederlands, zoals ingevoerd. Berichten gaan altijd in het Nederlands naar
+// de eigenaar (zie bericht.ino) — alleen de webpagina zelf wordt vertaald.
+var TAAL_KEY = 'bkos_taal';
+function huidigeTaal(){ return localStorage.getItem(TAAL_KEY) || 'nl'; }
+function huidigDict(){ return I18N[huidigeTaal()] || I18N.nl; }
+function taalZet(taal){ localStorage.setItem(TAAL_KEY, taal); taalToepassen(); }
+function taalToepassen(){
+  var taal = huidigeTaal(), dict = huidigDict();
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function(el){
+    if (dict[el.getAttribute('data-i18n')]) el.textContent = dict[el.getAttribute('data-i18n')];
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-ph]'), function(el){
+    if (dict[el.getAttribute('data-i18n-ph')]) el.placeholder = dict[el.getAttribute('data-i18n-ph')];
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.taalRij button'), function(b){
+    b.classList.toggle('actief', b.getAttribute('data-taal') === taal);
+  });
+  ladenPubliek(); ladenBericht(); laadNood();
+}
+
+var PRESET_NL = ['Aangekomen','Onderweg naar huis','Alles in orde','Bel me even','Probleem aan boord','Later dan gepland'];
+var PRESET_VERTAAL = {
+  en: ['Arrived','On the way home',"Everything's fine",'Call me','Problem on board','Running late'],
+  de: ['Angekommen','Auf dem Weg nach Hause','Alles in Ordnung','Ruf mich an','Problem an Bord','Später als geplant'],
+  fr: ['Arrivé','En route vers la maison','Tout va bien','Appelle-moi','Problème à bord','Plus tard que prévu'],
+  es: ['Llegado','De camino a casa','Todo bien','Llámame','Problema a bordo','Más tarde de lo previsto'],
+  uk: ["Прибув(-ла)",'Їду додому','Все гаразд','Зателефонуй мені','Проблема на борту','Пізніше, ніж планувалось'],
+  pl: ['Dotarłem/dotarłam','W drodze do domu','Wszystko w porządku','Zadzwoń do mnie','Problem na pokładzie','Później niż planowano'],
+  cs: ['Dorazil/a jsem','Cestou domů','Vše v pořádku','Zavolej mi','Problém na palubě','Později, než bylo plánováno'],
+  da: ['Ankommet','På vej hjem','Alt er i orden','Ring til mig','Problem om bord','Senere end planlagt'],
+  pt: ['Chegou','A caminho de casa','Está tudo bem','Ligue-me','Problema a bordo','Mais tarde do que planeado'],
+  it: ['Arrivato','In viaggio verso casa','Tutto a posto','Chiamami','Problema a bordo','Più tardi del previsto']
+};
+var NOOD_VERTAAL = {
+  nl: ['Je bent op drift','De boot ligt niet (meer) goed vast','Het regent in','Je boot zinkt of dreigt te zinken','Je bent aangevaren'],
+  en: ['You are adrift','The boat is no longer moored properly',"It's leaking rain inside",'Your boat is sinking or about to sink',"You've been in a collision"],
+  de: ['Du treibst ab','Das Boot liegt nicht (mehr) richtig fest','Es regnet hinein','Dein Boot sinkt oder droht zu sinken','Du hattest eine Kollision'],
+  fr: ['Vous êtes à la dérive',"Le bateau n'est plus bien amarré","Il y a une fuite d'eau de pluie à l'intérieur","Votre bateau coule ou risque de couler","Vous avez été heurté par un autre bateau"],
+  es: ['Estás a la deriva','El barco ya no está bien amarrado','Está entrando agua de lluvia','Tu barco se está hundiendo o corre riesgo de hundirse','Has tenido una colisión'],
+  uk: ['Вас зносить за течією','Човен більше не пришвартований належним чином','Всередину затікає дощова вода','Ваш човен тоне або може затонути','Стався зіткнення'],
+  pl: ['Dryfujesz','Łódź nie jest już dobrze przycumowana','Wlewa się deszcz do środka','Twoja łódź tonie lub grozi jej zatonięcie','Doszło do kolizji'],
+  cs: ['Unášíte se (jste na driftu)','Loď už není pořádně uvázaná','Zatéká dovnitř déšť','Vaše loď se potápí nebo jí hrozí potopení','Došlo ke srážce'],
+  da: ['Du driver til søs','Båden ligger ikke (længere) ordentligt fortøjet','Der trænger regnvand ind','Din båd synker eller er ved at synke','Du har været involveret i en kollision'],
+  pt: ['Está à deriva','O barco já não está bem amarrado','Está a entrar água da chuva','O seu barco está a afundar ou em risco de afundar','Sofreu uma colisão'],
+  it: ['Stai andando alla deriva','La barca non è (più) ormeggiata bene','Sta entrando acqua piovana','La tua barca sta affondando o rischia di affondare','Sei stato coinvolto in una collisione']
+};
+var I18N = {
+  nl: { ehLabel:'Eigenaar:', kopBoot:'Boot & eigenaar', kopNood:'Noodgeval?',
+    noodUitleg:'Direct naar de eigenaar — geen pincode nodig. Naam en telefoonnummer zijn hier niet verplicht, maar worden meegestuurd als je ze hieronder al hebt ingevuld.',
+    kopBericht:'Iets aan de hand?',
+    berichtUitleg:'Stuur direct een berichtje naar de eigenaar — geen pincode nodig. Vul je naam en telefoonnummer in zodat de eigenaar weet van wie het is.',
+    phNaam:'jouw naam', phTel:'jouw telefoonnummer', phVrij:'of typ zelf een bericht…', btnStuur:'STUUR',
+    okBericht:'Bericht verzonden.', okNood:'Noodmelding verzonden.', foutVerzenden:'Versturen mislukt.',
+    foutNaamTel:'Vul eerst je naam en telefoonnummer in.', foutTypEerst:'Typ eerst een bericht.',
+    lockedHint:'Bediening vereist de eigenaars- of een gastpincode.', ontgrendelen:'Ontgrendelen →' },
+  en: { ehLabel:'Owner:', kopBoot:'Boat & owner', kopNood:'Emergency?',
+    noodUitleg:"Goes straight to the owner — no PIN needed. Name and phone number are optional here, but will be included if you've already filled them in below.",
+    kopBericht:'Anything going on?',
+    berichtUitleg:"Send a quick message straight to the owner — no PIN needed. Fill in your name and phone number so the owner knows who it's from.",
+    phNaam:'your name', phTel:'your phone number', phVrij:'or type your own message…', btnStuur:'SEND',
+    okBericht:'Message sent.', okNood:'Emergency message sent.', foutVerzenden:'Sending failed.',
+    foutNaamTel:'Please fill in your name and phone number first.', foutTypEerst:'Please type a message first.',
+    lockedHint:"Control requires the owner's or a guest PIN.", ontgrendelen:'Unlock →' },
+  de: { ehLabel:'Eigentümer:', kopBoot:'Boot & Eigentümer', kopNood:'Notfall?',
+    noodUitleg:'Geht direkt an den Eigentümer — keine PIN nötig. Name und Telefonnummer sind hier optional, werden aber mitgeschickt, wenn du sie unten schon ausgefüllt hast.',
+    kopBericht:'Ist etwas los?',
+    berichtUitleg:'Schick direkt eine Nachricht an den Eigentümer — keine PIN nötig. Trag deinen Namen und deine Telefonnummer ein, damit der Eigentümer weiß, von wem sie ist.',
+    phNaam:'dein Name', phTel:'deine Telefonnummer', phVrij:'oder schreib selbst eine Nachricht…', btnStuur:'SENDEN',
+    okBericht:'Nachricht gesendet.', okNood:'Notfallmeldung gesendet.', foutVerzenden:'Senden fehlgeschlagen.',
+    foutNaamTel:'Bitte zuerst Name und Telefonnummer ausfüllen.', foutTypEerst:'Bitte zuerst eine Nachricht eingeben.',
+    lockedHint:'Bedienung erfordert den Eigentümer- oder einen Gast-PIN.', ontgrendelen:'Entsperren →' },
+  fr: { ehLabel:'Propriétaire :', kopBoot:'Bateau & propriétaire', kopNood:'Urgence ?',
+    noodUitleg:"Envoyé directement au propriétaire — aucun code PIN requis. Le nom et le numéro de téléphone sont facultatifs ici, mais seront inclus si vous les avez déjà renseignés ci-dessous.",
+    kopBericht:'Un problème ?',
+    berichtUitleg:"Envoyez un message directement au propriétaire — aucun code PIN requis. Indiquez votre nom et votre numéro de téléphone pour que le propriétaire sache qui l'a envoyé.",
+    phNaam:'votre nom', phTel:'votre numéro de téléphone', phVrij:'ou écrivez votre propre message…', btnStuur:'ENVOYER',
+    okBericht:'Message envoyé.', okNood:"Message d'urgence envoyé.", foutVerzenden:"Échec de l'envoi.",
+    foutNaamTel:'Veuillez d\'abord indiquer votre nom et votre numéro de téléphone.', foutTypEerst:'Veuillez d\'abord écrire un message.',
+    lockedHint:"La commande nécessite le code PIN du propriétaire ou d'un invité.", ontgrendelen:'Déverrouiller →' },
+  es: { ehLabel:'Propietario:', kopBoot:'Barco y propietario', kopNood:'¿Emergencia?',
+    noodUitleg:'Se envía directamente al propietario — no se necesita PIN. El nombre y el número de teléfono son opcionales aquí, pero se incluirán si ya los has rellenado más abajo.',
+    kopBericht:'¿Pasa algo?',
+    berichtUitleg:'Envía un mensaje directo al propietario — no se necesita PIN. Indica tu nombre y número de teléfono para que el propietario sepa quién lo envía.',
+    phNaam:'tu nombre', phTel:'tu número de teléfono', phVrij:'o escribe tu propio mensaje…', btnStuur:'ENVIAR',
+    okBericht:'Mensaje enviado.', okNood:'Mensaje de emergencia enviado.', foutVerzenden:'Error al enviar.',
+    foutNaamTel:'Primero rellena tu nombre y número de teléfono.', foutTypEerst:'Primero escribe un mensaje.',
+    lockedHint:'El control requiere el PIN del propietario o de un invitado.', ontgrendelen:'Desbloquear →' },
+  uk: { ehLabel:"Власник:", kopBoot:"Човен і власник", kopNood:'Надзвичайна ситуація?',
+    noodUitleg:"Повідомлення йде напряму власнику — PIN-код не потрібен. Ім'я та номер телефону тут необов'язкові, але будуть додані, якщо ви вже заповнили їх нижче.",
+    kopBericht:'Щось трапилось?',
+    berichtUitleg:"Надішліть повідомлення напряму власнику — PIN-код не потрібен. Вкажіть своє ім'я та номер телефону, щоб власник знав, від кого воно.",
+    phNaam:"ваше ім'я", phTel:'ваш номер телефону', phVrij:'або напишіть своє повідомлення…', btnStuur:'НАДІСЛАТИ',
+    okBericht:'Повідомлення надіслано.', okNood:'Повідомлення про надзвичайну ситуацію надіслано.', foutVerzenden:'Не вдалося надіслати.',
+    foutNaamTel:"Спочатку вкажіть ім'я та номер телефону.", foutTypEerst:'Спочатку напишіть повідомлення.',
+    lockedHint:'Для керування потрібен PIN-код власника або гостя.', ontgrendelen:'Розблокувати →' },
+  pl: { ehLabel:'Właściciel:', kopBoot:'Łódź i właściciel', kopNood:'Nagły wypadek?',
+    noodUitleg:'Trafia bezpośrednio do właściciela — kod PIN nie jest potrzebny. Imię i numer telefonu są tu opcjonalne, ale zostaną dołączone, jeśli wypełniłeś je poniżej.',
+    kopBericht:'Coś się dzieje?',
+    berichtUitleg:'Wyślij wiadomość bezpośrednio do właściciela — kod PIN nie jest potrzebny. Podaj swoje imię i numer telefonu, aby właściciel wiedział, od kogo jest wiadomość.',
+    phNaam:'twoje imię', phTel:'twój numer telefonu', phVrij:'lub napisz własną wiadomość…', btnStuur:'WYŚLIJ',
+    okBericht:'Wiadomość wysłana.', okNood:'Wiadomość alarmowa wysłana.', foutVerzenden:'Wysyłanie nie powiodło się.',
+    foutNaamTel:'Najpierw podaj imię i numer telefonu.', foutTypEerst:'Najpierw napisz wiadomość.',
+    lockedHint:'Sterowanie wymaga kodu PIN właściciela lub gościa.', ontgrendelen:'Odblokuj →' },
+  cs: { ehLabel:'Majitel:', kopBoot:'Loď a majitel', kopNood:'Nouzová situace?',
+    noodUitleg:'Jde přímo majiteli — PIN není potřeba. Jméno a telefonní číslo jsou zde volitelné, ale pokud je vyplníte níže, budou odeslány spolu se zprávou.',
+    kopBericht:'Děje se něco?',
+    berichtUitleg:'Pošlete zprávu přímo majiteli — PIN není potřeba. Vyplňte své jméno a telefonní číslo, aby majitel věděl, od koho zpráva je.',
+    phNaam:'vaše jméno', phTel:'vaše telefonní číslo', phVrij:'nebo napište vlastní zprávu…', btnStuur:'ODESLAT',
+    okBericht:'Zpráva odeslána.', okNood:'Nouzová zpráva odeslána.', foutVerzenden:'Odeslání se nezdařilo.',
+    foutNaamTel:'Nejprve vyplňte jméno a telefonní číslo.', foutTypEerst:'Nejprve napište zprávu.',
+    lockedHint:'Ovládání vyžaduje PIN majitele nebo hosta.', ontgrendelen:'Odemknout →' },
+  da: { ehLabel:'Ejer:', kopBoot:'Båd & ejer', kopNood:'Nødsituation?',
+    noodUitleg:'Går direkte til ejeren — ingen pinkode nødvendig. Navn og telefonnummer er valgfrit her, men sendes med, hvis du allerede har udfyldt dem nedenfor.',
+    kopBericht:'Er der noget galt?',
+    berichtUitleg:'Send en besked direkte til ejeren — ingen pinkode nødvendig. Udfyld dit navn og telefonnummer, så ejeren ved, hvem den er fra.',
+    phNaam:'dit navn', phTel:'dit telefonnummer', phVrij:'eller skriv selv en besked…', btnStuur:'SEND',
+    okBericht:'Besked sendt.', okNood:'Nødbesked sendt.', foutVerzenden:'Afsendelse mislykkedes.',
+    foutNaamTel:'Udfyld først navn og telefonnummer.', foutTypEerst:'Skriv først en besked.',
+    lockedHint:'Betjening kræver ejerens eller en gæstepinkode.', ontgrendelen:'Lås op →' },
+  pt: { ehLabel:'Proprietário:', kopBoot:'Barco e proprietário', kopNood:'Emergência?',
+    noodUitleg:'Vai diretamente para o proprietário — não é necessário PIN. O nome e o número de telefone são opcionais aqui, mas serão enviados se já os tiver preenchido abaixo.',
+    kopBericht:'Passa-se alguma coisa?',
+    berichtUitleg:'Envie uma mensagem diretamente para o proprietário — não é necessário PIN. Preencha o seu nome e número de telefone para que o proprietário saiba de quem é.',
+    phNaam:'o seu nome', phTel:'o seu número de telefone', phVrij:'ou escreva a sua própria mensagem…', btnStuur:'ENVIAR',
+    okBericht:'Mensagem enviada.', okNood:'Mensagem de emergência enviada.', foutVerzenden:'Falha ao enviar.',
+    foutNaamTel:'Preencha primeiro o seu nome e número de telefone.', foutTypEerst:'Escreva primeiro uma mensagem.',
+    lockedHint:'O controlo requer o PIN do proprietário ou de um convidado.', ontgrendelen:'Desbloquear →' },
+  it: { ehLabel:'Proprietario:', kopBoot:'Barca e proprietario', kopNood:'Emergenza?',
+    noodUitleg:'Va direttamente al proprietario — non serve il PIN. Nome e numero di telefono qui sono facoltativi, ma verranno inclusi se li hai già inseriti qui sotto.',
+    kopBericht:'Succede qualcosa?',
+    berichtUitleg:'Invia subito un messaggio al proprietario — non serve il PIN. Inserisci il tuo nome e numero di telefono così il proprietario sa chi lo ha inviato.',
+    phNaam:'il tuo nome', phTel:'il tuo numero di telefono', phVrij:'oppure scrivi tu stesso un messaggio…', btnStuur:'INVIA',
+    okBericht:'Messaggio inviato.', okNood:'Messaggio di emergenza inviato.', foutVerzenden:'Invio non riuscito.',
+    foutNaamTel:'Inserisci prima nome e numero di telefono.', foutTypEerst:'Scrivi prima un messaggio.',
+    lockedHint:'Il comando richiede il PIN del proprietario o di un ospite.', ontgrendelen:'Sblocca →' }
+};
+
 // ─── Openbaar (geen PIN): boot/eigenaar-info + "iets is los"-berichtje ─────
 function ladenPubliek(){
   fetch('/info/publiek').then(function(r){ return r.json(); }).then(function(d){
+    var dict = huidigDict();
     document.getElementById('pubInfo').innerHTML =
       '<div style="font-size:.9rem;"><b>' + esc(d.boot || '?') + '</b>' +
       (d.type ? ' — ' + esc(d.type) : '') + '</div>' +
-      (d.eigenaar ? '<div style="color:var(--text-dim);font-size:.8rem;margin-top:2px;">Eigenaar: ' + esc(d.eigenaar) + '</div>' : '');
+      (d.eigenaar ? '<div style="color:var(--text-dim);font-size:.8rem;margin-top:2px;">' + esc(dict.ehLabel) + ' ' + esc(d.eigenaar) + '</div>' : '');
   }).catch(function(){});
 }
 
-function ladenBericht(){
-  fetch('/bericht/lijst').then(function(r){ return r.json(); }).then(function(d){
-    var presets = d.presets || [];
-    document.getElementById('berichtGrid').innerHTML = presets.map(function(t, i){
-      return '<button class="mbtn" onclick="stuurBericht(' + i + ')">' + esc(t) + '</button>';
+var BERICHT_NAAM_KEY = 'bkos_bericht_naam';
+var BERICHT_TEL_KEY  = 'bkos_bericht_tel';
+
+// ─── Noodgeval-knoppen: vaste set, naam/telefoon optioneel — zie bericht.h.
+function laadNood(){
+  var taal = huidigeTaal();
+  fetch('/bericht/nood/lijst').then(function(r){ return r.json(); }).then(function(d){
+    var presets = d.presets || [], anker = !!d.anker;
+    document.getElementById('noodGrid').innerHTML = presets.map(function(p, i){
+      if (p.alleenAnker && !anker) return '';
+      var label = (NOOD_VERTAAL[taal] && NOOD_VERTAAL[taal][i]) ? NOOD_VERTAAL[taal][i] : p.tekst;
+      return '<button class="mbtn nood" onclick="stuurNood(' + i + ')">' + esc(label) + '</button>';
     }).join('');
   }).catch(function(){});
 }
 
-function stuurBericht(i){
-  var fd = new URLSearchParams(); fd.set('idx', i);
+function noodMelding(tekst, isFout){
+  var el = document.getElementById('noodOk');
+  el.style.color = isFout ? 'var(--red)' : 'var(--green)';
+  el.textContent = tekst;
+  setTimeout(function(){ if (el.textContent === tekst) el.textContent = ''; }, 4000);
+}
+
+function stuurNood(i){
+  // Naam/telefoon zijn hier optioneel — wél meesturen (en onthouden) als ze
+  // al ingevuld staan, maar nooit blokkeren als ze leeg zijn.
+  var dict = huidigDict();
+  var naam = document.getElementById('berichtAfzNaam').value.trim();
+  var tel  = document.getElementById('berichtAfzTel').value.trim();
+  if (naam) localStorage.setItem(BERICHT_NAAM_KEY, naam);
+  if (tel)  localStorage.setItem(BERICHT_TEL_KEY, tel);
+  var fd = new URLSearchParams(); fd.set('idx', i); fd.set('naam', naam); fd.set('tel', tel);
+  fetch('/bericht/nood/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ noodMelding(d.ok ? dict.okNood : dict.foutVerzenden, !d.ok); })
+    .catch(function(){ noodMelding(dict.foutVerzenden, true); });
+}
+
+function ladenBericht(){
+  document.getElementById('berichtAfzNaam').value = localStorage.getItem(BERICHT_NAAM_KEY) || '';
+  document.getElementById('berichtAfzTel').value  = localStorage.getItem(BERICHT_TEL_KEY)  || '';
+  var taal = huidigeTaal();
+  fetch('/bericht/lijst').then(function(r){ return r.json(); }).then(function(d){
+    var presets = d.presets || [];
+    document.getElementById('berichtGrid').innerHTML = presets.map(function(t, i){
+      var idxNl = PRESET_NL.indexOf(t);
+      var label = (idxNl >= 0 && PRESET_VERTAAL[taal]) ? PRESET_VERTAAL[taal][idxNl] : t;
+      return '<button class="mbtn" onclick="stuurBericht(' + i + ')">' + esc(label) + '</button>';
+    }).join('');
+  }).catch(function(){});
+}
+
+function berichtMelding(tekst, isFout){
   var el = document.getElementById('berichtOk');
+  el.style.color = isFout ? 'var(--red)' : 'var(--green)';
+  el.textContent = tekst;
+  setTimeout(function(){ if (el.textContent === tekst) el.textContent = ''; }, 4000);
+}
+
+// Naam/telefoon worden bewaard in localStorage — hoeft maar één keer per
+// toestel ingevuld, ook al kunnen daarna meerdere berichten (presets én vrije
+// tekst) verstuurd worden.
+function berichtAfzGegevens(){
+  var naam = document.getElementById('berichtAfzNaam').value.trim();
+  var tel  = document.getElementById('berichtAfzTel').value.trim();
+  if (!naam || !tel) { berichtMelding(huidigDict().foutNaamTel, true); return null; }
+  localStorage.setItem(BERICHT_NAAM_KEY, naam);
+  localStorage.setItem(BERICHT_TEL_KEY, tel);
+  return { naam: naam, tel: tel };
+}
+
+function stuurBericht(i){
+  var dict = huidigDict();
+  var afz = berichtAfzGegevens(); if (!afz) return;
+  var fd = new URLSearchParams(); fd.set('idx', i); fd.set('naam', afz.naam); fd.set('tel', afz.tel);
   fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
     .then(function(r){ return r.json(); })
-    .then(function(d){ el.textContent = d.ok ? 'Bericht verzonden.' : 'Versturen mislukt.'; })
-    .catch(function(){ el.textContent = 'Versturen mislukt.'; })
-    .finally(function(){ setTimeout(function(){ el.textContent = ''; }, 4000); });
+    .then(function(d){ berichtMelding(d.ok ? dict.okBericht : dict.foutVerzenden, !d.ok); })
+    .catch(function(){ berichtMelding(dict.foutVerzenden, true); });
+}
+
+function stuurBerichtVrij(){
+  var dict = huidigDict();
+  var afz = berichtAfzGegevens(); if (!afz) return;
+  var veld = document.getElementById('berichtVrijeTekst');
+  var tekst = veld.value.trim();
+  if (!tekst) { berichtMelding(dict.foutTypEerst, true); return; }
+  var fd = new URLSearchParams(); fd.set('tekst', tekst); fd.set('naam', afz.naam); fd.set('tel', afz.tel);
+  fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      berichtMelding(d.ok ? dict.okBericht : dict.foutVerzenden, !d.ok);
+      if (d.ok) veld.value = '';
+    })
+    .catch(function(){ berichtMelding(dict.foutVerzenden, true); });
 }
 
 // ─── Eigen achtergrondfoto (staand/liggend, apart slot per oriëntatie) ─────
@@ -814,6 +1066,11 @@ var cropNatW = 0, cropNatH = 0;
 var cropBaseScale = 1, cropScale = 1;
 var cropPanX = 0, cropPanY = 0;
 var cropSlepen = false, cropStartX = 0, cropStartY = 0, cropStartPanX = 0, cropStartPanY = 0;
+// Twee-vinger pinch-to-zoom naast de schuif — cropPointers houdt actieve
+// aanrakingen bij (pointerId -> {x,y}); zodra er 2 zijn, bepaalt de
+// afstandsverandering tussen die twee de zoom (i.p.v. slepen).
+var cropPointers = {};
+var cropPinchStartDist = 0, cropPinchStartScale = 1;
 
 function cropMelding(target, tekst, isFout){
   var el = document.getElementById(target === 'haven' ? 'fotosMelding' : 'agMelding');
@@ -826,6 +1083,7 @@ function openCrop(file, target){
   cropTarget = target;
   cropImgEl = document.getElementById('cropImg');
   cropVp = document.getElementById('cropViewport');
+  cropPointers = {}; cropSlepen = false; cropPinchStartDist = 0;
   var cfg = CROP_TARGETS[target];
   cropVp.style.aspectRatio = cfg.doelW + '/' + cfg.doelH;
   var img = new Image();
@@ -872,21 +1130,65 @@ document.getElementById('cropZoom').addEventListener('input', function(e){
   cropKlem();
   cropToon();
 });
+function _cropPinchDist(){
+  var ids = Object.keys(cropPointers);
+  var a = cropPointers[ids[0]], b = cropPointers[ids[1]];
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
 document.getElementById('cropViewport').addEventListener('pointerdown', function(e){
-  cropSlepen = true;
-  cropStartX = e.clientX; cropStartY = e.clientY;
-  cropStartPanX = cropPanX; cropStartPanY = cropPanY;
   cropVp.setPointerCapture(e.pointerId);
+  cropPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPointers);
+  if (ids.length >= 2) {
+    cropSlepen = false;
+    cropPinchStartDist = _cropPinchDist();
+    cropPinchStartScale = cropScale;
+  } else {
+    cropSlepen = true;
+    cropStartX = e.clientX; cropStartY = e.clientY;
+    cropStartPanX = cropPanX; cropStartPanY = cropPanY;
+  }
 });
 document.getElementById('cropViewport').addEventListener('pointermove', function(e){
-  if (!cropSlepen) return;
-  cropPanX = cropStartPanX + (e.clientX - cropStartX);
-  cropPanY = cropStartPanY + (e.clientY - cropStartY);
-  cropKlem();
-  cropToon();
+  if (!(e.pointerId in cropPointers)) return;
+  cropPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPointers);
+  if (ids.length >= 2) {
+    if (cropPinchStartDist <= 0) return;
+    var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+    var midXvoor = (vpW / 2 - cropPanX) / cropScale;
+    var midYvoor = (vpH / 2 - cropPanY) / cropScale;
+    var nieuweScale = cropPinchStartScale * (_cropPinchDist() / cropPinchStartDist);
+    var nieuwZoom = Math.min(400, Math.max(100, (nieuweScale / cropBaseScale) * 100));
+    document.getElementById('cropZoom').value = nieuwZoom;
+    cropScale = cropBaseScale * (nieuwZoom / 100);
+    cropPanX = vpW / 2 - midXvoor * cropScale;
+    cropPanY = vpH / 2 - midYvoor * cropScale;
+    cropKlem();
+    cropToon();
+  } else if (cropSlepen) {
+    cropPanX = cropStartPanX + (e.clientX - cropStartX);
+    cropPanY = cropStartPanY + (e.clientY - cropStartY);
+    cropKlem();
+    cropToon();
+  }
 });
-document.getElementById('cropViewport').addEventListener('pointerup', function(){ cropSlepen = false; });
-document.getElementById('cropViewport').addEventListener('pointercancel', function(){ cropSlepen = false; });
+function _cropPointerWeg(e){
+  delete cropPointers[e.pointerId];
+  var ids = Object.keys(cropPointers);
+  if (ids.length === 1) {
+    // Nog één vinger over: gewoon verder slepen vanaf de huidige positie
+    // i.p.v. een sprong te geven t.o.v. de oude pinch-startpositie.
+    var p = cropPointers[ids[0]];
+    cropSlepen = true;
+    cropStartX = p.x; cropStartY = p.y;
+    cropStartPanX = cropPanX; cropStartPanY = cropPanY;
+  } else {
+    cropSlepen = false;
+  }
+}
+document.getElementById('cropViewport').addEventListener('pointerup', _cropPointerWeg);
+document.getElementById('cropViewport').addEventListener('pointercancel', _cropPointerWeg);
 
 function cropAnnuleer(){
   document.getElementById('cropModal').classList.add('hidden');
@@ -955,7 +1257,12 @@ function uploadHavenFoto(blob){
     var d = {}; try { d = JSON.parse(xhr.responseText); } catch(e){}
     if (xhr.status === 200 && d.ok) { cropMelding('haven', 'Foto opgeslagen als ' + d.naam + '.', false); fotosLijst(); fotosInfo(); }
     else {
-      var reden = xhr.status === 403 ? 'geen toegang' : xhr.status === 413 ? 'te groot' : 'opslag vol of ongeldig bestand (zie teller hierboven)';
+      var reden = xhr.status === 403 ? 'geen toegang'
+                : xhr.status === 413 ? 'bestand nog te groot'
+                : d.reden === 'ruimte' ? 'te weinig vrije opslag over'
+                : d.reden === 'vol' ? 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder'
+                : d.reden === 'schrijffout' ? 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw'
+                : 'onbekende fout';
       cropMelding('haven', 'Upload mislukt (' + reden + ').', true);
       fotosInfo();
     }
@@ -1252,8 +1559,7 @@ function meldingTest(){
 }
 
 achtergrondToepassen();
-ladenPubliek();
-ladenBericht();
+taalToepassen();  // roept ladenPubliek()/ladenBericht()/laadNood() ook meteen aan
 connect();
 </script>
 </body>

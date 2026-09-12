@@ -74,7 +74,7 @@ void screen_paneel_teken() {
             snprintf(msg, sizeof(msg), "Opslaan mislukt! (opslag vol?)");
 #else
             snprintf(msg, sizeof(msg), "Opslaan mislukt! (%u bytes vrij)",
-                     (unsigned)(SPIFFS.totalBytes() - SPIFFS.usedBytes()));
+                     (unsigned)(bkos_fs_totaal() - bkos_fs_gebruikt()));
 #endif
             tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_RED_BRIGHT);
             tft.setTextSize(1); tft.setTextColor(C_BG);

@@ -85,6 +85,25 @@ section h2{
 .filerow .grootte{font-size:.72rem;color:var(--text-dim);flex:none;}
 .filerow button.del{padding:6px 12px;font-size:.78rem;color:var(--red);border-color:var(--red);}
 #leeg{color:var(--text-dim);font-size:.85rem;padding:8px 2px;}
+
+#cropModal{
+  position:fixed;inset:0;background:rgba(4,10,16,.94);z-index:60;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:20px;
+}
+#cropModal.hidden{display:none;}
+#cropViewport{
+  width:min(88vw,420px);aspect-ratio:800/480;position:relative;overflow:hidden;
+  border-radius:8px;border:2px solid var(--cyan);background:#000;touch-action:none;
+}
+#cropImg{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;max-width:none;}
+#cropZoom{width:min(88vw,420px);margin-top:16px;accent-color:var(--cyan);}
+#cropModal .row{display:flex;gap:8px;width:min(88vw,420px);}
+#cropModal .row button{
+  flex:1;border-radius:10px;padding:12px;font-size:.9rem;font-weight:600;border:1px solid var(--border);
+}
+#cropModal .row button.ok{background:var(--cyan);color:#04121c;border-color:var(--cyan);}
+#cropModal .row button.cancel{background:var(--surface2);color:var(--text-dim);}
 </style>
 </head>
 <body>
@@ -133,6 +152,16 @@ section h2{
   </section>
 </div>
 
+<div id="cropModal" class="hidden">
+  <p style="font-size:.78rem;color:var(--text-dim);text-align:center;margin-bottom:10px;">Sleep om te schuiven, gebruik de schuif om in/uit te zoomen. Alleen het deel in het kader wordt opgeslagen.</p>
+  <div id="cropViewport"><img id="cropImg" draggable="false" alt=""></div>
+  <input type="range" id="cropZoom" min="100" max="400" value="100">
+  <div class="row" style="margin-top:14px;">
+    <button class="cancel" onclick="cropAnnuleer()">ANNULEER</button>
+    <button class="ok" onclick="cropBevestig()">GEBRUIK DIT DEEL</button>
+  </div>
+</div>
+
 <script>
 'use strict';
 var doelW = 800, doelH = 480, maxUploadBytes = 300 * 1024;
@@ -154,6 +183,7 @@ function melding(tekst, klasse){
 function info(){
   fetch('/haven/info').then(function(r){ return r.json(); }).then(function(d){
     doelW = d.w; doelH = d.h; maxUploadBytes = d.maxBytes || maxUploadBytes;
+    document.getElementById('cropViewport').style.aspectRatio = doelW + '/' + doelH;
     document.getElementById('hdrSub').textContent = doelW + '×' + doelH + ' · ' + d.aantal + ' foto\'s';
     document.getElementById('status').innerHTML =
       'Doelresolutie: <b>' + doelW + '×' + doelH + '</b><br>' +
@@ -274,33 +304,121 @@ function encodeerBinnenBudget(canvas, stapIdx, callback){
   }, 'image/jpeg', kwaliteit);
 }
 
+// ─── Zelf bijsnijden: kader op vaste positie/verhouding (het kijkvenster
+// #cropViewport, verhouding = doelW:doelH), de foto zelf schuift/zoomt
+// eronder — precies zoals een profielfoto-crop op de meeste apps werkt. Bij
+// zoom 100% (schuifminimum) dekt de foto het kader net volledig (de oude
+// automatische "cover"-crop), verder inzoomen geeft een striktere keuze.
+var cropImgEl, cropVp;
+var cropNatW = 0, cropNatH = 0;   // echte fotoafmetingen
+var cropBaseScale = 1;             // schaal bij zoom=100% (dekt het kader net)
+var cropScale = 1;                 // daadwerkelijke schaal (baseScale × zoom%)
+var cropPanX = 0, cropPanY = 0;    // positie linkerbovenhoek foto t.o.v. kader, in CSS-pixels
+var cropSlepen = false, cropStartX = 0, cropStartY = 0, cropStartPanX = 0, cropStartPanY = 0;
+
 function verwerkEnUpload(file){
-  melding('Foto wordt verkleind…', '');
-  document.getElementById('uploadBtn').disabled = true;
+  cropImgEl = document.getElementById('cropImg');
+  cropVp = document.getElementById('cropViewport');
   var img = new Image();
   img.onload = function(){
-    var canvas = document.createElement('canvas');
-    canvas.width = doelW; canvas.height = doelH;
-    var ctx = canvas.getContext('2d');
-    // "Cover"-crop: uitvullen zonder vervorming, overtollige randen afsnijden.
-    var schaal = Math.max(doelW / img.width, doelH / img.height);
-    var sw = doelW / schaal, sh = doelH / schaal;
-    var sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, doelW, doelH);
-
-    encodeerBinnenBudget(canvas, 0, function(blob, gelukt){
-      if (gelukt) uploadBlob(blob);
-      else {
-        melding('Deze foto blijft te groot, ook na maximale compressie. Probeer een andere foto.', 'fout');
-        document.getElementById('uploadBtn').disabled = false;
-      }
-    });
+    cropNatW = img.naturalWidth; cropNatH = img.naturalHeight;
+    cropImgEl.src = img.src;
+    document.getElementById('cropZoom').value = 100;
+    document.getElementById('cropModal').classList.remove('hidden');
+    // Wacht tot het kader zijn echte (verhouding-bepaalde) afmetingen heeft
+    // vóór de basisschaal te berekenen — vlak na classList.remove al klaar.
+    requestAnimationFrame(cropHerbereken);
   };
-  img.onerror = function(){
-    melding('Kon de foto niet lezen.', 'fout');
-    document.getElementById('uploadBtn').disabled = false;
-  };
+  img.onerror = function(){ melding('Kon de foto niet lezen.', 'fout'); };
   img.src = URL.createObjectURL(file);
+}
+
+function cropHerbereken(){
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  cropBaseScale = Math.max(vpW / cropNatW, vpH / cropNatH);
+  var zoom = document.getElementById('cropZoom').value / 100;
+  cropScale = cropBaseScale * zoom;
+  var dispW = cropNatW * cropScale, dispH = cropNatH * cropScale;
+  // Centreren + klemmen zodat de foto het kader altijd blijft dekken (geen
+  // lege randen zichtbaar).
+  cropPanX = Math.min(0, Math.max(vpW - dispW, (vpW - dispW) / 2));
+  cropPanY = Math.min(0, Math.max(vpH - dispH, (vpH - dispH) / 2));
+  cropToon();
+}
+
+function cropToon(){
+  cropImgEl.style.width  = (cropNatW * cropScale) + 'px';
+  cropImgEl.style.height = (cropNatH * cropScale) + 'px';
+  cropImgEl.style.transform = 'translate(' + cropPanX + 'px,' + cropPanY + 'px)';
+}
+
+function cropKlem(){
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  var dispW = cropNatW * cropScale, dispH = cropNatH * cropScale;
+  cropPanX = Math.min(0, Math.max(vpW - dispW, cropPanX));
+  cropPanY = Math.min(0, Math.max(vpH - dispH, cropPanY));
+}
+
+document.getElementById('cropZoom').addEventListener('input', function(e){
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  var midXvoor = (vpW / 2 - cropPanX) / cropScale;   // vasthouden welk fotopunt in het midden blijft
+  var midYvoor = (vpH / 2 - cropPanY) / cropScale;
+  cropScale = cropBaseScale * (e.target.value / 100);
+  cropPanX = vpW / 2 - midXvoor * cropScale;
+  cropPanY = vpH / 2 - midYvoor * cropScale;
+  cropKlem();
+  cropToon();
+});
+
+function cropPointerDown(e){
+  cropSlepen = true;
+  cropStartX = e.clientX; cropStartY = e.clientY;
+  cropStartPanX = cropPanX; cropStartPanY = cropPanY;
+  cropVp.setPointerCapture(e.pointerId);
+}
+function cropPointerMove(e){
+  if (!cropSlepen) return;
+  cropPanX = cropStartPanX + (e.clientX - cropStartX);
+  cropPanY = cropStartPanY + (e.clientY - cropStartY);
+  cropKlem();
+  cropToon();
+}
+function cropPointerUp(){ cropSlepen = false; }
+document.getElementById('cropViewport').addEventListener('pointerdown', cropPointerDown);
+document.getElementById('cropViewport').addEventListener('pointermove', cropPointerMove);
+document.getElementById('cropViewport').addEventListener('pointerup', cropPointerUp);
+document.getElementById('cropViewport').addEventListener('pointercancel', cropPointerUp);
+
+function cropAnnuleer(){
+  document.getElementById('cropModal').classList.add('hidden');
+  cropImgEl.src = '';
+}
+
+function cropBevestig(){
+  document.getElementById('cropModal').classList.add('hidden');
+  melding('Foto wordt verkleind…', '');
+  document.getElementById('uploadBtn').disabled = true;
+
+  var canvas = document.createElement('canvas');
+  canvas.width = doelW; canvas.height = doelH;
+  var ctx = canvas.getContext('2d');
+  // Het kader ís het gekozen deel: linkerbovenhoek van het kader (0,0 in
+  // kader-ruimte) komt overeen met fotopixel (-panX/scale, -panY/scale);
+  // de kaderafmetingen in fotopixels zijn (vpW/scale, vpH/scale).
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  var sx = -cropPanX / cropScale, sy = -cropPanY / cropScale;
+  var sw = vpW / cropScale, sh = vpH / cropScale;
+  // cropImgEl staat al geladen in de modal (dat is precies wat de gebruiker
+  // net zag) — drawImage gebruikt sowieso altijd de volle fotoresolutie,
+  // ongeacht de CSS-weergavegrootte, dus geen nieuwe Image() nodig.
+  ctx.drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, doelW, doelH);
+  encodeerBinnenBudget(canvas, 0, function(blob, gelukt){
+    if (gelukt) uploadBlob(blob);
+    else {
+      melding('Deze foto blijft te groot, ook na maximale compressie. Probeer een andere foto.', 'fout');
+      document.getElementById('uploadBtn').disabled = false;
+    }
+  });
 }
 
 function uploadBlob(blob){

@@ -89,6 +89,34 @@ void io_boot() {
     if (io_kanalen_cnt > 0) bkoss_actief = true;
 }
 
+// Opstart-vaarmodus a.d.h.v. actief ingangskanalen (zie io.h). Wordt in
+// hardware.ino aangeroepen ná een "stille" io_cyclus(true) — die heeft de
+// actuele ingangsstand net in io_input[] gezet zonder er al iets mee te doen
+// (geen actie/melding, geen scherm/net-aanraking vóór de rest van hw_setup()
+// klaar is). Deze functie kijkt vervolgens gewoon naar die ingangsstand.
+void io_boot_vaarmodus_bepalen() {
+    if (!vaarmodus_auto) return;   // zelfde schakelaar als de live automatische wissel
+    int n = io_zichtbaar();
+    bool wil_motor = false, wil_zeilen = false, wil_anker = false, wil_haven = false;
+    for (int i = 0; i < n; i++) {
+        if (io_richting[i] != IO_RICHTING_IN || !io_input[i]) continue;
+        switch (io_actie_aan[i]) {
+            case IO_ACTIE_MODUS_MOTOR:  wil_motor  = true; break;
+            case IO_ACTIE_MODUS_ZEILEN: wil_zeilen = true; break;
+            case IO_ACTIE_MODUS_ANKER:  wil_anker  = true; break;
+            case IO_ACTIE_MODUS_HAVEN:  wil_haven  = true; break;
+            default: break;
+        }
+    }
+    // Prioriteit bij meerdere gelijktijdig actieve kanalen: motor, zeilen, anker, haven.
+    if      (wil_motor)  vaar_modus = MODE_MOTOR;
+    else if (wil_zeilen) vaar_modus = MODE_ZEILEN;
+    else if (wil_anker)  vaar_modus = MODE_ANKER;
+    else if (wil_haven)  vaar_modus = MODE_HAVEN;
+    // Geen enkel zo geconfigureerd kanaal actief: vaar_modus blijft op de
+    // opstartwaarde uit state_load() (boot_vaar_modus, of de onthouden stand).
+}
+
 void io_detect() {
 #if PLATFORM_PICO || PLATFORM_WROOM
     // HC GPIO: parallel klok zet modules in detectiemodus,
@@ -251,7 +279,7 @@ static inline bool io_drijf_hoog(int kanaal) {
     return (out == IO_AAN || out == IO_INV_UIT || out == IO_INV_GEBLOKKEERD);
 }
 
-void io_cyclus() {
+void io_cyclus(bool stil) {
     if (io_actief) return;
     io_actief = true;
 
@@ -278,7 +306,7 @@ void io_cyclus() {
             // Het dynamokanaal (io_dynamo_bezig) vuurt hier nooit een actie af:
             // tijdens de puls-sequentie is dat onze eigen drive, en in rust
             // moet io_dynamo_bewaking() eerst de 3-op-rij-bevestiging doorlopen.
-            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
+            if (!stil && io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
                 io_actie_uitvoeren(nieuw ? io_actie_aan[i] : io_actie_uit[i],
                                    io_actie_param[i]);
                 if ((nieuw  && (io_alert[i] == IO_ALERT_BIJ_AAN || io_alert[i] == IO_ALERT_BEIDE)) ||
@@ -333,7 +361,7 @@ void io_cyclus() {
             // Het dynamokanaal (io_dynamo_bezig) vuurt hier nooit een actie af:
             // tijdens de puls-sequentie is dat onze eigen drive, en in rust
             // moet io_dynamo_bewaking() eerst de 3-op-rij-bevestiging doorlopen.
-            if (io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
+            if (!stil && io_richting[i] == IO_RICHTING_IN && !io_dynamo_bezig(i)) {
                 io_actie_uitvoeren(
                     nieuw ? io_actie_aan[i] : io_actie_uit[i],
                     io_actie_param[i]);

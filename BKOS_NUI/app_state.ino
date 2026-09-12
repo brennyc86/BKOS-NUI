@@ -38,6 +38,7 @@ bool  onthoud_licht_modus   = false;
 byte  boot_vaar_modus       = MODE_HAVEN;
 byte  boot_licht_instelling = LICHT_AUTO;
 bool  boot_vaarmodus_auto   = true;   // standaard alles automatisch (verlichting + modus-wissel)
+bool  boot_haven_naar_dashboard = true;  // opstarten in HAVEN/ANKER opent gelijk het HAVEN-dashboard
 
 #define CONFIG_BESTAND "/bkos_config.csv"
 
@@ -72,6 +73,7 @@ void state_save() {
     f.printf("bootvm=%d\n",  (int)boot_vaar_modus);
     f.printf("bootlt=%d\n",  (int)boot_licht_instelling);
     f.printf("bootam=%d\n",  (int)boot_vaarmodus_auto);
+    f.printf("boothvd=%d\n", (int)boot_haven_naar_dashboard);
     f.printf("ota_auto=%d\n", (int)ota_auto_update);
     f.printf("ota_beta=%d\n", (int)ota_beta_kanal);
     f.printf("ota_int=%d\n",  ota_check_interval_min);
@@ -110,6 +112,7 @@ void state_load() {
     boot_vaar_modus       = MODE_HAVEN;
     boot_licht_instelling = LICHT_AUTO;
     boot_vaarmodus_auto   = true;   // standaard alles automatisch (verlichting + modus-wissel)
+    boot_haven_naar_dashboard = true;
     wifi_open_auto        = false;
     dynamo_puls_min       = 0;
     tijdzone_idx          = 0;   // Midden-Europa (CET/CEST)
@@ -172,6 +175,7 @@ void state_load() {
         if (key == "bootvm")    boot_vaar_modus       = (byte)constrain(val.toInt(), 0, 3);
         if (key == "bootlt")    boot_licht_instelling = (byte)constrain(val.toInt(), 0, 2);
         if (key == "bootam")    boot_vaarmodus_auto   = (val.toInt() != 0);
+        if (key == "boothvd")   boot_haven_naar_dashboard = (val.toInt() != 0);
         if (key == "ota_auto")  ota_auto_update        = (val.toInt() != 0);
         if (key == "ota_beta")  { ota_beta_kanal = (val.toInt() != 0); ota_beta_kanal_geladen = true; }
         if (key == "ota_int")   ota_check_interval_min = val.toInt();

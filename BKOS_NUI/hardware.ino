@@ -332,6 +332,12 @@ void hw_setup() {
 #endif                      // op core 2.x: BLE-init bij boot overslaan (hangt op Bluedroid) — zie Route A
     brug_setup();           // laad WiFi-brug instellingen (alleen Preferences, geen BLE)
     io_boot();              // BKOSS check + UART IO discovery
+    // Stille eerste inlezing: zet io_input[] op de echte hardwarestand zonder
+    // io_actie_uitvoeren/meldingen te vuren (net/scherm zijn hier nog niet
+    // klaar) — nodig om io_boot_vaarmodus_bepalen() een betrouwbare actuele
+    // ingangsstand te geven vóór de rest van hw_setup() verdergaat.
+    io_cyclus(true);
+    io_boot_vaarmodus_bepalen(); // opstart-vaarmodus evt. overrulen a.d.h.v. actieve ingangen (prioriteit motor>zeilen>anker>haven)
     io_verlichting_update(); // verlichting instellen op basis van opgestart modus
     app_setup();            // app-manifesten laden + Lua runtime initialiseren
 
@@ -372,6 +378,12 @@ void hw_setup() {
 
     scherm_bouwen = true;
     actief_scherm = SCREEN_MAIN;
+    // Opstarten in HAVEN of ANKER: gelijk het HAVEN-dashboard tonen i.p.v.
+    // het vaardashboard, als die optie aanstaat (standaard AAN). vaar_modus
+    // staat hier al vast (state_load() + evt. io_boot_vaarmodus_bepalen()
+    // hierboven), dus dit is een zuivere schermkeuze, geen modus-logica.
+    if (boot_haven_naar_dashboard && (vaar_modus == MODE_HAVEN || vaar_modus == MODE_ANKER))
+        actief_scherm = SCREEN_HAVEN;
 
 #if PLATFORM_XPT2046
     // Eerste boot zonder kalibratie: toon kalibratiescherm vóór hoofdscherm

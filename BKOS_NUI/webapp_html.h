@@ -166,6 +166,18 @@ button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);
     </section>
 
     <section>
+      <h2>Achtergrond webapp</h2>
+      <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Eigen foto op de achtergrond van deze pagina — apart voor staand en liggend gebruik. Een nieuwe upload vervangt de oude in datzelfde slot.</p>
+      <input type="file" id="agInputLiggend" accept="image/*" style="display:none">
+      <input type="file" id="agInputStaand"  accept="image/*" style="display:none">
+      <div class="grid2">
+        <button class="mbtn" id="agBtnLiggend" onclick="document.getElementById('agInputLiggend').click()">LIGGEND</button>
+        <button class="mbtn" id="agBtnStaand"  onclick="document.getElementById('agInputStaand').click()">STAAND</button>
+      </div>
+      <div id="agMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+    </section>
+
+    <section>
       <a href="/haven" style="display:block;text-align:center;font-size:.82rem;color:var(--text-dim);padding:6px;">HAVEN-foto's beheren &#8594;</a>
     </section>
   </div>
@@ -403,6 +415,83 @@ function stuurBericht(i){
     .finally(function(){ setTimeout(function(){ el.textContent = ''; }, 4000); });
 }
 
+// ─── Eigen achtergrondfoto (staand/liggend, apart slot per oriëntatie) ─────
+// Puur cosmetisch, dus altijd toegepast (ook zonder pincode) — het UPLOADEN
+// van een nieuwe foto blijft wel achter de pincode (zie de #gated-sectie).
+function achtergrondToepassen(){
+  var liggend = window.matchMedia('(orientation: landscape)').matches;
+  var slot = liggend ? 'liggend' : 'staand';
+  fetch('/achtergrond/info').then(function(r){ return r.json(); }).then(function(d){
+    var aanwezig = liggend ? d.liggend : d.staand;
+    if (!aanwezig) { document.body.style.backgroundImage = ''; return; }
+    // Donkere overlay overheen zodat de bestaande (effen) kaartjes/secties
+    // leesbaar blijven — zelfde idee als de fototint op het HAVEN-scherm van
+    // de boordcomputer zelf.
+    document.body.style.backgroundImage =
+      'linear-gradient(rgba(12,26,38,.82),rgba(12,26,38,.82)), url(/achtergrond/foto?slot=' + slot + '&t=' + Date.now() + ')';
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundPosition = 'center';
+    document.body.style.backgroundAttachment = 'fixed';
+  }).catch(function(){});
+}
+window.addEventListener('resize', achtergrondToepassen);
+
+// ─── Uploaden van een achtergrondfoto: eenvoudige "cover"-crop (geen los
+// zoom/pan-kader zoals bij de HAVEN-foto's — hier niet expliciet gevraagd),
+// vaste HD-doelresolutie per oriëntatie, zelfde kwaliteitsladder-aanpak als
+// de HAVEN-upload zodat het bestand altijd binnen de servergrens past.
+var AG_KWALITEIT_STAPPEN = [0.8, 0.65, 0.5, 0.35, 0.22, 0.12];
+var agMaxBytes = 1536 * 1024;
+fetch('/achtergrond/info').then(function(r){ return r.json(); }).then(function(d){
+  agMaxBytes = d.maxBytes || agMaxBytes;
+}).catch(function(){});
+
+function agEncodeerBinnenBudget(canvas, stapIdx, callback){
+  canvas.toBlob(function(blob){
+    var laatsteStap = stapIdx >= AG_KWALITEIT_STAPPEN.length - 1;
+    if (blob && blob.size <= agMaxBytes) callback(blob, true);
+    else if (laatsteStap) callback(blob, false);
+    else agEncodeerBinnenBudget(canvas, stapIdx + 1, callback);
+  }, 'image/jpeg', AG_KWALITEIT_STAPPEN[stapIdx]);
+}
+
+function agUpload(file, liggend){
+  var doelW = liggend ? 1280 : 720, doelH = liggend ? 720 : 1280;
+  var melding = document.getElementById('agMelding');
+  melding.style.color = ''; melding.textContent = 'Foto wordt verwerkt…';
+  var img = new Image();
+  img.onload = function(){
+    var canvas = document.createElement('canvas');
+    canvas.width = doelW; canvas.height = doelH;
+    var ctx = canvas.getContext('2d');
+    var schaal = Math.max(doelW / img.width, doelH / img.height);
+    var sw = doelW / schaal, sh = doelH / schaal;
+    var sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, doelW, doelH);
+    agEncodeerBinnenBudget(canvas, 0, function(blob, gelukt){
+      if (!gelukt){ melding.style.color = 'var(--red)'; melding.textContent = 'Foto blijft te groot.'; return; }
+      var fd = new FormData(); fd.append('foto', blob, 'bg.jpg');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/achtergrond/upload?slot=' + (liggend?'liggend':'staand') + '&pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
+      xhr.onload = function(){
+        if (xhr.status === 200){ melding.style.color = 'var(--green)'; melding.textContent = 'Opgeslagen.'; achtergrondToepassen(); }
+        else { melding.style.color = 'var(--red)'; melding.textContent = 'Upload mislukt (' + (xhr.status===403?'onjuiste pincode':'opslag') + ').'; }
+      };
+      xhr.onerror = function(){ melding.style.color = 'var(--red)'; melding.textContent = 'Upload mislukt (verbinding).'; };
+      xhr.send(fd);
+    });
+  };
+  img.onerror = function(){ melding.style.color = 'var(--red)'; melding.textContent = 'Kon de foto niet lezen.'; };
+  img.src = URL.createObjectURL(file);
+}
+document.getElementById('agInputLiggend').addEventListener('change', function(e){
+  var f = e.target.files[0]; e.target.value = ''; if (f) agUpload(f, true);
+});
+document.getElementById('agInputStaand').addEventListener('change', function(e){
+  var f = e.target.files[0]; e.target.value = ''; if (f) agUpload(f, false);
+});
+
+achtergrondToepassen();
 ladenPubliek();
 ladenBericht();
 connect();

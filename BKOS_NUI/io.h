@@ -26,8 +26,20 @@ void io_boot();
 void io_setup_taak();
 void io_bkoss_check();
 void io_detect();
-void io_cyclus();
+// stil=true: input-array bijwerken zonder io_actie_uitvoeren/meldingen te
+// vuren — gebruikt voor de allereerste, "stille" inlezing vlak na opstarten
+// (zie io_boot_vaarmodus_bepalen()), zodat niets al netwerk/scherm aanraakt
+// vóórdat de rest van hw_setup() klaar is.
+void io_cyclus(bool stil = false);
 void io_loop();
+// Bepaalt de opstart-vaarmodus a.d.h.v. actief ingangskanalen met een
+// IO_ACTIE_MODUS_*-actie (dezelfde config als de live automatische wissel,
+// zie io_actie_uitvoeren()) — bij meerdere gelijktijdig actieve kanalen wint
+// de vaste prioriteit MOTOR > ZEILEN > ANKER > HAVEN. Laat vaar_modus
+// ongewijzigd (dus de normale boot_vaar_modus/onthouden-stand blijft staan)
+// als geen enkel zo geconfigureerd kanaal actief is. Alleen relevant als
+// vaarmodus_auto aanstaat — dezelfde schakelaar als de live wissel.
+void io_boot_vaarmodus_bepalen();
 bool io_naam_is(int kanaal, const char* prefix);     // exacte prefix (systeemnamen)
 bool io_naam_match(int kanaal, const char* naam);    // tolerant: "**" optioneel (apparaatnamen)
 String io_naam_clean(int kanaal);

@@ -112,6 +112,7 @@ extern bool onthoud_licht_modus;    // bewaar licht_instelling + vaar_modus na h
 extern byte boot_vaar_modus;       // vaar_modus bij opstarten
 extern byte boot_licht_instelling; // licht_instelling bij opstarten
 extern bool boot_vaarmodus_auto;   // vaarmodus_auto bij opstarten
+extern bool boot_haven_naar_dashboard;  // opstarten in HAVEN/ANKER opent gelijk het HAVEN-dashboard i.p.v. het vaardashboard
 
 // Lua app geforceerd open (ongeacht vervangt-veld); -1 = geen
 extern int lua_forceer_app;

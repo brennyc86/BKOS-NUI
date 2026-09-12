@@ -12,8 +12,8 @@
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
 #include "bericht.h"        // bericht_preset/bericht_verzend — "iets is los"-berichtje, openbaar
+#include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /haven/foto, webapp-achtergrond
 #include <WebServer.h>
-#include <SPIFFS.h>         // /haven/foto — ruwe fotobytes serveren voor thumbnails
 
 static WebServer _http(80);
 static bool _http_gestart = false;
@@ -42,6 +42,24 @@ static size_t   _hav_upload_len = 0;
 // de webpagina dus ten onrechte "onjuiste pincode" i.p.v. "te groot".
 static bool     _hav_pin_ok    = false;
 static bool     _hav_te_groot  = false;
+
+// ─── Webapp-achtergrondfoto's: 2 vaste sloten (staand/liggend), HD, geen
+// RGB565-beperking (puur voor CSS-achtergrond in de browser, niet gedecodeerd
+// door het apparaat zelf). Vaste bestandsnaam per slot — een nieuwe upload
+// overschrijft gewoon het bestand van hetzelfde slot, dus de oude vervalt
+// vanzelf zonder aparte verwijderstap. Zelfde upload-patroon als /haven/upload
+// hierboven, met een eigen (ruimere) groottegrens.
+#define ACHTERGROND_MAX_BYTES (1536UL * 1024UL)
+static uint8_t* _ag_upload_buf     = nullptr;
+static size_t   _ag_upload_cap     = 0;
+static size_t   _ag_upload_len     = 0;
+static bool     _ag_pin_ok         = false;
+static bool     _ag_te_groot       = false;
+static bool     _ag_slot_liggend   = true;  // welk slot de lopende upload betreft
+
+static const char* _ag_pad(bool liggend) {
+    return liggend ? "/webappbg_liggend.jpg" : "/webappbg_staand.jpg";
+}
 
 void webapp_setup() {
     if (_http_gestart) return;
@@ -186,6 +204,70 @@ void webapp_setup() {
             }
             // UPLOAD_FILE_END/UPLOAD_FILE_ABORTED: niets te doen, de bovenste
             // handler rondt af zodra de body helemaal binnen is.
+        });
+
+    // ─── Webapp-achtergrondfoto's ────────────────────────────────────────────
+    _http.on("/achtergrond/info", HTTP_GET, []() {
+        String s = "{\"liggend\":"; s += SPIFFS.exists(_ag_pad(true))  ? "true" : "false";
+        s += ",\"staand\":";        s += SPIFFS.exists(_ag_pad(false)) ? "true" : "false";
+        s += ",\"maxBytes\":"; s += (uint32_t)ACHTERGROND_MAX_BYTES;
+        s += '}';
+        _http.send(200, "application/json", s);
+    });
+
+    _http.on("/achtergrond/foto", HTTP_GET, []() {
+        bool liggend = !_http.arg("slot").equals("staand");
+        const char* pad = _ag_pad(liggend);
+        if (!SPIFFS.exists(pad)) { _http.send(404, "text/plain", "niet gevonden"); return; }
+        File f = SPIFFS.open(pad, "r");
+        if (!f) { _http.send(404, "text/plain", "niet gevonden"); return; }
+        _http.streamFile(f, "image/jpeg");
+        f.close();
+    });
+
+    _http.on("/achtergrond/verwijder", HTTP_POST, []() {
+        if (!_pin_ok(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
+        bool liggend = !_http.arg("slot").equals("staand");
+        SPIFFS.remove(_ag_pad(liggend));
+        _http.send(200, "application/json", "{\"ok\":true}");
+    });
+
+    _http.on("/achtergrond/upload", HTTP_POST,
+        []() {  // aangeroepen zodra de volledige body binnen is
+            if (!_ag_pin_ok)  { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}");   return; }
+            if (_ag_te_groot) { _http.send(413, "application/json", "{\"ok\":false,\"reden\":\"groot\"}"); return; }
+            if (_ag_upload_len == 0) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"opslag\"}"); return; }
+            // Vaste bestandsnaam per slot: openen in "w" overschrijft de oude
+            // foto van datzelfde slot vanzelf, geen aparte verwijderstap nodig.
+            File f = SPIFFS.open(_ag_pad(_ag_slot_liggend), "w");
+            bool ok = f && f.write(_ag_upload_buf, _ag_upload_len) == _ag_upload_len;
+            if (f) f.close();
+            _http.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"reden\":\"opslag\"}");
+        },
+        []() {  // upload-handler: meerdere keren aangeroepen tijdens het streamen
+            HTTPUpload& up = _http.upload();
+            if (up.status == UPLOAD_FILE_START) {
+                _ag_upload_len   = 0;
+                _ag_te_groot     = false;
+                _ag_pin_ok       = _pin_ok(_http.arg("pin"));
+                _ag_slot_liggend = !_http.arg("slot").equals("staand");
+            } else if (up.status == UPLOAD_FILE_WRITE) {
+                if (!_ag_pin_ok || _ag_te_groot) return;
+                if (_ag_upload_len + up.currentSize > ACHTERGROND_MAX_BYTES) {
+                    _ag_te_groot = true;
+                    return;
+                }
+                if (_ag_upload_len + up.currentSize > _ag_upload_cap) {
+                    size_t nieuwe_cap = _ag_upload_cap ? _ag_upload_cap * 2 : 65536;
+                    if (nieuwe_cap < _ag_upload_len + up.currentSize) nieuwe_cap = _ag_upload_len + up.currentSize;
+                    uint8_t* nieuw = (uint8_t*)realloc(_ag_upload_buf, nieuwe_cap);
+                    if (!nieuw) { _ag_te_groot = true; return; }
+                    _ag_upload_buf = nieuw;
+                    _ag_upload_cap = nieuwe_cap;
+                }
+                memcpy(_ag_upload_buf + _ag_upload_len, up.buf, up.currentSize);
+                _ag_upload_len += up.currentSize;
+            }
         });
 
     _http.onNotFound([]() {

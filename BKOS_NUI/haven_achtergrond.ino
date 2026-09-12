@@ -120,7 +120,7 @@ size_t haven_gebruikersfoto_grootte(int i) {
 }
 
 size_t haven_spiffs_vrij() {
-    return (size_t)SPIFFS.totalBytes() - (size_t)SPIFFS.usedBytes();
+    return (size_t)bkos_fs_totaal() - (size_t)bkos_fs_gebruikt();
 }
 
 bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len) {

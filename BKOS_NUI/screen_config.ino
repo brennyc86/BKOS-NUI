@@ -129,7 +129,7 @@ static const char* cfg_chips_r2[] = {
 #if SCREEN_SMALL
 
 // Totale virtuele inhoudshoogte instellingen (som van alle y += stappen + 26px laatste rij)
-#define PICO_CFG_INS_H  (282 + 120 + 120 + 30 + 30 + (PLATFORM_ESP32 ? 90 : 0))  // +120 voor HELDERHEID AUTO-rijen, +90 voor slaap-rijen (ESP32), +120 voor MODUS ONTHOUDEN + OPSTARTINSTELLING-rijen, +30 voor EIGEN KLEUR-rij, +30 voor BESTANDEN-rij
+#define PICO_CFG_INS_H  (282 + 120 + 120 + 30 + 30 + 30 + (PLATFORM_ESP32 ? 90 : 0))  // +120 voor HELDERHEID AUTO-rijen, +90 voor slaap-rijen (ESP32), +120 voor MODUS ONTHOUDEN + OPSTARTINSTELLING-rijen, +30 voor EIGEN KLEUR-rij, +30 voor BESTANDEN-rij, +30 voor OP.HVN-rij
 static int pico_cfg_scroll_y = 0;  // pixels omhoog verschoven
 
 // PIN overlay voor 240×320
@@ -711,6 +711,22 @@ static void pico_cfg_instellingen_teken() {
     }
     y += 30;
 
+    // Opstarten in HAVEN/ANKER meteen naar het HAVEN-dashboard
+    {
+        tft.fillRoundRect(4, y, TFT_W - 8, 26, 5, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(8, y + (26 - 8) / 2); tft.print("OP.HVN:");
+        bool aan = boot_haven_naar_dashboard;
+        int bx = TFT_W - 8 - 60;
+        tft.fillRoundRect(bx, y + 3, 56, 20, 3, aan ? C_GREEN : C_SURFACE3);
+        tft.setTextSize(1); tft.setTextColor(aan ? C_BG : C_TEXT);
+        const char* hvlbl = aan ? "AAN" : "UIT";
+        int tw2 = strlen(hvlbl) * 6;
+        tft.setCursor(bx + (56 - tw2) / 2, y + 3 + (20 - 8) / 2);
+        tft.print(hvlbl);
+    }
+    y += 30;
+
     // BESTANDEN (PIN vereist, net als de andere rijen hier — kan bestanden verwijderen)
     ui_knop(4, y, TFT_W - 8, 26, "BESTANDEN  >", C_SURFACE2, ontg ? C_CYAN : C_TEXT_DIM);
     y += 30;
@@ -941,6 +957,13 @@ static void pico_cfg_instellingen_run(int x, int y) {
     if (y >= y0 && y < y0 + 26) {
         if (!ontg) { pin_vereist_tonen(); return; }
         boot_vaarmodus_auto = !boot_vaarmodus_auto;
+        state_save(); pico_cfg_instellingen_teken(); return;
+    }
+    y0 += 30;
+    // Opstarten in HAVEN/ANKER naar dashboard (PIN vereist)
+    if (y >= y0 && y < y0 + 26) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        boot_haven_naar_dashboard = !boot_haven_naar_dashboard;
         state_save(); pico_cfg_instellingen_teken(); return;
     }
     y0 += 30;
@@ -1562,11 +1585,11 @@ static void cfg_boot_teken() {
 // hoogte van de allerlaatste rij (die zelf geen "y +=" meer heeft).
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
   // palette(62) kleurpatroon(44) open-wifi(34) foutrap/lichtmodus(42) opstart-vaarmodus(44)
-  // opstart-verlichting(44) slaap(44) slaap-na(44) io+net(44) scherm-pclk(44)
+  // opstart-naar-haven(34) opstart-verlichting(44) slaap(44) slaap-na(44) io+net(44) scherm-pclk(44)
   // dubbele-buffering(44,S3) scherm-180(44) helderheid-auto(44) overdag(44) nacht-anker(44) nacht-varend(44)
-  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+44+44+44+44)
+  #define CFG_WE_INHOUD_H (62+44+34+42+44+34+44+44+44+44+44+44+44+44+44+44+44)
 #else
-  #define CFG_WE_INHOUD_H (62+44+34+42+44+44+44+44+44+44+44+44+44+44+44)
+  #define CFG_WE_INHOUD_H (62+44+34+42+44+34+44+44+44+44+44+44+44+44+44)
 #endif
 #define CFG_WE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_WE_INHOUD_H - (int)NAV_Y)
 
@@ -1677,6 +1700,21 @@ static void cfg_we_teken() {
         }
     }
     y += 44;
+
+    // Opstarten in HAVEN/ANKER meteen naar het HAVEN-dashboard
+    {
+        bool aan = boot_haven_naar_dashboard;
+        uint16_t obg  = (ontg && aan) ? RGB565(0, 16, 28) : C_SURFACE2;
+        uint16_t oacc = (ontg && aan) ? C_CYAN : (ontg ? C_TEXT_DIM : C_DARK_GRAY);
+        tft.fillRoundRect(8, y, TFT_W - 16, 30, 6, ontg ? obg : C_SURFACE);
+        tft.drawRoundRect(8, y, TFT_W - 16, 30, 6, ontg ? oacc : C_SURFACE3);
+        tft.setTextSize(1); tft.setTextColor(ontg ? oacc : C_DARK_GRAY);
+        const char* hlbl = aan
+            ? "OPSTARTEN IN HAVEN/ANKER OPENT DASHBOARD  AAN"
+            : "OPSTARTEN IN HAVEN/ANKER OPENT DASHBOARD  UIT";
+        tft.setCursor(16, y + (30 - 8) / 2); tft.print(hlbl);
+    }
+    y += 34;
 
     // Opstart verlichting
     {
@@ -2154,6 +2192,7 @@ static void cfg_we_run(int x, int y) {
     int ow_y   = cy; cy += 34;
     int fr2_y  = cy; cy += 42;
     int bvm_y  = cy; cy += 44;
+    int hvd_y  = cy; cy += 34;
     int blt_y  = cy; cy += 44;
     int sly    = cy; cy += 44;
     int sly2   = cy; cy += 44;
@@ -2207,6 +2246,12 @@ static void cfg_we_run(int x, int y) {
             state_save(); cfg_we_teken();
         }
         return;
+    }
+
+    if (y >= hvd_y && y < hvd_y + 30) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        boot_haven_naar_dashboard = !boot_haven_naar_dashboard;
+        state_save(); cfg_we_teken(); return;
     }
 
     if (y >= blt_y && y < blt_y + 40 && x >= 230) {

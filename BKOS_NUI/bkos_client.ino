@@ -13,6 +13,8 @@
 #include "screen_info.h"
 #include "screen_config.h"  // pin_lezen_pub()
 #include "paneel.h"
+#include "lamp.h"            // genummerde lampgroepen — Huis-tab in de webapp
+#include "gast.h"            // pin_niveau() — eigenaar vs. gastcode
 
 #include <WebSocketsServer.h>
 #include <ESPmDNS.h>
@@ -22,10 +24,12 @@ static WebSocketsServer _ws(BKOS_WS_POORT);
 // niet een losse aanname — anders schrijft een 5e gelijktijdige klant (num=4)
 // buiten deze arrays, met corruptie van aangrenzend geheugen als gevolg.
 static bool _ws_klanten[WEBSOCKETS_SERVER_CLIENT_MAX]     = {false};
-// Schrijfcommando's (io_toggle, paneel_toggle, set_modus, set_licht) vereisen
-// de config-PIN — status blijft voor iedereen op het lokale netwerk zichtbaar
-// zonder in te loggen, zo blijft "kijken" laagdrempelig en "schakelen" veilig.
-static bool _ws_ontgrendeld[WEBSOCKETS_SERVER_CLIENT_MAX] = {false};
+// Schrijfcommando's vereisen minimaal een geldige code (gast of eigenaar) —
+// status blijft voor iedereen op het lokale netwerk zichtbaar zonder in te
+// loggen, zo blijft "kijken" laagdrempelig en "schakelen" veilig. Een gastcode
+// mag alleen de HUIS/BOOT-achtige commando's (paneel/modus/licht/lamp/
+// interieur); IO-kanalen los blijven eigenaar-only — zie _verwerk_cmd().
+static uint8_t _ws_niveau[WEBSOCKETS_SERVER_CLIENT_MAX] = {GAST_NIVEAU_GEEN};
 static byte _ws_prev_output[MAX_IO_KANALEN];
 static bool _ws_prev_input[MAX_IO_KANALEN];
 static byte _ws_prev_modus = 255;
@@ -111,6 +115,69 @@ static String _paneel_json() {
     return s;
 }
 
+// ─── Lampgroepen (Huis-tab in de webapp) — zelfde auto-scan als het HAVEN-
+// dashboard op het scherm zelf (screen_haven.ino): elk kanaal met naam
+// "**IL_wit<N>"/"**IL_rood<N>" hoort bij lampgroep N. WS_LAMP_MAX is een
+// praktische grens voor de webapp-lijst (LAMP_MAX zelf is 99).
+#define WS_LAMP_MAX 32
+// Heap-gealloceerd i.p.v. static arrays — samen met gast.h's nieuwe GastPin-
+// buffer paste dit net niet meer in het krappe DRAM-BSS-segment van de
+// classic ESP32 (WROOM/CYD, "region dram0_0_seg overflowed"); zelfde patroon
+// als eerder de HAVEN-fotobuffers en screen_bestanden.ino's bf_thumbs.
+static int*  _ws_lamp_nrs = nullptr;
+static int   _ws_lamp_cnt = 0;
+// Wijzigingsdetectie voor de periodieke broadcast in bkos_client_loop() —
+// zelfde soort "alleen sturen als er iets veranderd is"-patroon als
+// _ws_prev_output/_ws_prev_paneel hierboven.
+static bool _ws_prev_hoofd_aan = false;
+static int8_t _ws_prev_kleur    = -1;
+static int8_t _ws_prev_overrule = -2;
+static bool* _ws_prev_lamp_aan = nullptr;
+static unsigned long _ws_lamp_scan_ms = 0;
+
+static bool _ws_lamp_buf_klaar() {
+    if (_ws_lamp_nrs && _ws_prev_lamp_aan) return true;
+    if (!_ws_lamp_nrs)      _ws_lamp_nrs      = (int*)calloc(WS_LAMP_MAX, sizeof(int));
+    if (!_ws_prev_lamp_aan) _ws_prev_lamp_aan = (bool*)calloc(WS_LAMP_MAX, sizeof(bool));
+    return _ws_lamp_nrs && _ws_prev_lamp_aan;
+}
+
+static void _ws_lamp_scan() {
+    _ws_lamp_cnt = 0;
+    if (!_ws_lamp_buf_klaar()) return;  // heap-tekort: gracieus "geen lampen" i.p.v. crashen
+    int n = io_zichtbaar();
+    for (int i = 0; i < n && _ws_lamp_cnt < WS_LAMP_MAX; i++) {
+        int nr = io_il_kanaal_lamp_nr(i);
+        if (nr < 1) continue;
+        bool al = false;
+        for (int j = 0; j < _ws_lamp_cnt; j++) if (_ws_lamp_nrs[j] == nr) { al = true; break; }
+        if (!al) _ws_lamp_nrs[_ws_lamp_cnt++] = nr;
+    }
+    for (int a = 0; a < _ws_lamp_cnt; a++)
+        for (int b = a + 1; b < _ws_lamp_cnt; b++)
+            if (_ws_lamp_nrs[b] < _ws_lamp_nrs[a]) { int t = _ws_lamp_nrs[a]; _ws_lamp_nrs[a] = _ws_lamp_nrs[b]; _ws_lamp_nrs[b] = t; }
+}
+
+static String _lamp_json() {
+    String s = F("{\"t\":\"lampen\",\"hoofdAanwezig\":");
+    s += io_hoofdverlichting_aanwezig() ? F("true") : F("false");
+    s += F(",\"hoofdAan\":"); s += io_hoofdverlichting_aan() ? F("true") : F("false");
+    s += F(",\"kleur\":"); s += interieur_kleur_rood ? 1 : 0;
+    s += F(",\"overrule\":"); s += interieur_overrule_kleur();
+    s += F(",\"items\":[");
+    for (int i = 0; i < _ws_lamp_cnt; i++) {
+        if (i) s += ',';
+        int nr = _ws_lamp_nrs[i];
+        char naam[IO_NAAM_LEN]; lamp_label(nr, naam, sizeof(naam));
+        s += F("{\"nr\":"); s += nr;
+        s += F(",\"naam\":\""); s += naam;
+        s += F("\",\"aan\":"); s += io_lamp_effectief_aan(nr) ? F("true") : F("false");
+        s += '}';
+    }
+    s += F("]}");
+    return s;
+}
+
 // _verwerk_cmd: alleen Arduino-types in handtekening → prototype OK
 static void _verwerk_cmd(uint8_t num, const String& t) {
     if (t.indexOf(F("\"auth\"")) >= 0) {
@@ -119,10 +186,11 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             int s2 = idx + 7, e2 = t.indexOf('"', s2);
             char buf[8] = {0};
             t.substring(s2, e2).toCharArray(buf, sizeof(buf));
-            char opgeslagen[5]; pin_lezen_pub(opgeslagen, sizeof(opgeslagen));
-            bool ok = (strcmp(buf, opgeslagen) == 0);
-            _ws_ontgrendeld[num] = ok;
-            String r = ok ? F("{\"t\":\"auth_ok\"}") : F("{\"t\":\"auth_fout\"}");
+            int niveau = pin_niveau(buf);
+            _ws_niveau[num] = niveau;
+            String r;
+            if (niveau > GAST_NIVEAU_GEEN) { r = F("{\"t\":\"auth_ok\",\"niveau\":"); r += niveau; r += '}'; }
+            else                            r = F("{\"t\":\"auth_fout\"}");
             _ws.sendTXT(num, r);
         }
         return;
@@ -133,14 +201,18 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         return;
     }
 
-    // Alles hieronder wijzigt iets fysieks aan boord — vereist ontgrendeling.
-    if (!_ws_ontgrendeld[num]) {
+    // Alles hieronder wijzigt iets fysieks aan boord — vereist minimaal een
+    // geldige gastcode. Losse IO-kanalen blijven daarbovenop eigenaar-only
+    // (zie de aparte check in "io_toggle" hieronder) — een gastcode geeft
+    // bewust alleen toegang tot de HUIS/BOOT-achtige commando's.
+    if (_ws_niveau[num] < GAST_NIVEAU_GAST) {
         String r = F("{\"t\":\"auth_vereist\"}");
         _ws.sendTXT(num, r);
         return;
     }
 
     if (t.indexOf(F("\"io_toggle\"")) >= 0) {
+        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
         int idx = t.indexOf(F("\"i\":"));
         if (idx >= 0) net_io_kanaal_toggle(t.substring(idx + 4).toInt());
 
@@ -168,6 +240,35 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             io_verlichting_update();
             net_app_staat_sturen();
         }
+
+    } else if (t.indexOf(F("\"lamp_toggle\"")) >= 0) {
+        int idx = t.indexOf(F("\"nr\":"));
+        if (idx >= 0) {
+            int nr = t.substring(idx + 5).toInt();
+            char naam[16]; snprintf(naam, sizeof(naam), "**IL_%d", nr);
+            net_io_apparaat_toggle(naam);
+        }
+
+    } else if (t.indexOf(F("\"lamp_alles\"")) >= 0) {
+        bool aan = t.indexOf(F("\"aan\":1")) >= 0;
+        for (int i = 0; i < _ws_lamp_cnt; i++) {
+            int nr = _ws_lamp_nrs[i];
+            if (io_lamp_effectief_aan(nr) != aan) {
+                char naam[16]; snprintf(naam, sizeof(naam), "**IL_%d", nr);
+                net_io_apparaat_toggle(naam);
+            }
+        }
+
+    } else if (t.indexOf(F("\"interieur_kleur\"")) >= 0) {
+        bool rood = t.indexOf(F("\"rood\":1")) >= 0;
+        interieur_kleur_overrulen(rood);
+        io_verlichting_update();
+        net_app_staat_sturen();
+
+    } else if (t.indexOf(F("\"interieur_toggle\"")) >= 0) {
+        io_hoofdverlichting_toggle();
+        io_verlichting_update();
+        net_app_staat_sturen();
     }
 }
 
@@ -200,25 +301,27 @@ void bkos_client_setup() {
     memset(_ws_prev_output, 255, sizeof(_ws_prev_output));
     memset(_ws_prev_paneel, 255, sizeof(_ws_prev_paneel));
     memset(_ws_klanten, 0, sizeof(_ws_klanten));
-    memset(_ws_ontgrendeld, 0, sizeof(_ws_ontgrendeld));
+    for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) _ws_niveau[i] = GAST_NIVEAU_GEEN;
+    _ws_lamp_scan();
     _ws.begin();
     if (!_ws_handler_klaar) {
         // Lambda vermijdt auto-prototype met WStype_t in de handtekening
         _ws.onEvent([](uint8_t num, WStype_t type, uint8_t* payload, unsigned int length) {
             switch (type) {
                 case WStype_CONNECTED: {
-                    _ws_klanten[num]     = true;
-                    _ws_ontgrendeld[num] = false;
+                    _ws_klanten[num] = true;
+                    _ws_niveau[num]  = GAST_NIVEAU_GEEN;
                     String m1 = _io_full_json(); _ws.sendTXT(num, m1);
                     String m2 = _state_json();   _ws.sendTXT(num, m2);
                     String m3 = _net_json();     _ws.sendTXT(num, m3);
                     String m4 = _info_json();    _ws.sendTXT(num, m4);
                     String m5 = _paneel_json();  _ws.sendTXT(num, m5);
+                    String m6 = _lamp_json();    _ws.sendTXT(num, m6);
                     break;
                 }
                 case WStype_DISCONNECTED:
-                    _ws_klanten[num]     = false;
-                    _ws_ontgrendeld[num] = false;
+                    _ws_klanten[num] = false;
+                    _ws_niveau[num]  = GAST_NIVEAU_GEEN;
                     break;
                 case WStype_TEXT:
                     _verwerk_cmd(num, String((char*)payload));
@@ -270,6 +373,29 @@ void bkos_client_loop() {
             if (st != _ws_prev_paneel[i]) { _ws_prev_paneel[i] = st; gewijzigd = true; }
         }
         if (gewijzigd) { String p = _paneel_json(); _ws.broadcastTXT(p); }
+    }
+
+    {
+        // Herscan elke 5s (net als de LAMPEN/HAVEN-schermen zelf, die ook geen
+        // losse "opnieuw scannen"-trigger hebben) zodat een net aangemaakt
+        // **IL_wit<N>-kanaal vanzelf in de Huis-tab verschijnt.
+        unsigned long nu = millis();
+        if (nu - _ws_lamp_scan_ms >= 5000) { _ws_lamp_scan_ms = nu; _ws_lamp_scan(); }
+
+        bool hoofd_aan = io_hoofdverlichting_aan();
+        int  kleur     = interieur_kleur_rood ? 1 : 0;
+        int  overrule  = interieur_overrule_kleur();
+        bool gewijzigd = (hoofd_aan != _ws_prev_hoofd_aan) || (kleur != _ws_prev_kleur) ||
+                         (overrule != _ws_prev_overrule);
+        for (int i = 0; i < _ws_lamp_cnt && !gewijzigd; i++)
+            if (io_lamp_effectief_aan(_ws_lamp_nrs[i]) != _ws_prev_lamp_aan[i]) gewijzigd = true;
+        if (gewijzigd) {
+            _ws_prev_hoofd_aan = hoofd_aan;
+            _ws_prev_kleur     = kleur;
+            _ws_prev_overrule  = overrule;
+            for (int i = 0; i < _ws_lamp_cnt; i++) _ws_prev_lamp_aan[i] = io_lamp_effectief_aan(_ws_lamp_nrs[i]);
+            String l = _lamp_json(); _ws.broadcastTXT(l);
+        }
     }
 }
 

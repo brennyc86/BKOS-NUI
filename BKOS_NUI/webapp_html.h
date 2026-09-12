@@ -88,6 +88,30 @@ button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);
 .iorow.ingang .naam{color:var(--text-dim);}
 
 #netInfo{font-size:.78rem;color:var(--text-dim);line-height:1.6;padding:4px 2px;}
+
+.tabbar{
+  display:flex;gap:6px;margin-top:16px;border-bottom:1px solid var(--border);
+  padding-bottom:0;overflow-x:auto;
+}
+.tabbtn{
+  flex:1;min-width:0;background:transparent;color:var(--text-dim);border:none;
+  border-bottom:2px solid transparent;padding:10px 4px;font-size:.78rem;
+  font-weight:700;letter-spacing:.5px;white-space:nowrap;
+}
+.tabbtn.active{color:var(--cyan);border-bottom-color:var(--cyan);}
+.tabpane section:first-child{margin-top:14px;}
+
+#bfInfo{font-size:.78rem;color:var(--text-dim);line-height:1.6;}
+.filerow{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:9px 12px;margin-bottom:6px;font-size:.85rem;
+}
+.filerow .naam{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.filerow .naam.map{color:var(--cyan);font-weight:700;}
+.filerow .grootte{font-size:.72rem;color:var(--text-dim);flex:none;}
+.filerow button.del{padding:6px 12px;font-size:.78rem;color:var(--red);border-color:var(--red);flex:none;border-radius:8px;background:var(--surface2);border-width:1px;border-style:solid;}
+.pbtn.hoofd{grid-column:1/-1;}
 #netInfo b{color:var(--text);}
 
 #overlay{
@@ -113,6 +137,25 @@ button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);
 }
 #pinCard button.ok{background:var(--cyan);color:#04121c;border-color:var(--cyan);}
 #pinCard button.cancel{background:var(--surface2);color:var(--text-dim);}
+
+#cropModal{
+  position:fixed;inset:0;background:rgba(4,10,16,.94);z-index:60;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:20px;
+}
+#cropModal.hidden{display:none;}
+#cropViewport{
+  width:min(88vw,420px);position:relative;overflow:hidden;
+  border-radius:8px;border:2px solid var(--cyan);background:#000;touch-action:none;
+}
+#cropImg{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;max-width:none;}
+#cropZoom{width:min(88vw,420px);margin-top:16px;accent-color:var(--cyan);}
+#cropModal .row{display:flex;gap:8px;width:min(88vw,420px);}
+#cropModal .row button{
+  flex:1;border-radius:10px;padding:12px;font-size:.9rem;font-weight:600;border:1px solid var(--border);
+}
+#cropModal .row button.ok{background:var(--cyan);color:#04121c;border-color:var(--cyan);}
+#cropModal .row button.cancel{background:var(--surface2);color:var(--text-dim);}
 </style>
 </head>
 <body>
@@ -140,63 +183,107 @@ button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);
   </section>
 
   <div id="gated" style="display:none">
-    <section>
-      <h2>Vaarmodus</h2>
-      <div class="grid4" id="modusGrid"></div>
-    </section>
+    <div class="tabbar">
+      <button class="tabbtn active" data-tab="huis" onclick="setTab('huis')">HUIS</button>
+      <button class="tabbtn" data-tab="boot" onclick="setTab('boot')">BOOT</button>
+      <button class="tabbtn" id="tabBtnIo" data-tab="io" onclick="setTab('io')">IO</button>
+      <button class="tabbtn" id="tabBtnBestanden" data-tab="bestanden" onclick="setTab('bestanden')">BESTANDEN</button>
+    </div>
 
-    <section>
-      <h2>Verlichting</h2>
-      <div class="grid3" id="lichtGrid"></div>
-    </section>
+    <div id="tabHuis" class="tabpane">
+      <section>
+        <h2>Interieurverlichting</h2>
+        <div class="grid3" id="huisAlgemeen"></div>
+      </section>
+      <section>
+        <h2>Lampen</h2>
+        <div id="huisLampen"></div>
+      </section>
+      <section>
+        <a href="/fotos" style="display:block;text-align:center;font-size:.82rem;color:var(--text-dim);padding:6px;">Foto's HAVEN-dashboard beheren &#8594;</a>
+      </section>
+    </div>
 
-    <section id="paneelSection" style="display:none">
-      <h2>Paneel</h2>
-      <div class="grid3" id="paneelGrid"></div>
-    </section>
+    <div id="tabBoot" class="tabpane" style="display:none">
+      <section>
+        <h2>Vaarmodus</h2>
+        <div class="grid4" id="modusGrid"></div>
+      </section>
 
-    <section>
-      <h2>IO kanalen</h2>
-      <div id="ioList"></div>
-    </section>
+      <section>
+        <h2>Verlichting</h2>
+        <div class="grid3" id="lichtGrid"></div>
+      </section>
 
-    <section>
-      <h2>Verbonden modules</h2>
-      <div id="netInfo">—</div>
-    </section>
+      <section id="paneelSection" style="display:none">
+        <h2>Paneel</h2>
+        <div class="grid3" id="paneelGrid"></div>
+      </section>
+    </div>
 
-    <section>
-      <h2>Achtergrond webapp</h2>
-      <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Eigen foto op de achtergrond van deze pagina — apart voor staand en liggend gebruik. Een nieuwe upload vervangt de oude in datzelfde slot.</p>
-      <input type="file" id="agInputLiggend" accept="image/*" style="display:none">
-      <input type="file" id="agInputStaand"  accept="image/*" style="display:none">
-      <div class="grid2">
-        <button class="mbtn" id="agBtnLiggend" onclick="document.getElementById('agInputLiggend').click()">LIGGEND</button>
-        <button class="mbtn" id="agBtnStaand"  onclick="document.getElementById('agInputStaand').click()">STAAND</button>
-      </div>
-      <div id="agMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
-    </section>
+    <div id="tabIo" class="tabpane" style="display:none">
+      <section>
+        <h2>IO kanalen</h2>
+        <div id="ioList"></div>
+      </section>
 
-    <section>
-      <a href="/haven" style="display:block;text-align:center;font-size:.82rem;color:var(--text-dim);padding:6px;">HAVEN-foto's beheren &#8594;</a>
-    </section>
+      <section>
+        <h2>Verbonden modules</h2>
+        <div id="netInfo">—</div>
+      </section>
+    </div>
+
+    <div id="tabBestanden" class="tabpane" style="display:none">
+      <section>
+        <h2>Opslag</h2>
+        <div id="bfInfo">—</div>
+        <div class="grid2" id="bfFsKeuze" style="margin-top:8px;display:none;"></div>
+      </section>
+
+      <section>
+        <div id="bfPad" style="font-size:.75rem;color:var(--text-dim);margin-bottom:6px;">/</div>
+        <div id="bfLijst"><div style="color:var(--text-dim);font-size:.85rem;">Laden…</div></div>
+      </section>
+
+      <section>
+        <h2>Achtergrond webapp</h2>
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Eigen foto op de achtergrond van deze pagina — apart voor staand en liggend gebruik. Een nieuwe upload vervangt de oude in datzelfde slot.</p>
+        <input type="file" id="agInputLiggend" accept="image/*" style="display:none">
+        <input type="file" id="agInputStaand"  accept="image/*" style="display:none">
+        <div class="grid2">
+          <button class="mbtn" id="agBtnLiggend" onclick="document.getElementById('agInputLiggend').click()">LIGGEND</button>
+          <button class="mbtn" id="agBtnStaand"  onclick="document.getElementById('agInputStaand').click()">STAAND</button>
+        </div>
+        <div id="agMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+      </section>
+    </div>
   </div>
 
   <section id="lockedHint">
-    <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;">Vaarmodus, verlichting, paneel, IO en HAVEN-foto's vereisen de pincode. <a href="#" onclick="openPin();return false;">Ontgrendelen &#8594;</a></p>
+    <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;">Bediening vereist de eigenaars- of een gastpincode. <a href="#" onclick="openPin();return false;">Ontgrendelen &#8594;</a></p>
   </section>
 </div>
 
 <div id="overlay" class="hidden">
   <div id="pinCard">
     <h3>Pincode vereist</h3>
-    <p>Eén keer invoeren geeft toegang tot bediening én HAVEN-foto's — dezelfde pincode als op het scherm van de boordcomputer.</p>
+    <p>De eigenaars-pincode (zelfde als op het scherm van de boordcomputer) geeft volledige toegang. Een tijdelijke gastcode geeft alleen HUIS+BOOT.</p>
     <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
     <div id="pinErr"></div>
     <div class="row">
       <button class="cancel" onclick="closePin(false)">ANNULEER</button>
       <button class="ok" onclick="submitPin()">ONTGRENDEL</button>
     </div>
+  </div>
+</div>
+
+<div id="cropModal" class="hidden">
+  <p style="font-size:.78rem;color:var(--text-dim);text-align:center;margin-bottom:10px;">Sleep om te schuiven, gebruik de schuif om in/uit te zoomen. Alleen het deel in het kader wordt opgeslagen.</p>
+  <div id="cropViewport"><img id="cropImg" draggable="false" alt=""></div>
+  <input type="range" id="cropZoom" min="100" max="400" value="100">
+  <div class="row" style="margin-top:14px;">
+    <button class="cancel" onclick="cropAnnuleer()">ANNULEER</button>
+    <button class="ok" onclick="cropBevestig()">GEBRUIK DIT DEEL</button>
   </div>
 </div>
 
@@ -209,6 +296,13 @@ var paneelData = [];
 var stateData = {m:0,l:0};
 var infoData = {};
 var netData = {peers:[]};
+var lampData = {hoofdAanwezig:false,hoofdAan:false,kleur:0,overrule:-1,items:[]};
+// 0 = uitgelogd, 1 = gastcode (alleen HUIS+BOOT), 2 = eigenaar (alles) — de
+// server bepaalt dit (pin_niveau() in gast.h), de client verbergt alleen de
+// tabbladen die toch niets zouden mogen doen; échte afdwinging gebeurt altijd
+// serverkant (WebSocket-commando's en HTTP-routes checken zelf opnieuw).
+var niveau = 0;
+var actieveTab = 'huis';
 
 // Eén PIN, gedeeld met /haven (localStorage is per host, dus zelfde apparaat) —
 // eenmaal invoeren ontgrendelt zowel bediening hier als uploaden/verwijderen
@@ -240,7 +334,7 @@ function connect(){
     var saved = localStorage.getItem(PIN_KEY);
     if (saved && !unlocked) { pendingPin = saved; autoPinSilent = true; send({t:'auth', pin:saved}); }
   };
-  ws.onclose = function(){ setConn(false); unlocked=false; setLock(false); setTimeout(connect, 2000); };
+  ws.onclose = function(){ setConn(false); unlocked=false; setLock(false, 0); setTimeout(connect, 2000); };
   ws.onerror = function(){ try{ ws.close(); }catch(e){} };
   ws.onmessage = function(ev){
     var msg;
@@ -254,19 +348,41 @@ function setConn(on){
   document.getElementById('hdrSub').textContent = on ? 'verbonden' : 'verbinden…';
 }
 
-function setLock(on){
+function setLock(on, niv){
   unlocked = on;
+  niveau = on ? (niv || 0) : 0;
   var b = document.getElementById('lockBtn');
   b.className = 'lock' + (on ? ' open' : '');
   b.innerHTML = on ? '&#128275;' : '&#128274;';
   document.getElementById('gated').style.display = on ? '' : 'none';
   document.getElementById('lockedHint').style.display = on ? 'none' : '';
+  // Een gastcode (niveau 1) mag alleen HUIS+BOOT — IO en BESTANDEN blijven
+  // voor de eigenaar (niveau 2). Server dwingt dit sowieso zelf af; dit is
+  // puur zodat een gast geen tabblad ziet dat toch niets zou doen.
+  var eigenaar = (niveau >= 2);
+  document.getElementById('tabBtnIo').style.display = eigenaar ? '' : 'none';
+  document.getElementById('tabBtnBestanden').style.display = eigenaar ? '' : 'none';
+  if (on && !eigenaar && (actieveTab === 'io' || actieveTab === 'bestanden')) setTab('huis');
+  else if (on) setTab(actieveTab);
+}
+
+function setTab(naam){
+  actieveTab = naam;
+  var tabs = ['huis','boot','io','bestanden'];
+  tabs.forEach(function(t){
+    var pane = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (pane) pane.style.display = (t === naam) ? '' : 'none';
+  });
+  document.querySelectorAll('.tabbtn').forEach(function(btn){
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === naam);
+  });
+  if (naam === 'bestanden') { bfInfo(); bfLijst(); }
 }
 
 // Klik op het hangslot: ontgrendeld → uitloggen (opgeslagen pin vergeten),
 // vergrendeld → pincode vragen.
 function lockClick(){
-  if (unlocked) { localStorage.removeItem(PIN_KEY); setLock(false); }
+  if (unlocked) { localStorage.removeItem(PIN_KEY); setLock(false, 0); }
   else openPin();
 }
 
@@ -285,15 +401,17 @@ function handleMsg(msg){
       infoData = msg; renderInfo(); break;
     case 'paneel':
       paneelData = msg.items || []; renderPaneel(); break;
+    case 'lampen':
+      lampData = msg; renderHuis(); break;
     case 'auth_ok':
       if (pendingPin) localStorage.setItem(PIN_KEY, pendingPin);
-      setLock(true); closePin(true); break;
+      setLock(true, msg.niveau || 0); closePin(true); break;
     case 'auth_fout':
       localStorage.removeItem(PIN_KEY);
       if (!autoPinSilent) document.getElementById('pinErr').textContent = 'Onjuiste pincode';
       autoPinSilent = false; break;
     case 'auth_vereist':
-      setLock(false); break;
+      setLock(false, 0); break;
     default: break;
   }
 }
@@ -311,6 +429,10 @@ function setModus(m){ if (needAuth()) return; send({t:'set_modus', m:m}); }
 function setLicht(l){ if (needAuth()) return; send({t:'set_licht', l:l}); }
 function toggleIO(i){ if (needAuth()) return; send({t:'io_toggle', i:i}); }
 function togglePaneel(i){ if (needAuth()) return; send({t:'paneel_toggle', i:i}); }
+function hoofdToggle(){ if (needAuth()) return; send({t:'interieur_toggle'}); }
+function kleurKiezen(rood){ if (needAuth()) return; send({t:'interieur_kleur', rood:(rood?1:0)}); }
+function lampToggle(nr){ if (needAuth()) return; send({t:'lamp_toggle', nr:nr}); }
+function lampAlles(aan){ if (needAuth()) return; send({t:'lamp_alles', aan:(aan?1:0)}); }
 
 function openPin(){
   document.getElementById('pinErr').textContent = '';
@@ -337,6 +459,31 @@ function renderState(){
   }).join('');
   document.getElementById('lichtGrid').innerHTML = LICHT.map(function(l,i){
     return '<button class="mbtn' + (stateData.l===i?' active':'') + '" onclick="setLicht(' + i + ')">' + l + '</button>';
+  }).join('');
+}
+
+function renderHuis(){
+  var alg = [];
+  if (lampData.hoofdAanwezig) {
+    alg.push('<button class="pbtn hoofd ' + (lampData.hoofdAan?'aan':'') + '" onclick="hoofdToggle()">' +
+              (lampData.hoofdAan ? 'VERLICHTING: AAN' : 'VERLICHTING: UIT') + '</button>');
+  }
+  alg.push('<button class="pbtn ' + (lampData.overrule===0?'aan':'') + '" onclick="kleurKiezen(false)">WIT</button>');
+  alg.push('<button class="pbtn ' + (lampData.overrule===1?'aan':'') + '" onclick="kleurKiezen(true)">ROOD</button>');
+  if (lampData.items.length){
+    alg.push('<button class="pbtn" onclick="lampAlles(true)">ALLES AAN</button>');
+    alg.push('<button class="pbtn" onclick="lampAlles(false)">ALLES UIT</button>');
+  }
+  document.getElementById('huisAlgemeen').innerHTML = alg.join('');
+
+  var box = document.getElementById('huisLampen');
+  if (!lampData.items.length){
+    box.innerHTML = '<div style="color:var(--text-dim);font-size:.85rem;padding:8px 2px;">Geen genummerde lampgroepen gevonden.</div>';
+    return;
+  }
+  box.innerHTML = lampData.items.map(function(l){
+    return '<div class="iorow"><div class="naam">' + esc(l.naam) + '</div>' +
+           '<button class="sw' + (l.aan?' aan':'') + '" onclick="lampToggle(' + l.nr + ')">' + (l.aan?'AAN':'UIT') + '</button></div>';
   }).join('');
 }
 
@@ -384,6 +531,85 @@ function renderNet(){
   el.innerHTML = peers.map(function(p){
     return '<div><b>' + esc(p.naam) + '</b> — ' + (p.online ? 'online' : 'offline') + ', ' + p.io + ' IO</div>';
   }).join('');
+}
+
+// ─── Bestanden-tab: simpele SPIFFS/SD-lijst+verwijderen, mirror van CONFIG →
+// BESTANDEN op het scherm zelf. Eigenaar-only (server checkt dit zelf ook bij
+// verwijderen) — vandaar dat dit tabblad al bij het inloggen verborgen wordt
+// voor een gastcode (zie setLock()).
+var bfFs = 'spiffs';
+var bfPad = '/';
+
+function fmtBytes(n){
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(1) + ' MB';
+}
+
+function bfInfo(){
+  fetch('/bestanden/info').then(function(r){ return r.json(); }).then(function(d){
+    var s = 'SPIFFS: ' + fmtBytes(d.spiffsTotaal - d.spiffsVrij) + ' / ' + fmtBytes(d.spiffsTotaal) + ' gebruikt';
+    if (d.sdBeschikbaar) s += '<br>SD: ' + fmtBytes(d.sdTotaal - d.sdVrij) + ' / ' + fmtBytes(d.sdTotaal) + ' gebruikt';
+    document.getElementById('bfInfo').innerHTML = s;
+    var keuze = document.getElementById('bfFsKeuze');
+    if (d.sdBeschikbaar) {
+      keuze.style.display = '';
+      keuze.innerHTML =
+        '<button class="mbtn' + (bfFs==='spiffs'?' active':'') + '" onclick="bfWisselFs(\'spiffs\')">SPIFFS</button>' +
+        '<button class="mbtn' + (bfFs==='sd'?' active':'') + '" onclick="bfWisselFs(\'sd\')">SD</button>';
+    } else {
+      keuze.style.display = 'none';
+    }
+  }).catch(function(){});
+}
+
+function bfWisselFs(fs){ bfFs = fs; bfPad = '/'; bfLijst(); }
+
+function bfLijst(){
+  document.getElementById('bfPad').textContent = bfPad;
+  fetch('/bestanden/lijst?fs=' + bfFs + '&pad=' + encodeURIComponent(bfPad))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var items = d.items || [];
+      var html = '';
+      if (bfPad !== '/') {
+        html += '<div class="filerow" onclick="bfOmhoog()" style="cursor:pointer;"><div class="naam map">.. (omhoog)</div></div>';
+      }
+      if (!items.length && bfPad === '/') {
+        html += '<div style="color:var(--text-dim);font-size:.85rem;padding:8px 2px;">Geen bestanden gevonden.</div>';
+      }
+      items.forEach(function(it){
+        if (it.map) {
+          html += '<div class="filerow" onclick="bfNaarMap(\'' + esc(it.naam) + '\')" style="cursor:pointer;">' +
+                  '<div class="naam map">' + esc(it.naam) + '/</div></div>';
+        } else {
+          html += '<div class="filerow"><div class="naam">' + esc(it.naam) + '</div>' +
+                  '<div class="grootte">' + fmtBytes(it.bytes) + '</div>' +
+                  '<button class="del" onclick="bfVerwijder(\'' + esc(it.naam) + '\')">WISSEN</button></div>';
+        }
+      });
+      document.getElementById('bfLijst').innerHTML = html;
+    }).catch(function(){});
+}
+
+function bfNaarMap(naam){
+  bfPad = (bfPad === '/' ? '/' : bfPad + '/') + naam;
+  bfLijst();
+}
+function bfOmhoog(){
+  var i = bfPad.lastIndexOf('/');
+  bfPad = (i <= 0) ? '/' : bfPad.substring(0, i);
+  bfLijst();
+}
+function bfVerwijder(naam){
+  if (needAuth()) return;
+  var pad = (bfPad === '/' ? '/' : bfPad + '/') + naam;
+  var fd = new URLSearchParams();
+  fd.set('fs', bfFs); fd.set('pad', pad); fd.set('pin', localStorage.getItem(PIN_KEY) || '');
+  fetch('/bestanden/verwijder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ bfLijst(); })
+    .catch(function(){});
 }
 
 // ─── Openbaar (geen PIN): boot/eigenaar-info + "iets is los"-berichtje ─────
@@ -436,10 +662,10 @@ function achtergrondToepassen(){
 }
 window.addEventListener('resize', achtergrondToepassen);
 
-// ─── Uploaden van een achtergrondfoto: eenvoudige "cover"-crop (geen los
-// zoom/pan-kader zoals bij de HAVEN-foto's — hier niet expliciet gevraagd),
-// vaste HD-doelresolutie per oriëntatie, zelfde kwaliteitsladder-aanpak als
-// de HAVEN-upload zodat het bestand altijd binnen de servergrens past.
+// ─── Uploaden van een achtergrondfoto: zelfde interactieve pan/zoom/crop-
+// kader als de foto-upload-pagina (/fotos) — kader op de doelverhouding
+// (liggend 16:9, staand 9:16), zelfde kwaliteitsladder-aanpak zodat het
+// bestand altijd binnen de servergrens past.
 var AG_KWALITEIT_STAPPEN = [0.8, 0.65, 0.5, 0.35, 0.22, 0.12];
 var agMaxBytes = 1536 * 1024;
 fetch('/achtergrond/info').then(function(r){ return r.json(); }).then(function(d){
@@ -455,34 +681,116 @@ function agEncodeerBinnenBudget(canvas, stapIdx, callback){
   }, 'image/jpeg', AG_KWALITEIT_STAPPEN[stapIdx]);
 }
 
+var agCropImgEl, agCropVp;
+var agLiggend = true;
+var agDoelW = 1280, agDoelH = 720;
+var agNatW = 0, agNatH = 0;
+var agBaseScale = 1, agScale = 1;
+var agPanX = 0, agPanY = 0;
+var agSlepen = false, agStartX = 0, agStartY = 0, agStartPanX = 0, agStartPanY = 0;
+
 function agUpload(file, liggend){
-  var doelW = liggend ? 1280 : 720, doelH = liggend ? 720 : 1280;
-  var melding = document.getElementById('agMelding');
-  melding.style.color = ''; melding.textContent = 'Foto wordt verwerkt…';
+  agLiggend = liggend;
+  agDoelW = liggend ? 1280 : 720; agDoelH = liggend ? 720 : 1280;
+  agCropImgEl = document.getElementById('cropImg');
+  agCropVp = document.getElementById('cropViewport');
+  agCropVp.style.aspectRatio = agDoelW + '/' + agDoelH;
   var img = new Image();
   img.onload = function(){
-    var canvas = document.createElement('canvas');
-    canvas.width = doelW; canvas.height = doelH;
-    var ctx = canvas.getContext('2d');
-    var schaal = Math.max(doelW / img.width, doelH / img.height);
-    var sw = doelW / schaal, sh = doelH / schaal;
-    var sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, doelW, doelH);
-    agEncodeerBinnenBudget(canvas, 0, function(blob, gelukt){
-      if (!gelukt){ melding.style.color = 'var(--red)'; melding.textContent = 'Foto blijft te groot.'; return; }
-      var fd = new FormData(); fd.append('foto', blob, 'bg.jpg');
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', '/achtergrond/upload?slot=' + (liggend?'liggend':'staand') + '&pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
-      xhr.onload = function(){
-        if (xhr.status === 200){ melding.style.color = 'var(--green)'; melding.textContent = 'Opgeslagen.'; achtergrondToepassen(); }
-        else { melding.style.color = 'var(--red)'; melding.textContent = 'Upload mislukt (' + (xhr.status===403?'onjuiste pincode':'opslag') + ').'; }
-      };
-      xhr.onerror = function(){ melding.style.color = 'var(--red)'; melding.textContent = 'Upload mislukt (verbinding).'; };
-      xhr.send(fd);
-    });
+    agNatW = img.naturalWidth; agNatH = img.naturalHeight;
+    agCropImgEl.src = img.src;
+    document.getElementById('cropZoom').value = 100;
+    document.getElementById('cropModal').classList.remove('hidden');
+    requestAnimationFrame(agCropHerbereken);
   };
-  img.onerror = function(){ melding.style.color = 'var(--red)'; melding.textContent = 'Kon de foto niet lezen.'; };
+  img.onerror = function(){
+    var m = document.getElementById('agMelding');
+    m.style.color = 'var(--red)'; m.textContent = 'Kon de foto niet lezen.';
+  };
   img.src = URL.createObjectURL(file);
+}
+
+function agCropHerbereken(){
+  var vpW = agCropVp.clientWidth, vpH = agCropVp.clientHeight;
+  agBaseScale = Math.max(vpW / agNatW, vpH / agNatH);
+  var zoom = document.getElementById('cropZoom').value / 100;
+  agScale = agBaseScale * zoom;
+  var dispW = agNatW * agScale, dispH = agNatH * agScale;
+  agPanX = Math.min(0, Math.max(vpW - dispW, (vpW - dispW) / 2));
+  agPanY = Math.min(0, Math.max(vpH - dispH, (vpH - dispH) / 2));
+  agCropToon();
+}
+function agCropToon(){
+  agCropImgEl.style.width  = (agNatW * agScale) + 'px';
+  agCropImgEl.style.height = (agNatH * agScale) + 'px';
+  agCropImgEl.style.transform = 'translate(' + agPanX + 'px,' + agPanY + 'px)';
+}
+function agCropKlem(){
+  var vpW = agCropVp.clientWidth, vpH = agCropVp.clientHeight;
+  var dispW = agNatW * agScale, dispH = agNatH * agScale;
+  agPanX = Math.min(0, Math.max(vpW - dispW, agPanX));
+  agPanY = Math.min(0, Math.max(vpH - dispH, agPanY));
+}
+document.getElementById('cropZoom').addEventListener('input', function(e){
+  if (!agCropVp) return;
+  var vpW = agCropVp.clientWidth, vpH = agCropVp.clientHeight;
+  var midXvoor = (vpW / 2 - agPanX) / agScale;
+  var midYvoor = (vpH / 2 - agPanY) / agScale;
+  agScale = agBaseScale * (e.target.value / 100);
+  agPanX = vpW / 2 - midXvoor * agScale;
+  agPanY = vpH / 2 - midYvoor * agScale;
+  agCropKlem();
+  agCropToon();
+});
+document.getElementById('cropViewport').addEventListener('pointerdown', function(e){
+  agSlepen = true;
+  agStartX = e.clientX; agStartY = e.clientY;
+  agStartPanX = agPanX; agStartPanY = agPanY;
+  agCropVp.setPointerCapture(e.pointerId);
+});
+document.getElementById('cropViewport').addEventListener('pointermove', function(e){
+  if (!agSlepen) return;
+  agPanX = agStartPanX + (e.clientX - agStartX);
+  agPanY = agStartPanY + (e.clientY - agStartY);
+  agCropKlem();
+  agCropToon();
+});
+document.getElementById('cropViewport').addEventListener('pointerup', function(){ agSlepen = false; });
+document.getElementById('cropViewport').addEventListener('pointercancel', function(){ agSlepen = false; });
+
+function cropAnnuleer(){
+  document.getElementById('cropModal').classList.add('hidden');
+  if (agCropImgEl) agCropImgEl.src = '';
+}
+
+function cropBevestig(){
+  // Zelfde volgorde-bug vermeden als bij de foto-upload-pagina: meten vóór
+  // verbergen — anders geven clientWidth/clientHeight 0 terug en levert
+  // drawImage() een leeg (dus zwart geëxporteerd) canvas op.
+  var vpW = agCropVp.clientWidth, vpH = agCropVp.clientHeight;
+  var sx = -agPanX / agScale, sy = -agPanY / agScale;
+  var sw = vpW / agScale, sh = vpH / agScale;
+
+  document.getElementById('cropModal').classList.add('hidden');
+  var melding = document.getElementById('agMelding');
+  melding.style.color = ''; melding.textContent = 'Foto wordt verwerkt…';
+
+  var canvas = document.createElement('canvas');
+  canvas.width = agDoelW; canvas.height = agDoelH;
+  var ctx = canvas.getContext('2d');
+  ctx.drawImage(agCropImgEl, sx, sy, sw, sh, 0, 0, agDoelW, agDoelH);
+  agEncodeerBinnenBudget(canvas, 0, function(blob, gelukt){
+    if (!gelukt){ melding.style.color = 'var(--red)'; melding.textContent = 'Foto blijft te groot.'; return; }
+    var fd = new FormData(); fd.append('foto', blob, 'bg.jpg');
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/achtergrond/upload?slot=' + (agLiggend?'liggend':'staand') + '&pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
+    xhr.onload = function(){
+      if (xhr.status === 200){ melding.style.color = 'var(--green)'; melding.textContent = 'Opgeslagen.'; achtergrondToepassen(); }
+      else { melding.style.color = 'var(--red)'; melding.textContent = 'Upload mislukt (' + (xhr.status===403?'onjuiste pincode':'opslag') + ').'; }
+    };
+    xhr.onerror = function(){ melding.style.color = 'var(--red)'; melding.textContent = 'Upload mislukt (verbinding).'; };
+    xhr.send(fd);
+  });
 }
 document.getElementById('agInputLiggend').addEventListener('change', function(e){
   var f = e.target.files[0]; e.target.value = ''; if (f) agUpload(f, true);

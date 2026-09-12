@@ -1,8 +1,8 @@
-// webapp_haven_html.h — HAVEN-fotobeheerpagina (/haven). Puur HTML/CSS/JS,
+// webapp_haven_html.h — fotobeheerpagina (/fotos). Puur HTML/CSS/JS,
 // geen externe dependencies (moet werken zonder internet). Verkleint een
 // gekozen foto in de browser naar exact de doelresolutie (canvas "cover"-crop)
 // en encodeert 'm als JPEG op een kwaliteit die binnen de servergrens past
-// (maxUploadBytes, opgehaald via /haven/info) vóórdat 'm geüpload wordt —
+// (maxUploadBytes, opgehaald via /fotos/info) vóórdat 'm geüpload wordt —
 // dus vóór het versturen al zo klein als nodig, i.p.v. eerst het hele
 // bestand versturen en pas daarna te ontdekken dat het te groot is. GEEN
 // dithering meer (zie encodeerBinnenBudget hieronder): dat bleek de JPEG-
@@ -181,7 +181,7 @@ function melding(tekst, klasse){
 }
 
 function info(){
-  fetch('/haven/info').then(function(r){ return r.json(); }).then(function(d){
+  fetch('/fotos/info').then(function(r){ return r.json(); }).then(function(d){
     doelW = d.w; doelH = d.h; maxUploadBytes = d.maxBytes || maxUploadBytes;
     document.getElementById('cropViewport').style.aspectRatio = doelW + '/' + doelH;
     document.getElementById('hdrSub').textContent = doelW + '×' + doelH + ' · ' + d.aantal + ' foto\'s';
@@ -193,12 +193,12 @@ function info(){
 }
 
 function lijst(){
-  fetch('/haven/lijst').then(function(r){ return r.json(); }).then(function(d){
+  fetch('/fotos/lijst').then(function(r){ return r.json(); }).then(function(d){
     var fotos = d.fotos || [];
     var box = document.getElementById('lijst');
     if (!fotos.length){ box.innerHTML = '<div id="leeg">Nog geen eigen foto\'s — de ingebakken voorbeeldfoto\'s worden getoond.</div>'; return; }
     box.innerHTML = fotos.map(function(f){
-      var src = '/haven/foto?naam=' + encodeURIComponent(f.naam);
+      var src = '/fotos/foto?naam=' + encodeURIComponent(f.naam);
       return '<div class="filerow"><img class="thumb" src="' + src + '" loading="lazy" alt="">' +
              '<div class="naam">' + esc(f.naam) + '</div>' +
              '<div class="grootte">' + fmtBytes(f.bytes) + '</div>' +
@@ -220,6 +220,12 @@ function toonGate(){
   document.getElementById('gate').style.display = '';
   document.getElementById('pinInput').value = '';
 }
+// Foto's (achtergrond én uploaden/verwijderen) zijn bewust eigenaar-only —
+// een gastcode (niveau 1) is hier geldig genoeg om NIET als "onjuiste
+// pincode" te worden afgewezen, maar krijgt toch geen toegang: de server
+// staat upload/verwijder sowieso alleen aan de eigenaars-pincode toe (zie
+// _pin_eigenaar() in webapp.ino), dus deze check voorkomt vooral een
+// verwarrende "toegang gelukt, actie mislukt"-ervaring voor een gast.
 function ontgrendel(){
   var v = document.getElementById('pinInput').value;
   if (v.length !== 4){ document.getElementById('pinErr').textContent = '4 cijfers invoeren'; return; }
@@ -227,7 +233,8 @@ function ontgrendel(){
   fetch('/verify', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
     .then(function(r){ return r.json(); })
     .then(function(d){
-      if (d.ok){ localStorage.setItem(PIN_KEY, v); toonInhoud(); }
+      if (d.ok && d.niveau >= 2){ localStorage.setItem(PIN_KEY, v); toonInhoud(); }
+      else if (d.ok) document.getElementById('pinErr').textContent = 'Deze code geeft geen toegang tot foto\'s';
       else document.getElementById('pinErr').textContent = 'Onjuiste pincode';
     }).catch(function(){ document.getElementById('pinErr').textContent = 'Verbindingsfout'; });
 }
@@ -244,14 +251,23 @@ function uitloggen(){ localStorage.removeItem(PIN_KEY); toonGate(); }
   var fd = new URLSearchParams(); fd.set('pin', saved);
   fetch('/verify', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
     .then(function(r){ return r.json(); })
-    .then(function(d){ if (d.ok) toonInhoud(); else { localStorage.removeItem(PIN_KEY); toonGate(); } })
+    .then(function(d){
+      if (d.ok && d.niveau >= 2) { toonInhoud(); return; }
+      // Een geldige maar niet-eigenaar (gast)code NIET uit localStorage
+      // verwijderen — die code is nog steeds geldig voor de bedieningspagina
+      // ("/"), enkel niet voor foto's. Alleen een echt ongeldige/verlopen
+      // code wissen.
+      if (!d.ok) localStorage.removeItem(PIN_KEY);
+      toonGate();
+      if (d.ok) document.getElementById('pinErr').textContent = 'Deze code geeft geen toegang tot foto\'s';
+    })
     .catch(function(){ toonGate(); });
 })();
 
 function verwijder(naam){
   if (!confirm('Foto "' + naam + '" verwijderen?')) return;
   var fd = new URLSearchParams(); fd.set('pin', pin()); fd.set('naam', naam);
-  fetch('/haven/verwijder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+  fetch('/fotos/verwijder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
     .then(function(r){ return r.json(); })
     .then(function(d){
       if (d.ok){ melding('Verwijderd.', 'ok'); info(); lijst(); }
@@ -395,6 +411,20 @@ function cropAnnuleer(){
 }
 
 function cropBevestig(){
+  // BELANGRIJK: de kader-afmetingen MOETEN gemeten worden vóórdat de modal
+  // verborgen wordt — zodra #cropModal (of #cropViewport zelf) display:none
+  // krijgt, geven clientWidth/clientHeight van elk kind-element 0 terug (niet
+  // meer gelayout). Met vpW/vpH op 0 werd sw/sh ook 0, waardoor drawImage()
+  // een leeg (transparant) canvas achterliet — en dat exporteert als een
+  // volledig ZWARTE JPEG (geen alpha-ondersteuning in dat formaat). Dit was
+  // de daadwerkelijke oorzaak van "de foto's die ik upload zijn zwart".
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  // Het kader ís het gekozen deel: linkerbovenhoek van het kader (0,0 in
+  // kader-ruimte) komt overeen met fotopixel (-panX/scale, -panY/scale);
+  // de kaderafmetingen in fotopixels zijn (vpW/scale, vpH/scale).
+  var sx = -cropPanX / cropScale, sy = -cropPanY / cropScale;
+  var sw = vpW / cropScale, sh = vpH / cropScale;
+
   document.getElementById('cropModal').classList.add('hidden');
   melding('Foto wordt verkleind…', '');
   document.getElementById('uploadBtn').disabled = true;
@@ -402,12 +432,6 @@ function cropBevestig(){
   var canvas = document.createElement('canvas');
   canvas.width = doelW; canvas.height = doelH;
   var ctx = canvas.getContext('2d');
-  // Het kader ís het gekozen deel: linkerbovenhoek van het kader (0,0 in
-  // kader-ruimte) komt overeen met fotopixel (-panX/scale, -panY/scale);
-  // de kaderafmetingen in fotopixels zijn (vpW/scale, vpH/scale).
-  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
-  var sx = -cropPanX / cropScale, sy = -cropPanY / cropScale;
-  var sw = vpW / cropScale, sh = vpH / cropScale;
   // cropImgEl staat al geladen in de modal (dat is precies wat de gebruiker
   // net zag) — drawImage gebruikt sowieso altijd de volle fotoresolutie,
   // ongeacht de CSS-weergavegrootte, dus geen nieuwe Image() nodig.
@@ -425,7 +449,7 @@ function uploadBlob(blob){
   var fd = new FormData();
   fd.append('foto', blob, 'foto.jpg');
   var xhr = new XMLHttpRequest();
-  xhr.open('POST', '/haven/upload?pin=' + encodeURIComponent(pin()));
+  xhr.open('POST', '/fotos/upload?pin=' + encodeURIComponent(pin()));
   var voortgang = document.getElementById('voortgang');
   voortgang.style.display = 'block';
   xhr.upload.onprogress = function(e){

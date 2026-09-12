@@ -1,7 +1,7 @@
 #include "screen_bestanden.h"
 #include "app_state.h"
 #include "app_manager.h"    // app_spiffs_vrij/totaal, app_sd_aanwezig/vrij
-#include "haven_achtergrond.h"  // haven_gebruikersfotos_scannen() — zorgt dat /haven bestaat
+#include "haven_achtergrond.h"  // haven_gebruikersfotos_scannen() — zorgt dat /fotos bestaat
 #include "platform_fs.h"    // SPIFFS-macro (LittleFS op Pico)
 #include "nav_bar.h"        // sb_scherm_teken, SB_KLOK_X
 #include "wifi.h"           // wifi_hotspot_*
@@ -51,7 +51,7 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #endif
 
 // Knoppenrij 2: filter op bestandsformaat (i.p.v. echte submappen — SPIFFS/
-// LittleFS kennen geen mappen voor bestanden buiten /apps en /haven, dus de
+// LittleFS kennen geen mappen voor bestanden buiten /apps en /fotos, dus de
 // meeste bestanden (config-csv's, wifi-json, enz.) staan sowieso plat in de
 // root; een filter houdt die lijst behapbaar zonder elke module's opslagpad
 // aan te hoeven passen).
@@ -291,7 +291,7 @@ static void _bf_thumb_teken(const char* pad, int x, int y) {
         fs::FS* fs = &SPIFFS;
 #endif
         // Werkelijke afmetingen opvragen om de dichtstbijzijnde ondersteunde
-        // schaal (1/2/4/8) te kiezen — bestanden buiten /haven (bv. handmatig
+        // schaal (1/2/4/8) te kiezen — bestanden buiten /fotos (bv. handmatig
         // op SD gezette foto's) hebben geen bekende vaste resolutie. LET OP:
         // TJpg_Decoder::getFsJpgSize(File) sluit het meegegeven bestand ZELF af
         // aan het einde — hetzelfde handle daarna hergebruiken voor drawFsJpg()
@@ -340,7 +340,7 @@ void screen_bestanden_teken() {
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(10, BF_INFO_Y);
     if (WiFi.status() == WL_CONNECTED) {
-        tft.print("Webapp: http://"); tft.print(WiFi.localIP().toString()); tft.print("/haven");
+        tft.print("Webapp: http://"); tft.print(WiFi.localIP().toString()); tft.print("/fotos");
     } else {
         tft.print("Geen WiFi-verbinding — webapp niet bereikbaar");
     }
@@ -470,7 +470,7 @@ void screen_bestanden_run(int x, int y, bool aanraking) {
         // getoond heeft. Zo bevriest de UI niet zichtbaar op het moment van
         // de tik zelf.
         if (!bf_geladen) {
-            haven_gebruikersfotos_scannen();  // zorgt dat /haven bestaat en gemigreerd is
+            haven_gebruikersfotos_scannen();  // zorgt dat /fotos bestaat en gemigreerd is
             _bf_scan();
             bf_geladen = true;
             screen_bestanden_teken();

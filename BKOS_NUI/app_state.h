@@ -27,6 +27,7 @@
 #define SCREEN_KLEUR      19 // Eigen kleurpatroon bewerken (via CONFIG → WEERGAVE & ENERGIE)
 #define SCREEN_HAVEN      20 // Haven-dashboard (tegel-overzicht): lang indrukken op HAVEN/ANKER-knop
 #define SCREEN_BESTANDEN  21 // Bestandsbeheer: SPIFFS/SD inzien + verwijderen, via CONFIG
+#define SCREEN_GAST       22 // Gasten-pincodes voor de webapp (HUIS/BOOT-toegang), via CONFIG → BOOT
 
 // Vaarmodi
 #define MODE_HAVEN   0

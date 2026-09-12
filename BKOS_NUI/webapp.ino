@@ -12,8 +12,28 @@
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
 #include "bericht.h"        // bericht_preset/bericht_verzend — "iets is los"-berichtje, openbaar
-#include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /haven/foto, webapp-achtergrond
+#include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /fotos/foto, webapp-achtergrond
+#include "gast.h"           // pin_niveau() — eigenaar vs. gastcode (HUIS/BOOT-toegang)
+#include "app_manager.h"    // app_spiffs_vrij/totaal, app_sd_aanwezig/vrij — Bestanden-tab
 #include <WebServer.h>
+
+// SD-kaart is alleen aangesloten op de S3 (zie app_manager.cpp) — zelfde
+// platformcheck als screen_bestanden.ino, dus de webapp-Bestanden-tab biedt
+// SD alleen daar aan.
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+  #include <SD.h>
+  #define WEBAPP_SD_MOGELIJK 1
+#else
+  #define WEBAPP_SD_MOGELIJK 0
+#endif
+
+// f.name() geeft afhankelijk van FS-implementatie soms het volledige pad en
+// soms alleen de bestandsnaam terug — zelfde aanpak als screen_bestanden.ino
+// om daar niet van af te hangen.
+static const char* _wa_basisnaam(const char* volledig) {
+    const char* laatste = strrchr(volledig, '/');
+    return laatste ? laatste + 1 : volledig;
+}
 
 static WebServer _http(80);
 static bool _http_gestart = false;
@@ -22,10 +42,17 @@ static bool _http_gestart = false;
 // meerdere keren aan/uit kan zonder de .on()-lijst telkens te laten aangroeien.
 static bool _http_handlers_klaar = false;
 
+// _pin_ok() = minimaal gast-niveau (bediening); _pin_eigenaar() = uitsluitend
+// de echte eigenaars-pincode — foto's/achtergrond/bestanden blijven daarmee
+// buiten bereik van een gastcode, ook al kent die de juiste 4 cijfers.
+static int _pin_niveau_van(const String& ingevoerd) {
+    return pin_niveau(ingevoerd.c_str());
+}
 static bool _pin_ok(const String& ingevoerd) {
-    char opgeslagen[5];
-    pin_lezen_pub(opgeslagen, sizeof(opgeslagen));
-    return ingevoerd.length() == 4 && ingevoerd.equals(opgeslagen);
+    return _pin_niveau_van(ingevoerd) >= GAST_NIVEAU_GAST;
+}
+static bool _pin_eigenaar(const String& ingevoerd) {
+    return _pin_niveau_van(ingevoerd) >= GAST_NIVEAU_EIGENAAR;
 }
 
 // ─── Foto-upload: opgebouwd in een groeiende heap-buffer tijdens het
@@ -47,7 +74,7 @@ static bool     _hav_te_groot  = false;
 // RGB565-beperking (puur voor CSS-achtergrond in de browser, niet gedecodeerd
 // door het apparaat zelf). Vaste bestandsnaam per slot — een nieuwe upload
 // overschrijft gewoon het bestand van hetzelfde slot, dus de oude vervalt
-// vanzelf zonder aparte verwijderstap. Zelfde upload-patroon als /haven/upload
+// vanzelf zonder aparte verwijderstap. Zelfde upload-patroon als /fotos/upload
 // hierboven, met een eigen (ruimere) groottegrens.
 #define ACHTERGROND_MAX_BYTES (1536UL * 1024UL)
 static uint8_t* _ag_upload_buf     = nullptr;
@@ -100,16 +127,18 @@ void webapp_setup() {
     // webpagina's om een uit localStorage teruggehaalde PIN in de achtergrond
     // te bevestigen (of net zo stil weer te vergeten als 'm niet meer klopt).
     _http.on("/verify", HTTP_POST, []() {
-        bool ok = _pin_ok(_http.arg("pin"));
-        _http.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
+        int niveau = _pin_niveau_van(_http.arg("pin"));
+        String s = "{\"ok\":"; s += (niveau > GAST_NIVEAU_GEEN) ? "true" : "false";
+        s += ",\"niveau\":"; s += niveau; s += '}';
+        _http.send(200, "application/json", s);
     });
 
     // ─── HAVEN-fotobeheer ───────────────────────────────────────────────────
-    _http.on("/haven", HTTP_GET, []() {
+    _http.on("/fotos", HTTP_GET, []() {
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HAVEN_HTML);
     });
 
-    _http.on("/haven/info", HTTP_GET, []() {
+    _http.on("/fotos/info", HTTP_GET, []() {
         int w, h; haven_doel_afmeting(&w, &h);
         String s = "{\"w\":"; s += w;
         s += ",\"h\":"; s += h;
@@ -120,7 +149,7 @@ void webapp_setup() {
         _http.send(200, "application/json", s);
     });
 
-    _http.on("/haven/lijst", HTTP_GET, []() {
+    _http.on("/fotos/lijst", HTTP_GET, []() {
         int n = haven_gebruikersfoto_aantal();
         String s = "{\"fotos\":[";
         for (int i = 0; i < n; i++) {
@@ -136,10 +165,10 @@ void webapp_setup() {
     });
 
     // Ruwe fotobytes — gebruikt door de webpagina om een thumbnail te tonen
-    // (<img src="/haven/foto?naam=...">). `naam` wordt tegen de bekende lijst
+    // (<img src="/fotos/foto?naam=...">). `naam` wordt tegen de bekende lijst
     // gevalideerd i.p.v. blind geopend, zodat dit geen willekeurig SPIFFS-
     // bestand kan lekken.
-    _http.on("/haven/foto", HTTP_GET, []() {
+    _http.on("/fotos/foto", HTTP_GET, []() {
         String naam = _http.arg("naam");
         int n = haven_gebruikersfoto_aantal();
         bool geldig = false;
@@ -154,8 +183,8 @@ void webapp_setup() {
         f.close();
     });
 
-    _http.on("/haven/verwijder", HTTP_POST, []() {
-        if (!_pin_ok(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
+    _http.on("/fotos/verwijder", HTTP_POST, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         bool ok = haven_gebruikersfoto_verwijderen(_http.arg("naam").c_str());
         _http.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
     });
@@ -166,7 +195,7 @@ void webapp_setup() {
     // BELANGRIJK: niet via _http.arg("plain") lezen voor binaire data — die
     // pakt de body op als null-getermineerde String, en JPEG-bytes bevatten
     // vrijwel altijd losse 0x00-bytes, wat de foto stilletjes zou afkappen.
-    _http.on("/haven/upload", HTTP_POST,
+    _http.on("/fotos/upload", HTTP_POST,
         []() {  // aangeroepen zodra de volledige body binnen is
             if (!_hav_pin_ok)      { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}");    return; }
             if (_hav_te_groot)     { _http.send(413, "application/json", "{\"ok\":false,\"reden\":\"groot\"}");  return; }
@@ -184,7 +213,7 @@ void webapp_setup() {
             if (up.status == UPLOAD_FILE_START) {
                 _hav_upload_len = 0;
                 _hav_te_groot   = false;
-                _hav_pin_ok     = _pin_ok(_http.arg("pin"));
+                _hav_pin_ok     = _pin_eigenaar(_http.arg("pin"));
             } else if (up.status == UPLOAD_FILE_WRITE) {
                 if (!_hav_pin_ok || _hav_te_groot) return;  // al afgekeurd: chunks negeren, geen zinloos werk
                 if (_hav_upload_len + up.currentSize > HAV_UPLOAD_MAX_BYTES) {
@@ -226,7 +255,7 @@ void webapp_setup() {
     });
 
     _http.on("/achtergrond/verwijder", HTTP_POST, []() {
-        if (!_pin_ok(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         bool liggend = !_http.arg("slot").equals("staand");
         SPIFFS.remove(_ag_pad(liggend));
         _http.send(200, "application/json", "{\"ok\":true}");
@@ -249,7 +278,7 @@ void webapp_setup() {
             if (up.status == UPLOAD_FILE_START) {
                 _ag_upload_len   = 0;
                 _ag_te_groot     = false;
-                _ag_pin_ok       = _pin_ok(_http.arg("pin"));
+                _ag_pin_ok       = _pin_eigenaar(_http.arg("pin"));
                 _ag_slot_liggend = !_http.arg("slot").equals("staand");
             } else if (up.status == UPLOAD_FILE_WRITE) {
                 if (!_ag_pin_ok || _ag_te_groot) return;
@@ -269,6 +298,71 @@ void webapp_setup() {
                 _ag_upload_len += up.currentSize;
             }
         });
+
+    // ─── Bestanden-tab (Huis/Boot/IO/Bestanden in de webapp) — eigenaar-only:
+    // simpele lijst+verwijderen, mirror van CONFIG → BESTANDEN op het scherm
+    // zelf (screen_bestanden.ino), zonder de thumbnails daar (die vereisen een
+    // decodeerpas op het apparaat zelf per opgevraagde foto — voor een eerste
+    // webversie bewust achterwege gelaten, gewoon naam+grootte).
+    _http.on("/bestanden/info", HTTP_GET, []() {
+        String s = "{\"spiffsVrij\":"; s += (uint32_t)app_spiffs_vrij();
+        s += ",\"spiffsTotaal\":"; s += (uint32_t)app_spiffs_totaal();
+#if WEBAPP_SD_MOGELIJK
+        bool sd = app_sd_aanwezig();
+        s += ",\"sdBeschikbaar\":"; s += sd ? F("true") : F("false");
+        s += ",\"sdVrij\":"; s += sd ? (uint32_t)app_sd_vrij() : 0;
+        s += ",\"sdTotaal\":"; s += sd ? (uint32_t)SD.totalBytes() : 0;
+#else
+        s += ",\"sdBeschikbaar\":false,\"sdVrij\":0,\"sdTotaal\":0";
+#endif
+        s += '}';
+        _http.send(200, "application/json", s);
+    });
+
+    _http.on("/bestanden/lijst", HTTP_GET, []() {
+        bool sd = _http.arg("fs").equals("sd");
+        String pad = _http.arg("pad"); if (pad.length() == 0) pad = "/";
+#if WEBAPP_SD_MOGELIJK
+        if (sd && !app_sd_aanwezig()) { _http.send(200, "application/json", "{\"pad\":\"/\",\"items\":[]}"); return; }
+        fs::FS* fsp = sd ? (fs::FS*)&SD : (fs::FS*)&SPIFFS;
+#else
+        fs::FS* fsp = &SPIFFS;
+#endif
+        File root = fsp->open(pad, "r");
+        String s = "{\"pad\":\""; s += pad; s += "\",\"items\":[";
+        bool first = true;
+        if (root && root.isDirectory()) {
+            File f = root.openNextFile();
+            while (f) {
+                if (!first) s += ','; first = false;
+                s += "{\"naam\":\""; s += _wa_basisnaam(f.name());
+                s += "\",\"map\":"; s += f.isDirectory() ? F("true") : F("false");
+                s += ",\"bytes\":"; s += (uint32_t)f.size();
+                s += '}';
+                f = root.openNextFile();
+            }
+        }
+        s += "]}";
+        _http.send(200, "application/json", s);
+    });
+
+    _http.on("/bestanden/verwijder", HTTP_POST, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
+        String pad = _http.arg("pad");
+        // Alleen een absoluut pad zonder ".."-segmenten toestaan — geen vrije
+        // padtraversal vanaf een door de client opgegeven string.
+        if (pad.length() == 0 || pad[0] != '/' || pad.indexOf("..") >= 0) {
+            _http.send(400, "application/json", "{\"ok\":false}"); return;
+        }
+        bool sd = _http.arg("fs").equals("sd");
+#if WEBAPP_SD_MOGELIJK
+        fs::FS* fsp = sd ? (fs::FS*)&SD : (fs::FS*)&SPIFFS;
+#else
+        fs::FS* fsp = &SPIFFS;
+#endif
+        bool ok = fsp->remove(pad);
+        _http.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
+    });
 
     _http.onNotFound([]() {
         _http.sendHeader("Location", "/", true);

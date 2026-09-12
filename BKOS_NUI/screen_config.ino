@@ -1441,9 +1441,9 @@ static void cfg_hoofd_teken() {
 }
 
 // Rijhoogtes: categorie/model/zeilnr/naam module (44 elk) + IO-configuratierij
-// (50, inclusief padding) + PANEEL-KNOPPEN-rij + LAMPEN-rij (44 elk) — nodig
-// voor de scrollbar.
-#define CFG_BOOT_INHOUD_H   (44 * 4 + 50 + 44 + 44)
+// (50, inclusief padding) + PANEEL-KNOPPEN-rij + LAMPEN-rij + GASTEN-rij
+// (44 elk) — nodig voor de scrollbar.
+#define CFG_BOOT_INHOUD_H   (44 * 4 + 50 + 44 + 44 + 44)
 #define CFG_BOOT_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_BOOT_INHOUD_H - (int)NAV_Y)
 
 static void cfg_boot_teken() {
@@ -1561,6 +1561,11 @@ static void cfg_boot_teken() {
 
     // Genummerde IL-lampgroepen: naam + opstartstand (opent het lampen-scherm)
     ui_knop(10, y + 4, TFT_W - 20, 38, "LAMPEN  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    y += 44;
+
+    // Gasten-pincodes voor de webapp (opent het gasten-scherm)
+    ui_knop(10, y + 4, TFT_W - 20, 38, "GASTEN PINCODES  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_boot_scroll_y, CFG_BOOT_MAX_SCROLL);
@@ -2156,6 +2161,14 @@ static void cfg_boot_run(int x, int y) {
     if (y >= lampen_y && y < lampen_y + 44) {
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_LAMPEN; scherm_bouwen = true;
+        return;
+    }
+
+    // Gasten-pincodes voor de webapp
+    int gasten_y = lampen_y + 44;
+    if (y >= gasten_y && y < gasten_y + 44) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_GAST; scherm_bouwen = true;
         return;
     }
 }

@@ -9,6 +9,7 @@
 #include "screen_haven.h"
 #include "haven_achtergrond.h"
 #include "screen_bestanden.h"
+#include "screen_gast.h"
 #include "screen_ota.h"
 #include "screen_info.h"
 #include "screen_apps.h"
@@ -124,6 +125,7 @@ static void _gui_taak(void*) {
                     case SCREEN_KLEUR:      screen_kleur_teken();       break;
                     case SCREEN_HAVEN:      screen_haven_teken();       break;
                     case SCREEN_BESTANDEN:  screen_bestanden_teken();   break;
+                    case SCREEN_GAST:       screen_gast_teken();        break;
                     case SCREEN_BERICHT:    screen_bericht_teken();     break;
                     case SCREEN_BRUG:       screen_brug_teken();        break;
                     case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -226,6 +228,7 @@ static void _gui_taak(void*) {
                             case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
                             case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;
                             case SCREEN_BESTANDEN:  screen_bestanden_run(ts_x, ts_y, true); break;
+                            case SCREEN_GAST:       screen_gast_run(ts_x, ts_y, true);      break;
                             case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                                     case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                             case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
@@ -367,6 +370,7 @@ void hw_setup() {
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
     paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5)
     lamp_laden();    // laad genummerde IL-lampgroepen (naam + opstartstand)
+    gast_laden();    // laad gasten-pincodes voor de webapp (HUIS/BOOT-toegang)
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
 #if BKOS_REMOTE_ENABLED
     bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
@@ -524,6 +528,7 @@ void hw_loop() {
                 case SCREEN_KLEUR:      screen_kleur_teken();       break;
                 case SCREEN_HAVEN:      screen_haven_teken();       break;
                 case SCREEN_BESTANDEN:  screen_bestanden_teken();   break;
+                case SCREEN_GAST:       screen_gast_teken();        break;
                 case SCREEN_BERICHT:    screen_bericht_teken();     break;
                 case SCREEN_BRUG:       screen_brug_teken();        break;
                 case SCREEN_TIJD:       screen_tijd_teken();        break;
@@ -620,6 +625,7 @@ void hw_loop() {
                         case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
                         case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;
                         case SCREEN_BESTANDEN:  screen_bestanden_run(ts_x, ts_y, true); break;
+                        case SCREEN_GAST:       screen_gast_run(ts_x, ts_y, true);      break;
                         case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;

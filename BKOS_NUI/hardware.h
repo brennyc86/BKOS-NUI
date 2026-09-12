@@ -29,6 +29,7 @@
 // vóór de struct-definitie ("BfThumb does not name a type"), zie
 // [[project_arduino_prototype_hoisting]].
 #include "screen_bestanden.h"
+#include "gast.h"  // GastPin vroeg zichtbaar (prototype-hoisting, zie project-geheugen)
 
 void hw_setup();
 void hw_loop();

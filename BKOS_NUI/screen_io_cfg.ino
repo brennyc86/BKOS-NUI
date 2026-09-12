@@ -1,5 +1,6 @@
 #include "screen_io_cfg.h"
 #include "nav_bar.h"
+#include "gast.h"  // NIVEAU_GAST/LOGE/DELER/EIGENAAR + niveau_naam() — MINIMAAL NIVEAU-rij
 
 extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
@@ -21,6 +22,7 @@ static uint8_t ov_actie_uit;
 static uint8_t ov_param;
 static uint8_t ov_dynpuls;   // dynamo-bekrachtiging (globaal, alleen bij **motor)
 static uint8_t ov_boot_gedrag;  // IO_BOOT_UIT/AAN/ONTHOUD (alleen UITGANG-kanalen)
+static uint8_t ov_min_niveau;   // NIVEAU_GAST/LOGE/DELER/EIGENAAR (alleen UITGANG-kanalen)
 
 // ─── Layout constanten ──────────────────────────────────────────────────
 #define IOCFG_COUNT_Y    (SB_H + 2)
@@ -146,7 +148,7 @@ static void iocfg_rij_teken(int kanaal, int rij_y) {
     // Alert/actie badge
     bool heeft_cfg = is_in
         ? (io_actie_aan[kanaal] || io_actie_uit[kanaal])
-        : (io_alert[kanaal] > 0 || io_boot_gedrag[kanaal] != IO_BOOT_UIT);
+        : (io_alert[kanaal] > 0 || io_boot_gedrag[kanaal] != IO_BOOT_UIT || io_min_niveau[kanaal] != NIVEAU_GAST);
     if (heeft_cfg) {
         tft.fillRoundRect(478, rij_y + 6, 80, IOCFG_RIJ_H - 12, 5, C_AMBER);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DARK);
@@ -250,6 +252,30 @@ static void iocfg_overlay_teken() {
                 int tw = strlen(boot_gedrag_labels[i]) * 6;
                 tft.setCursor(OV_IX + i * (bbw + 6) + (bbw - tw) / 2, cy + (32 - 8) / 2);
                 tft.print(boot_gedrag_labels[i]);
+            }
+        }
+        cy += 44;
+
+        // Minimaal rechtenniveau om dit kanaal via naam (PANEEL/**IL_<N>) te
+        // mogen schakelen vanuit de webapp — bv. een toekomstig deurslot op
+        // minimaal LOGE zetten zodat een gewone gast er niet bij kan. Alleen
+        // op het grote scherm (heeft scroll, zie iocfg_ov_max_scroll) — niet
+        // op PICO/SCREEN_SMALL, waar de overlay geen scroll heeft en al krap
+        // past; zelfde bewuste beperking als PANEEL/LAMPEN op dat platform.
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(OV_IX, cy + 4); tft.print("MINIMAAL NIVEAU (webapp):");
+        cy += 18;
+        {
+            int nbw = (OV_IW - 3 * 6) / 4;
+            for (int i = 0; i < 4; i++) {
+                uint8_t niv = (uint8_t)(NIVEAU_GAST + i);
+                bool act = (niv == ov_min_niveau);
+                tft.fillRoundRect(OV_IX + i * (nbw + 6), cy, nbw, 32, 4, act ? C_AMBER : C_SURFACE2);
+                tft.setTextSize(1); tft.setTextColor(act ? C_TEXT_DARK : C_TEXT_DIM);
+                const char* lbl = niveau_naam(niv);
+                int tw = strlen(lbl) * 6;
+                tft.setCursor(OV_IX + i * (nbw + 6) + (nbw - tw) / 2, cy + (32 - 8) / 2);
+                tft.print(lbl);
             }
         }
     } else {
@@ -405,7 +431,7 @@ static void pico_iocfg_rij_teken(int kanaal, int y) {
     int tw = strlen(lbl) * 6;
     tft.setCursor(148 + (54 - tw) / 2, y + (PIOCFG_RIJ_H - 8) / 2); tft.print(lbl);
     bool heeft_cfg = is_in ? (io_actie_aan[kanaal] || io_actie_uit[kanaal])
-                           : (io_alert[kanaal] > 0 || io_boot_gedrag[kanaal] != IO_BOOT_UIT);
+                           : (io_alert[kanaal] > 0 || io_boot_gedrag[kanaal] != IO_BOOT_UIT || io_min_niveau[kanaal] != NIVEAU_GAST);
     if (heeft_cfg) {
         tft.fillCircle(234, y + PIOCFG_RIJ_H / 2, 4, C_AMBER);
     }
@@ -894,6 +920,14 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 if (idx >= 0 && idx < N_BOOT) { ov_boot_gedrag = (uint8_t)idx; iocfg_overlay_teken(); }
                 return;
             }
+            cy += 32 + 44 + 18;
+            // Minimaal niveau knoppen
+            if (y >= cy && y < cy + 32) {
+                int nbw = (OV_IW - 3 * 6) / 4;
+                int idx = (x - OV_IX) / (nbw + 6);
+                if (idx >= 0 && idx < 4) { ov_min_niveau = (uint8_t)(NIVEAU_GAST + idx); iocfg_overlay_teken(); }
+                return;
+            }
         } else {
             cy += 18;
             if (ov_actie_klik(x, y, cy, ov_actie_aan)) { iocfg_overlay_teken(); return; }
@@ -938,6 +972,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 io_actie_uit[iocfg_kanaal]   = ov_actie_uit;
                 io_actie_param[iocfg_kanaal] = ov_param;
                 io_boot_gedrag[iocfg_kanaal] = ov_boot_gedrag;
+                io_min_niveau[iocfg_kanaal]  = ov_min_niveau;
                 // Bij (opnieuw) kiezen voor ONTHOUDEN meteen de actuele stand vastleggen
                 // i.p.v. tot 5s te wachten op de periodieke achtergrondcontrole
                 if (ov_boot_gedrag == IO_BOOT_ONTHOUD)
@@ -993,6 +1028,7 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             ov_param      = io_actie_param[kanaal];
             ov_dynpuls    = dynamo_puls_min;
             ov_boot_gedrag = io_boot_gedrag[kanaal];
+            ov_min_niveau  = io_min_niveau[kanaal];
             iocfg_overlay = true;
             iocfg_ov_scroll_y = 0;
             iocfg_sloot   = millis();

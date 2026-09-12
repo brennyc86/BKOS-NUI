@@ -226,9 +226,26 @@ static void _ota_wacht_wifi() {
     }
 }
 
+// De hotspot (taak 238: standaard AAN sinds opstarten) zet de ESP32 in
+// gecombineerde AP_STA-modus, die één radio deelt tussen AP en STA — een
+// vermoede oorzaak van hernieuwde "GitHub fout -1"-meldingen (TLS-handshake
+// naar GitHub verstoord terwijl de AP actief is). Vlak vóór elke blokkerende
+// GitHub-HTTPS-aanroep de hotspot tijdelijk stoppen en daarna weer starten
+// (behalve op het succespad van ota_download_toepassen(), dat toch herstart)
+// is een lage-risico manier om dit te toetsen zonder de hotspot's
+// standaard-aan-gedrag verder te veranderen.
+static bool _ota_hotspot_gepauzeerd = false;
+static void _ota_hotspot_pauzeren() {
+    if (wifi_hotspot_actief()) { _ota_hotspot_gepauzeerd = true; wifi_hotspot_stoppen(); }
+}
+static void _ota_hotspot_hervatten() {
+    if (_ota_hotspot_gepauzeerd) { _ota_hotspot_gepauzeerd = false; wifi_hotspot_starten(); }
+}
+
 void ota_git_check() {
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
+    _ota_hotspot_pauzeren();
     const char* url = ota_beta_kanal ? OTA_GITHUB_VERSIE_URL : OTA_GITHUB_STABLE_VERSIE_URL;
 
     // Eigen WiFiClientSecure + setInsecure(), net als meteo http_get(). De
@@ -255,6 +272,7 @@ void ota_git_check() {
                 ota_status_tekst = "Up to date (" + ota_versie_github + ")";
             else
                 ota_status_tekst = "Update beschikbaar: " + ota_versie_github;
+            _ota_hotspot_hervatten();
             return;
         }
         http.end();
@@ -262,6 +280,7 @@ void ota_git_check() {
         delay(300);             // verbindingsfout (<0): nog één poging
     }
     ota_status_tekst = "GitHub fout " + String(code);
+    _ota_hotspot_hervatten();
 }
 
 void ota_git_update() {
@@ -297,6 +316,7 @@ void ota_laad_releases() {
 #if PLATFORM_ESP32
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
+    _ota_hotspot_pauzeren();
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;
@@ -305,9 +325,10 @@ void ota_laad_releases() {
     http.begin(sc, OTA_GITHUB_RELEASES_URL);
     http.useHTTP10(true);
     int code = http.GET();
-    if (code != HTTP_CODE_OK) { http.end(); return; }
+    if (code != HTTP_CODE_OK) { http.end(); _ota_hotspot_hervatten(); return; }
     String json = http.getString();
     http.end();
+    _ota_hotspot_hervatten();
 
     int pos = 0;
     while (ota_releases_cnt < OTA_RELEASES_MAX) {
@@ -353,6 +374,7 @@ bool ota_download_toepassen(String url) {
     ota_status_tekst = "OTA downloaden n.v.t. op Pico";
     return false;
 #else
+    _ota_hotspot_pauzeren();
     // Eigen WiFiClientSecure (zoals meteo) — blijft in scope tijdens de hele
     // streaming-download. Lost "fout -1" (TLS-handshake) bij OTA op.
     WiFiClientSecure sc;
@@ -366,6 +388,7 @@ bool ota_download_toepassen(String url) {
     if (code != HTTP_CODE_OK) {
         ota_status_tekst = "Download fout " + String(code);
         http.end();
+        _ota_hotspot_hervatten();
         return false;
     }
     int len = http.getSize();  // -1 bij chunked transfer
@@ -374,6 +397,7 @@ bool ota_download_toepassen(String url) {
     if (!Update.begin(update_grootte)) {
         ota_status_tekst = String("Flash fout: ") + Update.errorString();
         http.end();
+        _ota_hotspot_hervatten();
         return false;
     }
 
@@ -423,6 +447,7 @@ bool ota_download_toepassen(String url) {
             Update.abort();
             ota_status_tekst = "Timeout tijdens download";
             http.end();
+            _ota_hotspot_hervatten();
             return false;
         }
 
@@ -459,8 +484,12 @@ bool ota_download_toepassen(String url) {
     http.end();
     if (!Update.end()) {
         ota_status_tekst = String("Flash fout: ") + Update.errorString();
+        _ota_hotspot_hervatten();
         return false;
     }
+    // Succespad: geen _ota_hotspot_hervatten() nodig — PLATFORM_REBOOT()
+    // hieronder herstart het apparaat toch, en de hotspot start vanzelf weer
+    // ~3s na opstarten (wifi_hotspot_tick()).
 
     tft.fillRect(bx, by + bh + 8, 300, 20, C_BG);
     tft.setTextSize(2); tft.setTextColor(C_GREEN);

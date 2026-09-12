@@ -31,7 +31,7 @@ static bool _ws_klanten[WEBSOCKETS_SERVER_CLIENT_MAX]     = {false};
 // loggen, zo blijft "kijken" laagdrempelig en "schakelen" veilig. Een gastcode
 // mag alleen de HUIS/BOOT-achtige commando's (paneel/modus/licht/lamp/
 // interieur); IO-kanalen los blijven eigenaar-only — zie _verwerk_cmd().
-static uint8_t _ws_niveau[WEBSOCKETS_SERVER_CLIENT_MAX] = {GAST_NIVEAU_GEEN};
+static uint8_t _ws_niveau[WEBSOCKETS_SERVER_CLIENT_MAX] = {NIVEAU_GEEN};
 static byte _ws_prev_output[MAX_IO_KANALEN];
 static bool _ws_prev_input[MAX_IO_KANALEN];
 static byte _ws_prev_modus = 255;
@@ -111,7 +111,8 @@ static String _paneel_json() {
         const char* naam = paneel_knop_naam(i);
         char lbl[IO_NAAM_LEN]; paneel_label(naam, lbl, sizeof(lbl));
         s += F("{\"naam\":\""); s += lbl;
-        s += F("\",\"staat\":"); s += io_apparaat_staat3(naam); s += '}';
+        s += F("\",\"staat\":"); s += io_apparaat_staat3(naam);
+        s += F(",\"minNiveau\":"); s += io_min_niveau_voor_naam(naam); s += '}';
     }
     s += F("]}");
     return s;
@@ -174,6 +175,7 @@ static String _lamp_json() {
         s += F("{\"nr\":"); s += nr;
         s += F(",\"naam\":\""); s += naam;
         s += F("\",\"aan\":"); s += io_lamp_effectief_aan(nr) ? F("true") : F("false");
+        s += F(",\"minNiveau\":"); s += io_min_niveau_voor_lamp(nr);
         s += '}';
     }
     s += F("]}");
@@ -240,6 +242,8 @@ static String _gast_json() {
         s += F("{\"code\":\""); s += gast_pin[i].code;
         s += F("\",\"naam\":\""); s += gast_pin[i].naam;
         s += F("\",\"resterend\":\""); s += rest;
+        s += F("\",\"niveau\":"); s += gast_pin[i].niveau;
+        s += F(",\"niveauNaam\":\""); s += niveau_naam(gast_pin[i].niveau);
         s += F("\"}");
     }
     s += F("]}");
@@ -257,7 +261,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             int niveau = pin_niveau(buf);
             _ws_niveau[num] = niveau;
             String r;
-            if (niveau > GAST_NIVEAU_GEEN) { r = F("{\"t\":\"auth_ok\",\"niveau\":"); r += niveau; r += '}'; }
+            if (niveau > NIVEAU_GEEN) { r = F("{\"t\":\"auth_ok\",\"niveau\":"); r += niveau; r += '}'; }
             else                            r = F("{\"t\":\"auth_fout\"}");
             _ws.sendTXT(num, r);
         }
@@ -273,14 +277,14 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
     // geldige gastcode. Losse IO-kanalen blijven daarbovenop eigenaar-only
     // (zie de aparte check in "io_toggle" hieronder) — een gastcode geeft
     // bewust alleen toegang tot de HUIS/BOOT-achtige commando's.
-    if (_ws_niveau[num] < GAST_NIVEAU_GAST) {
+    if (_ws_niveau[num] < NIVEAU_GAST) {
         String r = F("{\"t\":\"auth_vereist\"}");
         _ws.sendTXT(num, r);
         return;
     }
 
     if (t.indexOf(F("\"io_toggle\"")) >= 0) {
-        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
         int idx = t.indexOf(F("\"i\":"));
         if (idx >= 0) net_io_kanaal_toggle(t.substring(idx + 4).toInt());
 
@@ -288,7 +292,11 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         int idx = t.indexOf(F("\"i\":"));
         if (idx >= 0) {
             int i = t.substring(idx + 4).toInt();
-            if (i >= 0 && i < paneel_aantal()) net_io_apparaat_toggle(paneel_knop_naam(i));
+            if (i >= 0 && i < paneel_aantal()) {
+                const char* naam = paneel_knop_naam(i);
+                if (_ws_niveau[num] >= io_min_niveau_voor_naam(naam)) net_io_apparaat_toggle(naam);
+                else { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); }
+            }
         }
 
     } else if (t.indexOf(F("\"set_modus\"")) >= 0) {
@@ -313,14 +321,23 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         int idx = t.indexOf(F("\"nr\":"));
         if (idx >= 0) {
             int nr = t.substring(idx + 5).toInt();
-            char naam[16]; snprintf(naam, sizeof(naam), "**IL_%d", nr);
-            net_io_apparaat_toggle(naam);
+            if (_ws_niveau[num] >= io_min_niveau_voor_lamp(nr)) {
+                char naam[16]; snprintf(naam, sizeof(naam), "**IL_%d", nr);
+                net_io_apparaat_toggle(naam);
+            } else {
+                String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r);
+            }
         }
 
     } else if (t.indexOf(F("\"lamp_alles\"")) >= 0) {
+        // Lampen die een hoger niveau vereisen dan de aanroeper heeft, slaan
+        // we bewust stilzwijgend over i.p.v. de hele actie af te wijzen — een
+        // gast die ALLES AAN drukt mag gewoon alles krijgen waar die recht op
+        // heeft, zonder dat één verheven lamp de rest blokkeert.
         bool aan = t.indexOf(F("\"aan\":1")) >= 0;
         for (int i = 0; i < _ws_lamp_cnt; i++) {
             int nr = _ws_lamp_nrs[i];
+            if (_ws_niveau[num] < io_min_niveau_voor_lamp(nr)) continue;
             if (io_lamp_effectief_aan(nr) != aan) {
                 char naam[16]; snprintf(naam, sizeof(naam), "**IL_%d", nr);
                 net_io_apparaat_toggle(naam);
@@ -339,15 +356,15 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         net_app_staat_sturen();
 
     // ─── INSTELLINGEN-tab (webapp) — allemaal eigenaar-only: een gastcode
-    // komt hier nooit voorbij de niveau-check hierboven (GAST_NIVEAU_GAST),
+    // komt hier nooit voorbij de niveau-check hierboven (NIVEAU_GAST),
     // dus deze extra check is strikt genomen dubbel op, maar maakt elke case
     // hier zelfstandig leesbaar/veilig ook als de volgorde ooit verandert.
     } else if (t.indexOf(F("\"instellingen_get\"")) >= 0) {
-        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
         String s = _instellingen_json(); _ws.sendTXT(num, s);
 
     } else if (t.indexOf(F("\"instellingen_set\"")) >= 0) {
-        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         for (int i = 0; i < INFO_BOOT_VELDEN; i++) {
             char sleutel[6]; snprintf(sleutel, sizeof(sleutel), "b%d", i);
             if (_veld_aanwezig(t, sleutel)) info_boot_veld_zet(i, _veld_uit(t, sleutel).c_str());
@@ -369,7 +386,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         String s = _instellingen_json(); _ws.sendTXT(num, s);
 
     } else if (t.indexOf(F("\"pin_wijzig\"")) >= 0) {
-        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         String oud = _veld_uit(t, "oud");
         String nieuw = _veld_uit(t, "nieuw");
         char opgeslagen[5]; pin_lezen_pub(opgeslagen, sizeof(opgeslagen));
@@ -379,28 +396,48 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         _ws.sendTXT(num, r);
 
     } else if (t.indexOf(F("\"gast_get\"")) >= 0) {
-        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
         String s = _gast_json(); _ws.sendTXT(num, s);
 
     } else if (t.indexOf(F("\"gast_toevoegen\"")) >= 0) {
-        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         String naam = _veld_uit(t, "naam");
-        long dagen = _getal_uit(t, "dagen");  // 0 = onbeperkt
+        long dagen = _getal_uit(t, "dagen");   // 0 = onbeperkt
+        long niveau = _getal_uit(t, "niveau"); // NIVEAU_GAST/LOGE/DELER
+        if (niveau < NIVEAU_GAST || niveau > NIVEAU_DELER) niveau = NIVEAU_GAST;
         if (dagen > 0 && !ntp_synced()) {
             String r = F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"tijd\"}");
             _ws.sendTXT(num, r);
         } else {
             uint32_t verloopt = (dagen > 0) ? (uint32_t)time(nullptr) + (uint32_t)dagen * 86400UL : 0;
             char code[GAST_CODE_LEN];
-            bool ok = gast_toevoegen(verloopt, naam.c_str(), code, sizeof(code));
+            bool ok = gast_toevoegen(verloopt, naam.c_str(), (uint8_t)niveau, code, sizeof(code));
             String r = ok ? (String(F("{\"t\":\"gast_nieuw\",\"ok\":true,\"code\":\"")) + code + "\"}")
                           : String(F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"vol\"}"));
             _ws.sendTXT(num, r);
             if (ok) { String lijst = _gast_json(); _ws.sendTXT(num, lijst); }
         }
 
+    } else if (t.indexOf(F("\"gast_bewerken\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
+        long idx = _getal_uit(t, "idx");
+        String naam = _veld_uit(t, "naam");
+        long dagen = _getal_uit(t, "dagen");
+        long niveau = _getal_uit(t, "niveau");
+        if (niveau < NIVEAU_GAST || niveau > NIVEAU_DELER) niveau = NIVEAU_GAST;
+        if (dagen > 0 && !ntp_synced()) {
+            String r = F("{\"t\":\"gast_bewerkt\",\"ok\":false,\"reden\":\"tijd\"}");
+            _ws.sendTXT(num, r);
+        } else {
+            uint32_t verloopt = (dagen > 0) ? (uint32_t)time(nullptr) + (uint32_t)dagen * 86400UL : 0;
+            bool ok = (idx >= 0) && gast_bewerken((int)idx, naam.c_str(), verloopt, (uint8_t)niveau);
+            String r = String(F("{\"t\":\"gast_bewerkt\",\"ok\":")) + (ok ? "true" : "false") + "}";
+            _ws.sendTXT(num, r);
+            if (ok) { String lijst = _gast_json(); _ws.sendTXT(num, lijst); }
+        }
+
     } else if (t.indexOf(F("\"gast_verwijderen\"")) >= 0) {
-        if (_ws_niveau[num] < GAST_NIVEAU_EIGENAAR) return;
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         long idx = _getal_uit(t, "idx");
         if (idx >= 0) gast_verwijderen((int)idx);
         String lijst = _gast_json(); _ws.sendTXT(num, lijst);
@@ -436,7 +473,7 @@ void bkos_client_setup() {
     memset(_ws_prev_output, 255, sizeof(_ws_prev_output));
     memset(_ws_prev_paneel, 255, sizeof(_ws_prev_paneel));
     memset(_ws_klanten, 0, sizeof(_ws_klanten));
-    for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) _ws_niveau[i] = GAST_NIVEAU_GEEN;
+    for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) _ws_niveau[i] = NIVEAU_GEEN;
     _ws_lamp_scan();
     _ws.begin();
     if (!_ws_handler_klaar) {
@@ -445,7 +482,7 @@ void bkos_client_setup() {
             switch (type) {
                 case WStype_CONNECTED: {
                     _ws_klanten[num] = true;
-                    _ws_niveau[num]  = GAST_NIVEAU_GEEN;
+                    _ws_niveau[num]  = NIVEAU_GEEN;
                     String m1 = _io_full_json(); _ws.sendTXT(num, m1);
                     String m2 = _state_json();   _ws.sendTXT(num, m2);
                     String m3 = _net_json();     _ws.sendTXT(num, m3);
@@ -456,7 +493,7 @@ void bkos_client_setup() {
                 }
                 case WStype_DISCONNECTED:
                     _ws_klanten[num] = false;
-                    _ws_niveau[num]  = GAST_NIVEAU_GEEN;
+                    _ws_niveau[num]  = NIVEAU_GEEN;
                     break;
                 case WStype_TEXT:
                     _verwerk_cmd(num, String((char*)payload));

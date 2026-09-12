@@ -87,6 +87,18 @@ extern uint8_t io_actie_uit[];
 extern uint8_t io_actie_param[];
 extern uint8_t io_boot_gedrag[];  // IO_BOOT_UIT/AAN/ONTHOUD per kanaal
 extern uint8_t io_boot_waarde[];  // laatst opgeslagen AAN/UIT-stand (0/1) voor ONTHOUD-kanalen
+// Minimaal rechtenniveau om dit kanaal via naam (PANEEL/**IL_<N>) te mogen
+// schakelen — waarden 1..4 komen overeen met NIVEAU_GAST/LOGE/DELER/EIGENAAR
+// (gast.h; hier bewust niet geïncludeerd om hw_io.h vrij van de webapp-
+// permissielaag te houden). Default = NIVEAU_GAST (1): geen extra restrictie
+// t.o.v. het bestaande gedrag. Zie io_min_niveau_voor_naam()/_voor_lamp() in
+// io.h en de check in bkos_client.ino.
+// Heap-gealloceerd (i.p.v. een 9e statische MAX_IO_KANALEN-array naast
+// io_richting/io_alert/etc.) — duwde de classic ESP32-builds (WROOM 216
+// bytes) over hun krappe DRAM-BSS-segment; zelfde patroon als eerder o.a.
+// gast_pin. Gealloceerd in hw_io_setup(), dus al klaar vóór enige lezer
+// (webapp-commando's, IO CFG-overlay) 'm kan aanspreken.
+extern uint8_t* io_min_niveau;
 
 void hw_io_setup();
 void hw_io_namen_laden();

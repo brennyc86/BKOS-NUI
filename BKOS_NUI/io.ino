@@ -7,6 +7,7 @@
 #include "melding.h"
 #include "lamp.h"
 #include "wifi.h"   // ntp_synced() — fail-safe "neem donker aan" zolang de tijd niet bekend is
+#include "gast.h"   // NIVEAU_GAST/LOGE/DELER/EIGENAAR — io_min_niveau_voor_naam/_voor_lamp()
 
 byte licht_cfg_idx = 0;
 bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=rood, wit anders) — voor UI
@@ -1127,6 +1128,30 @@ void io_zekering_check() {
         licht_cfg_idx++;
         io_verlichting_update();
     }
+}
+
+int io_min_niveau_voor_naam(const char* naam) {
+    if (!io_min_niveau) return NIVEAU_GAST;  // (onwaarschijnlijke) malloc-mislukking: geen restrictie
+    int lamp_nr = io_il_lamp_nr(naam);
+    if (lamp_nr > 0) return io_min_niveau_voor_lamp(lamp_nr);
+
+    int n = io_zichtbaar();
+    int hoogste = NIVEAU_GAST;
+    for (int i = 0; i < n; i++) {
+        if (io_richting[i] == IO_RICHTING_IN) continue;
+        if (io_naam_match(i, naam) && io_min_niveau[i] > hoogste) hoogste = io_min_niveau[i];
+    }
+    return hoogste;
+}
+
+int io_min_niveau_voor_lamp(int nr) {
+    if (!io_min_niveau) return NIVEAU_GAST;
+    int n = io_zichtbaar();
+    int hoogste = NIVEAU_GAST;
+    for (int i = 0; i < n; i++) {
+        if (io_il_kanaal_lamp_nr(i) == nr && io_min_niveau[i] > hoogste) hoogste = io_min_niveau[i];
+    }
+    return hoogste;
 }
 
 byte io_apparaat_staat3(const char* prefix) {

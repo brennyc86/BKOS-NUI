@@ -1,7 +1,7 @@
 #include "gast.h"
 #include "platform_fs.h"
 #include "screen_config.h"  // pin_lezen_pub() — eigenaars-pincode, voor botsing/vergelijking
-#include "wifi.h"           // ntp_synced() — zie GAST_NIVEAU-toelichting in gast.h
+#include "wifi.h"           // ntp_synced() — zie niveau-toelichting in gast.h
 #include <time.h>
 
 #define GAST_BESTAND "/bkos_gast.csv"
@@ -31,12 +31,17 @@ void gast_laden() {
         int c1 = l.indexOf(',');
         int c2 = l.indexOf(',', c1 + 1);
         if (c1 < 0 || c2 < 0) continue;
+        // c3 (niveau) is nieuw sinds dit veld erbij kwam — ontbreekt het
+        // (oudere opslag), dan is dat een gastcode van vóór de rechtenniveaus
+        // en valt hij terug op NIVEAU_GAST (het toenmalige enige niveau).
+        int c3 = l.indexOf(',', c2 + 1);
         GastPin& g = gast_pin[gast_pin_cnt];
         strncpy(g.code, l.substring(0, c1).c_str(), GAST_CODE_LEN - 1);
         g.code[GAST_CODE_LEN - 1] = '\0';
         strncpy(g.naam, l.substring(c1 + 1, c2).c_str(), GAST_NAAM_LEN - 1);
         g.naam[GAST_NAAM_LEN - 1] = '\0';
-        g.verloopt = (uint32_t)l.substring(c2 + 1).toInt();
+        g.verloopt = (uint32_t)l.substring(c2 + 1, c3 < 0 ? l.length() : c3).toInt();
+        g.niveau = (c3 < 0) ? NIVEAU_GAST : (uint8_t)constrain(l.substring(c3 + 1).toInt(), NIVEAU_GAST, NIVEAU_DELER);
         gast_pin_cnt++;
     }
     f.close();
@@ -47,8 +52,8 @@ bool gast_opslaan() {
     if (!f) return false;
     bool schrijf_ok = true;
     for (int i = 0; i < gast_pin_cnt; i++) {
-        if (f.printf("%s,%s,%lu\n", gast_pin[i].code, gast_pin[i].naam,
-                     (unsigned long)gast_pin[i].verloopt) <= 0)
+        if (f.printf("%s,%s,%lu,%u\n", gast_pin[i].code, gast_pin[i].naam,
+                     (unsigned long)gast_pin[i].verloopt, (unsigned)gast_pin[i].niveau) <= 0)
             schrijf_ok = false;
     }
     f.close();
@@ -62,9 +67,9 @@ bool gast_opslaan() {
     bool lees_ok = true;
     for (int i = 0; i < gast_pin_cnt; i++) {
         String l = r.readStringUntil('\n'); l.trim();
-        char verwacht[40];
-        snprintf(verwacht, sizeof(verwacht), "%s,%s,%lu", gast_pin[i].code, gast_pin[i].naam,
-                 (unsigned long)gast_pin[i].verloopt);
+        char verwacht[48];
+        snprintf(verwacht, sizeof(verwacht), "%s,%s,%lu,%u", gast_pin[i].code, gast_pin[i].naam,
+                 (unsigned long)gast_pin[i].verloopt, (unsigned)gast_pin[i].niveau);
         if (!l.equals(verwacht)) { lees_ok = false; break; }
     }
     r.close();
@@ -77,7 +82,14 @@ static bool _gast_verlopen(const GastPin& g) {
     return (uint32_t)time(nullptr) >= g.verloopt;
 }
 
-bool gast_toevoegen(uint32_t verloopt, const char* naam, char* code_out, size_t code_out_len) {
+static void _gast_naam_zet(char* dst, const char* naam) {
+    // Komma's in de naam zouden de CSV-opslag breken (geen vrij veld erna) —
+    // vervangen door spaties i.p.v. een aparte parser te bouwen.
+    strncpy(dst, naam ? naam : "", GAST_NAAM_LEN - 1); dst[GAST_NAAM_LEN - 1] = '\0';
+    for (char* p = dst; *p; p++) if (*p == ',') *p = ' ';
+}
+
+bool gast_toevoegen(uint32_t verloopt, const char* naam, uint8_t niveau, char* code_out, size_t code_out_len) {
     if (!_gast_buf_klaar()) return false;
     if (gast_pin_cnt >= GAST_MAX) return false;
     char eigen[5]; pin_lezen_pub(eigen, sizeof(eigen));
@@ -92,11 +104,9 @@ bool gast_toevoegen(uint32_t verloopt, const char* naam, char* code_out, size_t 
 
         GastPin& g = gast_pin[gast_pin_cnt];
         strncpy(g.code, code, sizeof(g.code) - 1); g.code[sizeof(g.code) - 1] = '\0';
-        // Komma's in de naam zouden de CSV-opslag breken (geen vrij veld
-        // erna) — vervangen door spaties i.p.v. een aparte parser te bouwen.
-        strncpy(g.naam, naam ? naam : "", GAST_NAAM_LEN - 1); g.naam[GAST_NAAM_LEN - 1] = '\0';
-        for (char* p = g.naam; *p; p++) if (*p == ',') *p = ' ';
+        _gast_naam_zet(g.naam, naam);
         g.verloopt = verloopt;
+        g.niveau = (uint8_t)constrain((int)niveau, NIVEAU_GAST, NIVEAU_DELER);
         gast_pin_cnt++;
 
         if (code_out && code_out_len > 0) {
@@ -106,6 +116,15 @@ bool gast_toevoegen(uint32_t verloopt, const char* naam, char* code_out, size_t 
         return gast_opslaan();
     }
     return false;  // (nagenoeg onmogelijk bij max 20 codes) geen vrije code binnen 200 pogingen
+}
+
+bool gast_bewerken(int idx, const char* naam, uint32_t verloopt, uint8_t niveau) {
+    if (idx < 0 || idx >= gast_pin_cnt) return false;
+    GastPin& g = gast_pin[idx];
+    _gast_naam_zet(g.naam, naam);
+    g.verloopt = verloopt;
+    g.niveau = (uint8_t)constrain((int)niveau, NIVEAU_GAST, NIVEAU_DELER);
+    return gast_opslaan();
 }
 
 void gast_verwijderen(int idx) {
@@ -129,14 +148,24 @@ void gast_resterend_tekst(int idx, char* buf, size_t buflen) {
     else           snprintf(buf, buflen, "%lduur", uren);
 }
 
+const char* niveau_naam(int niveau) {
+    switch (niveau) {
+        case NIVEAU_GAST:     return "GAST";
+        case NIVEAU_LOGE:     return "LOGE";
+        case NIVEAU_DELER:    return "DELER";
+        case NIVEAU_EIGENAAR: return "EIGENAAR";
+        default:              return "GEEN";
+    }
+}
+
 int pin_niveau(const char* ingevoerde_code) {
-    if (!ingevoerde_code || strlen(ingevoerde_code) != 4) return GAST_NIVEAU_GEEN;
+    if (!ingevoerde_code || strlen(ingevoerde_code) != 4) return NIVEAU_GEEN;
     char eigen[5]; pin_lezen_pub(eigen, sizeof(eigen));
-    if (strcmp(ingevoerde_code, eigen) == 0) return GAST_NIVEAU_EIGENAAR;
-    if (!gast_pin) return GAST_NIVEAU_GEEN;
+    if (strcmp(ingevoerde_code, eigen) == 0) return NIVEAU_EIGENAAR;
+    if (!gast_pin) return NIVEAU_GEEN;
     for (int i = 0; i < gast_pin_cnt; i++) {
         if (strcmp(gast_pin[i].code, ingevoerde_code) == 0)
-            return _gast_verlopen(gast_pin[i]) ? GAST_NIVEAU_GEEN : GAST_NIVEAU_GAST;
+            return _gast_verlopen(gast_pin[i]) ? NIVEAU_GEEN : gast_pin[i].niveau;
     }
-    return GAST_NIVEAU_GEEN;
+    return NIVEAU_GEEN;
 }

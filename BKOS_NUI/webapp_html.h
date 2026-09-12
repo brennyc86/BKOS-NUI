@@ -68,6 +68,7 @@ button.pbtn{
 }
 button.pbtn.mix{background:#3a2a06;color:var(--amber);border-color:var(--amber);}
 button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);}
+button.pbtn.locked, button.sw:disabled{opacity:.5;}
 
 .iorow{
   display:flex;align-items:center;gap:10px;
@@ -289,10 +290,16 @@ button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);
 
       <section>
         <h2>Gasten pincodes</h2>
-        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Tijdelijke code voor bezoek: toegang tot HUIS+BOOT, niet tot IO/FOTOS/INSTELLINGEN.</p>
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">GAST = HUIS+BOOT. LOGE = ook kanalen die minimaal LOGE vereisen (bv. een slot). DELER = ook kanalen die minimaal DELER vereisen. Nooit IO/FOTOS/INSTELLINGEN — dat blijft de eigenaar.</p>
         <input id="gastNaam" type="text" placeholder="naam (optioneel)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+        <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Niveau</label>
+        <div class="grid3" id="gastNiveauKeuze" style="margin-bottom:8px;"></div>
+        <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Geldigheid</label>
         <div class="grid3" id="gastDuurKeuze" style="margin-bottom:8px;"></div>
-        <button class="mbtn" onclick="gastToevoegen()">CODE AANMAKEN</button>
+        <div class="grid2">
+          <button class="mbtn" id="gastActieBtn" onclick="gastActie()">CODE AANMAKEN</button>
+          <button class="mbtn" id="gastAnnuleerBtn" onclick="gastFormReset()" style="display:none;">ANNULEER</button>
+        </div>
         <div id="gastMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
         <div id="gastLijst" style="margin-top:8px;"></div>
       </section>
@@ -341,6 +348,10 @@ var lampData = {hoofdAanwezig:false,hoofdAan:false,kleur:0,overrule:-1,items:[]}
 // server bepaalt dit (pin_niveau() in gast.h), de client verbergt alleen de
 // tabbladen die toch niets zouden mogen doen; échte afdwinging gebeurt altijd
 // serverkant (WebSocket-commando's en HTTP-routes checken zelf opnieuw).
+// Zelfde 4 rechtenniveaus als gast.h (server bepaalt/handhaaft dit altijd
+// opnieuw — deze constanten zijn puur voor leesbare UI-vergelijkingen).
+var NIVEAU_GEEN = 0, NIVEAU_GAST = 1, NIVEAU_LOGE = 2, NIVEAU_DELER = 3, NIVEAU_EIGENAAR = 4;
+var NIVEAU_NAMEN = ['GEEN', 'GAST', 'LOGE', 'DELER', 'EIGENAAR'];
 var niveau = 0;
 var actieveTab = 'huis';
 var berichtOpen = true;
@@ -413,7 +424,7 @@ function setLock(on, niv){
   // Een gastcode (niveau 1) mag alleen HUIS+BOOT — IO/FOTOS/INSTELLINGEN
   // blijven voor de eigenaar (niveau 2). Server dwingt dit sowieso zelf af;
   // dit is puur zodat een gast geen tabblad ziet dat toch niets zou doen.
-  var eigenaar = (niveau >= 2);
+  var eigenaar = (niveau >= NIVEAU_EIGENAAR);
   document.getElementById('tabBtnIo').style.display = eigenaar ? '' : 'none';
   document.getElementById('tabBtnFotos').style.display = eigenaar ? '' : 'none';
   document.getElementById('tabBtnInstellingen').style.display = eigenaar ? '' : 'none';
@@ -466,6 +477,8 @@ function handleMsg(msg){
       gastData = msg.items || []; renderGast(); break;
     case 'gast_nieuw':
       renderGastNieuw(msg); break;
+    case 'gast_bewerkt':
+      renderGastBewerkt(msg); break;
     case 'pin_wijzig_res':
       renderPinRes(msg.ok); break;
     case 'auth_ok':
@@ -547,6 +560,11 @@ function renderHuis(){
     return;
   }
   box.innerHTML = lampData.items.map(function(l){
+    var minNiveau = l.minNiveau || NIVEAU_GAST;
+    if (niveau < minNiveau) {
+      return '<div class="iorow"><div class="naam">&#128274; ' + esc(l.naam) + '</div>' +
+             '<button class="sw" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">' + esc(NIVEAU_NAMEN[minNiveau]) + '</button></div>';
+    }
     return '<div class="iorow"><div class="naam">' + esc(l.naam) + '</div>' +
            '<button class="sw' + (l.aan?' aan':'') + '" onclick="lampToggle(' + l.nr + ')">' + (l.aan?'AAN':'UIT') + '</button></div>';
   }).join('');
@@ -557,6 +575,10 @@ function renderPaneel(){
   if (!paneelData.length){ sec.style.display = 'none'; return; }
   sec.style.display = '';
   document.getElementById('paneelGrid').innerHTML = paneelData.map(function(p, i){
+    var minNiveau = p.minNiveau || NIVEAU_GAST;
+    if (niveau < minNiveau) {
+      return '<button class="pbtn locked" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">&#128274; ' + esc(p.naam) + '</button>';
+    }
     var cls = p.staat === 2 ? 'aan' : (p.staat === 1 ? 'mix' : '');
     return '<button class="pbtn ' + cls + '" onclick="togglePaneel(' + i + ')">' + esc(p.naam) + '</button>';
   }).join('');
@@ -988,36 +1010,75 @@ var GAST_DUUR_OPTIES = [
   {lbl:'ONBEPERKT', dagen:0}, {lbl:'1 DAG', dagen:1}, {lbl:'3 DAGEN', dagen:3},
   {lbl:'7 DAGEN', dagen:7}, {lbl:'30 DAGEN', dagen:30}
 ];
+var GAST_NIVEAU_OPTIES = [NIVEAU_GAST, NIVEAU_LOGE, NIVEAU_DELER];
 var gastDuurIdx = 0;
+var gastNiveau = NIVEAU_GAST;
+var gastBewerkIdx = -1;  // -1 = nieuwe code aanmaken, anders index in gastData die bewerkt wordt
+
 function renderGastDuur(){
   document.getElementById('gastDuurKeuze').innerHTML = GAST_DUUR_OPTIES.map(function(o, i){
     return '<button class="mbtn' + (gastDuurIdx===i?' active':'') + '" onclick="gastDuurKiezen(' + i + ')">' + o.lbl + '</button>';
   }).join('');
 }
 function gastDuurKiezen(i){ gastDuurIdx = i; renderGastDuur(); }
+function renderGastNiveau(){
+  document.getElementById('gastNiveauKeuze').innerHTML = GAST_NIVEAU_OPTIES.map(function(n){
+    return '<button class="mbtn' + (gastNiveau===n?' active':'') + '" onclick="gastNiveauKiezen(' + n + ')">' + NIVEAU_NAMEN[n] + '</button>';
+  }).join('');
+}
+function gastNiveauKiezen(n){ gastNiveau = n; renderGastNiveau(); }
 renderGastDuur();
+renderGastNiveau();
 
 function gastLaden(){ send({t:'gast_get'}); }
 function renderGast(){
   var box = document.getElementById('gastLijst');
   if (!gastData.length){ box.innerHTML = '<div style="color:var(--text-dim);font-size:.85rem;">Nog geen gastcodes.</div>'; return; }
   box.innerHTML = gastData.map(function(g, i){
-    return '<div class="filerow"><div class="naam">' + esc(g.code) + (g.naam ? (' — ' + esc(g.naam)) : '') + '</div>' +
+    return '<div class="filerow" onclick="gastBewerken(' + i + ')" style="cursor:pointer;">' +
+           '<div class="naam">' + esc(g.code) + (g.naam ? (' — ' + esc(g.naam)) : '') + ' &middot; ' + esc(g.niveauNaam) + '</div>' +
            '<div class="grootte">' + esc(g.resterend) + '</div>' +
-           '<button class="del" onclick="gastVerwijderen(' + i + ')">WISSEN</button></div>';
+           '<button class="del" onclick="event.stopPropagation();gastVerwijderen(' + i + ')">WISSEN</button></div>';
   }).join('');
 }
-function gastToevoegen(){
+function gastFormReset(){
+  gastBewerkIdx = -1;
+  document.getElementById('gastNaam').value = '';
+  gastDuurIdx = 0; gastNiveau = NIVEAU_GAST;
+  renderGastDuur(); renderGastNiveau();
+  document.getElementById('gastActieBtn').textContent = 'CODE AANMAKEN';
+  document.getElementById('gastAnnuleerBtn').style.display = 'none';
+  document.getElementById('gastMelding').textContent = '';
+}
+function gastBewerken(i){
+  var g = gastData[i];
+  if (!g) return;
+  gastBewerkIdx = i;
+  document.getElementById('gastNaam').value = g.naam || '';
+  gastNiveau = g.niveau || NIVEAU_GAST;
+  // De precieze resterende duur laat zich niet 1-op-1 terugvertalen naar een
+  // van de vaste duur-knoppen — standaard op ONBEPERKT laten staan, tenzij de
+  // code al verlopen/tijdelijk is; de gebruiker kiest bij bewerken gewoon
+  // opnieuw een duur (telt vanaf nu, niet vanaf de oorspronkelijke aanmaak).
+  gastDuurIdx = 0;
+  renderGastDuur(); renderGastNiveau();
+  document.getElementById('gastActieBtn').textContent = 'WIJZIGEN OPSLAAN';
+  document.getElementById('gastAnnuleerBtn').style.display = '';
+  var el = document.getElementById('gastMelding');
+  el.style.color = ''; el.textContent = 'Code ' + g.code + ' bewerken — kies evt. een nieuwe geldigheidsduur (telt vanaf nu).';
+}
+function gastActie(){
   if (needAuth()) return;
   var naam = document.getElementById('gastNaam').value;
-  send({t:'gast_toevoegen', naam:naam, dagen:GAST_DUUR_OPTIES[gastDuurIdx].dagen});
+  var dagen = GAST_DUUR_OPTIES[gastDuurIdx].dagen;
+  if (gastBewerkIdx < 0) send({t:'gast_toevoegen', naam:naam, dagen:dagen, niveau:gastNiveau});
+  else send({t:'gast_bewerken', idx:gastBewerkIdx, naam:naam, dagen:dagen, niveau:gastNiveau});
 }
 function renderGastNieuw(msg){
   var el = document.getElementById('gastMelding');
   if (msg.ok) {
     el.style.color = 'var(--green)'; el.textContent = 'Nieuwe code: ' + msg.code + ' — geef door aan de gast.';
-    document.getElementById('gastNaam').value = '';
-    gastDuurIdx = 0; renderGastDuur();
+    gastFormReset();
     gastLaden();
   } else {
     var reden = msg.reden === 'tijd' ? 'tijd nog onbekend, kies ONBEPERKT'
@@ -1025,8 +1086,20 @@ function renderGastNieuw(msg){
     el.style.color = 'var(--red)'; el.textContent = 'Aanmaken mislukt (' + reden + ').';
   }
 }
+function renderGastBewerkt(msg){
+  var el = document.getElementById('gastMelding');
+  if (msg.ok) {
+    el.style.color = 'var(--green)'; el.textContent = 'Gewijzigd.';
+    gastFormReset();
+    gastLaden();
+  } else {
+    var reden = msg.reden === 'tijd' ? 'tijd nog onbekend, kies ONBEPERKT' : 'onbekende fout';
+    el.style.color = 'var(--red)'; el.textContent = 'Wijzigen mislukt (' + reden + ').';
+  }
+}
 function gastVerwijderen(i){
   if (needAuth()) return;
+  if (gastBewerkIdx === i) gastFormReset();
   send({t:'gast_verwijderen', idx:i});
 }
 

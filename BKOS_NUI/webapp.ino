@@ -49,10 +49,10 @@ static int _pin_niveau_van(const String& ingevoerd) {
     return pin_niveau(ingevoerd.c_str());
 }
 static bool _pin_ok(const String& ingevoerd) {
-    return _pin_niveau_van(ingevoerd) >= GAST_NIVEAU_GAST;
+    return _pin_niveau_van(ingevoerd) >= NIVEAU_GAST;
 }
 static bool _pin_eigenaar(const String& ingevoerd) {
-    return _pin_niveau_van(ingevoerd) >= GAST_NIVEAU_EIGENAAR;
+    return _pin_niveau_van(ingevoerd) >= NIVEAU_EIGENAAR;
 }
 
 // ─── Foto-upload: opgebouwd in een groeiende heap-buffer tijdens het
@@ -128,7 +128,7 @@ void webapp_setup() {
     // te bevestigen (of net zo stil weer te vergeten als 'm niet meer klopt).
     _http.on("/verify", HTTP_POST, []() {
         int niveau = _pin_niveau_van(_http.arg("pin"));
-        String s = "{\"ok\":"; s += (niveau > GAST_NIVEAU_GEEN) ? "true" : "false";
+        String s = "{\"ok\":"; s += (niveau > NIVEAU_GEEN) ? "true" : "false";
         s += ",\"niveau\":"; s += niveau; s += '}';
         _http.send(200, "application/json", s);
     });

@@ -71,6 +71,14 @@ bool io_hoofdverlichting_aanwezig();       // bestaat er zo'n kanaal? (tegel all
 bool io_hoofdverlichting_aan();            // effectieve aan-stand, zelfde aanpak als io_lamp_effectief_aan()
 void io_hoofdverlichting_toggle();         // wisselt interieur_modus tussen UIT en AUTO
 
+// Minimaal rechtenniveau (NIVEAU_GAST/LOGE/DELER/EIGENAAR, gast.h) om een
+// apparaat/lampgroep via naam te mogen schakelen — het maximum (strengste)
+// van alle fysieke kanalen die bij die naam/dat lampnummer horen, of
+// NIVEAU_GAST als er geen match is of geen enkel kanaal een hoger niveau
+// vereist. Gebruikt door bkos_client.ino vóór paneel_toggle/lamp_toggle.
+int io_min_niveau_voor_naam(const char* naam);
+int io_min_niveau_voor_lamp(int nr);
+
 void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
 void  io_attiny_slaap(bool aan);   // ATtiny slaap/wake commando via UART
 int         io_zichtbaar();

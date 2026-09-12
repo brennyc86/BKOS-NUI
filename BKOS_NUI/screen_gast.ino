@@ -12,10 +12,13 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define GA_UITLEG_H  32
 #define GA_NAAM_Y    (CONTENT_Y + GA_HDR_H + GA_UITLEG_H)
 #define GA_NAAM_H    36
-#define GA_DUUR_Y    (GA_NAAM_Y + GA_NAAM_H + 6)
+#define GA_NIVEAU_Y  (GA_NAAM_Y + GA_NAAM_H + 6)
+#define GA_NIVEAU_H  36
+#define GA_DUUR_Y    (GA_NIVEAU_Y + GA_NIVEAU_H + 6)
 #define GA_DUUR_H    36
 #define GA_TOEVOEGEN_Y (GA_DUUR_Y + GA_DUUR_H + 6)
 #define GA_TOEVOEGEN_H 40
+#define GA_ANNULEER_W  110
 #define GA_LIST_TOP  (GA_TOEVOEGEN_Y + GA_TOEVOEGEN_H + 10)
 #define GA_ROW_H     44
 #define GA_DEL_W     70
@@ -24,14 +27,26 @@ static const char* GA_DUUR_LBL[] = {"ONBEPERKT", "1 DAG", "3 DAGEN", "7 DAGEN", 
 static const long  GA_DUUR_DAGEN[] = {0, 1, 3, 7, 30};
 #define GA_DUUR_CNT 5
 
+static const uint8_t GA_NIVEAU_OPTIES[] = {NIVEAU_GAST, NIVEAU_LOGE, NIVEAU_DELER};
+#define GA_NIVEAU_CNT 3
+
 static bool ga_kb_actief = false;
-static char ga_nieuw_naam[GAST_NAAM_LEN] = "";
+static char ga_naam[GAST_NAAM_LEN] = "";
 static int  ga_duur_idx = 0;
+static uint8_t ga_niveau = NIVEAU_GAST;
+static int  ga_bewerk_idx = -1;   // -1 = nieuwe code, anders index in gast_pin[] die bewerkt wordt
 static int  ga_scroll_y = 0;
 static int  ga_max_scroll = 0;
 static unsigned long ga_flits_tot = 0;
 static bool ga_flits_fout = false;
-static char ga_flits_msg[48] = "";
+static char ga_flits_msg[40] = "";
+
+static void _ga_form_reset() {
+    ga_bewerk_idx = -1;
+    ga_naam[0] = '\0';
+    ga_duur_idx = 0;
+    ga_niveau = NIVEAU_GAST;
+}
 
 void screen_gast_teken() {
     if (ga_kb_actief) { screen_config_toetsenbord_teken(); nav_bar_teken(); return; }
@@ -44,17 +59,33 @@ void screen_gast_teken() {
 
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(10, CONTENT_Y + GA_HDR_H + 6);
-    tft.print("Tijdelijke code voor bezoek: toegang tot HUIS+BOOT in de webapp,");
+    tft.print("GAST=HUIS+BOOT. LOGE/DELER krijgen ook kanalen die dat niveau vereisen");
     tft.setCursor(10, CONTENT_Y + GA_HDR_H + 18);
-    tft.print("niet tot IO, foto's of instellingen.");
+    tft.print("(bv. een slot). Nooit IO/foto's/instellingen — dat blijft de eigenaar.");
 
     // Naam (optioneel)
     tft.fillRoundRect(8, GA_NAAM_Y, TFT_W - 16, GA_NAAM_H - 4, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(16, GA_NAAM_Y + (GA_NAAM_H - 4 - 8) / 2); tft.print("Naam (optioneel):");
-    tft.setTextSize(2); tft.setTextColor(ga_nieuw_naam[0] ? C_TEXT : C_DARK_GRAY);
+    tft.setTextSize(2); tft.setTextColor(ga_naam[0] ? C_TEXT : C_DARK_GRAY);
     tft.setCursor(220, GA_NAAM_Y + (GA_NAAM_H - 4 - 16) / 2);
-    tft.print(ga_nieuw_naam[0] ? ga_nieuw_naam : "(tik om te typen)");
+    tft.print(ga_naam[0] ? ga_naam : "(tik om te typen)");
+
+    // Niveau — 3 pills
+    {
+        int w = (TFT_W - 16 - (GA_NIVEAU_CNT - 1) * 6) / GA_NIVEAU_CNT;
+        for (int i = 0; i < GA_NIVEAU_CNT; i++) {
+            int bx = 8 + i * (w + 6);
+            bool sel = (ga_niveau == GA_NIVEAU_OPTIES[i]);
+            tft.fillRoundRect(bx, GA_NIVEAU_Y, w, GA_NIVEAU_H - 4, 5, sel ? C_CYAN : C_SURFACE2);
+            if (sel) tft.drawRoundRect(bx, GA_NIVEAU_Y, w, GA_NIVEAU_H - 4, 5, C_WHITE);
+            tft.setTextSize(1); tft.setTextColor(sel ? C_TEXT_DARK : C_TEXT_DIM);
+            const char* lbl = niveau_naam(GA_NIVEAU_OPTIES[i]);
+            int tw = strlen(lbl) * 6;
+            tft.setCursor(bx + max(2, (w - tw) / 2), GA_NIVEAU_Y + (GA_NIVEAU_H - 4 - 8) / 2);
+            tft.print(lbl);
+        }
+    }
 
     // Duur — 5 pills
     {
@@ -71,19 +102,27 @@ void screen_gast_teken() {
         }
     }
 
-    // Toevoegen-knop
+    // Actie-knop (aanmaken of wijzigen) [+ annuleren als we een bestaande code bewerken]
     bool tijd_probleem = (!ntp_synced() && ga_duur_idx != 0);
-    bool vol = (gast_pin_cnt >= GAST_MAX);
-    bool kan_toevoegen = !tijd_probleem && !vol;
-    tft.fillRoundRect(8, GA_TOEVOEGEN_Y, TFT_W - 16, GA_TOEVOEGEN_H - 4, 6,
-                       kan_toevoegen ? C_CYAN : C_SURFACE3);
-    tft.setTextSize(2); tft.setTextColor(kan_toevoegen ? C_BG : C_TEXT_DIM);
-    const char* tlbl = vol ? "MAXIMUM (20) BEREIKT" : tijd_probleem ? "TIJD NOG ONBEKEND" : "CODE AANMAKEN";
+    bool vol = (ga_bewerk_idx < 0 && gast_pin_cnt >= GAST_MAX);
+    bool kan = !tijd_probleem && !vol;
+    int actie_w = (ga_bewerk_idx >= 0) ? (TFT_W - 16 - GA_ANNULEER_W - 8) : (TFT_W - 16);
+    tft.fillRoundRect(8, GA_TOEVOEGEN_Y, actie_w, GA_TOEVOEGEN_H - 4, 6, kan ? C_CYAN : C_SURFACE3);
+    tft.setTextSize(2); tft.setTextColor(kan ? C_BG : C_TEXT_DIM);
+    const char* tlbl = vol ? "MAXIMUM (20) BEREIKT" : tijd_probleem ? "TIJD NOG ONBEKEND"
+                     : (ga_bewerk_idx >= 0) ? "WIJZIGEN OPSLAAN" : "CODE AANMAKEN";
     int ttw = strlen(tlbl) * 12;
-    tft.setCursor(max(16, (TFT_W - ttw) / 2), GA_TOEVOEGEN_Y + (GA_TOEVOEGEN_H - 4 - 16) / 2);
+    tft.setCursor(8 + max(8, (actie_w - ttw) / 2), GA_TOEVOEGEN_Y + (GA_TOEVOEGEN_H - 4 - 16) / 2);
     tft.print(tlbl);
+    if (ga_bewerk_idx >= 0) {
+        int abx = 8 + actie_w + 8;
+        tft.fillRoundRect(abx, GA_TOEVOEGEN_Y, GA_ANNULEER_W, GA_TOEVOEGEN_H - 4, 6, C_SURFACE3);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(abx + (GA_ANNULEER_W - 8 * 6) / 2, GA_TOEVOEGEN_Y + (GA_TOEVOEGEN_H - 4 - 8) / 2);
+        tft.print("ANNULEER");
+    }
 
-    // Lijst bestaande codes
+    // Lijst bestaande codes — tik op een rij (buiten WISSEN) om 'm te bewerken
     int y0 = GA_LIST_TOP - ga_scroll_y;
     if (gast_pin_cnt == 0) {
         tft.setTextColor(C_DARK_GRAY);
@@ -93,16 +132,18 @@ void screen_gast_teken() {
         for (int i = 0; i < gast_pin_cnt; i++) {
             int ry = y0 + i * GA_ROW_H;
             if (ry + GA_ROW_H <= GA_LIST_TOP || ry >= NAV_Y) continue;
-            tft.fillRect(8, ry, TFT_W - 16, GA_ROW_H - 4, (i % 2 == 0) ? C_SURFACE : C_BG);
+            tft.fillRect(8, ry, TFT_W - 16, GA_ROW_H - 4, (ga_bewerk_idx == i) ? C_SURFACE3 : ((i % 2 == 0) ? C_SURFACE : C_BG));
 
             tft.setTextSize(2); tft.setTextColor(C_CYAN);
             tft.setCursor(16, ry + 6); tft.print(gast_pin[i].code);
 
             tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
             char resterend[24]; gast_resterend_tekst(i, resterend, sizeof(resterend));
-            char regel[GAST_NAAM_LEN + 26];
-            if (gast_pin[i].naam[0]) snprintf(regel, sizeof(regel), "%s — %s", gast_pin[i].naam, resterend);
-            else                     snprintf(regel, sizeof(regel), "%s", resterend);
+            char regel[GAST_NAAM_LEN + 40];
+            if (gast_pin[i].naam[0])
+                snprintf(regel, sizeof(regel), "%s (%s) - %s", gast_pin[i].naam, niveau_naam(gast_pin[i].niveau), resterend);
+            else
+                snprintf(regel, sizeof(regel), "(%s) - %s", niveau_naam(gast_pin[i].niveau), resterend);
             tft.setCursor(96, ry + 10); tft.print(regel);
 
             int dbx = TFT_W - 16 - GA_DEL_W;
@@ -129,7 +170,7 @@ void screen_gast_teken() {
 }
 
 static void _ga_open_kb() {
-    strncpy(cfg_invoer, ga_nieuw_naam, CFG_INVOER_LEN - 1); cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
+    strncpy(cfg_invoer, ga_naam, CFG_INVOER_LEN - 1); cfg_invoer[CFG_INVOER_LEN - 1] = '\0';
     snprintf(cfg_kb_label, 24, "Naam gast:");
     cfg_kb_numeriek  = false;
     cfg_kb_wachtwoord = false;
@@ -146,8 +187,8 @@ void screen_gast_run(int x, int y, bool aanraking) {
     if (ga_kb_actief) {
         if (screen_config_toetsenbord_run(x, y)) {
             if (cfg_kb_opgeslagen) {
-                strncpy(ga_nieuw_naam, cfg_invoer, GAST_NAAM_LEN - 1);
-                ga_nieuw_naam[GAST_NAAM_LEN - 1] = '\0';
+                strncpy(ga_naam, cfg_invoer, GAST_NAAM_LEN - 1);
+                ga_naam[GAST_NAAM_LEN - 1] = '\0';
             }
             ga_kb_actief  = false;
             cfg_kb_chips  = false;
@@ -177,6 +218,13 @@ void screen_gast_run(int x, int y, bool aanraking) {
 
     if (y >= GA_NAAM_Y && y < GA_NAAM_Y + GA_NAAM_H - 4) { _ga_open_kb(); return; }
 
+    if (y >= GA_NIVEAU_Y && y < GA_NIVEAU_Y + GA_NIVEAU_H - 4) {
+        int w = (TFT_W - 16 - (GA_NIVEAU_CNT - 1) * 6) / GA_NIVEAU_CNT;
+        int idx = (x - 8) / (w + 6);
+        if (idx >= 0 && idx < GA_NIVEAU_CNT) { ga_niveau = GA_NIVEAU_OPTIES[idx]; screen_gast_teken(); }
+        return;
+    }
+
     if (y >= GA_DUUR_Y && y < GA_DUUR_Y + GA_DUUR_H - 4) {
         int w = (TFT_W - 16 - (GA_DUUR_CNT - 1) * 6) / GA_DUUR_CNT;
         int idx = (x - 8) / (w + 6);
@@ -185,26 +233,35 @@ void screen_gast_run(int x, int y, bool aanraking) {
     }
 
     if (y >= GA_TOEVOEGEN_Y && y < GA_TOEVOEGEN_Y + GA_TOEVOEGEN_H - 4) {
+        bool actie_w_annuleer = (ga_bewerk_idx >= 0);
+        int actie_w = actie_w_annuleer ? (TFT_W - 16 - GA_ANNULEER_W - 8) : (TFT_W - 16);
+        if (actie_w_annuleer && x >= 8 + actie_w + 8) {
+            _ga_form_reset();
+            screen_gast_teken();
+            return;
+        }
         if (!ntp_synced() && ga_duur_idx != 0) {
             ga_flits_fout = true;
-            snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Tijd nog onbekend — kies ONBEPERKT");
+            snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Tijd onbekend: kies ONBEPERKT");
             ga_flits_tot = millis() + 3000;
             screen_gast_teken();
             return;
         }
-        if (gast_pin_cnt >= GAST_MAX) return;
         uint32_t verloopt = (ga_duur_idx == 0) ? 0
                            : (uint32_t)time(nullptr) + (uint32_t)GA_DUUR_DAGEN[ga_duur_idx] * 86400UL;
-        char code[GAST_CODE_LEN];
-        bool ok = gast_toevoegen(verloopt, ga_nieuw_naam, code, sizeof(code));
-        ga_flits_fout = !ok;
-        if (ok) {
-            snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Nieuwe code: %s — geef door aan de gast", code);
-            ga_nieuw_naam[0] = '\0';
-            ga_duur_idx = 0;
+        bool ok;
+        if (ga_bewerk_idx >= 0) {
+            ok = gast_bewerken(ga_bewerk_idx, ga_naam, verloopt, ga_niveau);
+            snprintf(ga_flits_msg, sizeof(ga_flits_msg), "%s", ok ? "Gewijzigd" : "Wijzigen mislukt (opslag vol?)");
         } else {
-            snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Aanmaken mislukt (opslag vol?)");
+            if (gast_pin_cnt >= GAST_MAX) return;
+            char code[GAST_CODE_LEN];
+            ok = gast_toevoegen(verloopt, ga_naam, ga_niveau, code, sizeof(code));
+            if (ok) snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Nieuwe code: %s", code);
+            else    snprintf(ga_flits_msg, sizeof(ga_flits_msg), "Aanmaken mislukt (vol?)");
         }
+        ga_flits_fout = !ok;
+        if (ok) _ga_form_reset();
         ga_flits_tot = millis() + 6000;
         screen_gast_teken();
         return;
@@ -216,7 +273,17 @@ void screen_gast_run(int x, int y, bool aanraking) {
     int r = (y - y0) / GA_ROW_H;
     if (r < 0 || r >= gast_pin_cnt) return;
     if (x >= TFT_W - 16 - GA_DEL_W) {
+        bool was_bewerkt = (ga_bewerk_idx == r);
         gast_verwijderen(r);
+        if (was_bewerkt || ga_bewerk_idx > r) _ga_form_reset();
+        screen_gast_teken();
+    } else {
+        // Bestaande code bewerken: vult het formulier hierboven — de code zelf
+        // blijft ongewijzigd, alleen naam/duur/niveau zijn aan te passen.
+        ga_bewerk_idx = r;
+        strncpy(ga_naam, gast_pin[r].naam, GAST_NAAM_LEN - 1); ga_naam[GAST_NAAM_LEN - 1] = '\0';
+        ga_niveau = gast_pin[r].niveau;
+        ga_duur_idx = 0;  // resterende duur laat zich niet 1-op-1 terugvertalen; telt bij opslaan opnieuw vanaf nu
         screen_gast_teken();
     }
 }

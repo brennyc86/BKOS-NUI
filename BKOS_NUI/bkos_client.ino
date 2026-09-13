@@ -74,7 +74,13 @@ static String _io_full_json() {
 
 static String _state_json() {
     String s = F("{\"t\":\"state\",\"m\":");
-    s += vaar_modus; s += F(",\"l\":"); s += licht_instelling; s += '}';
+    s += vaar_modus; s += F(",\"l\":"); s += licht_instelling;
+    // "h": welk "thuis"-scherm het laatst actief was op het apparaat zelf
+    // (SCREEN_MAIN=0/SCREEN_HAVEN=20) — de webapp gebruikt dit om bij het
+    // inloggen meteen het bijpassende tabblad (BOOT resp. HUIS) te openen
+    // i.p.v. altijd op INFO te blijven staan.
+    s += F(",\"h\":"); s += (laatste_hoofdscherm == SCREEN_HAVEN) ? 1 : 0;
+    s += '}';
     return s;
 }
 

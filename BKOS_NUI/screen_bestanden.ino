@@ -339,7 +339,15 @@ void screen_bestanden_teken() {
 
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(10, BF_INFO_Y);
-    if (WiFi.status() == WL_CONNECTED) {
+    // Vóór deze fix claimde dit scherm tijdens een actieve hotspot ten onrechte
+    // "geen WiFi-verbinding" (WL_CONNECTED slaat alleen op een STA-verbinding
+    // met een extern netwerk) — terwijl de webapp dan juist wél bereikbaar is,
+    // op het hotspot-eigen IP. Belangrijk als het automatische "log in op
+    // netwerk"-popupje bij het verbinden een keer niet verschijnt: dan is dit
+    // IP het handmatige alternatief.
+    if (wifi_hotspot_actief()) {
+        tft.print("Webapp: http://"); tft.print(WiFi.softAPIP().toString()); tft.print("/fotos");
+    } else if (WiFi.status() == WL_CONNECTED) {
         tft.print("Webapp: http://"); tft.print(WiFi.localIP().toString()); tft.print("/fotos");
     } else {
         tft.print("Geen WiFi-verbinding — webapp niet bereikbaar");

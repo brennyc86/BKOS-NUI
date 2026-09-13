@@ -206,21 +206,19 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
     </section>
 
     <section>
-      <h2 style="color:var(--red);" data-i18n="kopNood">Noodgeval?</h2>
-      <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;" data-i18n="noodUitleg">Direct naar de eigenaar — geen pincode nodig. Naam en telefoonnummer zijn hier niet verplicht, maar worden meegestuurd als je ze hieronder al hebt ingevuld.</p>
-      <div class="grid2" id="noodGrid"></div>
-      <div id="noodOk" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
-    </section>
-
-    <section>
       <h2 id="berichtKop" onclick="berichtToggle()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-        <span data-i18n="kopBericht">Iets aan de hand?</span>
+        <span data-i18n="kopBericht">Berichten</span>
         <span id="berichtChevron">&#9660;</span>
       </h2>
       <div id="berichtBody">
-        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;" data-i18n="berichtUitleg">Stuur direct een berichtje naar de eigenaar — geen pincode nodig. Vul je naam en telefoonnummer in zodat de eigenaar weet van wie het is.</p>
-        <input id="berichtAfzNaam" type="text" placeholder="jouw naam" data-i18n-ph="phNaam" maxlength="19" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
-        <input id="berichtAfzTel" type="tel" placeholder="jouw telefoonnummer" data-i18n-ph="phTel" maxlength="15" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;" data-i18n="berichtUitleg">Stuur een bericht aan de eigenaar van deze boot — geen pincode nodig.</p>
+        <input id="berichtAfzNaam" type="text" placeholder="jouw naam" data-i18n-ph="phNaam" autocomplete="off" maxlength="19" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+        <input id="berichtAfzTel" type="tel" placeholder="jouw telefoonnummer" data-i18n-ph="phTel" autocomplete="off" maxlength="15" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:10px;">
+
+        <div style="font-size:.72rem;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;" data-i18n="labelNood">Noodgeval</div>
+        <div class="grid2" id="noodGrid"></div>
+        <div id="noodOk" style="font-size:.78rem;min-height:1.1em;margin:6px 0 10px;"></div>
+
         <div class="grid2" id="berichtGrid"></div>
         <div style="display:flex;gap:8px;margin-top:8px;">
           <input id="berichtVrijeTekst" type="text" placeholder="of typ zelf een bericht…" data-i18n-ph="phVrij" maxlength="70" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;">
@@ -493,7 +491,13 @@ function setLock(on, niv){
   document.getElementById('tabBtnFotos').style.display = eigenaar ? '' : 'none';
   document.getElementById('tabBtnInstellingen').style.display = eigenaar ? '' : 'none';
   var verbergTabs = eigenaar ? [] : magHuisBoot ? ['io','fotos','instellingen'] : ['huis','boot','io','fotos','instellingen'];
-  if (verbergTabs.indexOf(actieveTab) >= 0) setTab('info');
+  // Net ingelogd (dit is de enige plek waar setLock(true, ...) aangeroepen
+  // wordt): meteen naar HUIS of BOOT springen, welke van de twee ook op de
+  // boordcomputer zelf het laatst actieve "thuis"-scherm was (stateData.h,
+  // altijd al binnen vóórdat inloggen kan voltooien — zie bkos_client.ino),
+  // i.p.v. altijd op INFO te blijven staan.
+  if (on && magHuisBoot) setTab(stateData.h ? 'huis' : 'boot');
+  else if (verbergTabs.indexOf(actieveTab) >= 0) setTab('info');
   else setTab(actieveTab);
 }
 
@@ -831,90 +835,79 @@ var NOOD_VERTAAL = {
   it: ['Stai andando alla deriva','La barca non è (più) ormeggiata bene','Sta entrando acqua piovana','La tua barca sta affondando o rischia di affondare','Sei stato coinvolto in una collisione']
 };
 var I18N = {
-  nl: { ehLabel:'Eigenaar:', kopBoot:'Boot & eigenaar', kopNood:'Noodgeval?',
-    noodUitleg:'Direct naar de eigenaar — geen pincode nodig. Naam en telefoonnummer zijn hier niet verplicht, maar worden meegestuurd als je ze hieronder al hebt ingevuld.',
-    kopBericht:'Iets aan de hand?',
-    berichtUitleg:'Stuur direct een berichtje naar de eigenaar — geen pincode nodig. Vul je naam en telefoonnummer in zodat de eigenaar weet van wie het is.',
+  nl: { ehLabel:'Eigenaar:', kopBoot:'Boot & eigenaar', labelNood:'Noodgeval',
+    kopBericht:'Berichten',
+    berichtUitleg:'Stuur een bericht aan de eigenaar van deze boot.',
     phNaam:'jouw naam', phTel:'jouw telefoonnummer', phVrij:'of typ zelf een bericht…', btnStuur:'STUUR',
     okBericht:'Bericht verzonden.', okNood:'Noodmelding verzonden.', foutVerzenden:'Versturen mislukt.',
     foutNaamTel:'Vul eerst je naam en telefoonnummer in.', foutTypEerst:'Typ eerst een bericht.',
     lockedHint:'Bediening vereist de eigenaars- of een gastpincode.', ontgrendelen:'Ontgrendelen →' },
-  en: { ehLabel:'Owner:', kopBoot:'Boat & owner', kopNood:'Emergency?',
-    noodUitleg:"Goes straight to the owner — no PIN needed. Name and phone number are optional here, but will be included if you've already filled them in below.",
-    kopBericht:'Anything going on?',
-    berichtUitleg:"Send a quick message straight to the owner — no PIN needed. Fill in your name and phone number so the owner knows who it's from.",
+  en: { ehLabel:'Owner:', kopBoot:'Boat & owner', labelNood:'Emergency',
+    kopBericht:'Messages',
+    berichtUitleg:'Send a message to the owner of this boat.',
     phNaam:'your name', phTel:'your phone number', phVrij:'or type your own message…', btnStuur:'SEND',
     okBericht:'Message sent.', okNood:'Emergency message sent.', foutVerzenden:'Sending failed.',
     foutNaamTel:'Please fill in your name and phone number first.', foutTypEerst:'Please type a message first.',
     lockedHint:"Control requires the owner's or a guest PIN.", ontgrendelen:'Unlock →' },
-  de: { ehLabel:'Eigentümer:', kopBoot:'Boot & Eigentümer', kopNood:'Notfall?',
-    noodUitleg:'Geht direkt an den Eigentümer — keine PIN nötig. Name und Telefonnummer sind hier optional, werden aber mitgeschickt, wenn du sie unten schon ausgefüllt hast.',
-    kopBericht:'Ist etwas los?',
-    berichtUitleg:'Schick direkt eine Nachricht an den Eigentümer — keine PIN nötig. Trag deinen Namen und deine Telefonnummer ein, damit der Eigentümer weiß, von wem sie ist.',
+  de: { ehLabel:'Eigentümer:', kopBoot:'Boot & Eigentümer', labelNood:'Notfall',
+    kopBericht:'Nachrichten',
+    berichtUitleg:'Schick eine Nachricht an den Eigentümer dieses Boots.',
     phNaam:'dein Name', phTel:'deine Telefonnummer', phVrij:'oder schreib selbst eine Nachricht…', btnStuur:'SENDEN',
     okBericht:'Nachricht gesendet.', okNood:'Notfallmeldung gesendet.', foutVerzenden:'Senden fehlgeschlagen.',
     foutNaamTel:'Bitte zuerst Name und Telefonnummer ausfüllen.', foutTypEerst:'Bitte zuerst eine Nachricht eingeben.',
     lockedHint:'Bedienung erfordert den Eigentümer- oder einen Gast-PIN.', ontgrendelen:'Entsperren →' },
-  fr: { ehLabel:'Propriétaire :', kopBoot:'Bateau & propriétaire', kopNood:'Urgence ?',
-    noodUitleg:"Envoyé directement au propriétaire — aucun code PIN requis. Le nom et le numéro de téléphone sont facultatifs ici, mais seront inclus si vous les avez déjà renseignés ci-dessous.",
-    kopBericht:'Un problème ?',
-    berichtUitleg:"Envoyez un message directement au propriétaire — aucun code PIN requis. Indiquez votre nom et votre numéro de téléphone pour que le propriétaire sache qui l'a envoyé.",
+  fr: { ehLabel:'Propriétaire :', kopBoot:'Bateau & propriétaire', labelNood:'Urgence',
+    kopBericht:'Messages',
+    berichtUitleg:'Envoyez un message au propriétaire de ce bateau.',
     phNaam:'votre nom', phTel:'votre numéro de téléphone', phVrij:'ou écrivez votre propre message…', btnStuur:'ENVOYER',
     okBericht:'Message envoyé.', okNood:"Message d'urgence envoyé.", foutVerzenden:"Échec de l'envoi.",
     foutNaamTel:'Veuillez d\'abord indiquer votre nom et votre numéro de téléphone.', foutTypEerst:'Veuillez d\'abord écrire un message.',
     lockedHint:"La commande nécessite le code PIN du propriétaire ou d'un invité.", ontgrendelen:'Déverrouiller →' },
-  es: { ehLabel:'Propietario:', kopBoot:'Barco y propietario', kopNood:'¿Emergencia?',
-    noodUitleg:'Se envía directamente al propietario — no se necesita PIN. El nombre y el número de teléfono son opcionales aquí, pero se incluirán si ya los has rellenado más abajo.',
-    kopBericht:'¿Pasa algo?',
-    berichtUitleg:'Envía un mensaje directo al propietario — no se necesita PIN. Indica tu nombre y número de teléfono para que el propietario sepa quién lo envía.',
+  es: { ehLabel:'Propietario:', kopBoot:'Barco y propietario', labelNood:'Emergencia',
+    kopBericht:'Mensajes',
+    berichtUitleg:'Envía un mensaje al propietario de este barco.',
     phNaam:'tu nombre', phTel:'tu número de teléfono', phVrij:'o escribe tu propio mensaje…', btnStuur:'ENVIAR',
     okBericht:'Mensaje enviado.', okNood:'Mensaje de emergencia enviado.', foutVerzenden:'Error al enviar.',
     foutNaamTel:'Primero rellena tu nombre y número de teléfono.', foutTypEerst:'Primero escribe un mensaje.',
     lockedHint:'El control requiere el PIN del propietario o de un invitado.', ontgrendelen:'Desbloquear →' },
-  uk: { ehLabel:"Власник:", kopBoot:"Човен і власник", kopNood:'Надзвичайна ситуація?',
-    noodUitleg:"Повідомлення йде напряму власнику — PIN-код не потрібен. Ім'я та номер телефону тут необов'язкові, але будуть додані, якщо ви вже заповнили їх нижче.",
-    kopBericht:'Щось трапилось?',
-    berichtUitleg:"Надішліть повідомлення напряму власнику — PIN-код не потрібен. Вкажіть своє ім'я та номер телефону, щоб власник знав, від кого воно.",
+  uk: { ehLabel:"Власник:", kopBoot:"Човен і власник", labelNood:'Надзвичайна ситуація',
+    kopBericht:'Повідомлення',
+    berichtUitleg:"Надішліть повідомлення власнику цього човна.",
     phNaam:"ваше ім'я", phTel:'ваш номер телефону', phVrij:'або напишіть своє повідомлення…', btnStuur:'НАДІСЛАТИ',
     okBericht:'Повідомлення надіслано.', okNood:'Повідомлення про надзвичайну ситуацію надіслано.', foutVerzenden:'Не вдалося надіслати.',
     foutNaamTel:"Спочатку вкажіть ім'я та номер телефону.", foutTypEerst:'Спочатку напишіть повідомлення.',
     lockedHint:'Для керування потрібен PIN-код власника або гостя.', ontgrendelen:'Розблокувати →' },
-  pl: { ehLabel:'Właściciel:', kopBoot:'Łódź i właściciel', kopNood:'Nagły wypadek?',
-    noodUitleg:'Trafia bezpośrednio do właściciela — kod PIN nie jest potrzebny. Imię i numer telefonu są tu opcjonalne, ale zostaną dołączone, jeśli wypełniłeś je poniżej.',
-    kopBericht:'Coś się dzieje?',
-    berichtUitleg:'Wyślij wiadomość bezpośrednio do właściciela — kod PIN nie jest potrzebny. Podaj swoje imię i numer telefonu, aby właściciel wiedział, od kogo jest wiadomość.',
+  pl: { ehLabel:'Właściciel:', kopBoot:'Łódź i właściciel', labelNood:'Nagły wypadek',
+    kopBericht:'Wiadomości',
+    berichtUitleg:'Wyślij wiadomość do właściciela tej łodzi.',
     phNaam:'twoje imię', phTel:'twój numer telefonu', phVrij:'lub napisz własną wiadomość…', btnStuur:'WYŚLIJ',
     okBericht:'Wiadomość wysłana.', okNood:'Wiadomość alarmowa wysłana.', foutVerzenden:'Wysyłanie nie powiodło się.',
     foutNaamTel:'Najpierw podaj imię i numer telefonu.', foutTypEerst:'Najpierw napisz wiadomość.',
     lockedHint:'Sterowanie wymaga kodu PIN właściciela lub gościa.', ontgrendelen:'Odblokuj →' },
-  cs: { ehLabel:'Majitel:', kopBoot:'Loď a majitel', kopNood:'Nouzová situace?',
-    noodUitleg:'Jde přímo majiteli — PIN není potřeba. Jméno a telefonní číslo jsou zde volitelné, ale pokud je vyplníte níže, budou odeslány spolu se zprávou.',
-    kopBericht:'Děje se něco?',
-    berichtUitleg:'Pošlete zprávu přímo majiteli — PIN není potřeba. Vyplňte své jméno a telefonní číslo, aby majitel věděl, od koho zpráva je.',
+  cs: { ehLabel:'Majitel:', kopBoot:'Loď a majitel', labelNood:'Nouzová situace',
+    kopBericht:'Zprávy',
+    berichtUitleg:'Pošlete zprávu majiteli této lodi.',
     phNaam:'vaše jméno', phTel:'vaše telefonní číslo', phVrij:'nebo napište vlastní zprávu…', btnStuur:'ODESLAT',
     okBericht:'Zpráva odeslána.', okNood:'Nouzová zpráva odeslána.', foutVerzenden:'Odeslání se nezdařilo.',
     foutNaamTel:'Nejprve vyplňte jméno a telefonní číslo.', foutTypEerst:'Nejprve napište zprávu.',
     lockedHint:'Ovládání vyžaduje PIN majitele nebo hosta.', ontgrendelen:'Odemknout →' },
-  da: { ehLabel:'Ejer:', kopBoot:'Båd & ejer', kopNood:'Nødsituation?',
-    noodUitleg:'Går direkte til ejeren — ingen pinkode nødvendig. Navn og telefonnummer er valgfrit her, men sendes med, hvis du allerede har udfyldt dem nedenfor.',
-    kopBericht:'Er der noget galt?',
-    berichtUitleg:'Send en besked direkte til ejeren — ingen pinkode nødvendig. Udfyld dit navn og telefonnummer, så ejeren ved, hvem den er fra.',
+  da: { ehLabel:'Ejer:', kopBoot:'Båd & ejer', labelNood:'Nødsituation',
+    kopBericht:'Beskeder',
+    berichtUitleg:'Send en besked til ejeren af denne båd.',
     phNaam:'dit navn', phTel:'dit telefonnummer', phVrij:'eller skriv selv en besked…', btnStuur:'SEND',
     okBericht:'Besked sendt.', okNood:'Nødbesked sendt.', foutVerzenden:'Afsendelse mislykkedes.',
     foutNaamTel:'Udfyld først navn og telefonnummer.', foutTypEerst:'Skriv først en besked.',
     lockedHint:'Betjening kræver ejerens eller en gæstepinkode.', ontgrendelen:'Lås op →' },
-  pt: { ehLabel:'Proprietário:', kopBoot:'Barco e proprietário', kopNood:'Emergência?',
-    noodUitleg:'Vai diretamente para o proprietário — não é necessário PIN. O nome e o número de telefone são opcionais aqui, mas serão enviados se já os tiver preenchido abaixo.',
-    kopBericht:'Passa-se alguma coisa?',
-    berichtUitleg:'Envie uma mensagem diretamente para o proprietário — não é necessário PIN. Preencha o seu nome e número de telefone para que o proprietário saiba de quem é.',
+  pt: { ehLabel:'Proprietário:', kopBoot:'Barco e proprietário', labelNood:'Emergência',
+    kopBericht:'Mensagens',
+    berichtUitleg:'Envie uma mensagem ao proprietário deste barco.',
     phNaam:'o seu nome', phTel:'o seu número de telefone', phVrij:'ou escreva a sua própria mensagem…', btnStuur:'ENVIAR',
     okBericht:'Mensagem enviada.', okNood:'Mensagem de emergência enviada.', foutVerzenden:'Falha ao enviar.',
     foutNaamTel:'Preencha primeiro o seu nome e número de telefone.', foutTypEerst:'Escreva primeiro uma mensagem.',
     lockedHint:'O controlo requer o PIN do proprietário ou de um convidado.', ontgrendelen:'Desbloquear →' },
-  it: { ehLabel:'Proprietario:', kopBoot:'Barca e proprietario', kopNood:'Emergenza?',
-    noodUitleg:'Va direttamente al proprietario — non serve il PIN. Nome e numero di telefono qui sono facoltativi, ma verranno inclusi se li hai già inseriti qui sotto.',
-    kopBericht:'Succede qualcosa?',
-    berichtUitleg:'Invia subito un messaggio al proprietario — non serve il PIN. Inserisci il tuo nome e numero di telefono così il proprietario sa chi lo ha inviato.',
+  it: { ehLabel:'Proprietario:', kopBoot:'Barca e proprietario', labelNood:'Emergenza',
+    kopBericht:'Messaggi',
+    berichtUitleg:'Invia un messaggio al proprietario di questa barca.',
     phNaam:'il tuo nome', phTel:'il tuo numero di telefono', phVrij:'oppure scrivi tu stesso un messaggio…', btnStuur:'INVIA',
     okBericht:'Messaggio inviato.', okNood:'Messaggio di emergenza inviato.', foutVerzenden:'Invio non riuscito.',
     foutNaamTel:'Inserisci prima nome e numero di telefono.', foutTypEerst:'Scrivi prima un messaggio.',
@@ -1054,10 +1047,15 @@ window.addEventListener('resize', achtergrondToepassen);
 // (HAVEN-dashboardfoto, achtergrond liggend, achtergrond staand) — elk met
 // zijn eigen doelresolutie/kwaliteitsladder/servergrens, cropTarget bepaalt
 // welke bij bevestigen wordt gebruikt en waarheen geüpload wordt.
+// liggend/staand waren 1280x720/1536KB — veel te groot voor de daadwerkelijk
+// geflashte SPIFFS-partitie (~2MB, gedeeld met alle andere opgeslagen data);
+// dat was de reden dat die upload steevast mislukte. Puur een CSS-achtergrond
+// achter een donkere overlay (nooit door het apparaat zelf gedecodeerd), dus
+// fors kleiner scheelt nauwelijks zichtbaar maar past nu daadwerkelijk.
 var CROP_TARGETS = {
-  liggend: { doelW: 1280, doelH: 720,  maxBytes: 1536 * 1024, stappen: [0.8, 0.65, 0.5, 0.35, 0.22, 0.12] },
-  staand:  { doelW: 720,  doelH: 1280, maxBytes: 1536 * 1024, stappen: [0.8, 0.65, 0.5, 0.35, 0.22, 0.12] },
-  haven:   { doelW: 800,  doelH: 480,  maxBytes: 300 * 1024,  stappen: [0.75, 0.6, 0.45, 0.32, 0.22, 0.14, 0.08, 0.04] }
+  liggend: { doelW: 960, doelH: 540, maxBytes: 400 * 1024, stappen: [0.8, 0.65, 0.5, 0.35, 0.22, 0.12] },
+  staand:  { doelW: 540, doelH: 960, maxBytes: 400 * 1024, stappen: [0.8, 0.65, 0.5, 0.35, 0.22, 0.12] },
+  haven:   { doelW: 800, doelH: 480, maxBytes: 300 * 1024, stappen: [0.75, 0.6, 0.45, 0.32, 0.22, 0.14, 0.08, 0.04] }
 };
 
 var cropTarget = null;
@@ -1238,14 +1236,21 @@ function cropBevestig(){
 }
 
 function uploadAchtergrondFoto(blob, liggend){
+  var doel = liggend ? 'liggend' : 'staand';
   var fd = new FormData(); fd.append('foto', blob, 'bg.jpg');
   var xhr = new XMLHttpRequest();
-  xhr.open('POST', '/achtergrond/upload?slot=' + (liggend?'liggend':'staand') + '&pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
+  xhr.open('POST', '/achtergrond/upload?slot=' + doel + '&pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
   xhr.onload = function(){
-    if (xhr.status === 200){ cropMelding('liggend', 'Opgeslagen.', false); achtergrondToepassen(); }
-    else cropMelding('liggend', 'Upload mislukt (' + (xhr.status===403?'geen toegang':'opslag') + ').', true);
+    if (xhr.status === 200){ cropMelding(doel, 'Opgeslagen.', false); achtergrondToepassen(); return; }
+    var d = {}; try { d = JSON.parse(xhr.responseText); } catch(e){}
+    var reden = xhr.status === 403 ? 'geen toegang'
+              : xhr.status === 413 ? 'bestand nog te groot'
+              : d.reden === 'ruimte' ? 'te weinig vrije opslag over — verwijder eerst een foto'
+              : d.reden === 'schrijffout' ? 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw'
+              : 'onbekende fout';
+    cropMelding(doel, 'Upload mislukt (' + reden + ').', true);
   };
-  xhr.onerror = function(){ cropMelding('liggend', 'Upload mislukt (verbinding).', true); };
+  xhr.onerror = function(){ cropMelding(doel, 'Upload mislukt (verbinding).', true); };
   xhr.send(fd);
 }
 
@@ -1561,6 +1566,15 @@ function meldingTest(){
 achtergrondToepassen();
 taalToepassen();  // roept ladenPubliek()/ladenBericht()/laadNood() ook meteen aan
 connect();
+
+// Sommige mobiele browsers scrollen bij het openen vanzelf naar het eerste
+// tekstveld (hier: de naam-invoer bij "Berichten") zodra de dynamisch
+// opgebouwde inhoud hierboven de pagina langer maakt dan het scherm — met als
+// gevolg dat de taalvlaggetjes en het pincode-slotje bovenaan niet meer in
+// beeld staan. Forceer daarom de bovenkant, ná de layout (dubbele
+// requestAnimationFrame: één om de browser zijn eigen scrollgedrag te laten
+// uitvoeren, één om daar hierna overheen te gaan).
+requestAnimationFrame(function(){ requestAnimationFrame(function(){ window.scrollTo(0, 0); }); });
 </script>
 </body>
 </html>

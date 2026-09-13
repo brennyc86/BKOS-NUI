@@ -77,7 +77,14 @@ static bool     _hav_te_groot  = false;
 // overschrijft gewoon het bestand van hetzelfde slot, dus de oude vervalt
 // vanzelf zonder aparte verwijderstap. Zelfde upload-patroon als /fotos/upload
 // hierboven, met een eigen (ruimere) groottegrens.
-#define ACHTERGROND_MAX_BYTES (1536UL * 1024UL)
+// Was 1536KB/foto (2 sloten = tot 3MB) — veel te groot voor de daadwerkelijk
+// geflashte SPIFFS-partitie (~2MB, ook nog gedeeld met de HAVEN-foto's en
+// andere .csv-bestanden); dat verklaarde waarom een staande/liggende
+// achtergrond bijna altijd mislukte terwijl kleinere HAVEN-foto's meestal wel
+// lukten. Puur een CSS-achtergrond achter een donkere overlay in de browser
+// (nooit door het apparaat zelf gedecodeerd), dus fors kleiner levert visueel
+// nauwelijks verschil op.
+#define ACHTERGROND_MAX_BYTES (400UL * 1024UL)
 static uint8_t* _ag_upload_buf     = nullptr;
 static size_t   _ag_upload_cap     = 0;
 static size_t   _ag_upload_len     = 0;
@@ -314,13 +321,22 @@ void webapp_setup() {
         []() {  // aangeroepen zodra de volledige body binnen is
             if (!_ag_pin_ok)  { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}");   return; }
             if (_ag_te_groot) { _http.send(413, "application/json", "{\"ok\":false,\"reden\":\"groot\"}"); return; }
-            if (_ag_upload_len == 0) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"opslag\"}"); return; }
+            if (_ag_upload_len == 0) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"leeg\"}"); return; }
+            // Vrije-ruimte precheck vóórdat er geschreven wordt — ontbrak
+            // hiervoor, waardoor een te-krappe SPIFFS-partitie een stille
+            // schrijffout gaf i.p.v. een duidelijke reden (zie ook
+            // haven_gebruikersfoto_opslaan() voor hetzelfde patroon).
+            if (haven_spiffs_vrij() < _ag_upload_len + 8192) {
+                _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"ruimte\"}"); return;
+            }
             // Vaste bestandsnaam per slot: openen in "w" overschrijft de oude
             // foto van datzelfde slot vanzelf, geen aparte verwijderstap nodig.
             File f = SPIFFS.open(_ag_pad(_ag_slot_liggend), "w");
-            bool ok = f && f.write(_ag_upload_buf, _ag_upload_len) == _ag_upload_len;
-            if (f) f.close();
-            _http.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"reden\":\"opslag\"}");
+            if (!f) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"schrijffout\"}"); return; }
+            bool ok = f.write(_ag_upload_buf, _ag_upload_len) == _ag_upload_len;
+            f.close();
+            if (!ok) SPIFFS.remove(_ag_pad(_ag_slot_liggend));
+            _http.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"reden\":\"schrijffout\"}");
         },
         []() {  // upload-handler: meerdere keren aangeroepen tijdens het streamen
             HTTPUpload& up = _http.upload();

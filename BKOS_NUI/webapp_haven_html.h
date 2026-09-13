@@ -171,7 +171,7 @@ var doelW = 800, doelH = 480, maxUploadBytes = 300 * 1024;
 // tabel (ook groep 2/3, achtergrondfoto's). Tweede cijfer = WAT er misging,
 // zelfde "reden"-sleutel als de server teruggeeft — zo kan Brendan "fout 1.4"
 // doorgeven i.p.v. de hele melding te moeten overtypen.
-var FOUTCODE_REDEN = { pin: 1, groot: 2, ruimte: 3, schrijffout: 4, vol: 5, leeg: 6, verbinding: 6, bijsnijden: 7, onbekend: 0 };
+var FOUTCODE_REDEN = { pin: 1, groot: 2, ruimte: 3, schrijffout: 4, vol: 5, leeg: 6, verbinding: 6, bijsnijden: 7, laden: 8, onbekend: 0 };
 var FOUTTEKST_REDEN = {
   pin: 'onjuiste pincode',
   groot: 'bestand nog te groot, ook na compressie',
@@ -180,6 +180,7 @@ var FOUTTEKST_REDEN = {
   vol: 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder',
   leeg: 'lege upload',
   verbinding: 'verbindingsfout',
+  laden: 'kon de foto niet laden',
   onbekend: 'onbekende fout'
 };
 function foutCode(redenSleutel){ var r = FOUTCODE_REDEN[redenSleutel]; return '1.' + (r == null ? 0 : r); }
@@ -360,12 +361,31 @@ var cropSlepen = false, cropStartX = 0, cropStartY = 0, cropStartPanX = 0, cropS
 var cropPointers = {};
 var cropPinchStartDist = 0, cropPinchStartScale = 1;
 
+// Blob-URL van de momenteel geladen foto — expliciet vrijgegeven zodra we
+// 'm niet meer nodig hebben. Zonder dit stapelen herhaalde uploads in
+// dezelfde sessie op (elke createObjectURL() houdt anders het volledige
+// origineel — soms 10+MB van een telefooncamera — vast tot de pagina
+// ververst wordt), wat op een telefoon uiteindelijk geheugendruk geeft.
+var cropObjectUrl = null;
+
 function verwerkEnUpload(file){
   cropImgEl = document.getElementById('cropImg');
   cropVp = document.getElementById('cropViewport');
   cropPointers = {}; cropSlepen = false; cropPinchStartDist = 0;
+  if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
+  // Eerder kon dit stil blijven hangen (geen melding, geen crop-scherm) als
+  // de foto nooit klaar met laden was — deze time-out garandeert nu altijd
+  // een zichtbare (en doorgeefbare) foutcode i.p.v. een oorzaakloze stilte.
+  var afgehandeld = false;
+  var timeoutId = setTimeout(function(){
+    if (afgehandeld) return;
+    afgehandeld = true;
+    melding(uploadFoutTekst('laden') + ' (time-out)', 'fout');
+  }, 8000);
   var img = new Image();
   img.onload = function(){
+    if (afgehandeld) return;
+    afgehandeld = true; clearTimeout(timeoutId);
     cropNatW = img.naturalWidth; cropNatH = img.naturalHeight;
     cropImgEl.src = img.src;
     document.getElementById('cropZoom').value = 100;
@@ -374,8 +394,13 @@ function verwerkEnUpload(file){
     // vóór de basisschaal te berekenen — vlak na classList.remove al klaar.
     requestAnimationFrame(cropHerbereken);
   };
-  img.onerror = function(){ melding('Kon de foto niet lezen.', 'fout'); };
-  img.src = URL.createObjectURL(file);
+  img.onerror = function(){
+    if (afgehandeld) return;
+    afgehandeld = true; clearTimeout(timeoutId);
+    melding(uploadFoutTekst('laden'), 'fout');
+  };
+  cropObjectUrl = URL.createObjectURL(file);
+  img.src = cropObjectUrl;
 }
 
 function cropHerbereken(){
@@ -478,6 +503,7 @@ document.getElementById('cropViewport').addEventListener('pointercancel', cropPo
 function cropAnnuleer(){
   document.getElementById('cropModal').classList.add('hidden');
   cropImgEl.src = '';
+  if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
 }
 
 function cropBevestig(){
@@ -508,6 +534,9 @@ function cropBevestig(){
     // net zag) — drawImage gebruikt sowieso altijd de volle fotoresolutie,
     // ongeacht de CSS-weergavegrootte, dus geen nieuwe Image() nodig.
     ctx.drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, doelW, doelH);
+    // Het volledige (mogelijk 10+MB) origineel is nu niet meer nodig — de
+    // canvas hierboven heeft het al op de kleine doelresolutie vastgelegd.
+    if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
     encodeerBinnenBudget(canvas, 0, function(blob, gelukt){
       if (gelukt) uploadBlob(blob);
       else {

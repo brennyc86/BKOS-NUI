@@ -254,6 +254,10 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
         <h2>Lampen</h2>
         <div id="huisLampen"></div>
       </section>
+      <section id="paneelSectionHuis" style="display:none">
+        <h2>Paneel</h2>
+        <div class="grid3" id="paneelGridHuis"></div>
+      </section>
     </div>
 
     <div id="tabBoot" class="tabpane" style="display:none">
@@ -510,6 +514,12 @@ function setLock(on, niv){
   if (on && magHuisBoot) setTab(stateData.h ? 'huis' : 'boot');
   else if (verbergTabs.indexOf(actieveTab) >= 0) setTab('info');
   else setTab(actieveTab);
+  // Her-render meteen met de nieuwe niveau-waarde. Zonder dit bleven
+  // PANEEL/lampen-knoppen op slot staan zoals vóór het inloggen berekend was
+  // (met niveau=0, want de server pusht paneel/lampen/state al vóór de
+  // authenticatie) — tot toevallig een latere broadcast een her-render
+  // triggerde. Vandaar "staat soms alles op slot, dan ineens niet".
+  renderPaneel(); renderHuis(); renderState();
 }
 
 function setTab(naam){
@@ -666,18 +676,23 @@ function renderHuis(){
   }).join('');
 }
 
+// Getoond in zowel BOOT als HUIS (Brendan wil zijn TV/paneel-knoppen ook
+// makkelijk vanuit HUIS kunnen bedienen, net als op de boordcomputer zelf
+// waar dit allemaal op één scherm staat) — zelfde data, zelfde click-index,
+// gewoon twee keer dezelfde HTML neergezet.
 function renderPaneel(){
-  var sec = document.getElementById('paneelSection');
-  if (!paneelData.length){ sec.style.display = 'none'; return; }
-  sec.style.display = '';
-  document.getElementById('paneelGrid').innerHTML = paneelData.map(function(p, i){
+  var html = paneelData.length ? paneelData.map(function(p, i){
     var minNiveau = p.minNiveau || NIVEAU_GAST;
     if (niveau < minNiveau) {
       return '<button class="pbtn locked" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">&#128274; ' + esc(p.naam) + '</button>';
     }
     var cls = p.staat === 2 ? 'aan' : (p.staat === 1 ? 'mix' : '');
     return '<button class="pbtn ' + cls + '" onclick="togglePaneel(' + i + ')">' + esc(p.naam) + '</button>';
-  }).join('');
+  }).join('') : '';
+  document.getElementById('paneelSection').style.display = paneelData.length ? '' : 'none';
+  document.getElementById('paneelSectionHuis').style.display = paneelData.length ? '' : 'none';
+  document.getElementById('paneelGrid').innerHTML = html;
+  document.getElementById('paneelGridHuis').innerHTML = html;
 }
 
 function renderIO(){
@@ -1074,7 +1089,7 @@ var CROP_TARGETS = {
 // server in het "reden"-veld van de JSON-respons stuurt (zie webapp.ino/
 // haven_achtergrond.ino) — geen aparte vertaaltabel nodig.
 var FOUTCODE_GROEP = { haven: 1, liggend: 2, staand: 3 };
-var FOUTCODE_REDEN = { pin: 1, groot: 2, ruimte: 3, schrijffout: 4, vol: 5, leeg: 6, verbinding: 6, bijsnijden: 7, onbekend: 0 };
+var FOUTCODE_REDEN = { pin: 1, groot: 2, ruimte: 3, schrijffout: 4, vol: 5, leeg: 6, verbinding: 6, bijsnijden: 7, laden: 8, onbekend: 0 };
 var FOUTTEKST_REDEN = {
   pin: 'geen toegang',
   groot: 'bestand nog te groot, ook na compressie',
@@ -1083,6 +1098,7 @@ var FOUTTEKST_REDEN = {
   vol: 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder',
   leeg: 'lege upload',
   verbinding: 'verbindingsfout',
+  laden: 'kon de foto niet laden',
   onbekend: 'onbekende fout'
 };
 function foutCode(doel, redenSleutel){
@@ -1106,6 +1122,13 @@ var cropSlepen = false, cropStartX = 0, cropStartY = 0, cropStartPanX = 0, cropS
 // afstandsverandering tussen die twee de zoom (i.p.v. slepen).
 var cropPointers = {};
 var cropPinchStartDist = 0, cropPinchStartScale = 1;
+// Blob-URL van de momenteel geladen foto — expliciet vrijgegeven zodra we
+// 'm niet meer nodig hebben (nieuwe foto, annuleren, of na het bijsnijden).
+// Zonder dit stapelen herhaalde uploads in dezelfde sessie op (elke
+// createObjectURL() blijft anders het volledige origineel — soms 10+MB van
+// een telefooncamera — vasthouden tot de pagina ververst wordt), wat op een
+// telefoon uiteindelijk geheugendruk kan geven.
+var cropObjectUrl = null;
 
 function cropMelding(target, tekst, isFout){
   var el = document.getElementById(target === 'haven' ? 'fotosMelding' : 'agMelding');
@@ -1121,16 +1144,34 @@ function openCrop(file, target){
   cropPointers = {}; cropSlepen = false; cropPinchStartDist = 0;
   var cfg = CROP_TARGETS[target];
   cropVp.style.aspectRatio = cfg.doelW + '/' + cfg.doelH;
+  if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
+  // Eerder kon dit hier stil blijven hangen (geen melding, geen crop-scherm)
+  // als de foto om wat voor reden dan ook nooit klaar met laden was — deze
+  // time-out garandeert nu altijd een zichtbare (en doorgeefbare) foutcode
+  // i.p.v. een oorzaakloze stilte.
+  var afgehandeld = false;
+  var timeoutId = setTimeout(function(){
+    if (afgehandeld) return;
+    afgehandeld = true;
+    cropMelding(target, uploadFoutTekst(target, 'laden') + ' (time-out)', true);
+  }, 8000);
   var img = new Image();
   img.onload = function(){
+    if (afgehandeld) return;
+    afgehandeld = true; clearTimeout(timeoutId);
     cropNatW = img.naturalWidth; cropNatH = img.naturalHeight;
     cropImgEl.src = img.src;
     document.getElementById('cropZoom').value = 100;
     document.getElementById('cropModal').classList.remove('hidden');
     requestAnimationFrame(cropHerbereken);
   };
-  img.onerror = function(){ cropMelding(target, 'Kon de foto niet lezen.', true); };
-  img.src = URL.createObjectURL(file);
+  img.onerror = function(){
+    if (afgehandeld) return;
+    afgehandeld = true; clearTimeout(timeoutId);
+    cropMelding(target, uploadFoutTekst(target, 'laden'), true);
+  };
+  cropObjectUrl = URL.createObjectURL(file);
+  img.src = cropObjectUrl;
 }
 
 function cropHerbereken(){
@@ -1228,6 +1269,7 @@ document.getElementById('cropViewport').addEventListener('pointercancel', _cropP
 function cropAnnuleer(){
   document.getElementById('cropModal').classList.add('hidden');
   if (cropImgEl) cropImgEl.src = '';
+  if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
   cropTarget = null;
 }
 
@@ -1261,6 +1303,9 @@ function cropBevestig(){
     canvas.width = cfg.doelW; canvas.height = cfg.doelH;
     var ctx = canvas.getContext('2d');
     ctx.drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, cfg.doelW, cfg.doelH);
+    // Het volledige (mogelijk 10+MB) origineel is nu niet meer nodig — de
+    // canvas hierboven heeft het al op de kleine doelresolutie vastgelegd.
+    if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
     cropEncodeerBinnenBudget(canvas, 0, cfg, function(blob, gelukt){
       if (!gelukt) { cropMelding(target, uploadFoutTekst(target, 'groot'), true); return; }
       if (target === 'haven') uploadHavenFoto(blob);

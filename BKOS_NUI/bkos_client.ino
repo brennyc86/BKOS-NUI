@@ -382,6 +382,13 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
                 net_io_apparaat_toggle(naam);
             }
         }
+        // Basisverlichting (de ongenummerde hoofdlamp) meenemen — voorheen
+        // bleef die als enige buiten ALLES AAN/UIT, wat "ALLES" niet klopte.
+        if (io_hoofdverlichting_aanwezig() && io_hoofdverlichting_aan() != aan) {
+            io_hoofdverlichting_toggle();
+            io_verlichting_update();
+            net_app_staat_sturen();
+        }
 
     } else if (t.indexOf(F("\"interieur_kleur\"")) >= 0) {
         bool rood = t.indexOf(F("\"rood\":1")) >= 0;

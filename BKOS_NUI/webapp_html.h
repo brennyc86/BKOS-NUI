@@ -25,6 +25,15 @@ body{
   -webkit-user-select:none;user-select:none;
   padding-bottom:env(safe-area-inset-bottom);
 }
+/* Eigen vaste laag i.p.v. body{background-attachment:fixed} — die CSS-optie
+   wordt door mobiele browsers (vooral iOS Safari) onbetrouwbaar/helemaal niet
+   toegepast op een scrollende pagina. Een los element op position:fixed werkt
+   overal wél: de foto blijft op zijn plek staan, de inhoud scrollt erover
+   heen. background-size:cover + center = zo groot mogelijk en gecentreerd. */
+#bgFixed{
+  position:fixed;inset:0;z-index:-1;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+}
 .wrap{max-width:640px;margin:0 auto;padding:0 14px 40px;}
 a{color:var(--cyan);}
 
@@ -165,6 +174,8 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
 </style>
 </head>
 <body>
+
+<div id="bgFixed"></div>
 
 <header>
   <div class="dot" id="connDot"></div>
@@ -1030,15 +1041,13 @@ function achtergrondToepassen(){
   var slot = liggend ? 'liggend' : 'staand';
   fetch('/achtergrond/info').then(function(r){ return r.json(); }).then(function(d){
     var aanwezig = liggend ? d.liggend : d.staand;
-    if (!aanwezig) { document.body.style.backgroundImage = ''; return; }
+    var bg = document.getElementById('bgFixed');
+    if (!aanwezig) { bg.style.backgroundImage = ''; return; }
     // Donkere overlay overheen zodat de bestaande (effen) kaartjes/secties
     // leesbaar blijven — zelfde idee als de fototint op het HAVEN-scherm van
     // de boordcomputer zelf.
-    document.body.style.backgroundImage =
+    bg.style.backgroundImage =
       'linear-gradient(rgba(12,26,38,.82),rgba(12,26,38,.82)), url(/achtergrond/foto?slot=' + slot + '&t=' + Date.now() + ')';
-    document.body.style.backgroundSize = 'cover';
-    document.body.style.backgroundPosition = 'center';
-    document.body.style.backgroundAttachment = 'fixed';
   }).catch(function(){});
 }
 window.addEventListener('resize', achtergrondToepassen);
@@ -1057,6 +1066,34 @@ var CROP_TARGETS = {
   staand:  { doelW: 540, doelH: 960, maxBytes: 400 * 1024, stappen: [0.8, 0.65, 0.5, 0.35, 0.22, 0.12] },
   haven:   { doelW: 800, doelH: 480, maxBytes: 300 * 1024, stappen: [0.75, 0.6, 0.45, 0.32, 0.22, 0.14, 0.08, 0.04] }
 };
+
+// ─── Foutcodes bij mislukte foto-uploads — eerste cijfer = WELKE foto
+// (1=HAVEN-dashboard, 2=achtergrond liggend, 3=achtergrond staand), tweede
+// cijfer = WAT er misging. Zo kan Brendan "fout 2.4" doorgeven i.p.v. de hele
+// melding te moeten overtypen. `redenSleutel` is dezelfde string als de
+// server in het "reden"-veld van de JSON-respons stuurt (zie webapp.ino/
+// haven_achtergrond.ino) — geen aparte vertaaltabel nodig.
+var FOUTCODE_GROEP = { haven: 1, liggend: 2, staand: 3 };
+var FOUTCODE_REDEN = { pin: 1, groot: 2, ruimte: 3, schrijffout: 4, vol: 5, leeg: 6, verbinding: 6, bijsnijden: 7, onbekend: 0 };
+var FOUTTEKST_REDEN = {
+  pin: 'geen toegang',
+  groot: 'bestand nog te groot, ook na compressie',
+  ruimte: 'te weinig vrije opslag over',
+  schrijffout: 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw',
+  vol: 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder',
+  leeg: 'lege upload',
+  verbinding: 'verbindingsfout',
+  onbekend: 'onbekende fout'
+};
+function foutCode(doel, redenSleutel){
+  var groep = FOUTCODE_GROEP[doel] || 0;
+  var reden = FOUTCODE_REDEN[redenSleutel]; if (reden == null) reden = 0;
+  return groep + '.' + reden;
+}
+function uploadFoutTekst(doel, redenSleutel){
+  var tekst = FOUTTEKST_REDEN[redenSleutel] || FOUTTEKST_REDEN.onbekend;
+  return 'Upload mislukt (fout ' + foutCode(doel, redenSleutel) + '): ' + tekst + '.';
+}
 
 var cropTarget = null;
 var cropImgEl, cropVp;
@@ -1225,12 +1262,12 @@ function cropBevestig(){
     var ctx = canvas.getContext('2d');
     ctx.drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, cfg.doelW, cfg.doelH);
     cropEncodeerBinnenBudget(canvas, 0, cfg, function(blob, gelukt){
-      if (!gelukt) { cropMelding(target, 'Foto blijft te groot, ook na maximale compressie.', true); return; }
+      if (!gelukt) { cropMelding(target, uploadFoutTekst(target, 'groot'), true); return; }
       if (target === 'haven') uploadHavenFoto(blob);
       else uploadAchtergrondFoto(blob, target === 'liggend');
     });
   } catch (e) {
-    cropMelding(target, 'Bijsnijden mislukt (' + e.message + '). Probeer het opnieuw.', true);
+    cropMelding(target, 'Bijsnijden mislukt (' + e.message + ') — fout ' + foutCode(target, 'bijsnijden') + '. Probeer het opnieuw.', true);
   }
   cropTarget = null;
 }
@@ -1243,14 +1280,9 @@ function uploadAchtergrondFoto(blob, liggend){
   xhr.onload = function(){
     if (xhr.status === 200){ cropMelding(doel, 'Opgeslagen.', false); achtergrondToepassen(); return; }
     var d = {}; try { d = JSON.parse(xhr.responseText); } catch(e){}
-    var reden = xhr.status === 403 ? 'geen toegang'
-              : xhr.status === 413 ? 'bestand nog te groot'
-              : d.reden === 'ruimte' ? 'te weinig vrije opslag over — verwijder eerst een foto'
-              : d.reden === 'schrijffout' ? 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw'
-              : 'onbekende fout';
-    cropMelding(doel, 'Upload mislukt (' + reden + ').', true);
+    cropMelding(doel, uploadFoutTekst(doel, d.reden || 'onbekend'), true);
   };
-  xhr.onerror = function(){ cropMelding(doel, 'Upload mislukt (verbinding).', true); };
+  xhr.onerror = function(){ cropMelding(doel, uploadFoutTekst(doel, 'verbinding'), true); };
   xhr.send(fd);
 }
 
@@ -1262,17 +1294,11 @@ function uploadHavenFoto(blob){
     var d = {}; try { d = JSON.parse(xhr.responseText); } catch(e){}
     if (xhr.status === 200 && d.ok) { cropMelding('haven', 'Foto opgeslagen als ' + d.naam + '.', false); fotosLijst(); fotosInfo(); }
     else {
-      var reden = xhr.status === 403 ? 'geen toegang'
-                : xhr.status === 413 ? 'bestand nog te groot'
-                : d.reden === 'ruimte' ? 'te weinig vrije opslag over'
-                : d.reden === 'vol' ? 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder'
-                : d.reden === 'schrijffout' ? 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw'
-                : 'onbekende fout';
-      cropMelding('haven', 'Upload mislukt (' + reden + ').', true);
+      cropMelding('haven', uploadFoutTekst('haven', d.reden || 'onbekend'), true);
       fotosInfo();
     }
   };
-  xhr.onerror = function(){ cropMelding('haven', 'Upload mislukt (verbinding).', true); };
+  xhr.onerror = function(){ cropMelding('haven', uploadFoutTekst('haven', 'verbinding'), true); };
   xhr.send(fd);
 }
 

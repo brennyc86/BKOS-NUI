@@ -134,6 +134,17 @@ static void _hav_reden(char* reden_out, size_t reden_out_len, const char* reden)
     reden_out[reden_out_len - 1] = '\0';
 }
 
+// Eén poging om `len` bytes naar `naam` te schrijven (nieuw bestand, dus geen
+// bestaand bestand om eerst te verwijderen).
+static bool _hav_schrijf_probeer(const char* naam, const uint8_t* data, size_t len) {
+    File f = SPIFFS.open(naam, "w");
+    if (!f) return false;
+    bool ok = f.write(data, len) == len;
+    f.close();
+    if (!ok) SPIFFS.remove(naam);
+    return ok;
+}
+
 bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len,
                                    char* reden_out, size_t reden_out_len) {
     if (reden_out && reden_out_len) reden_out[0] = '\0';
@@ -143,12 +154,13 @@ bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_ou
         char naam[24];
         _hav_user_naam(slot, naam, sizeof(naam));
         if (SPIFFS.exists(naam)) continue;  // slot al bezet, volgende proberen
-        File f = SPIFFS.open(naam, "w");
-        if (!f) { _hav_reden(reden_out, reden_out_len, "schrijffout"); return false; }
-        size_t geschreven = f.write(data, len);
-        f.close();
-        if (geschreven != len) {
-            SPIFFS.remove(naam);
+        // Eenmalige directe herkansing: SPIFFS kan een schrijving soms
+        // momentaan weigeren (bv. tijdens interne wear-levelling/garbage
+        // collection) terwijl een meteen daaropvolgende poging wel lukt —
+        // vandaar dit los van de "vol"-situatie (die probeert een ANDER slot,
+        // dit blijft hetzelfde slot opnieuw proberen).
+        bool ok = _hav_schrijf_probeer(naam, data, len) || _hav_schrijf_probeer(naam, data, len);
+        if (!ok) {
             // Vrijwel altijd SPIFFS die weigert een aaneengesloten blok van
             // deze grootte te vinden ondanks "genoeg" gerapporteerde vrije
             // ruimte (bekende SPIFFS-fragmentatiebeperking) — dus expliciet

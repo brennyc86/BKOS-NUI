@@ -96,6 +96,19 @@ static const char* _ag_pad(bool liggend) {
     return liggend ? "/webappbg_liggend.jpg" : "/webappbg_staand.jpg";
 }
 
+// Eén poging om de lopende upload naar het juiste slot te schrijven — SPIFFS
+// kan een schrijving soms momentaan weigeren (bv. tijdens interne
+// wear-levelling/garbage collection) terwijl een meteen daaropvolgende
+// poging wel lukt, vandaar dat de aanroeper dit twee keer probeert.
+static bool _ag_schrijf_probeer() {
+    File f = SPIFFS.open(_ag_pad(_ag_slot_liggend), "w");
+    if (!f) return false;
+    bool ok = f.write(_ag_upload_buf, _ag_upload_len) == _ag_upload_len;
+    f.close();
+    if (!ok) SPIFFS.remove(_ag_pad(_ag_slot_liggend));
+    return ok;
+}
+
 void webapp_setup() {
     if (_http_gestart) return;
     if (_http_handlers_klaar) { _http.begin(); _http_gestart = true; return; }
@@ -331,11 +344,9 @@ void webapp_setup() {
             }
             // Vaste bestandsnaam per slot: openen in "w" overschrijft de oude
             // foto van datzelfde slot vanzelf, geen aparte verwijderstap nodig.
-            File f = SPIFFS.open(_ag_pad(_ag_slot_liggend), "w");
-            if (!f) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"schrijffout\"}"); return; }
-            bool ok = f.write(_ag_upload_buf, _ag_upload_len) == _ag_upload_len;
-            f.close();
-            if (!ok) SPIFFS.remove(_ag_pad(_ag_slot_liggend));
+            // Eenmalige directe herkansing bij een schrijffout — zelfde
+            // redenering als _hav_schrijf_probeer() in haven_achtergrond.ino.
+            bool ok = _ag_schrijf_probeer() || _ag_schrijf_probeer();
             _http.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"reden\":\"schrijffout\"}");
         },
         []() {  // upload-handler: meerdere keren aangeroepen tijdens het streamen

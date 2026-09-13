@@ -166,6 +166,27 @@ section h2{
 'use strict';
 var doelW = 800, doelH = 480, maxUploadBytes = 300 * 1024;
 
+// ─── Foutcode bij een mislukte upload — deze pagina behandelt alleen
+// HAVEN-dashboardfoto's (groep 1); zie webapp_html.h voor de volledige
+// tabel (ook groep 2/3, achtergrondfoto's). Tweede cijfer = WAT er misging,
+// zelfde "reden"-sleutel als de server teruggeeft — zo kan Brendan "fout 1.4"
+// doorgeven i.p.v. de hele melding te moeten overtypen.
+var FOUTCODE_REDEN = { pin: 1, groot: 2, ruimte: 3, schrijffout: 4, vol: 5, leeg: 6, verbinding: 6, bijsnijden: 7, onbekend: 0 };
+var FOUTTEKST_REDEN = {
+  pin: 'onjuiste pincode',
+  groot: 'bestand nog te groot, ook na compressie',
+  ruimte: 'te weinig vrije opslag over',
+  schrijffout: 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw',
+  vol: 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder',
+  leeg: 'lege upload',
+  verbinding: 'verbindingsfout',
+  onbekend: 'onbekende fout'
+};
+function foutCode(redenSleutel){ var r = FOUTCODE_REDEN[redenSleutel]; return '1.' + (r == null ? 0 : r); }
+function uploadFoutTekst(redenSleutel){
+  return 'Upload mislukt (fout ' + foutCode(redenSleutel) + '): ' + (FOUTTEKST_REDEN[redenSleutel] || FOUTTEKST_REDEN.onbekend) + '.';
+}
+
 // Zelfde pincode/opslagsleutel als de afstandsbedieningspagina ("/") — eenmaal
 // daar (of hier) ontgrendeld werkt overal, zonder opnieuw in te loggen.
 var PIN_KEY = 'bkos_pin';
@@ -490,7 +511,7 @@ function cropBevestig(){
     encodeerBinnenBudget(canvas, 0, function(blob, gelukt){
       if (gelukt) uploadBlob(blob);
       else {
-        melding('Deze foto blijft te groot, ook na maximale compressie. Probeer een andere foto.', 'fout');
+        melding(uploadFoutTekst('groot'), 'fout');
         document.getElementById('uploadBtn').disabled = false;
       }
     });
@@ -498,7 +519,7 @@ function cropBevestig(){
     // Voorheen kon een fout hier (bv. een leeg kader) de upload stil laten
     // hangen op "wordt verkleind…" zonder ooit een netwerkverzoek te doen —
     // nu altijd een zichtbare melding i.p.v. een oneindige stille status.
-    melding('Bijsnijden mislukt (' + e.message + '). Probeer het opnieuw.', 'fout');
+    melding('Bijsnijden mislukt (' + e.message + ') — fout ' + foutCode('bijsnijden') + '. Probeer het opnieuw.', 'fout');
     document.getElementById('uploadBtn').disabled = false;
   }
 }
@@ -522,20 +543,14 @@ function uploadBlob(blob){
       melding('Foto opgeslagen als ' + d.naam + '.', 'ok');
       info(); lijst();
     } else {
-      var reden = xhr.status === 403 ? 'onjuiste pincode'
-                : xhr.status === 413 ? 'bestand nog te groot, ook na verkleinen'
-                : d.reden === 'ruimte' ? 'te weinig vrije opslag over'
-                : d.reden === 'vol' ? 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder'
-                : d.reden === 'schrijffout' ? 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw'
-                : 'onbekende fout';
-      melding('Upload mislukt (' + reden + ').', 'fout');
+      melding(uploadFoutTekst(d.reden || 'onbekend'), 'fout');
       info();
     }
   };
   xhr.onerror = function(){
     voortgang.style.display = 'none';
     document.getElementById('uploadBtn').disabled = false;
-    melding('Upload mislukt (verbinding).', 'fout');
+    melding(uploadFoutTekst('verbinding'), 'fout');
   };
   xhr.send(fd);
 }

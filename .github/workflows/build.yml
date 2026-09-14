@@ -62,22 +62,35 @@ jobs:
             --output-dir build_esp32s3/ \
             BKOS_NUI/
 
+      - name: Genereer SPIFFS-variant van de partitietabel
+        run: |
+          # Brendan wil bij "Volledige herinstallatie" zelf kunnen kiezen
+          # tussen FATFS (aanbevolen, zie partitions_s3_16mb.csv) en SPIFFS
+          # op dezelfde ~9,5MB data-partitie. De partitietabel raakt de
+          # app-code niet, dus geen tweede volledige compile nodig — gewoon
+          # de SPIFFS-CSV los omzetten met dezelfde tool die arduino-cli zelf
+          # intern gebruikt.
+          GEN=$(find ~/.arduino15/packages/esp32/hardware/esp32 -name gen_esp32part.py | head -1)
+          python3 "$GEN" BKOS_NUI/partitions_s3_16mb_spiffs.csv build_esp32s3/BKOS_NUI.ino.partitions_spiffs.bin
+
       - name: Commit ESP32-S3 firmware
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
           mkdir -p firmware
           cp build_esp32s3/BKOS_NUI.ino.bin firmware/bkos_esp32s3_8048s070.bin
-          # bootloader.bin + partitions.bin: alleen nodig voor een VOLLEDIGE
-          # herflash (installer/index.html "Volledige herinstallatie" — zet de
-          # nieuwe FATFS-partitietabel neer), niet voor de normale OTA-stroom
-          # (die vervangt uitsluitend app0/app1, nooit de partitietabel zelf).
-          # Meegenomen zodat die knop altijd bij de nieuwste firmwareversie hoort.
+          # bootloader.bin + partitions*.bin: alleen nodig voor een VOLLEDIGE
+          # herflash (installer "Volledige herinstallatie" — zet een nieuwe,
+          # ~9,5MB-partitietabel neer, als FATFS óf SPIFFS naar keuze), niet
+          # voor de normale OTA-stroom (die vervangt uitsluitend app0/app1,
+          # nooit de partitietabel zelf). Meegenomen zodat die keuze altijd
+          # bij de nieuwste firmwareversie hoort.
           cp build_esp32s3/BKOS_NUI.ino.bootloader.bin firmware/bkos_esp32s3_8048s070.bootloader.bin
           cp build_esp32s3/BKOS_NUI.ino.partitions.bin firmware/bkos_esp32s3_8048s070.partitions.bin
+          cp build_esp32s3/BKOS_NUI.ino.partitions_spiffs.bin firmware/bkos_esp32s3_8048s070.partitions_spiffs.bin
           VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_esp32s3.txt
-          git add firmware/bkos_esp32s3_8048s070.bin firmware/bkos_esp32s3_8048s070.bootloader.bin firmware/bkos_esp32s3_8048s070.partitions.bin firmware/versie_esp32s3.txt
+          git add firmware/bkos_esp32s3_8048s070.bin firmware/bkos_esp32s3_8048s070.bootloader.bin firmware/bkos_esp32s3_8048s070.partitions.bin firmware/bkos_esp32s3_8048s070.partitions_spiffs.bin firmware/versie_esp32s3.txt
           git diff --staged --quiet && exit 0
           git commit -m "ci: ESP32-S3 firmware $VERSION"
           for i in 1 2 3 4 5; do

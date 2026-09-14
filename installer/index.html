@@ -326,7 +326,7 @@
           <label style="display:flex;gap:8px;align-items:flex-start;font-size:0.85rem;color:var(--amber);cursor:pointer;">
             <input type="checkbox" id="full-reinstall-check" onchange="toggleVolledigeHerinstallatie()" style="margin-top:3px;">
             <span>
-              <strong>Volledige herinstallatie</strong> — nieuw, groter bestandssysteem (FATFS i.p.v. SPIFFS).
+              <strong>Volledige herinstallatie</strong> — nieuwe, ~9,5MB opslagpartitie (FATFS of SPIFFS, kies hieronder).
               Eenmalig nodig om de "opslag vol/schrijffout"-problemen structureel op te lossen.
               <strong>Wist alle op het apparaat opgeslagen bestanden</strong> (foto's, WiFi-instellingen,
               gasten-pincodes, kanaalnamen, meldingsinstellingen — alles). Er is geen weg terug.
@@ -337,6 +337,19 @@
             update. Na afloop moet het apparaat opnieuw met WiFi verbonden worden en alle instellingen
             (bootnaam, kanaalnamen, gastcodes, meldingen, foto's) opnieuw ingevoerd worden.
           </p>
+          <div id="full-reinstall-fs-row" style="display:none;margin-top:10px;">
+            <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:4px;">
+              Bestandssysteem voor de ~9,5MB opslagpartitie
+            </label>
+            <label style="display:block;font-size:0.85rem;margin-bottom:2px;cursor:pointer;">
+              <input type="radio" name="full-reinstall-fs" value="fat" checked
+                     onchange="berekenManifestHuidig()"> FATFS <span style="color:var(--text-dim);">(aanbevolen — weigert minder snel schrijvingen bij hoge bezetting)</span>
+            </label>
+            <label style="display:block;font-size:0.85rem;cursor:pointer;">
+              <input type="radio" name="full-reinstall-fs" value="spiffs"
+                     onchange="berekenManifestHuidig()"> SPIFFS
+            </label>
+          </div>
           <div id="full-reinstall-pin-row" style="display:none;margin-top:10px;">
             <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:4px;">
               Nieuwe eigenaars-pincode (4 cijfers) — wordt na de installatie automatisch ingesteld
@@ -426,7 +439,8 @@ const OTA_RESET_URL = `${RAW}/firmware/reset_otadata.bin`;
 // dus altijd de nieuwste van de main-branch gebruiken, ongeacht welk
 // versiekanaal/-nummer hierboven voor de firmware zelf gekozen is.
 const BOOTLOADER_URL  = `${RAW}/firmware/bkos_esp32s3_8048s070.bootloader.bin`;
-const PARTITIONS_URL  = `${RAW}/firmware/bkos_esp32s3_8048s070.partitions.bin`;
+const PARTITIONS_URL_FAT    = `${RAW}/firmware/bkos_esp32s3_8048s070.partitions.bin`;
+const PARTITIONS_URL_SPIFFS = `${RAW}/firmware/bkos_esp32s3_8048s070.partitions_spiffs.bin`;
 
 // Per platform: nui = reguliere firmware, blanco = leveringsbasis
 // blanco.raw verwijst naar de BKOS-blanco repo; vkey is de bestandsnaam-sleutel daar
@@ -476,9 +490,22 @@ let fullReinstall = false;   // "volledige herinstallatie" aangevinkt?
 function toggleVolledigeHerinstallatie() {
   fullReinstall = document.getElementById('full-reinstall-check').checked;
   document.getElementById('full-reinstall-note').style.display    = fullReinstall ? 'block' : 'none';
+  document.getElementById('full-reinstall-fs-row').style.display  = fullReinstall ? 'block' : 'none';
   document.getElementById('full-reinstall-pin-row').style.display = fullReinstall ? 'block' : 'none';
   document.getElementById('pin-set-zone').style.display           = fullReinstall ? 'block' : 'none';
-  if (flashVer && flashUrl) berekenManifest(PLAT[platform].chip, flashVer, flashUrl);
+  berekenManifestHuidig();
+}
+
+// Welke van de twee partitietabellen (FATFS/SPIFFS) hoort bij het
+// aangevinkte keuzerondje — Brendan wil zelf kunnen kiezen i.p.v. altijd
+// FATFS opgelegd te krijgen, ook al is dat wel het aanbevolen alternatief.
+function gekozenPartitiesUrl() {
+  var radio = document.querySelector('input[name="full-reinstall-fs"]:checked');
+  return (radio && radio.value === 'spiffs') ? PARTITIONS_URL_SPIFFS : PARTITIONS_URL_FAT;
+}
+
+function berekenManifestHuidig() {
+  if (flashVer && flashUrl && platform) berekenManifest(PLAT[platform].chip, flashVer, flashUrl);
 }
 
 function kiesPlatform(el) {
@@ -651,7 +678,7 @@ function berekenManifest(chip, ver, url) {
   const parts = fullReinstall
     ? [
         { path: BOOTLOADER_URL, offset: 0 },       // 0x0: bootloader
-        { path: PARTITIONS_URL, offset: 32768 },   // 0x8000: nieuwe (FATFS) partitietabel
+        { path: gekozenPartitiesUrl(), offset: 32768 },   // 0x8000: nieuwe partitietabel (FATFS of SPIFFS naar keuze)
         { path: OTA_RESET_URL,  offset: 57344 },   // 0xE000: otadata blanco → boot van factory
         { path: url,            offset: 65536 }    // 0x10000: app binary
       ]

@@ -1,0 +1,23 @@
+# Name,   Type, SubType, Offset,   Size,     Flags
+# Zelfde indeling als partitions_s3_16mb.csv (nvs/otadata/app0/app1 identiek,
+# data-partitie ~9,5MB) — enige verschil is dat de data-partitie hier
+# SPIFFS-subtype is i.p.v. fat, voor wie liever bij SPIFFS blijft. Brendan
+# wil zelf kunnen kiezen tussen beide bij een "Volledige herinstallatie";
+# FATFS is het aanbevolen alternatief omdat SPIFFS bij hoge bezetting
+# schrijvingen bleek te weigeren ondanks "genoeg" gerapporteerde vrije
+# ruimte (interne reserve/fragmentatiebeperking van dat bestandssysteem) —
+# hoe erg dat in de praktijk is op een 9,5MB-partitie (i.p.v. de eerdere
+# 1,5MB) is nooit apart getest, vandaar dat de keuze open blijft i.p.v. 'm
+# hier stilzwijgend te verbieden.
+# Wordt NOOIT gebruikt om BKOS_NUI/partitions.csv mee te zetten in build.yml
+# (dat blijft de fat-variant, partitions_s3_16mb.csv) — deze CSV wordt
+# uitsluitend los met gen_esp32part.py omgezet naar een tweede
+# partitions_spiffs.bin-bestand voor de "Volledige herinstallatie"-keuze in
+# de installers, zonder de hele sketch opnieuw te compileren (de partitie-
+# indeling raakt de app-code zelf niet).
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x330000,
+app1,     app,  ota_1,   0x340000, 0x330000,
+spiffs,   data, spiffs,  0x670000, 0x980000,
+coredump, data, coredump,0xFF0000, 0x10000,

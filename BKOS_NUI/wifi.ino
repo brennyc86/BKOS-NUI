@@ -183,6 +183,14 @@ static void _wifi_verbinden_intern() {
     if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
     WiFi.mode(wifi_hotspot_actief() ? WIFI_AP_STA : WIFI_STA);
 #if PLATFORM_ESP32
+    // WiFi-modemslaap (standaard aan) laat de radio tussen beacons in slapen
+    // en pas bij de volgende DTIM-beacon weer wakker worden — een nieuwe
+    // inkomende verbinding (webapp/websocket) kan daardoor tot een seconde of
+    // meer "stil" blijven hangen vóór 'm opgepikt wordt, precies het "opent
+    // soms lastig, een nieuwe poging of lang wachten helpt"-gedrag dat
+    // Brendan meldde. Een boordcomputer aan vaste voeding hoeft niet op
+    // stroomverbruik te letten, dus uit voor consistent snel/responsief WiFi.
+    WiFi.setSleep(false);
     WiFi.setAutoReconnect(false);
 
     // Eenmalige migratie van oude opslag
@@ -298,6 +306,7 @@ void wifi_hotspot_starten() {
     if (_hs_actief) return;
     _hs_creds_genereren();
     WiFi.mode(WIFI_AP_STA);
+    WiFi.setSleep(false);  // zie _wifi_verbinden_intern() — voorkomt trage/gemiste verbindingen
     WiFi.softAP(_hs_ssid);  // geen wachtwoord = open netwerk
     _hs_actief = true;
 

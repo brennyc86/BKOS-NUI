@@ -471,9 +471,18 @@ function connect(){
   };
 }
 
+// Brendan wil "uitgelogd" ook als expliciete, zichtbare status i.p.v. alleen
+// het kleine slotje — hdrSub toont daarom voortaan verbinding + inlogstatus
+// samen (bv. "verbonden · Eigenaar" / "verbonden · Uitgelogd").
+var connected = false;
+function _hdrSubRender(){
+  var loginTekst = (typeof unlocked !== 'undefined' && unlocked) ? (NIVEAU_NAMEN[niveau] || 'Ingelogd') : 'Uitgelogd';
+  document.getElementById('hdrSub').textContent = (connected ? 'verbonden' : 'verbinden…') + ' · ' + loginTekst;
+}
 function setConn(on){
+  connected = on;
   document.getElementById('connDot').className = 'dot' + (on ? ' on' : '');
-  document.getElementById('hdrSub').textContent = on ? 'verbonden' : 'verbinden…';
+  _hdrSubRender();
 }
 
 function berichtSetOpen(open){
@@ -486,6 +495,7 @@ function berichtToggle(){ berichtSetOpen(!berichtOpen); }
 function setLock(on, niv){
   unlocked = on;
   niveau = on ? (niv || 0) : 0;
+  _hdrSubRender();
   var b = document.getElementById('lockBtn');
   b.className = 'lock' + (on ? ' open' : '');
   b.innerHTML = on ? '&#128275;' : '&#128274;';

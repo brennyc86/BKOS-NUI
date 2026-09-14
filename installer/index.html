@@ -317,6 +317,27 @@
           <strong>Let op:</strong> De bootloader moet al aanwezig zijn. Alle BKOS-hardware wordt met bootloader geleverd.
           Voor een gloednieuwe chip: gebruik eenmalig Arduino IDE voor de eerste flash.
         </p>
+
+        <!-- Volledige herinstallatie: schrijft ook de partitietabel (nieuw,
+             groter FATFS-bestandssysteem i.p.v. het kleinere/onbetrouwbaardere
+             SPIFFS) — alleen mogelijk/zinvol op ESP32-S3 met de reguliere
+             BKOS-NUI firmware, en uitsluitend eenmalig nodig per apparaat. -->
+        <div id="full-reinstall-zone" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:0.85rem;color:var(--amber);cursor:pointer;">
+            <input type="checkbox" id="full-reinstall-check" onchange="toggleVolledigeHerinstallatie()" style="margin-top:3px;">
+            <span>
+              <strong>Volledige herinstallatie</strong> — nieuw, groter bestandssysteem (FATFS i.p.v. SPIFFS).
+              Eenmalig nodig om de "opslag vol/schrijffout"-problemen structureel op te lossen.
+              <strong>Wist alle op het apparaat opgeslagen bestanden</strong> (foto's, WiFi-instellingen,
+              gasten-pincodes, kanaalnamen, meldingsinstellingen — alles). Er is geen weg terug.
+            </span>
+          </label>
+          <p class="flash-note" id="full-reinstall-note" style="display:none;color:var(--amber)">
+            Schrijft bootloader + partitietabel + firmware in één keer. Duurt iets langer dan een gewone
+            update. Na afloop moet het apparaat opnieuw met WiFi verbonden worden en alle instellingen
+            (bootnaam, kanaalnamen, gastcodes, meldingen, foto's) opnieuw ingevoerd worden.
+          </p>
+        </div>
       </div>
 
       <!-- Pico zone -->
@@ -359,6 +380,15 @@ const RAW_BLANCO = 'https://raw.githubusercontent.com/brennyc86/BKOS-blanco/main
 // Nodig omdat ESP32 na OTA-update van de ota_0/ota_1 partitie opstart, niet factory.
 // Door otadata (0xE000, 8KB) te wissen boot de bootloader opnieuw van de factory partitie.
 const OTA_RESET_URL = `${RAW}/firmware/reset_otadata.bin`;
+
+// Bootloader + partitietabel voor de "volledige herinstallatie" (zet het
+// nieuwe, grotere FATFS-bestandssysteem neer i.p.v. het krappere SPIFFS) —
+// alleen gepubliceerd voor de ESP32-S3/BKOS-NUI-combinatie (build.yml job
+// build_esp32s3). Deze twee wijzigen vrijwel nooit tussen firmwareversies,
+// dus altijd de nieuwste van de main-branch gebruiken, ongeacht welk
+// versiekanaal/-nummer hierboven voor de firmware zelf gekozen is.
+const BOOTLOADER_URL  = `${RAW}/firmware/bkos_esp32s3_8048s070.bootloader.bin`;
+const PARTITIONS_URL  = `${RAW}/firmware/bkos_esp32s3_8048s070.partitions.bin`;
 
 // Per platform: nui = reguliere firmware, blanco = leveringsbasis
 // blanco.raw verwijst naar de BKOS-blanco repo; vkey is de bestandsnaam-sleutel daar
@@ -403,6 +433,13 @@ let blancRel  = null;    // cache voor blanco_releases.json
 let flashUrl  = null;
 let flashVer  = null;
 let prevManifestUrl = null;
+let fullReinstall = false;   // "volledige herinstallatie" aangevinkt?
+
+function toggleVolledigeHerinstallatie() {
+  fullReinstall = document.getElementById('full-reinstall-check').checked;
+  document.getElementById('full-reinstall-note').style.display = fullReinstall ? 'block' : 'none';
+  if (flashVer && flashUrl) berekenManifest(PLAT[platform].chip, flashVer, flashUrl);
+}
 
 function kiesPlatform(el) {
   document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
@@ -452,6 +489,19 @@ async function update() {
 
   espZone.style.display  = p.pico ? 'none'  : 'block';
   picoZone.style.display = p.pico ? 'block' : 'none';
+
+  // "Volledige herinstallatie" is alleen zinvol/beschikbaar op ESP32-S3 met
+  // de reguliere BKOS-NUI firmware (enige combinatie waarvoor bootloader.bin
+  // + partitions.bin gepubliceerd worden) — bij elke andere keuze verbergen
+  // én de vinkje terugzetten, zodat een eerdere keuze niet per ongeluk
+  // "meereist" naar een platform waar dit niet voor bedoeld is.
+  const magVolledig = (platform === 'esp32s3' && firmware === 'nui');
+  document.getElementById('full-reinstall-zone').style.display = magVolledig ? 'block' : 'none';
+  if (!magVolledig) {
+    fullReinstall = false;
+    document.getElementById('full-reinstall-check').checked = false;
+    document.getElementById('full-reinstall-note').style.display = 'none';
+  }
 
   sPicker.classList.toggle('on', kanaal === 'stable');
 
@@ -553,14 +603,27 @@ function setStatus(msg, cls = '') {
 function berekenManifest(chip, ver, url) {
   if (prevManifestUrl) URL.revokeObjectURL(prevManifestUrl);
   const family = chip === 'ESP32-S3' ? 'ESP32-S3' : 'ESP32';
+  // Normaal: alleen otadata-reset + app (OTA-stroom, partitietabel blijft
+  // ongemoeid). Bij "volledige herinstallatie" (alleen esp32s3+nui, zie
+  // update()) ook bootloader + de nieuwe FATFS-partitietabel meeschrijven —
+  // zelfde offsets als arduino-cli's eigen esptool write_flash-commando voor
+  // esp32s3 (bootloader @0x0, partitions @0x8000).
+  const parts = fullReinstall
+    ? [
+        { path: BOOTLOADER_URL, offset: 0 },       // 0x0: bootloader
+        { path: PARTITIONS_URL, offset: 32768 },   // 0x8000: nieuwe (FATFS) partitietabel
+        { path: OTA_RESET_URL,  offset: 57344 },   // 0xE000: otadata blanco → boot van factory
+        { path: url,            offset: 65536 }    // 0x10000: app binary
+      ]
+    : [
+        { path: OTA_RESET_URL, offset: 57344 },    // 0xE000: wis otadata → boot van factory
+        { path: url,           offset: 65536 }     // 0x10000: app binary
+      ];
   const manifest = {
     name: 'BKOS-NUI',
     version: ver,
     new_install_prompt_erase: false,
-    builds: [{ chipFamily: family, parts: [
-      { path: OTA_RESET_URL, offset: 57344 },  // 0xE000: wis otadata → boot van factory
-      { path: url,           offset: 65536 }   // 0x10000: app binary
-    ] }]
+    builds: [{ chipFamily: family, parts }]
   };
   const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
   prevManifestUrl = URL.createObjectURL(blob);
@@ -571,6 +634,14 @@ function berekenManifest(chip, ver, url) {
 }
 
 function doFlash() {
+  if (fullReinstall) {
+    const ok = confirm(
+      'Volledige herinstallatie: dit wist ALLE op het apparaat opgeslagen bestanden ' +
+      '(foto\'s, WiFi-instellingen, gasten-pincodes, kanaalnamen, meldingsinstellingen).\n\n' +
+      'Er is geen weg terug. Doorgaan?'
+    );
+    if (!ok) return;
+  }
   document.getElementById('esp-btn').click();
 }
 

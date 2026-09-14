@@ -337,7 +337,45 @@
             update. Na afloop moet het apparaat opnieuw met WiFi verbonden worden en alle instellingen
             (bootnaam, kanaalnamen, gastcodes, meldingen, foto's) opnieuw ingevoerd worden.
           </p>
+          <div id="full-reinstall-pin-row" style="display:none;margin-top:10px;">
+            <label style="display:block;font-size:0.8rem;color:var(--text-dim);margin-bottom:4px;">
+              Nieuwe eigenaars-pincode (4 cijfers) — wordt na de installatie automatisch ingesteld
+            </label>
+            <input type="text" id="full-reinstall-pin" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+                   placeholder="bijv. 1234"
+                   style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1rem;padding:8px 12px;letter-spacing:0.3em;width:110px;">
+          </div>
         </div>
+      </div>
+
+      <!-- Stap 5: pincode instellen ná een volledige herinstallatie — apart
+           van het flash-proces zelf omdat esp-web-tools geen betrouwbaar
+           "klaar"-event teruggeeft; de gebruiker klikt dit pas ná het zien
+           van "Klaar!" in het installatievenster hierboven. Verbindt met de
+           tijdelijke hotspot die een vers/leeg apparaat automatisch opstart
+           (open netwerk "BKOS-NUI…") en gebruikt daar de standaard
+           fabriekspincode 0000 (screen_config.ino) om de zelf-gekozen
+           pincode hierboven meteen actief te maken — vereist wél dat dit
+           toestel eerst zelf met dat hotspot-netwerk verbonden is (een
+           browserpagina kan dat niet automatisch voor je doen). -->
+      <div id="pin-set-zone" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+        <div class="step-title">Stap 5 — Ná de installatie: pincode instellen</div>
+        <p class="flash-note">
+          Wacht tot het installatievenster hierboven "Klaar!" toont en sluit het. Verbind dit toestel
+          daarna met het tijdelijke hotspot-netwerk <strong>BKOS-NUI…</strong> (open, geen wachtwoord —
+          verschijnt automatisch enkele seconden na het opstarten). Klik daarna hieronder.
+        </p>
+        <button id="pin-set-btn" onclick="pincodeInstellen()" style="margin-top:8px;padding:10px 18px;border-radius:10px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;">
+          🔑 Pincode nu instellen
+        </button>
+        <div id="pin-set-status" style="margin-top:10px;font-size:0.85rem;color:var(--text-dim);"></div>
+        <p class="flash-note" style="margin-top:10px;">
+          Werkt de knop niet (sommige browsers blokkeren een rechtstreekse verbinding vanaf deze
+          beveiligde pagina naar een apparaat op je eigen netwerk)? Open dan
+          <a href="http://192.168.4.1/" target="_blank" rel="noopener">http://192.168.4.1/</a>
+          zelf in een nieuw tabblad en wijzig de pincode daar handmatig via
+          <strong>INSTELLINGEN → TOEGANG → Pincode wijzigen</strong> (huidige pincode: <strong>0000</strong>).
+        </p>
       </div>
 
       <!-- Pico zone -->
@@ -437,7 +475,9 @@ let fullReinstall = false;   // "volledige herinstallatie" aangevinkt?
 
 function toggleVolledigeHerinstallatie() {
   fullReinstall = document.getElementById('full-reinstall-check').checked;
-  document.getElementById('full-reinstall-note').style.display = fullReinstall ? 'block' : 'none';
+  document.getElementById('full-reinstall-note').style.display    = fullReinstall ? 'block' : 'none';
+  document.getElementById('full-reinstall-pin-row').style.display = fullReinstall ? 'block' : 'none';
+  document.getElementById('pin-set-zone').style.display           = fullReinstall ? 'block' : 'none';
   if (flashVer && flashUrl) berekenManifest(PLAT[platform].chip, flashVer, flashUrl);
 }
 
@@ -635,6 +675,12 @@ function berekenManifest(chip, ver, url) {
 
 function doFlash() {
   if (fullReinstall) {
+    const pin = document.getElementById('full-reinstall-pin').value.trim();
+    if (!/^[0-9]{4}$/.test(pin)) {
+      alert('Vul eerst een pincode van precies 4 cijfers in (wordt na de installatie automatisch ingesteld).');
+      document.getElementById('full-reinstall-pin').focus();
+      return;
+    }
     const ok = confirm(
       'Volledige herinstallatie: dit wist ALLE op het apparaat opgeslagen bestanden ' +
       '(foto\'s, WiFi-instellingen, gasten-pincodes, kanaalnamen, meldingsinstellingen).\n\n' +
@@ -643,6 +689,82 @@ function doFlash() {
     if (!ok) return;
   }
   document.getElementById('esp-btn').click();
+}
+
+// ─── Stap 5: pincode instellen op een vers/leeg apparaat ───────────────────
+// Een net herinstalleerd apparaat heeft geen WiFi-instellingen meer (die
+// stonden ook op de gewiste data-partitie) en start daarom vanzelf zijn
+// tijdelijke open hotspot + webapp op het vaste adres 192.168.4.1 — precies
+// hetzelfde als bij een compleet nieuw apparaat. De fabriekspincode "0000"
+// (screen_config.ino, gebruikt zodra er nog geen pincode-bestand bestaat)
+// wordt hier gebruikt om in te loggen en meteen naar de zelf-gekozen
+// pincode te wijzigen — geen nieuwe firmwarefunctionaliteit nodig, dit
+// hergebruikt gewoon de bestaande auth/pin_wijzig-websocketcommando's.
+function pincodeInstellen() {
+  const pin = document.getElementById('full-reinstall-pin').value.trim();
+  const st  = document.getElementById('pin-set-status');
+  const btn = document.getElementById('pin-set-btn');
+  if (!/^[0-9]{4}$/.test(pin)) {
+    st.textContent = 'Vul hierboven bij stap 4 eerst een pincode van 4 cijfers in.';
+    st.style.color = 'var(--red)';
+    return;
+  }
+  btn.disabled = true;
+  st.style.color = 'var(--text-dim)';
+  st.textContent = 'Verbinden met 192.168.4.1 …';
+
+  let ws;
+  const timeoutId = setTimeout(() => {
+    st.style.color = 'var(--red)';
+    st.textContent = 'Geen verbinding — controleer of dit toestel met het BKOS-NUI hotspot-netwerk verbonden is.';
+    btn.disabled = false;
+    try { ws.close(); } catch(e) {}
+  }, 6000);
+
+  try {
+    ws = new WebSocket('ws://192.168.4.1:8080/');
+  } catch(e) {
+    clearTimeout(timeoutId);
+    st.style.color = 'var(--red)'; st.textContent = 'Kon geen verbinding opzetten: ' + e.message;
+    btn.disabled = false;
+    return;
+  }
+
+  ws.onopen = () => {
+    st.textContent = 'Verbonden — inloggen met fabriekspincode…';
+    ws.send(JSON.stringify({ t: 'auth', pin: '0000' }));
+  };
+  ws.onerror = () => {
+    clearTimeout(timeoutId);
+    st.style.color = 'var(--red)';
+    st.textContent = 'Verbindingsfout — controleer of dit toestel met het BKOS-NUI hotspot-netwerk verbonden is.';
+    btn.disabled = false;
+  };
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch(e) { return; }
+    if (msg.t === 'auth_ok') {
+      st.textContent = 'Ingelogd — pincode wijzigen…';
+      ws.send(JSON.stringify({ t: 'pin_wijzig', oud: '0000', nieuw: pin }));
+    } else if (msg.t === 'auth_fout') {
+      clearTimeout(timeoutId);
+      st.style.color = 'var(--amber)';
+      st.textContent = 'Fabriekspincode 0000 werkt niet meer — dit apparaat is blijkbaar al ingesteld (niet vers geformatteerd). Stel de pincode in via de webapp zelf.';
+      btn.disabled = false;
+      ws.close();
+    } else if (msg.t === 'pin_wijzig_res') {
+      clearTimeout(timeoutId);
+      if (msg.ok) {
+        st.style.color = 'var(--green)';
+        st.textContent = `✓ Pincode ingesteld op ${pin}. Je kunt nu opnieuw met je eigen WiFi verbinden via de webapp (CONFIG → WIFI).`;
+      } else {
+        st.style.color = 'var(--red)';
+        st.textContent = 'Pincode wijzigen mislukt — probeer het opnieuw.';
+      }
+      btn.disabled = false;
+      ws.close();
+    }
+  };
 }
 
 function picoManualToggle() {

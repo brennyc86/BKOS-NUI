@@ -212,7 +212,10 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
     </div>
 
     <section>
-      <h2 data-i18n="kopBoot">Boot &amp; eigenaar</h2>
+      <h2 style="display:flex;align-items:center;justify-content:space-between;">
+        <span data-i18n="kopBoot">Boot &amp; eigenaar</span>
+        <span id="infoEditBtn" onclick="setTab('instellingen');setSubTab('boot');" style="display:none;cursor:pointer;font-size:1rem;" title="Bewerken">&#9998;</span>
+      </h2>
       <div id="pubInfo">—</div>
     </section>
 
@@ -326,6 +329,7 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
         <button class="tabbtn active" data-subtab="boot" onclick="setSubTab('boot')">BOOT</button>
         <button class="tabbtn" data-subtab="verbindingen" onclick="setSubTab('verbindingen')">VERBINDINGEN</button>
         <button class="tabbtn" data-subtab="toegang" onclick="setSubTab('toegang')">TOEGANG</button>
+        <button class="tabbtn" data-subtab="backup" onclick="setSubTab('backup')">BACKUP</button>
       </div>
 
       <div id="instSubBoot" class="tabpane">
@@ -378,6 +382,18 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
           </div>
           <div id="gastMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
           <div id="gastLijst" style="margin-top:8px;"></div>
+        </section>
+      </div>
+
+      <div id="instSubBackup" class="tabpane" style="display:none">
+        <section>
+          <h2>Instellingen exporteren/importeren</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Download alle instellingen (boot &amp; eigenaar, IO-namen/configuratie, PANEEL/LAMPEN, meldingen, gasten pincodes, WiFi, pincode — geen foto's) als één bestand. Handig bij het wisselen van bestandssysteem (SPIFFS/FATFS) of het overzetten naar een nieuwe boordcomputer.</p>
+          <button class="mbtn" onclick="instellingenExport()">EXPORTEREN (DOWNLOAD)</button>
+          <input type="file" id="instImportInput" accept="application/json" style="display:none" onchange="instellingenImportUpload(this)">
+          <button class="mbtn" style="margin-top:8px;" onclick="document.getElementById('instImportInput').click()">IMPORTEREN (BESTAND KIEZEN)</button>
+          <p style="font-size:.72rem;color:var(--text-dim);margin-top:8px;">Importeren overschrijft de huidige instellingen en herstart het apparaat automatisch.</p>
+          <div id="instBackupMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
         </section>
       </div>
     </div>
@@ -515,6 +531,7 @@ function setLock(on, niv){
   document.getElementById('tabBtnIo').style.display = eigenaar ? '' : 'none';
   document.getElementById('tabBtnFotos').style.display = eigenaar ? '' : 'none';
   document.getElementById('tabBtnInstellingen').style.display = eigenaar ? '' : 'none';
+  document.getElementById('infoEditBtn').style.display = eigenaar ? '' : 'none';
   var verbergTabs = eigenaar ? [] : magHuisBoot ? ['io','fotos','instellingen'] : ['huis','boot','io','fotos','instellingen'];
   // Net ingelogd (dit is de enige plek waar setLock(true, ...) aangeroepen
   // wordt): meteen naar HUIS of BOOT springen, welke van de twee ook op de
@@ -549,7 +566,7 @@ function setTab(naam){
 var subTab = 'boot';
 function setSubTab(naam){
   subTab = naam;
-  ['boot','verbindingen','toegang'].forEach(function(t){
+  ['boot','verbindingen','toegang','backup'].forEach(function(t){
     var pane = document.getElementById('instSub' + t.charAt(0).toUpperCase() + t.slice(1));
     if (pane) pane.style.display = (t === naam) ? '' : 'none';
   });
@@ -1434,6 +1451,40 @@ function instellingenOpslaan(){
   setTimeout(function(){ el.textContent = ''; }, 3000);
 }
 
+function instellingenExport(){
+  if (needAuth()) return;
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  var a = document.createElement('a');
+  a.href = '/instellingen/export?pin=' + encodeURIComponent(pin);
+  a.download = 'bkos_backup.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function instellingenImportUpload(input){
+  if (needAuth()) return;
+  var f = input.files[0]; if (!f) return;
+  var el = document.getElementById('instBackupMelding');
+  var reader = new FileReader();
+  reader.onload = function(){
+    el.style.color = 'var(--text-dim)'; el.textContent = 'Bezig met importeren…';
+    var pin = localStorage.getItem(PIN_KEY) || '';
+    fetch('/instellingen/import?pin=' + encodeURIComponent(pin), {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: reader.result
+    }).then(function(r){ return r.json().then(function(d){ return {status:r.status, d:d}; }); })
+      .then(function(res){
+        if (res.status === 200 && res.d.ok) {
+          el.style.color = 'var(--green)';
+          el.textContent = 'Geïmporteerd (' + res.d.aantal + ' bestanden). Apparaat herstart nu…';
+        } else {
+          el.style.color = 'var(--red)';
+          el.textContent = 'Importeren mislukt' + (res.d.reden ? ' (' + res.d.reden + ')' : '') + '.';
+        }
+      }).catch(function(){
+        el.style.color = 'var(--red)'; el.textContent = 'Importeren mislukt (verbinding).';
+      });
+  };
+  reader.readAsText(f);
+  input.value = '';
+}
 function pinWijzigen(){
   if (needAuth()) return;
   var oud = document.getElementById('pinOud').value;

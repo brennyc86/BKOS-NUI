@@ -36,6 +36,76 @@ static const char* _wa_basisnaam(const char* volledig) {
     return laatste ? laatste + 1 : volledig;
 }
 
+// ─── Instellingen exporteren/importeren: vaste whitelist van bekende
+// configuratiebestanden (geen foto's/achtergronden — die blijven apart via
+// /fotos en /achtergrond). Bewust letterlijke padstrings i.p.v. de losse
+// *_BESTAND-macro's uit elk apart .ino-bestand, zodat dit niet van hun
+// interne includes afhangt. Import schrijft UITSLUITEND naar paden uit deze
+// lijst (nooit een pad rechtstreeks van de client) — voorkomt willekeurig
+// overschrijven van andere bestanden.
+static const char* const BACKUP_BESTANDEN[] = {
+    "/bkos_config.csv", "/bkos_pclk.txt", "/bkos_dbuf.txt", "/bkos_info.csv",
+    "/bkos_paneel.csv", "/bkos_lampen.csv", "/bkos_melding.csv", "/bkos_gast.csv",
+    "/bkos_bericht.csv", "/bkos_pin.txt", "/io_cfg.csv", "/io_namen.csv",
+    "/net_config.csv", "/bkos_nui.json", "/bkos_data.json",
+};
+#define BACKUP_BESTANDEN_N (sizeof(BACKUP_BESTANDEN) / sizeof(BACKUP_BESTANDEN[0]))
+
+static String _wa_json_escape(const String& in) {
+    String out; out.reserve(in.length() + 8);
+    for (size_t i = 0; i < in.length(); i++) {
+        char c = in[i];
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if ((uint8_t)c < 0x20) { char buf[8]; snprintf(buf, sizeof(buf), "\\u%04x", (uint8_t)c); out += buf; }
+                else out += c;
+        }
+    }
+    return out;
+}
+
+// Leest vanaf 'start' tot een niet-geëscapete '"', decodeert \" \\ \n \r \t \/
+// \uXXXX — gebruikt alleen om onze EIGEN _wa_json_escape()-uitvoer weer terug
+// te lezen, dus geen volledige JSON-parser nodig.
+static String _wa_json_unescape(const String& body, int start) {
+    String out;
+    int n = body.length();
+    for (int i = start; i < n; i++) {
+        char c = body[i];
+        if (c == '"') break;
+        if (c == '\\' && i + 1 < n) {
+            char e = body[++i];
+            switch (e) {
+                case 'n': out += '\n'; break;
+                case 'r': out += '\r'; break;
+                case 't': out += '\t'; break;
+                case '"': out += '"'; break;
+                case '\\': out += '\\'; break;
+                case '/': out += '/'; break;
+                case 'u':
+                    if (i + 4 < n) {
+                        char hex[5] = { body[i+1], body[i+2], body[i+3], body[i+4], 0 };
+                        out += (char)strtol(hex, nullptr, 16);
+                        i += 4;
+                    }
+                    break;
+                default: out += e; break;
+            }
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
+static bool     _wa_herstart_gepland = false;
+static unsigned long _wa_herstart_ms = 0;
+
 static WebServer _http(80);
 static bool _http_gestart = false;
 // Handlers hoeven maar één keer geregistreerd — webapp_setup()/_stop() schakelen
@@ -440,6 +510,57 @@ void webapp_setup() {
         _http.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
     });
 
+    // ─── Instellingen backup: export (download) / import (upload+herstart) ──
+    _http.on("/instellingen/export", HTTP_GET, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
+        String s = "{\"bkosBackup\":1,\"boot\":\""; s += _wa_json_escape(info_boot_naam()); s += "\",\"files\":{";
+        bool first = true;
+        for (size_t i = 0; i < BACKUP_BESTANDEN_N; i++) {
+            if (!SPIFFS.exists(BACKUP_BESTANDEN[i])) continue;
+            File f = SPIFFS.open(BACKUP_BESTANDEN[i], "r");
+            if (!f) continue;
+            String inhoud = f.readString();
+            f.close();
+            if (!first) s += ','; first = false;
+            s += '"'; s += BACKUP_BESTANDEN[i]; s += "\":\"";
+            s += _wa_json_escape(inhoud);
+            s += '"';
+        }
+        s += "}}";
+        _http.sendHeader("Content-Disposition", "attachment; filename=\"bkos_backup.json\"");
+        _http.send(200, "application/json", s);
+    });
+
+    _http.on("/instellingen/import", HTTP_POST, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}"); return; }
+        if (!_http.hasArg("plain")) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"leeg\"}"); return; }
+        const String& body = _http.arg("plain");
+        int filesPos = body.indexOf("\"files\"");
+        if (filesPos < 0) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"formaat\"}"); return; }
+        int geschreven = 0;
+        for (size_t i = 0; i < BACKUP_BESTANDEN_N; i++) {
+            String zoek = String("\"") + BACKUP_BESTANDEN[i] + "\":\"";
+            int p = body.indexOf(zoek, filesPos);
+            if (p < 0) continue;
+            p += zoek.length();
+            String inhoud = _wa_json_unescape(body, p);
+            File f = SPIFFS.open(BACKUP_BESTANDEN[i], "w");
+            if (!f) continue;
+            f.print(inhoud);
+            f.close();
+            geschreven++;
+        }
+        String s = "{\"ok\":true,\"aantal\":"; s += geschreven; s += "}";
+        _http.send(200, "application/json", s);
+        // Bijna alle geïmporteerde bestanden worden maar één keer bij opstarten
+        // in RAM geladen (state_load/info_laden/paneel_laden/hw_io_cfg_laden/
+        // enz.) — een schone herstart is simpeler en betrouwbaarder dan elke
+        // module apart opnieuw te laten inlezen. Uitgesteld zodat de HTTP-
+        // response de client nog bereikt vóór de herstart.
+        _wa_herstart_ms = millis() + 1200;
+        _wa_herstart_gepland = true;
+    });
+
     _http.onNotFound([]() {
         _http.sendHeader("Location", "/", true);
         _http.send(302, "text/plain", "");
@@ -458,6 +579,10 @@ void webapp_stop() {
 void webapp_loop() {
     if (!_http_gestart) return;
     _http.handleClient();
+    if (_wa_herstart_gepland && (long)(millis() - _wa_herstart_ms) >= 0) {
+        _wa_herstart_gepland = false;
+        ESP.restart();
+    }
 }
 
 #endif // ESP32

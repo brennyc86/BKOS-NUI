@@ -5,6 +5,7 @@
 #include "bkos_net.h"
 #include "ota.h"
 #include "slaap.h"
+#include "boot_log.h"  // OPSTARTLOG-knop in SYSTEEM — zie hardware.ino hw_setup()
 
 #define INFO_BESTAND "/bkos_info.csv"
 
@@ -40,6 +41,7 @@ static char        eig_vals[5][INFO_VELD_LEN];
 static bool info_geladen   = false;
 static bool info_bewerkbaar = false;
 static bool info_pin_wacht  = false;
+static bool info_bootlog_actief = false;  // OPSTARTLOG-overlay (SYSTEEM tab)
 
 const char* info_boot_naam() {
     if (!info_geladen) info_laden();
@@ -257,6 +259,9 @@ static void info_tabs_teken() {
 #define VELD_START_Y  (INFO_TAB_Y + INFO_TAB_H + 4)
 #define VELD_H        UI_SCY(50)
 #define VELD_LABEL_W  UI_SCX(120)
+// SYSTEEM-tab: vaste OPSTARTLOG-rij, direct onder de apparaatnaam-rij.
+#define INFO_SYS_LOG_Y (VELD_START_Y + VELD_H + 4)
+#define INFO_SYS_LOG_H 30
 
 static void info_veld_teken(int idx, int y, const char* label, const char* waarde, bool numeriek) {
     tft.fillRect(10, y, TFT_W - 20, VELD_H - 2, (idx % 2 == 0) ? C_SURFACE : C_BG);
@@ -339,13 +344,25 @@ static void info_velden_teken() {
         tft.setTextSize(1); tft.setTextColor(C_SURFACE3);
         tft.setCursor(TFT_W - 30, naam_y + (VELD_H - 8) / 2); tft.print(">");
 
+        // OPSTARTLOG-rij (vaste positie, apart van de hieronder volgende
+        // sequentiële ry-opbouw — zo blijft de klikzone in screen_info_run()
+        // altijd exact synchroon met wat hier getekend wordt, i.p.v. het
+        // "getekend hier, hittest daar"-mismatchpatroon dat dit project al
+        // eerder trof, zie project_arduino_prototype_hoisting-achtige bugs).
+        tft.fillRect(10, INFO_SYS_LOG_Y, TFT_W - 20, INFO_SYS_LOG_H - 2, C_SURFACE2);
+        tft.setTextSize(1); tft.setTextColor(C_CYAN);
+        tft.setCursor(18, INFO_SYS_LOG_Y + (INFO_SYS_LOG_H - 8) / 2);
+        tft.print("Opstartlog bekijken");
+        tft.setTextColor(C_SURFACE3);
+        tft.setCursor(TFT_W - 30, INFO_SYS_LOG_Y + (INFO_SYS_LOG_H - 8) / 2); tft.print(">");
+
         int LX = 10,  LW = 370;   // linker kolom (lokaal)
         int RX = 402, RW = 388;   // rechter kolom (master / netwerk)
         int RH = 32;              // rij hoogte
-        int ry = VELD_START_Y + VELD_H + 4;
+        int ry = INFO_SYS_LOG_Y + INFO_SYS_LOG_H + 4;
 
         // Scheidingslijn
-        tft.drawFastVLine(RX - 4, VELD_START_Y, NAV_Y - VELD_START_Y, C_SURFACE2);
+        tft.drawFastVLine(RX - 4, INFO_SYS_LOG_Y, NAV_Y - INFO_SYS_LOG_Y, C_SURFACE2);
 
         // ─── Linker kolom: lokaal apparaat ───────────────────────────────
         // Apparaat naam / modus
@@ -427,7 +444,10 @@ static void info_velden_teken() {
         }
 
         // ─── Rechter kolom ────────────────────────────────────────────────
-        ry = VELD_START_Y + 4;
+        // Zelfde starthoogte als de linker kolom (na apparaatnaam+opstartlog-
+        // rij) — anders loopt de rechterkolom uit de pas met wat er links op
+        // dezelfde y-hoogte staat.
+        ry = INFO_SYS_LOG_Y + INFO_SYS_LOG_H + 4;
 
         if (net_modus == NET_STANDALONE) {
             // Standalone: geen netwerk info
@@ -640,11 +660,47 @@ void screen_info_teken() {
     info_velden_teken();
 #endif
     nav_bar_teken();
+    if (info_bootlog_actief) _info_bootlog_teken();
+}
+
+// ─── OPSTARTLOG-overlay: toont boot_log.h's opgeslagen stappen+duur zodat
+// Brendan die kan aflezen zonder de op-scherm regel (die zichzelf overschrijft
+// en dus een korte stap kan missen) live te hoeven volgen tijdens het
+// opstarten zelf — zie hardware.ino hw_setup()/_boot_stap().
+static void _info_bootlog_teken() {
+    int pw = min(TFT_W - 40, 460), ph = min(TFT_H - 80, 40 + boot_log_aantal() * 28 + 56);
+    int px = (TFT_W - pw) / 2, py = (TFT_H - ph) / 2;
+    tft.fillRect(px, py, pw, ph, C_SURFACE2);
+    tft.drawRect(px, py, pw, ph, C_SURFACE3);
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    tft.setCursor(px + 12, py + 12); tft.print("Opstartlog");
+    int ry = py + 36;
+    int n = boot_log_aantal();
+    for (int i = 0; i < n && ry + 26 < py + ph - 40; i++) {
+        tft.fillRect(px + 8, ry, pw - 16, 24, (i % 2 == 0) ? C_SURFACE : C_BG);
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(px + 14, ry + 8); tft.print(boot_log_naam(i));
+        char buf[16]; snprintf(buf, sizeof(buf), "%lu ms", boot_log_ms(i));
+        tft.setTextColor(C_TEXT);
+        tft.setCursor(px + pw - 14 - (int)strlen(buf) * 6, ry + 8); tft.print(buf);
+        ry += 26;
+    }
+    if (n == 0) {
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(px + 14, ry + 4); tft.print("(nog geen metingen)");
+    }
+    ui_knop(px + (pw - 140) / 2, py + ph - 36, 140, 28, "SLUITEN", C_SURFACE, C_TEXT);
 }
 
 void screen_info_run(int x, int y, bool aanraking) {
     if (!aanraking) return;
     if (millis() - info_kb_sloot < 400) return;
+
+    if (info_bootlog_actief) {
+        info_bootlog_actief = false;
+        scherm_bouwen = true;
+        return;
+    }
 
 #if SCREEN_SMALL
     // PIN overlay
@@ -801,6 +857,13 @@ void screen_info_run(int x, int y, bool aanraking) {
         cfg_kb_info_mode = true; cfg_kb_chips = false; cfg_kb_opgeslagen = false; kb_sym = false;
         info_naam_kb_actief = true;
         screen_config_toetsenbord_teken();
+        return;
+    }
+
+    // Opstartlog-rij in SYSTEEM tab
+    if (info_tab == 2 && y >= INFO_SYS_LOG_Y && y < INFO_SYS_LOG_Y + INFO_SYS_LOG_H) {
+        info_bootlog_actief = true;
+        scherm_bouwen = true;
         return;
     }
 

@@ -1,4 +1,5 @@
 #include "hardware.h"
+#include "boot_log.h"
 #include "slaap.h"
 #include "getijdata.h"
 #include "screen_main.h"
@@ -304,11 +305,19 @@ static void _splash_teken() {
 // Bewust GEEN BKOS_LOGF/Serial-gebruik hiervoor — Serial ís de IO-bus naar
 // de ATtiny (zie platform.h), dus alles wat hier gemeten wordt (mogelijk
 // io_boot() zelf) mag die lijn niet aanraken.
+// Logt ALTIJD naar boot_log.h (ook zonder splash, bv. bij deep-sleep wake) —
+// zie INFO > SYSTEEM > OPSTARTLOG. De op-scherm regel (steeds dezelfde regel
+// overschreven, dus alleen de laatst afgeronde stap zichtbaar tijdens het
+// opstarten zelf) blijft een extra, optionele live-indicator; de knop in
+// SYSTEEM is de betrouwbare manier om alle stappen achteraf te bekijken,
+// want een korte stap kan al overschreven zijn vóór iemand 'm afleest.
 static unsigned long _boot_stap_vorige_ms = 0;
-static void _splash_stap_toon(const char* stap_naam) {
+static void _boot_stap(const char* stap_naam, bool teken_op_scherm) {
     unsigned long nu = millis();
     unsigned long duur = _boot_stap_vorige_ms ? (nu - _boot_stap_vorige_ms) : 0;
     _boot_stap_vorige_ms = nu;
+    boot_log_stap(stap_naam, duur);
+    if (!teken_op_scherm) return;
     tft.fillRect(TFT_W / 2 - 100, TFT_H / 2 + 70, 200, 10, C_BG);
     tft.setTextSize(1);
     tft.setTextColor(C_TEXT_DIM);
@@ -332,6 +341,7 @@ static void _splash_stap_toon(const char* stap_naam) {
 // al is doorgetikt naar een scherm dat van hier-geladen data afhangt (bv.
 // APPS-iconen, HAVEN-foto's, GAST/BERICHT-schermen).
 static void _hw_achtergrond_init_eenmalig() {
+    haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload) — niet nodig voor het paneel zelf
     data_setup();       // gestructureerde data-opslag laden
     meteo_setup();      // laadt NVS-instellingen (snel, geen netwerk)
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
@@ -352,9 +362,11 @@ static void _hw_achtergrond_init_eenmalig() {
     webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)
 #endif
     scherm_bouwen = true;
+    boot_log_stap("achtergrond-init klaar", millis() - _boot_stap_vorige_ms);
 }
 
 void hw_setup() {
+    boot_log_reset();
     _boot_stap_vorige_ms = millis();  // startpunt voor de splash-tijdmeting hierboven
     SPIFFS_BEGIN();   // vroeg mounten: tft_setup() leest de scherm-PCLK uit SPIFFS
     tft_setup();
@@ -370,7 +382,7 @@ void hw_setup() {
     bool splash = !slaap_was_deep_wake();
     if (splash) {
         _splash_teken();
-        _splash_stap_toon("boot tot scherm");  // SPIFFS+tft_setup+ts_setup+hw_io_setup+state_load e.d.
+        _boot_stap("boot tot scherm", true);  // SPIFFS+tft_setup+ts_setup+hw_io_setup+state_load e.d.
 
         // Herstelmenu: het opstartlogo blijft nu 2s zichtbaar (RC_VENSTER_MS);
         // tikt de gebruiker er in die tijd ergens op, dan volgt een keuzemenu
@@ -399,20 +411,33 @@ void hw_setup() {
     // hieronder, die pas ná de eerste schermtekening draait (via hw_loop()) —
     // op ESP32 letterlijk gelijktijdig met een al bedienbaar scherm, dankzij
     // de aparte GUI-taak op hogere prioriteit (zie _gui_taak hierboven).
+    //
+    // Elke stap hieronder krijgt zijn EIGEN checkpoint (i.p.v. één lump-som
+    // "config geladen") — Brendan meldde dat IO-detectie zelf snel is
+    // (~1s) maar dat er daarna nog lang gewacht wordt vóór het paneel
+    // bruikbaar is; dit splitst uit welk van deze op zichzelf kleine,
+    // lokale SPIFFS-stappen daar verantwoordelijk voor is. Loggen gebeurt
+    // altijd (ook zonder splash); op het scherm tonen alleen als splash.
     io_boot();              // BKOSS check + UART IO discovery
-    if (splash) _splash_stap_toon("IO-detectie");  // grootste verdachte bij Brendans gemelde 75s
+    _boot_stap("IO-detectie", splash);
     // Stille eerste inlezing: zet io_input[] op de echte hardwarestand zonder
     // io_actie_uitvoeren/meldingen te vuren (net/scherm zijn hier nog niet
     // klaar) — nodig om io_boot_vaarmodus_bepalen() een betrouwbare actuele
     // ingangsstand te geven vóór de rest van hw_setup() verdergaat.
     io_cyclus(true);
+    _boot_stap("IO stil ingelezen", splash);
     io_boot_vaarmodus_bepalen(); // opstart-vaarmodus evt. overrulen a.d.h.v. actieve ingangen (prioriteit motor>zeilen>anker>haven)
     io_verlichting_update(); // verlichting instellen op basis van opgestart modus
+    _boot_stap("vaarmodus+verlichting", splash);
     info_laden();       // boot naam en eigenaar uit SPIFFS (voor status bar)
-    haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload)
+    _boot_stap("info geladen", splash);
+    // HAVEN-fotoscan is verplaatst naar _hw_achtergrond_init_eenmalig(): niet
+    // nodig om het PANEEL/hoofdscherm te tonen/bedienen, alleen voor de
+    // achtergrondfoto op het HAVEN-dashboard. Brendans eigen voorstel: liever
+    // het paneel meteen zonder foto tonen dan wachten op het laden ervan.
     paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5) — hoofdscherm toont deze
     lamp_laden();    // laad genummerde IL-lampgroepen (naam + opstartstand) — idem
-    if (splash) _splash_stap_toon("config geladen");
+    _boot_stap("paneel+lamp geladen", splash);
 
     // Splash: BKOSS status tonen
     if (splash) {
@@ -437,6 +462,7 @@ void hw_setup() {
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
+    _boot_stap("hw_setup klaar", false);
 
     // Geen losse `delay(1000)` meer om de splash te tonen: het herstelmenu-
     // venster hierboven (RC_VENSTER_MS, 2s) laat 'm toch al minstens zo lang

@@ -333,8 +333,12 @@
             </span>
           </label>
           <p class="flash-note" id="full-reinstall-note" style="display:none;color:var(--amber)">
-            Schrijft bootloader + partitietabel + firmware in één keer. Duurt iets langer dan een gewone
-            update. Na afloop moet het apparaat opnieuw met WiFi verbonden worden en alle instellingen
+            Schrijft bootloader + partitietabel + firmware in één keer. Het installatievenster zal
+            vragen of alles gewist mag worden — <strong>vink dat aan</strong>, anders kan oude data
+            blijven staan en wordt de opslag traag/onbetrouwbaar. Duurt iets langer dan een gewone
+            update, en de allereerste opstart daarna kan tot een minuut stil lijken te staan terwijl
+            het nieuwe bestandssysteem geformatteerd wordt (vooral bij FATFS) — dat is normaal.
+            Na afloop moet het apparaat opnieuw met WiFi verbonden worden en alle instellingen
             (bootnaam, kanaalnamen, gastcodes, meldingen, foto's) opnieuw ingevoerd worden.
           </p>
           <div id="full-reinstall-fs-row" style="display:none;margin-top:10px;">
@@ -686,10 +690,18 @@ function berekenManifest(chip, ver, url) {
         { path: OTA_RESET_URL, offset: 57344 },    // 0xE000: wis otadata → boot van factory
         { path: url,           offset: 65536 }     // 0x10000: app binary
       ];
+  // Alleen de partitietabel vervangen bleek niet genoeg om een écht schone
+  // data-partitie te krijgen: als de oude, kleinere filesystem-data toevallig
+  // nog geldig leek (met name SPIFFS→SPIFFS), werd die gewoon weer gemount
+  // i.p.v. een verse format af te dwingen (oude foto's bleven staan, en de
+  // boel werd traag omdat de gemounte grootte niet meer bij de partitie
+  // paste). ESP Web Tools biedt geen los-in-te-stellen erase-adresrange zoals
+  // esptool's erase_region — alleen deze alles-of-niets prompt, die we hier
+  // aanzetten bij een volledige herinstallatie zodat de gebruiker 'm ziet.
   const manifest = {
     name: 'BKOS-NUI',
     version: ver,
-    new_install_prompt_erase: false,
+    new_install_prompt_erase: fullReinstall,
     builds: [{ chipFamily: family, parts }]
   };
   const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });

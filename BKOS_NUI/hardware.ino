@@ -294,7 +294,68 @@ static void _splash_teken() {
     tft_flush(true);
 }
 
+// ─── Opstart-tijdmeting op de splash ────────────────────────────────────────
+// Brendan meldde 75s opstarttijd op de echte boordcomputer (met ATtiny/IO-
+// modules) — de bekende, snelle stappen (SPIFFS/scherm/state_load/losse
+// config-bestanden) verklaren dat totaal niet. In plaats van te blijven
+// gissen: dit overschrijft steeds dezelfde regel op de splash met de
+// naam+duur van de zojuist afgeronde stap, zodat een volgende poging zonder
+// laptop/kabel meteen laat zien welke stap de 75s daadwerkelijk kost.
+// Bewust GEEN BKOS_LOGF/Serial-gebruik hiervoor — Serial ís de IO-bus naar
+// de ATtiny (zie platform.h), dus alles wat hier gemeten wordt (mogelijk
+// io_boot() zelf) mag die lijn niet aanraken.
+static unsigned long _boot_stap_vorige_ms = 0;
+static void _splash_stap_toon(const char* stap_naam) {
+    unsigned long nu = millis();
+    unsigned long duur = _boot_stap_vorige_ms ? (nu - _boot_stap_vorige_ms) : 0;
+    _boot_stap_vorige_ms = nu;
+    tft.fillRect(TFT_W / 2 - 100, TFT_H / 2 + 70, 200, 10, C_BG);
+    tft.setTextSize(1);
+    tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(TFT_W / 2 - 100, TFT_H / 2 + 70);
+    tft.print(stap_naam);
+    tft.print(": ");
+    tft.print(duur);
+    tft.print("ms");
+    tft_flush(true);
+}
+
+// ─── Achtergrond-initialisatie (eenmalig, ná de eerste schermtekening) ─────
+// Alles hier is bewust NIET nodig om het hoofdscherm te tonen/bedienen —
+// zie de toelichting in hw_setup(). Op ESP32 draait dit op de lage-
+// prioriteit achtergrondtaak (hw_loop, Core 1) terwijl de aparte, hogere-
+// prioriteit GUI-taak (_gui_taak) het scherm al bedienbaar houdt; op de
+// (single-core) Pico gebeurt dit bij de eerste hw_loop()-aanroep, ná de
+// eerste schermtekening, dus iets later dan voorheen maar niet trager in
+// totaal. `scherm_bouwen = true` aan het einde forceert één herteken-cyclus
+// van wat er op dat moment toevallig actief is, voor het geval de gebruiker
+// al is doorgetikt naar een scherm dat van hier-geladen data afhangt (bv.
+// APPS-iconen, HAVEN-foto's, GAST/BERICHT-schermen).
+static void _hw_achtergrond_init_eenmalig() {
+    data_setup();       // gestructureerde data-opslag laden
+    meteo_setup();      // laadt NVS-instellingen (snel, geen netwerk)
+    getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
+    ota_setup();        // init OTA (snel)
+    fout_log_setup();   // laad foutrapportage token uit Preferences
+    slaap_reset_reden_verwerken();  // onthoud/meld een eventuele onverwachte herstart
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
+#endif                      // op core 2.x: BLE-init bij boot overslaan (hangt op Bluedroid) — zie Route A
+    brug_setup();           // laad WiFi-brug instellingen (alleen Preferences, geen BLE)
+    app_setup();            // app-manifesten laden + Lua runtime initialiseren
+    net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
+    melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
+    gast_laden();    // laad gasten-pincodes voor de webapp (HUIS/BOOT-toegang)
+    bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
+#if BKOS_REMOTE_ENABLED
+    bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
+    webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)
+#endif
+    scherm_bouwen = true;
+}
+
 void hw_setup() {
+    _boot_stap_vorige_ms = millis();  // startpunt voor de splash-tijdmeting hierboven
     SPIFFS_BEGIN();   // vroeg mounten: tft_setup() leest de scherm-PCLK uit SPIFFS
     tft_setup();
     ts_setup();
@@ -309,6 +370,7 @@ void hw_setup() {
     bool splash = !slaap_was_deep_wake();
     if (splash) {
         _splash_teken();
+        _splash_stap_toon("boot tot scherm");  // SPIFFS+tft_setup+ts_setup+hw_io_setup+state_load e.d.
 
         // Herstelmenu: het opstartlogo blijft nu 2s zichtbaar (RC_VENSTER_MS);
         // tikt de gebruiker er in die tijd ergens op, dan volgt een keuzemenu
@@ -320,21 +382,25 @@ void hw_setup() {
             recovery_menu();   // blokkerend; keert alleen terug bij "gewoon opstarten"
             _splash_teken();   // herstelmenu overschreef het scherm
         }
+        // Klok resetten: het herstelvenster (2s, of langer bij een bezoek aan
+        // het menu) mag niet meetellen bij de hierna gemeten IO-detectieduur.
+        _boot_stap_vorige_ms = millis();
     }
 
-    info_laden();       // boot naam en eigenaar uit SPIFFS (voor status bar)
-    haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload)
-    data_setup();       // gestructureerde data-opslag laden
-    meteo_setup();      // laadt NVS-instellingen (snel, geen netwerk)
-    getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
-    ota_setup();        // init OTA (snel)
-    fout_log_setup();   // laad foutrapportage token uit Preferences
-    slaap_reset_reden_verwerken();  // onthoud/meld een eventuele onverwachte herstart
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-    victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
-#endif                      // op core 2.x: BLE-init bij boot overslaan (hangt op Bluedroid) — zie Route A
-    brug_setup();           // laad WiFi-brug instellingen (alleen Preferences, geen BLE)
+    // Brendan wil het schakelpaneel zo snel mogelijk bruikbaar hebben (dit IS
+    // zijn paneel om alles aan/uit te zetten) — alleen wat daar strikt voor
+    // nodig is blijft hier synchroon: IO-detectie (de ATtiny-status/rode
+    // melding hoort hierbij), de vaarmodus/verlichting die daaruit volgt, en
+    // de kleine, snelle SPIFFS-config die het hoofdscherm meteen goed moet
+    // tonen (bootnaam, PANEEL/LAMPEN-namen). Alles wat niet nodig is om het
+    // hoofdscherm te tonen en te bedienen (meteo, getij, OTA-check, Victron/
+    // BLE, WiFi-brug, Lua-apps, netwerk, webapp/websocket-servers, gasten-
+    // pincodes, berichtpresets) schuift naar _hw_achtergrond_init_eenmalig()
+    // hieronder, die pas ná de eerste schermtekening draait (via hw_loop()) —
+    // op ESP32 letterlijk gelijktijdig met een al bedienbaar scherm, dankzij
+    // de aparte GUI-taak op hogere prioriteit (zie _gui_taak hierboven).
     io_boot();              // BKOSS check + UART IO discovery
+    if (splash) _splash_stap_toon("IO-detectie");  // grootste verdachte bij Brendans gemelde 75s
     // Stille eerste inlezing: zet io_input[] op de echte hardwarestand zonder
     // io_actie_uitvoeren/meldingen te vuren (net/scherm zijn hier nog niet
     // klaar) — nodig om io_boot_vaarmodus_bepalen() een betrouwbare actuele
@@ -342,7 +408,11 @@ void hw_setup() {
     io_cyclus(true);
     io_boot_vaarmodus_bepalen(); // opstart-vaarmodus evt. overrulen a.d.h.v. actieve ingangen (prioriteit motor>zeilen>anker>haven)
     io_verlichting_update(); // verlichting instellen op basis van opgestart modus
-    app_setup();            // app-manifesten laden + Lua runtime initialiseren
+    info_laden();       // boot naam en eigenaar uit SPIFFS (voor status bar)
+    haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload)
+    paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5) — hoofdscherm toont deze
+    lamp_laden();    // laad genummerde IL-lampgroepen (naam + opstartstand) — idem
+    if (splash) _splash_stap_toon("config geladen");
 
     // Splash: BKOSS status tonen
     if (splash) {
@@ -366,19 +436,12 @@ void hw_setup() {
 
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
-    net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
-    melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
-    paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5)
-    lamp_laden();    // laad genummerde IL-lampgroepen (naam + opstartstand)
-    gast_laden();    // laad gasten-pincodes voor de webapp (HUIS/BOOT-toegang)
-    bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
-#if BKOS_REMOTE_ENABLED
-    bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
-    webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)
-#endif
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
 
-    if (splash) delay(1000);     // splash tonen
+    // Geen losse `delay(1000)` meer om de splash te tonen: het herstelmenu-
+    // venster hierboven (RC_VENSTER_MS, 2s) laat 'm toch al minstens zo lang
+    // zien — een extra vaste seconde wachten voordat het paneel bruikbaar
+    // wordt, voegde daar niets aan toe.
 
     scherm_bouwen = true;
     actief_scherm = SCREEN_MAIN;
@@ -411,6 +474,13 @@ void hw_setup() {
 }
 
 void hw_loop() {
+    // Eenmalig, ná de allereerste keer dat deze lus draait (dus ná de eerste
+    // schermtekening) — zie _hw_achtergrond_init_eenmalig() hierboven.
+    static bool _achtergrond_init_klaar = false;
+    if (!_achtergrond_init_klaar) {
+        _achtergrond_init_klaar = true;
+        _hw_achtergrond_init_eenmalig();
+    }
 #if PLATFORM_ESP32
     // ─── Achtergrondlus (Core 1, lage prioriteit) ─────────────────────────────
     // De GUI taak (_gui_taak) beheert alle touch en schermtekening op hogere

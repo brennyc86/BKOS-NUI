@@ -272,38 +272,36 @@ static void _hab_init() {
 
 // Herkenbaar "hier komt nog een foto"-icoon (fotolijst met bergje+zon) — i.p.v.
 // zolang niet bekend is of er eigen foto's zijn de (mogelijk verkeerde)
-// ingebakken voorbeeldfoto op volle grootte/sterkte te tonen. Licht grijs vlak
-// met een zwarte tekening erin — duidelijk zichtbaar zonder op te vallen als
-// een bewuste "geen foto"-keuze. Geen fotodata wordt hiervoor gedecodeerd —
-// hav_fb blijft leeg, dus de tegels erboven tonen gewoon hun effen (nog niet
-// foto-getinte) kleur.
+// ingebakken voorbeeldfoto op volle grootte/sterkte te tonen. Getekend op een
+// al-grijze achtergrond (haven_achtergrond_teken() hieronder) — hier dus
+// alleen de zwarte tekening zelf, geen eigen vlak/rand meer. Geen fotodata
+// wordt hiervoor gedecodeerd — hav_fb blijft leeg, dus de tegels erboven tonen
+// gewoon hun effen (nog niet foto-getinte) kleur.
 static void _hab_laden_icoon(int cx, int cy) {
-    uint16_t bg = RGB565(210, 210, 210);
-    uint16_t rand = RGB565(160, 160, 160);
     uint16_t fg = RGB565(0, 0, 0);
-    int w = 64, h = 45;
+    int w = 192, h = 135;  // 3x zo groot als de eerdere versie
     int x0 = cx - w / 2, y0 = cy - h / 2;
-    tft.fillRoundRect(x0, y0, w, h, 6, bg);
-    tft.drawRoundRect(x0, y0, w, h, 6, rand);
-    tft.drawCircle(x0 + 16, y0 + 13, 5, fg);                            // zon
-    tft.drawLine(x0 + 6,  y0 + h - 8, x0 + 24, y0 + 14,  fg);           // bergflank 1
-    tft.drawLine(x0 + 24, y0 + 14,    x0 + 37, y0 + h - 13, fg);        // bergflank 2
-    tft.drawLine(x0 + 30, y0 + h - 19, x0 + w - 6, y0 + h - 8, fg);     // bergflank 3
+    tft.drawCircle(x0 + 48, y0 + 39, 15, fg);                           // zon
+    tft.drawLine(x0 + 18, y0 + h - 24, x0 + 72,  y0 + 42, fg);          // bergflank 1
+    tft.drawLine(x0 + 72, y0 + 42,     x0 + 111, y0 + h - 39, fg);      // bergflank 2
+    tft.drawLine(x0 + 90, y0 + h - 57, x0 + w - 18, y0 + h - 24, fg);   // bergflank 3
 }
 
 void haven_achtergrond_teken() {
     int inhoud_h = NAV_Y - CONTENT_Y;
-    tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, C_BG);  // letterbox / lege achtergrond
 
     if (!haven_gebruikersfoto_scan_klaar()) {
         // Nog niet bekend of er eigen foto's zijn (achtergrondtaak loopt nog) —
-        // niets decoderen/tonen dat straks mogelijk weer moet wijken, alleen
-        // het kleine laad-icoon. Zodra bekend is (scherm_bouwen door de
-        // achtergrondtaak) volgt hieronder de normale, definitieve tekening.
+        // niets decoderen/tonen dat straks mogelijk weer moet wijken: het HELE
+        // contentgebied wordt grijs, met het laad-icoon erin getekend. Zodra
+        // bekend is (scherm_bouwen door de achtergrondtaak) volgt hieronder de
+        // normale, definitieve tekening.
+        tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, RGB565(210, 210, 210));
         _hab_laden_icoon(TFT_W / 2, CONTENT_Y + inhoud_h / 2);
         return;
     }
 
+    tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, C_BG);  // letterbox / lege achtergrond
     _hab_init();
     int scale   = _hab_scale();
     int bg_w    = 800 / scale, bg_h = 480 / scale;

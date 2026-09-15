@@ -1454,10 +1454,24 @@ function instellingenOpslaan(){
 function instellingenExport(){
   if (needAuth()) return;
   var pin = localStorage.getItem(PIN_KEY) || '';
-  var a = document.createElement('a');
-  a.href = '/instellingen/export?pin=' + encodeURIComponent(pin);
-  a.download = 'bkos_backup.json';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  var el = document.getElementById('instBackupMelding');
+  el.style.color = 'var(--text-dim)'; el.textContent = 'Bezig met voorbereiden...';
+  fetch('/instellingen/export?pin=' + encodeURIComponent(pin))
+    .then(function(r){ if (!r.ok) throw new Error('status ' + r.status); return r.blob(); })
+    .then(function(blob){
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'bkos_backup.json';
+      document.body.appendChild(a);
+      a.click();
+      // Direct verwijderen kan in sommige browsers de download afbreken —
+      // pas ná een korte vertraging opruimen.
+      setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+      el.textContent = '';
+    })
+    .catch(function(){
+      el.style.color = 'var(--red)'; el.textContent = 'Exporteren mislukt (onjuiste pincode of verbinding).';
+    });
 }
 function instellingenImportUpload(input){
   if (needAuth()) return;

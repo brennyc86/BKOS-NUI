@@ -270,22 +270,25 @@ static void _hab_init() {
     TJpgDec.setCallback(_hab_output);
 }
 
-// Klein, herkenbaar "hier komt nog een foto"-icoon (fotolijst met bergje+zon)
-// — i.p.v. zolang niet bekend is of er eigen foto's zijn de (mogelijk
-// verkeerde) ingebakken voorbeeldfoto op volle grootte/sterkte te tonen.
-// Bewust licht (C_TEXT_DIM) en klein: puur een signaal dat er nog iets
-// bepaald wordt, zonder op te vallen of als een bewuste "geen foto"-keuze te
-// ogen. Geen fotodata wordt hiervoor gedecodeerd — hav_fb blijft leeg, dus
-// de tegels erboven tonen gewoon hun effen (nog niet foto-getinte) kleur.
+// Herkenbaar "hier komt nog een foto"-icoon (fotolijst met bergje+zon) — i.p.v.
+// zolang niet bekend is of er eigen foto's zijn de (mogelijk verkeerde)
+// ingebakken voorbeeldfoto op volle grootte/sterkte te tonen. Licht grijs vlak
+// met een zwarte tekening erin — duidelijk zichtbaar zonder op te vallen als
+// een bewuste "geen foto"-keuze. Geen fotodata wordt hiervoor gedecodeerd —
+// hav_fb blijft leeg, dus de tegels erboven tonen gewoon hun effen (nog niet
+// foto-getinte) kleur.
 static void _hab_laden_icoon(int cx, int cy) {
-    uint16_t k = C_TEXT_DIM;
-    int w = 40, h = 28;
+    uint16_t bg = RGB565(210, 210, 210);
+    uint16_t rand = RGB565(160, 160, 160);
+    uint16_t fg = RGB565(0, 0, 0);
+    int w = 64, h = 45;
     int x0 = cx - w / 2, y0 = cy - h / 2;
-    tft.drawRoundRect(x0, y0, w, h, 4, k);
-    tft.drawCircle(x0 + 10, y0 + 8, 3, k);                          // zon
-    tft.drawLine(x0 + 4,  y0 + h - 5, x0 + 15, y0 + 9,  k);          // bergflank 1
-    tft.drawLine(x0 + 15, y0 + 9,     x0 + 23, y0 + h - 8, k);       // bergflank 2
-    tft.drawLine(x0 + 19, y0 + h - 12, x0 + w - 4, y0 + h - 5, k);   // bergflank 3
+    tft.fillRoundRect(x0, y0, w, h, 6, bg);
+    tft.drawRoundRect(x0, y0, w, h, 6, rand);
+    tft.drawCircle(x0 + 16, y0 + 13, 5, fg);                            // zon
+    tft.drawLine(x0 + 6,  y0 + h - 8, x0 + 24, y0 + 14,  fg);           // bergflank 1
+    tft.drawLine(x0 + 24, y0 + 14,    x0 + 37, y0 + h - 13, fg);        // bergflank 2
+    tft.drawLine(x0 + 30, y0 + h - 19, x0 + w - 6, y0 + h - 8, fg);     // bergflank 3
 }
 
 void haven_achtergrond_teken() {

@@ -23,18 +23,28 @@ static int       hav_fb_h    = 0;
 static int       hav_fb_bg_x = 0;
 static int       hav_fb_bg_y = 0;
 
+// Hoe donker de achtergrond lijkt zolang nog niet zeker is of er eigen foto's
+// zijn (haven_gebruikersfoto_scan_klaar()==false) — signaleert "nog niet
+// helemaal opgestart" zonder de (mogelijk verkeerde) ingebakken voorbeeldfoto
+// op volle sterkte te tonen. Toegepast op elke pixel-opvraag, dus transparant
+// voor alle aanroepers (screen_haven.ino's tegels/busyheid-meting hoeven hier
+// niets van te weten).
+#define HAVEN_LAAD_DIM 150  // 0-255: sterkte richting zwart
+
 uint16_t haven_achtergrond_pixel(int scherm_x, int scherm_y) {
     if (!hav_fb) return C_BG;
     int lx = scherm_x - hav_fb_bg_x, ly = scherm_y - hav_fb_bg_y;
     if (lx < 0 || ly < 0 || lx >= hav_fb_w || ly >= hav_fb_h) return C_BG;  // letterbox / buiten de foto
-    return hav_fb[ly * hav_fb_w + lx];
+    uint16_t p = hav_fb[ly * hav_fb_w + lx];
+    return haven_gebruikersfoto_scan_klaar() ? p : haven_kleur_meng(p, 0, 0, 0, HAVEN_LAAD_DIM);
 }
 
 uint16_t haven_achtergrond_pixel_klem(int scherm_x, int scherm_y) {
     if (!hav_fb) return C_BG;
     int lx = constrain(scherm_x - hav_fb_bg_x, 0, hav_fb_w - 1);
     int ly = constrain(scherm_y - hav_fb_bg_y, 0, hav_fb_h - 1);
-    return hav_fb[ly * hav_fb_w + lx];
+    uint16_t p = hav_fb[ly * hav_fb_w + lx];
+    return haven_gebruikersfoto_scan_klaar() ? p : haven_kleur_meng(p, 0, 0, 0, HAVEN_LAAD_DIM);
 }
 
 uint16_t haven_kleur_meng(uint16_t foto, uint8_t r5_doel, uint8_t g6_doel, uint8_t b5_doel, uint8_t sterkte) {
@@ -96,7 +106,12 @@ static void _hav_map_migreren() {
     }
 }
 
-void haven_gebruikersfotos_scannen() {
+static volatile bool _hav_scan_klaar = false;  // false tot de eerste (async) scan is afgerond
+static volatile bool _hav_scan_bezig = false;
+
+bool haven_gebruikersfoto_scan_klaar() { return _hav_scan_klaar; }
+
+static void _hav_scan_uitvoeren() {
     _hav_map_migreren();
     hav_user_cnt = 0;
     char naam[24];
@@ -104,6 +119,33 @@ void haven_gebruikersfotos_scannen() {
         _hav_user_naam(slot, naam, sizeof(naam));
         if (SPIFFS.exists(naam)) hav_user_slot[hav_user_cnt++] = slot;
     }
+}
+
+static void _hav_scan_taak(void*) {
+    _hav_scan_uitvoeren();
+    _hav_scan_bezig = false;
+    _hav_scan_klaar = true;
+    scherm_bouwen = true;  // toont de juiste foto (eigen of, bij 0, gewoon de voorbeeldfoto) zodra bekend
+    vTaskDelete(nullptr);
+}
+
+void haven_gebruikersfotos_scannen() {
+    // Eerste keer (bij opstarten): op een eigen achtergrondtaak (Core 0), niet
+    // synchroon — tot 30 SPIFFS.exists()-lookups (+ evt. naam-migratie, nog
+    // eens tot 2x zoveel) kan op de grote opslagpartitie merkbaar traag zijn en
+    // mag de rest van _hw_achtergrond_init_eenmalig() (meteo/ota/net/webapp)
+    // niet ophouden. Latere aanroepen (ná een upload/verwijdering, dus altijd
+    // al in reactie op een expliciete gebruikersactie) blijven synchroon zodat
+    // de aanroeper direct met een bijgewerkt haven_gebruikersfoto_aantal()
+    // verder kan, zoals voorheen.
+    if (!_hav_scan_klaar) {
+        if (!_hav_scan_bezig) {
+            _hav_scan_bezig = true;
+            xTaskCreatePinnedToCore(_hav_scan_taak, "haven_scan", 8192, nullptr, 1, nullptr, 0);
+        }
+        return;
+    }
+    _hav_scan_uitvoeren();
 }
 
 int haven_gebruikersfoto_aantal() { return hav_user_cnt; }
@@ -186,6 +228,7 @@ bool haven_gebruikersfoto_verwijderen(const char* naam) {
 #else  // PLATFORM_PICO — stub: nooit eigen foto's, gewoon de ingebakken voorbeelden
 
 void haven_gebruikersfotos_scannen() {}
+bool haven_gebruikersfoto_scan_klaar() { return true; }  // geen async-onzekerheid op Pico
 int  haven_gebruikersfoto_aantal() { return 0; }
 bool haven_gebruikersfoto_naam(int, char*, size_t) { return false; }
 size_t haven_gebruikersfoto_grootte(int) { return 0; }

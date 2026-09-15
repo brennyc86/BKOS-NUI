@@ -489,6 +489,18 @@ void screen_haven_teken() {
 
     sb_scherm_teken("HAVEN", C_CYAN);
     ui_knop(HV_BACK_X, HV_BACK_Y, HV_BACK_W, HV_BACK_H, HV_BACK_LBL, C_SURFACE2, C_TEXT_DIM);
+    // Zolang nog niet bekend is of er eigen foto's zijn (achtergrondtaak nog
+    // bezig, zie haven_achtergrond.ino) is de getoonde foto mogelijk de
+    // verkeerde (ingebakken voorbeeld i.p.v. eigen) — de foto zelf is al gedimd
+    // (haven_achtergrond_pixel), dit label maakt dat expliciet. Paneel/tegels
+    // blijven gewoon bedienbaar; alleen de foto verspringt straks nog één keer.
+    if (!haven_gebruikersfoto_scan_klaar()) {
+        const char* txt = "foto's laden...";
+        int tw = strlen(txt) * 6;
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(HV_BACK_X - HV_BACK_GAP - tw, (SB_H - 8) / 2);
+        tft.print(txt);
+    }
 
     int h_links  = _hv_verlichting_teken(8,       col_w, y0, cols_l, tw_l);
     int h_rechts = _hv_apparaten_teken(right_x,   col_w, y0, cols_r, tw_r);

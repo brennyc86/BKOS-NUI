@@ -52,6 +52,16 @@ size_t haven_spiffs_vrij();
 // is, vervangen die de ingebakken voorbeeldfoto's in de slideshow volledig
 // (voelt persoonlijker aan dan demo-foto's tussen de eigen foto's door).
 void haven_gebruikersfotos_scannen();
+// De allereerste scan (bij opstarten) draait op een eigen achtergrondtaak
+// (Core 0) i.p.v. synchroon — tot 30 SPIFFS/FATFS-lookups (+ evt. migratie)
+// kan op de grote opslagpartitie merkbaar traag zijn, en mag de rest van de
+// achtergrond-init (meteo/ota/net/webapp) niet ophouden. Zolang dit false is,
+// is nog niet zeker of er eigen foto's zijn — de getoonde (mogelijk verkeerde,
+// ingebakken) voorbeeldfoto wordt dan gedimd getoond (haven_achtergrond_pixel)
+// en screen_haven.ino toont een "foto's laden…"-label, terwijl het paneel
+// gewoon al bedienbaar is. Wordt true zodra de scan klaar is (spontaan een
+// scherm_bouwen=true, dus de juiste foto verschijnt vanzelf zodra bekend).
+bool haven_gebruikersfoto_scan_klaar();
 int  haven_gebruikersfoto_aantal();
 bool haven_gebruikersfoto_naam(int i, char* buf, size_t buflen);
 size_t haven_gebruikersfoto_grootte(int i);

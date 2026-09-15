@@ -23,28 +23,18 @@ static int       hav_fb_h    = 0;
 static int       hav_fb_bg_x = 0;
 static int       hav_fb_bg_y = 0;
 
-// Hoe donker de achtergrond lijkt zolang nog niet zeker is of er eigen foto's
-// zijn (haven_gebruikersfoto_scan_klaar()==false) — signaleert "nog niet
-// helemaal opgestart" zonder de (mogelijk verkeerde) ingebakken voorbeeldfoto
-// op volle sterkte te tonen. Toegepast op elke pixel-opvraag, dus transparant
-// voor alle aanroepers (screen_haven.ino's tegels/busyheid-meting hoeven hier
-// niets van te weten).
-#define HAVEN_LAAD_DIM 150  // 0-255: sterkte richting zwart
-
 uint16_t haven_achtergrond_pixel(int scherm_x, int scherm_y) {
     if (!hav_fb) return C_BG;
     int lx = scherm_x - hav_fb_bg_x, ly = scherm_y - hav_fb_bg_y;
     if (lx < 0 || ly < 0 || lx >= hav_fb_w || ly >= hav_fb_h) return C_BG;  // letterbox / buiten de foto
-    uint16_t p = hav_fb[ly * hav_fb_w + lx];
-    return haven_gebruikersfoto_scan_klaar() ? p : haven_kleur_meng(p, 0, 0, 0, HAVEN_LAAD_DIM);
+    return hav_fb[ly * hav_fb_w + lx];
 }
 
 uint16_t haven_achtergrond_pixel_klem(int scherm_x, int scherm_y) {
     if (!hav_fb) return C_BG;
     int lx = constrain(scherm_x - hav_fb_bg_x, 0, hav_fb_w - 1);
     int ly = constrain(scherm_y - hav_fb_bg_y, 0, hav_fb_h - 1);
-    uint16_t p = hav_fb[ly * hav_fb_w + lx];
-    return haven_gebruikersfoto_scan_klaar() ? p : haven_kleur_meng(p, 0, 0, 0, HAVEN_LAAD_DIM);
+    return hav_fb[ly * hav_fb_w + lx];
 }
 
 uint16_t haven_kleur_meng(uint16_t foto, uint8_t r5_doel, uint8_t g6_doel, uint8_t b5_doel, uint8_t sterkte) {
@@ -280,15 +270,42 @@ static void _hab_init() {
     TJpgDec.setCallback(_hab_output);
 }
 
+// Klein, herkenbaar "hier komt nog een foto"-icoon (fotolijst met bergje+zon)
+// — i.p.v. zolang niet bekend is of er eigen foto's zijn de (mogelijk
+// verkeerde) ingebakken voorbeeldfoto op volle grootte/sterkte te tonen.
+// Bewust licht (C_TEXT_DIM) en klein: puur een signaal dat er nog iets
+// bepaald wordt, zonder op te vallen of als een bewuste "geen foto"-keuze te
+// ogen. Geen fotodata wordt hiervoor gedecodeerd — hav_fb blijft leeg, dus
+// de tegels erboven tonen gewoon hun effen (nog niet foto-getinte) kleur.
+static void _hab_laden_icoon(int cx, int cy) {
+    uint16_t k = C_TEXT_DIM;
+    int w = 40, h = 28;
+    int x0 = cx - w / 2, y0 = cy - h / 2;
+    tft.drawRoundRect(x0, y0, w, h, 4, k);
+    tft.drawCircle(x0 + 10, y0 + 8, 3, k);                          // zon
+    tft.drawLine(x0 + 4,  y0 + h - 5, x0 + 15, y0 + 9,  k);          // bergflank 1
+    tft.drawLine(x0 + 15, y0 + 9,     x0 + 23, y0 + h - 8, k);       // bergflank 2
+    tft.drawLine(x0 + 19, y0 + h - 12, x0 + w - 4, y0 + h - 5, k);   // bergflank 3
+}
+
 void haven_achtergrond_teken() {
+    int inhoud_h = NAV_Y - CONTENT_Y;
+    tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, C_BG);  // letterbox / lege achtergrond
+
+    if (!haven_gebruikersfoto_scan_klaar()) {
+        // Nog niet bekend of er eigen foto's zijn (achtergrondtaak loopt nog) —
+        // niets decoderen/tonen dat straks mogelijk weer moet wijken, alleen
+        // het kleine laad-icoon. Zodra bekend is (scherm_bouwen door de
+        // achtergrondtaak) volgt hieronder de normale, definitieve tekening.
+        _hab_laden_icoon(TFT_W / 2, CONTENT_Y + inhoud_h / 2);
+        return;
+    }
+
     _hab_init();
     int scale   = _hab_scale();
     int bg_w    = 800 / scale, bg_h = 480 / scale;
-    int inhoud_h = NAV_Y - CONTENT_Y;
     int bg_x    = (TFT_W - bg_w) / 2;
     int bg_y    = CONTENT_Y + (inhoud_h - bg_h) / 2;
-
-    tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, C_BG);  // letterbox rond de foto
 
     // Framebuffer (her)alloceren als de afmetingen nog niet kloppen (eerste
     // keer op dit platform — de schaal ligt daarna vast, dus normaliter maar

@@ -115,6 +115,15 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
 }
 .tabbtn.active{color:var(--cyan);border-bottom-color:var(--cyan);}
 .tabpane section:first-child{margin-top:14px;}
+/* Smalle telefoon (staand): 4-6 gelijk-verdeelde tabs (flex:1) knijpen dan
+   dicht en lopen in elkaar over (bv. "VERBINDINGEN" past niet meer). Onder
+   deze breedte krijgen de knoppen hun natuurlijke breedte terug (flex:0 0
+   auto) — .tabbar's al aanwezige overflow-x:auto zorgt dan vanzelf voor
+   zijwaarts scrollen i.p.v. knijpen. Breder scherm behoudt de gevulde,
+   gelijk-verdeelde balk (ziet er daar juist netter uit). */
+@media (max-width: 480px) {
+  .tabbtn{ flex:0 0 auto; padding-left:12px; padding-right:12px; }
+}
 
 #bfInfo{font-size:.78rem;color:var(--text-dim);line-height:1.6;}
 .filerow{

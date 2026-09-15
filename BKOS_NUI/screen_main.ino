@@ -76,11 +76,16 @@ void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
             tft.drawCircle(cx, cy+3, 5, kleur);
             break;
         case I_DEKLICHT:
-            tft.fillCircle(cx, cy-1, 5, kleur);
-            tft.drawFastVLine(cx, cy+4, 4, kleur);
-            tft.drawLine(cx, cy-6, cx-3, cy-9, kleur);
-            tft.drawLine(cx, cy-6, cx+3, cy-9, kleur);
-            tft.drawLine(cx, cy-6, cx, cy-9, kleur);
+            // Buitenlicht: een dekschijnwerper met een kap bovenaan en de
+            // lichtbundel die naar beneden waaiert — bewust een ander silhouet
+            // én andere straalrichting dan het interieur-peertje (bol met
+            // stralen rondom/omhoog), zodat ze op het eerste gezicht niet op
+            // elkaar lijken.
+            tft.fillTriangle(cx-7, cy-4, cx+7, cy-4, cx, cy-10, kleur);  // kap
+            tft.fillCircle(cx, cy-2, 3, kleur);                          // lichtbron onder de kap
+            tft.drawLine(cx,   cy+1, cx,   cy+9, kleur);                 // bundel midden
+            tft.drawLine(cx-2, cy+1, cx-7, cy+8, kleur);                 // bundel links
+            tft.drawLine(cx+2, cy+1, cx+7, cy+8, kleur);                 // bundel rechts
             break;
         // I_LAMP heeft een eigen tekenfunctie (teken_icoon_lamp) — die kent de
         // aan/uit-stand én de actuele kleur, wat teken_icoon()'s ene kleur-
@@ -91,8 +96,8 @@ void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
 // Peertje: glazen bol (gevuld+oplichtend als 'aan', anders alleen omtrek) op
 // een voetje met schroefdraad; bij 'aan' een paar lichtstralen in de actuele
 // kleur (wit/rood) — gebruikt door PANEEL-knoppen die een IL-lampgroep zijn.
-void teken_icoon_lamp(int cx, int cy, bool aan, bool rood) {
-    uint16_t kleur = aan ? (rood ? C_LIGHT_ON_RED : C_WHITE) : C_TEXT_DIM;
+void teken_icoon_lamp(int cx, int cy, bool aan, bool rood, uint16_t uit_kleur) {
+    uint16_t kleur = aan ? (rood ? C_LIGHT_ON_RED : C_WHITE) : uit_kleur;
     int by = cy - 2;
     if (aan) { tft.fillCircle(cx, by, 6, kleur); ui_glow(cx, by, 6, kleur, 2); }
     else       tft.drawCircle(cx, by, 6, kleur);

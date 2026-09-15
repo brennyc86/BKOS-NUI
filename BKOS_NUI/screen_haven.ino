@@ -99,17 +99,58 @@ static bool _hv_tegel_buf_klaar(size_t nodig) {
     return hv_tegel_buf != nullptr;
 }
 
-#define HV_TILE_LICHT       128  // 0-255: hoe ver een INactieve tegel richting wit opgelicht wordt (128 ≈ 50%)
-#define HV_TILE_GROEN_LICHT 150  // 0-255: hoe ver een ACTIEVE tegel richting lichtgroen getint wordt
+#define HV_TILE_LICHT        128  // 0-255: basis-oplichting v.e. INactieve tegel bij een rustig fotostukje
+#define HV_TILE_LICHT_MAX    225  // 0-255: oplichting bij een druk/contrastrijk fotostukje (minder doorschijnend)
+#define HV_TILE_GROEN_LICHT     150  // idem, ACTIEVE tegel (richting lichtgroen), rustig fotostukje
+#define HV_TILE_GROEN_LICHT_MAX 235  // idem, druk fotostukje
+
+// Standaardkleur (niet-actieve tegel) voor icoon/tekst — bewust zwart i.p.v.
+// het gebruikelijke C_TEXT_DIM: op een (soms drukke) foto geeft dat meer
+// contrast dan een thema-afhankelijk grijstintje. Alleen voor HAVEN-tegels
+// (bovenop een foto); het hoofdscherm gebruikt nog gewoon C_TEXT_DIM.
+#define HV_CONTENT_UIT RGB565(0, 0, 0)
 
 // Inactieve tegel: richting wit — de foto blijft herkenbaar, maar licht genoeg
 // om icoon/tekst erboven leesbaar te houden. Blend-kern (haven_kleur_meng) zit
 // in haven_achtergrond.ino — ook gebruikt door nav_bar.ino voor de getinte
 // header/footer-achtergrond.
-static uint16_t _hv_licht(uint16_t foto)       { return haven_kleur_meng(foto, 31, 63, 31, HV_TILE_LICHT); }
+static uint16_t _hv_licht(uint16_t foto, uint8_t sterkte)       { return haven_kleur_meng(foto, 31, 63, 31, sterkte); }
 // Actieve tegel: richting een lichte groentint — duidelijk kleurverschil met
 // een inactieve tegel op het eerste gezicht, zonder de foto te verbergen.
-static uint16_t _hv_licht_groen(uint16_t foto)  { return haven_kleur_meng(foto, 10, 63, 10, HV_TILE_GROEN_LICHT); }
+static uint16_t _hv_licht_groen(uint16_t foto, uint8_t sterkte) { return haven_kleur_meng(foto, 10, 63, 10, sterkte); }
+
+// Hoe "druk" (contrastrijk) is de foto rond deze tegel? Grof gesampled grid
+// (niet elke pixel) — ruw gemiddeld verschil in helderheid tussen opeenvolgende
+// samples. Doel is alleen "rustig" vs "druk" onderscheiden, geen exacte maat:
+// een drukke plek (bv. want, golven, bebouwing) krijgt zo een sterkere
+// oplichting dan een rustige plek (bv. vlakke lucht/water), zodat de
+// tegelinhoud er ook op een drukke foto goed op afsteekt.
+#define HV_BUSY_GRID_X 6
+#define HV_BUSY_GRID_Y 4
+#define HV_BUSY_MAX    40  // vanaf dit gemiddelde verschil behandelen we de plek als "maximaal druk"
+static int _hv_busyheid(int x, int y, int w, int h) {
+    int vorige = -1;
+    long verschil_som = 0;
+    int n = 0;
+    for (int gy = 0; gy < HV_BUSY_GRID_Y; gy++) {
+        int sy = y + (gy * h) / HV_BUSY_GRID_Y + h / (HV_BUSY_GRID_Y * 2);
+        for (int gx = 0; gx < HV_BUSY_GRID_X; gx++) {
+            int sx = x + (gx * w) / HV_BUSY_GRID_X + w / (HV_BUSY_GRID_X * 2);
+            uint16_t p = haven_achtergrond_pixel(sx, sy);
+            int r5 = (p >> 11) & 0x1F, g6 = (p >> 5) & 0x3F, b5 = p & 0x1F;
+            int helderheid = (r5 * 8 + g6 * 4 + b5 * 8) / 3;  // ruwe helderheid, geen exacte YUV nodig
+            if (vorige >= 0) { verschil_som += abs(helderheid - vorige); n++; }
+            vorige = helderheid;
+        }
+    }
+    return n > 0 ? (int)(verschil_som / n) : 0;
+}
+
+// Zet de busyheid om in een oplicht-sterkte tussen de basis- en max-waarde.
+static uint8_t _hv_sterkte(int x, int y, int w, int h, uint8_t basis, uint8_t max_sterkte) {
+    int busy = constrain(_hv_busyheid(x, y, w, h), 0, HV_BUSY_MAX);
+    return (uint8_t)(basis + ((long)(max_sterkte - basis) * busy) / HV_BUSY_MAX);
+}
 
 // Vult hv_tegel_buf met de (opgelichte/getinte) fotopixels achter (x,y,w,h) en
 // tekent die in één keer — dit IS de tegelachtergrond, er komt verder nergens
@@ -120,11 +161,13 @@ static void _hv_foto_achtergrond_teken(int x, int y, int w, int h, bool aan) {
         tft.fillRect(x, y, w, h, aan ? RGB565(2, 10, 2) : C_SURFACE);  // heap-tekort: nette vlakke terugval
         return;
     }
+    uint8_t sterkte = aan ? _hv_sterkte(x, y, w, h, HV_TILE_GROEN_LICHT, HV_TILE_GROEN_LICHT_MAX)
+                          : _hv_sterkte(x, y, w, h, HV_TILE_LICHT, HV_TILE_LICHT_MAX);
     for (int ry = 0; ry < h; ry++) {
         int sy = y + ry;
         for (int rx = 0; rx < w; rx++) {
             uint16_t p = haven_achtergrond_pixel(x + rx, sy);
-            hv_tegel_buf[ry * w + rx] = aan ? _hv_licht_groen(p) : _hv_licht(p);
+            hv_tegel_buf[ry * w + rx] = aan ? _hv_licht_groen(p, sterkte) : _hv_licht(p, sterkte);
         }
     }
     tft.draw16bitRGBBitmap(x, y, hv_tegel_buf, w, h);
@@ -257,10 +300,10 @@ static void _hv_uit_symbool(int cx, int cy, int r, uint16_t kleur) {
 static void _hv_lamp_teken(int nr, int x, int y, int w, int h) {
     bool aan = io_lamp_effectief_aan(nr);
     _hv_tile_frame(x, y, w, h, aan);
-    teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood);
+    teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood, HV_CONTENT_UIT);
 
     char lbl[IO_NAAM_LEN]; lamp_label(nr, lbl, sizeof(lbl));
-    tft.setTextSize(1); tft.setTextColor(aan ? C_CYAN : C_TEXT_DIM);
+    tft.setTextSize(1); tft.setTextColor(aan ? C_CYAN : HV_CONTENT_UIT);
     int maxch = (w - 8) / 6;
     if ((int)strlen(lbl) > maxch && maxch > 0) lbl[maxch] = '\0';
     int tw = strlen(lbl) * 6;
@@ -280,11 +323,11 @@ static void _hv_lamp_toggle(int nr) {
 static void _hv_overig_teken(int x, int y, int w, int h) {
     bool aan = io_hoofdverlichting_aan();
     _hv_tile_frame(x, y, w, h, aan);
-    teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood);
+    teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood, HV_CONTENT_UIT);
 
     const char* lbl = "OVERIGE LAMPEN";
     char buf[20]; strncpy(buf, lbl, sizeof(buf) - 1); buf[sizeof(buf) - 1] = '\0';
-    tft.setTextSize(1); tft.setTextColor(aan ? C_CYAN : C_TEXT_DIM);
+    tft.setTextSize(1); tft.setTextColor(aan ? C_CYAN : HV_CONTENT_UIT);
     int maxch = (w - 8) / 6;
     if ((int)strlen(buf) > maxch && maxch > 0) buf[maxch] = '\0';
     int tw = strlen(buf) * 6;
@@ -315,11 +358,11 @@ static void _hv_alles_uit() {
 static void _hv_paneel_tegel_teken(int x, int y, int w, int h, const char* label,
                                     int icoon, bool aan, bool mix) {
     _hv_tile_frame(x, y, w, h, aan);
-    uint16_t fg = aan ? C_CYAN : C_TEXT_DIM;
+    uint16_t fg = aan ? C_CYAN : HV_CONTENT_UIT;
     tft.setTextSize(2); tft.setTextColor(fg);
     int tw = strlen(label) * 12;
     if (icoon == I_LAMP) {
-        teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood);
+        teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood, HV_CONTENT_UIT);
         tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8);
     } else if (icoon >= 0) {
         teken_icoon(icoon, x + w / 2, y + h * 3 / 8, fg);
@@ -380,7 +423,7 @@ static void _hv_redraw_algemeen(int x0, int w, int y_top) {
     _hv_aan_symbool(bx[2] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_GREEN);
 
     _hv_tile_frame(bx[3], row_y, sq, sq, false);
-    _hv_uit_symbool(bx[3] + sq / 2, row_y + sq / 2, max(4, sq / 4), C_TEXT_DIM);
+    _hv_uit_symbool(bx[3] + sq / 2, row_y + sq / 2, max(4, sq / 4), HV_CONTENT_UIT);
 }
 
 // Tekent alleen het lampgroep-grid (+ 'dek'-achtige lichten) binnen

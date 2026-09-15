@@ -141,7 +141,10 @@ void boot_lichten_teken();
 
 // Gedeelde tegel-primitieven (ook gebruikt door screen_haven.ino)
 void teken_icoon(int type, int cx, int cy, uint16_t kleur);
-void teken_icoon_lamp(int cx, int cy, bool aan, bool rood);
+// uit_kleur: override voor de "uit"-omtrekkleur (default C_TEXT_DIM, zoals altijd
+// op het hoofdscherm) — screen_haven.ino geeft hier een donkerdere kleur mee voor
+// meer contrast tegen een (drukke) achtergrondfoto.
+void teken_icoon_lamp(int cx, int cy, bool aan, bool rood, uint16_t uit_kleur = C_TEXT_DIM);
 int  paneel_icoon(const char* naam);
 // Herkent Brendans "**E_..."-standaard voor exterieur/buitenverlichting (dek,
 // navigatie, anker, hek, enz. — vrij te kiezen naam ná de E_) + "dek" als losse

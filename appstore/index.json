@@ -10,7 +10,9 @@
     "vervangt": -1,
     "api_versie": 1,
     "grootte_kb": 3,
-    "actief": true
+    "actief": true,
+    "volledig_scherm": false,
+    "toon_header": true
   },
   {
     "id": "bke",
@@ -23,7 +25,9 @@
     "vervangt": -1,
     "api_versie": 1,
     "grootte_kb": 7,
-    "actief": true
+    "actief": true,
+    "volledig_scherm": false,
+    "toon_header": true
   },
   {
     "id": "schaak",
@@ -36,7 +40,9 @@
     "vervangt": -1,
     "api_versie": 1,
     "grootte_kb": 40,
-    "actief": true
+    "actief": true,
+    "volledig_scherm": false,
+    "toon_header": true
   },
   {
     "id": "dam",
@@ -49,7 +55,9 @@
     "vervangt": -1,
     "api_versie": 1,
     "grootte_kb": 28,
-    "actief": true
+    "actief": true,
+    "volledig_scherm": false,
+    "toon_header": true
   },
   {
     "id": "tekenapp",
@@ -62,7 +70,9 @@
     "vervangt": -1,
     "api_versie": 1,
     "grootte_kb": 1,
-    "actief": true
+    "actief": true,
+    "volledig_scherm": false,
+    "toon_header": true
   },
   {
     "id": "zeeslag",
@@ -75,7 +85,9 @@
     "vervangt": -1,
     "api_versie": 1,
     "grootte_kb": 33,
-    "actief": true
+    "actief": true,
+    "volledig_scherm": false,
+    "toon_header": true
   },
   {
     "id": "fotolijst",
@@ -87,9 +99,9 @@
     "scherm_h": 480,
     "vervangt": -1,
     "api_versie": 1,
-    "grootte_kb": 2,
+    "grootte_kb": 8,
     "actief": true,
     "volledig_scherm": true,
-    "toon_header": false
+    "toon_header": true
   }
 ]

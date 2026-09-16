@@ -48,7 +48,11 @@ static bool          _fs_app_pin_wacht   = false;  // wacht op pincode om een ve
 // vergrendeld heeft (screen_apps.ino, app_vergrendeld() — de app kan dit
 // nooit zelf aanzetten). Dit is de ENIGE uitgang voor zo'n app: alle overige
 // navigatie is in de touch-dispatch hierboven uitgeschakeld zolang 'm actief is.
-static void _fs_app_lang_druk() {
+// Niet meer static (app_state.h) — bkos.app.sluiten() (lua_runtime.cpp) roept
+// exact dezelfde functie aan, zodat een app-eigen sluitknop géén tweede,
+// los beveiligd uitgangspad wordt.
+void fs_app_sluiten_aanvragen() {
+    if (lua_forceer_app < 0) return;  // geen actieve standalone-app om te sluiten
     if (app_vergrendeld(lua_forceer_app)) {
         _fs_app_pin_wacht = true;
         pin_vereist_tonen();
@@ -124,6 +128,16 @@ static void _gui_taak(void*) {
                     lua_geladen_voor    = actief_scherm;
                     lua_geladen_app     = app_idx;
                     lua_geladen_sandbox = sandbox_arg;
+                    // Nieuw geopende app: de lang-druk-klok mag niet meelopen met
+                    // een aanraking die al vóór het openen bezig was (bv. de tik
+                    // op OPEN zelf, of het laden/eerste tekenen dat wat langer
+                    // duurt dan gewoonlijk — een JPEG-decode zoals de fotolijst-
+                    // app doet, kan dat al zijn) — anders kan touch_start_ms bij
+                    // het zichtbaar worden van dit scherm de 700ms-drempel al
+                    // gepasseerd zijn en sluit een fullscreen-app zichzelf
+                    // meteen weer (zag Brendan bij de eerste fotolijst-test).
+                    touch_start_ms     = millis();
+                    lang_druk_verwerkt = false;
                 }
                 if (is_standalone) {
                     if (!fs || apps[app_idx].toon_header) sb_app_teken(apps[app_idx].naam);
@@ -191,7 +205,7 @@ static void _gui_taak(void*) {
                        lua_forceer_app < apps_cnt && apps[lua_forceer_app].volledig_scherm) {
                 lang_druk_verwerkt = true;
                 touch_verwerkt     = true;
-                _fs_app_lang_druk();
+                fs_app_sluiten_aanvragen();
             }
         }
 
@@ -675,6 +689,11 @@ void hw_loop() {
                 lua_geladen_voor    = actief_scherm;
                 lua_geladen_app     = app_idx;
                 lua_geladen_sandbox = sandbox_arg;
+                // Zie de ESP32 GUI-taak hierboven voor waarom: voorkomt dat een
+                // fullscreen-app zichzelf meteen weer sluit door een lang-druk-
+                // klok die al vóór het openen liep.
+                touch_start_ms     = millis();
+                lang_druk_verwerkt = false;
             }
             if (is_standalone) {
                 if (!fs || apps[app_idx].toon_header) sb_app_teken(apps[app_idx].naam);
@@ -740,7 +759,7 @@ void hw_loop() {
                    lua_forceer_app < apps_cnt && apps[lua_forceer_app].volledig_scherm) {
             lang_druk_verwerkt = true;
             touch_verwerkt     = true;
-            _fs_app_lang_druk();
+            fs_app_sluiten_aanvragen();
         }
     }
 

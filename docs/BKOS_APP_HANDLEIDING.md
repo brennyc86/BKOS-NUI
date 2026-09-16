@@ -1,5 +1,5 @@
 # BKOS App Handleiding
-**Versie:** 1.3 — BKOS-NUI v0.2.260916.2+
+**Versie:** 1.4 — BKOS-NUI v0.2.260916.3+
 
 Deze handleiding beschrijft hoe je een BKOS app schrijft, test en publiceert.  
 BKOS apps zijn Lua 5.4 scripts die draaien op het ESP32-S3 boordcomputer scherm.
@@ -19,15 +19,17 @@ BKOS apps zijn Lua 5.4 scripts die draaien op het ESP32-S3 boordcomputer scherm.
    - [Data-opslag](#54-data-opslag)
    - [Systeem](#55-systeem)
    - [Achtergrondfoto's](#57-achtergrondfotos)
+   - [App sluiten](#58-app-sluiten)
 6. [App callbacks](#6-app-callbacks)
 7. [Schermresolutie en schalen](#7-schermresolutie-en-schalen)
-8. [Scherm-override](#8-scherm-override)
-9. [Data-opslag sleutelconventies](#9-data-opslag-sleutelconventies)
-10. [Publiceren naar de app store](#10-publiceren-naar-de-app-store)
-11. [Lokale installatie (zonder app store)](#11-lokale-installatie-zonder-app-store)
-12. [Richtlijnen en beperkingen](#12-richtlijnen-en-beperkingen)
-13. [Volledige voorbeeldapp](#13-volledige-voorbeeldapp)
-14. [API-referentie voor AI-systemen](#14-api-referentie-voor-ai-systemen)
+8. [Volledig scherm (fullscreen-apps)](#8-volledig-scherm-fullscreen-apps)
+9. [Scherm-override](#9-scherm-override)
+10. [Data-opslag sleutelconventies](#10-data-opslag-sleutelconventies)
+11. [Publiceren naar de app store](#11-publiceren-naar-de-app-store)
+12. [Lokale installatie (zonder app store)](#12-lokale-installatie-zonder-app-store)
+13. [Richtlijnen en beperkingen](#13-richtlijnen-en-beperkingen)
+14. [Volledige voorbeeldapp](#14-volledige-voorbeeldapp)
+15. [API-referentie voor AI-systemen](#15-api-referentie-voor-ai-systemen)
 
 ---
 
@@ -115,9 +117,11 @@ Op het apparaat zelf worden apps opgeslagen als platte SPIFFS-bestanden:
 | `beschrijving` | string | — | Korte uitleg (max 79 tekens) |
 | `scherm_b` | int | — | Ontwerp-breedte in pixels (standaard: 800) |
 | `scherm_h` | int | — | Ontwerp-hoogte in pixels (standaard: 480) |
-| `vervangt` | int | — | Screen-ID dat vervangen wordt, of `-1` voor geen override (zie §8) |
+| `vervangt` | int | — | Screen-ID dat vervangen wordt, of `-1` voor geen override (zie §9) |
 | `api_versie` | int | — | Minimale BKOS API versie (huidig: `1`) |
 | `actief` | bool | — | Of de app standaard ingeschakeld is |
+| `volledig_scherm` | bool | — | Vraagt het volledige fysieke scherm aan, geen koptekst/navigatiebalk (standaard: `false`, zie §8) |
+| `toon_header` | bool | — | Toon de koptekst toch, ook bij `volledig_scherm` (standaard: `true`, zie §8) |
 
 ### Screen-IDs voor `vervangt`
 
@@ -501,8 +505,26 @@ function bkos.touch(x, y)
 end
 ```
 
+#### `bkos.foto.vorige()`
+Zelfde als `bkos.foto.volgende()`, maar één terug (met wraparound naar de laatste foto).
+
 #### `bkos.foto.aantal()` → int
 Aantal foto's in de actieve pool (eigen geüploade foto's indien aanwezig, anders het aantal ingebakken voorbeelden).
+
+---
+
+### 5.8 App sluiten
+
+#### `bkos.app.sluiten()`
+Sluit de app op exact dezelfde manier als lang indrukken (§8): direct, of pas na de boordcomputer-pincode als de gebruiker de app zelf vergrendeld heeft via de APPS-instellingen. Alleen zinvol vanuit een standalone app (via APPS geopend, of als opstart-app) — zonder effect daarbuiten. Handig voor een eigen sluitknop in een fullscreen-app, als alternatief voor (of aanvulling op) lang indrukken.
+
+```lua
+function bkos.touch(x, y)
+    if x > bkos.W - 60 and y < 60 then
+        bkos.app.sluiten()
+    end
+end
+```
 
 ---
 
@@ -568,7 +590,33 @@ Gebruik `bkos.W` en `bkos.H` (de ontwerp-dimensies) voor alle positionering — 
 
 ---
 
-## 8. Scherm-override
+## 8. Volledig scherm (fullscreen-apps)
+
+Een standalone app (via APPS geopend, of als apparaat-opstartapp — een apparaatinstelling, geen manifest-veld) kan het **volledige fysieke scherm** opeisen: geen koptekst, geen navigatiebalk. Zet hiervoor in het manifest:
+
+```json
+{
+  "volledig_scherm": true,
+  "toon_header": false
+}
+```
+
+- `volledig_scherm` (standaard `false`): vraagt het volledige scherm aan. De app krijgt dan de fysieke schermresolutie als tekengebied (0,0 tot de werkelijke breedte/hoogte) in plaats van alleen het content-gebied onder de koptekst.
+- `toon_header` (standaard `true`): laat de systeem-koptekst (met de appnaam) toch zien, ook bij `volledig_scherm`. Zet dit op `false` voor een app die het scherm helemaal zelf wil inrichten (zoals een fotolijst).
+
+### Sluiten
+
+Een fullscreen-app heeft geen navigatiebalk en geen hoek-sluitknop meer beschikbaar — alle aanraking gaat rechtstreeks naar de app. Er is precies één ingebouwde uitgang: **lang indrukken** (700ms) ergens op het scherm sluit de app en keert terug naar het laatst bezochte hoofdscherm. Dit hoeft de app zelf niet te implementeren.
+
+Een app kan zelf óók een sluitknop aanbieden via `bkos.app.sluiten()` (§5.8) — dat roept exact dezelfde onderliggende sluitlogica aan als lang indrukken, inclusief de pincode-vergrendeling hieronder.
+
+### Vergrendeld openhouden (optioneel)
+
+De gebruiker kan een fullscreen-app via de APPS-instellingen (lang indrukken op de app-rij) "vergrendeld" zetten — dan is de boordcomputer-pincode nodig om de app te sluiten, handig voor een kiosk-achtige toepassing. Dit is uitsluitend een gebruikersinstelling: **een app kan dit nooit zelf aanzetten** via het manifest of een API-aanroep.
+
+---
+
+## 9. Scherm-override
 
 Een app kan een ingebouwd scherm vervangen door `vervangt` in het manifest in te stellen:
 
@@ -588,7 +636,7 @@ In de APPS-screen (tab INSTELLINGEN) kan de gebruiker zelf instellen welke app w
 
 ---
 
-## 9. Data-opslag sleutelconventies
+## 10. Data-opslag sleutelconventies
 
 Gebruik namespace-prefixes voor je sleutels om conflicten te vermijden.
 
@@ -621,7 +669,7 @@ bkos.data.schrijf("mijn_app.laatste_alarm", "14:32")
 
 ---
 
-## 10. Publiceren naar de app store
+## 11. Publiceren naar de app store
 
 De BKOS app store is onderdeel van de GitHub repository `brennyc86/BKOS-NUI`.  
 Apps worden ingediend via een **Pull Request** en doorlopen een automatische check gevolgd door een handmatige beoordeling. Zie ook [`appstore/AANBIEDEN.md`](../appstore/AANBIEDEN.md) voor de volledige indiengids.
@@ -686,7 +734,7 @@ Na succesvolle automatische checks beoordeelt de beheerder op:
 
 ---
 
-## 11. Lokale installatie (zonder app store)
+## 12. Lokale installatie (zonder app store)
 
 Handmatig uploaden via een SPIFFS-flashtool (bijv. Arduino IDE SPIFFS Data Upload):
 
@@ -701,7 +749,7 @@ Of via de seriële terminal (bijv. met `esptool.py`) een volledig SPIFFS-image f
 
 ---
 
-## 12. Richtlijnen en beperkingen
+## 13. Richtlijnen en beperkingen
 
 ### Geheugen
 - De Lua-runtime gebruikt **PSRAM** voor de heap (8MB SPI RAM op de ESP32-S3)
@@ -749,7 +797,7 @@ Crashes worden automatisch afgevangen — een foutmelding verschijnt op het sche
 
 ---
 
-## 13. Volledige voorbeeldapp
+## 14. Volledige voorbeeldapp
 
 Hieronder staat een complete app die weertemperatuur toont en een lamp via naam bedient:
 
@@ -834,7 +882,7 @@ end
 
 ---
 
-## 14. API-referentie voor AI-systemen
+## 15. API-referentie voor AI-systemen
 
 Dit gedeelte is gestructureerd als machine-leesbare referentie voor AI-codeertools.
 
@@ -952,7 +1000,14 @@ bkos.foto.tick()                — cheap per-call check: advance to next photo 
                                    built-in 60s slideshow timer; forces a redraw when it does
 bkos.foto.volgende()            — force-advance to next photo now, resets the 60s timer,
                                    schedules a redraw
+bkos.foto.vorige()              — same, but one photo back (wraps around)
 bkos.foto.aantal()   → integer  — number of photos in the active pool
+
+--- APP CONTROL ---
+bkos.app.sluiten()              — close this standalone app (same path as long-press: direct,
+                                   or via the device PIN if the user has locked the app).
+                                   No-op unless this app is running standalone (opened via
+                                   APPS, or as boot app).
 
 --- CALLBACKS (register as functions) ---
 bkos.draw   = function()        — redraw full screen
@@ -972,6 +1027,8 @@ bkos.update = function()        — periodic (no touch)
                             0=PANEEL, 1=IO, 2=METEO, 3=CONFIG, 5=INFO
   "api_versie"  : int     — current: 1
   "actief"      : bool    — enabled by default
+  "volledig_scherm": bool — request the full physical screen, no header/nav bar (default false)
+  "toon_header"    : bool — show the header even when volledig_scherm (default true)
 }
 
 === CONSTRAINTS ===

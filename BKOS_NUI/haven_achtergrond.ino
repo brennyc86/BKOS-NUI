@@ -371,3 +371,11 @@ void haven_achtergrond_volgende() {
     hav_laatste_wissel = millis();
     _hab_volgende_intern();
 }
+
+// Zelfde, maar één terug (met wraparound) — voor handmatig terugbladeren.
+void haven_achtergrond_vorige() {
+    hav_laatste_wissel = millis();
+    int totaal = haven_achtergrond_aantal_actief();
+    hav_bg_idx = (hav_bg_idx - 1 + totaal) % totaal;
+    scherm_bouwen = true;
+}

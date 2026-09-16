@@ -442,9 +442,24 @@ static int l_foto_volgende(lua_State* ls) {
     return 0;
 }
 
+static int l_foto_vorige(lua_State* ls) {
+    haven_achtergrond_vorige();
+    return 0;
+}
+
 static int l_foto_aantal(lua_State* ls) {
     lua_pushinteger(ls, (lua_Integer)haven_achtergrond_aantal_actief());
     return 1;
+}
+
+// ─── bkos.app ────────────────────────────────────────────────────────────────
+// Alleen zinvol vanuit een standalone app (via APPS geopend, of als opstart-
+// app): sluit dezelfde weg af als lang indrukken op een fullscreen-app
+// (hardware.ino/app_state.h) — inclusief de pincode-vergrendeling als de
+// gebruiker die zelf heeft aangezet. Geen effect buiten die context.
+static int l_app_sluiten(lua_State* ls) {
+    fs_app_sluiten_aanvragen();
+    return 0;
 }
 
 // ─── bkos tabel opbouwen ─────────────────────────────────────────────────────
@@ -552,8 +567,14 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_foto_tekenen);  lua_setfield(ls, -2, "tekenen");
     lua_pushcfunction(ls, l_foto_tick);     lua_setfield(ls, -2, "tick");
     lua_pushcfunction(ls, l_foto_volgende); lua_setfield(ls, -2, "volgende");
+    lua_pushcfunction(ls, l_foto_vorige);   lua_setfield(ls, -2, "vorige");
     lua_pushcfunction(ls, l_foto_aantal);   lua_setfield(ls, -2, "aantal");
     lua_setfield(ls, -2, "foto");
+
+    // app tabel
+    lua_newtable(ls);
+    lua_pushcfunction(ls, l_app_sluiten); lua_setfield(ls, -2, "sluiten");
+    lua_setfield(ls, -2, "app");
 
     lua_setglobal(ls, "bkos");
 }

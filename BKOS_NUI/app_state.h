@@ -122,5 +122,13 @@ extern char boot_app_id[24];
 // Lua app geforceerd open (ongeacht vervangt-veld); -1 = geen
 extern int lua_forceer_app;
 
+// Sluit de actieve standalone Lua-app (lua_forceer_app >= 0) -- dezelfde weg
+// als lang indrukken op een fullscreen-app (hardware.ino): direct, of pas na
+// de boordcomputer-pincode als de gebruiker de app zelf vergrendeld heeft.
+// Geen effect als er geen standalone-app actief is. Gebruikt door zowel de
+// lang-druk-detectie zelf als bkos.app.sluiten() (lua_runtime.cpp), zodat een
+// app maar één, al beveiligde uitgang heeft in plaats van een tweede eigen pad.
+void fs_app_sluiten_aanvragen();
+
 void state_save();
 void state_load();

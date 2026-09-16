@@ -31,6 +31,7 @@ void haven_achtergrond_teken();           // decodeert + tekent de huidige foto 
 void haven_achtergrond_teken_volledig();  // idem, maar het VOLLEDIGE scherm — voor fullscreen Lua-apps
 void haven_achtergrond_tick();            // periodieke check: tijd om te wisselen naar de volgende foto?
 void haven_achtergrond_volgende();        // forceer meteen de volgende foto (reset ook de 60s-klok)
+void haven_achtergrond_vorige();          // idem, maar één terug (wraparound)
 int  haven_achtergrond_aantal_actief();   // eigen foto's indien aanwezig, anders de ingebakken voorbeelden
 
 // ─── Eigen foto's (SPIFFS) ─────────────────────────────────────────────────

@@ -61,7 +61,9 @@ jobs:
                 vervangt:     (.vervangt  // -1),
                 api_versie:   (.api_versie // 1),
                 grootte_kb:   $kb,
-                actief:       true
+                actief:       true,
+                volledig_scherm: (.volledig_scherm // false),
+                toon_header:     (.toon_header // true)
               }')
 
             # Huidige entry uit index.json (compact, zelfde veldvolgorde)

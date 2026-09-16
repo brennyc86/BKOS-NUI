@@ -88,6 +88,8 @@
     "vervangt": -1,
     "api_versie": 1,
     "grootte_kb": 2,
-    "actief": true
+    "actief": true,
+    "volledig_scherm": true,
+    "toon_header": false
   }
 ]

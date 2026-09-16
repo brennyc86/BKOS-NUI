@@ -12,7 +12,8 @@
     "grootte_kb": 3,
     "actief": true,
     "volledig_scherm": false,
-    "toon_header": true
+    "toon_header": true,
+    "icoon": ""
   },
   {
     "id": "bke",
@@ -27,7 +28,8 @@
     "grootte_kb": 7,
     "actief": true,
     "volledig_scherm": false,
-    "toon_header": true
+    "toon_header": true,
+    "icoon": ""
   },
   {
     "id": "schaak",
@@ -42,7 +44,8 @@
     "grootte_kb": 40,
     "actief": true,
     "volledig_scherm": false,
-    "toon_header": true
+    "toon_header": true,
+    "icoon": ""
   },
   {
     "id": "dam",
@@ -57,7 +60,8 @@
     "grootte_kb": 28,
     "actief": true,
     "volledig_scherm": false,
-    "toon_header": true
+    "toon_header": true,
+    "icoon": ""
   },
   {
     "id": "tekenapp",
@@ -72,7 +76,8 @@
     "grootte_kb": 1,
     "actief": true,
     "volledig_scherm": false,
-    "toon_header": true
+    "toon_header": true,
+    "icoon": ""
   },
   {
     "id": "zeeslag",
@@ -87,21 +92,23 @@
     "grootte_kb": 33,
     "actief": true,
     "volledig_scherm": false,
-    "toon_header": true
+    "toon_header": true,
+    "icoon": ""
   },
   {
     "id": "fotolijst",
     "naam": "Digitale Fotolijst",
-    "versie": "1.2.0",
+    "versie": "1.3.0",
     "auteur": "Claude",
     "beschrijving": "Full-screen fotolijst met klok, uit dezelfde fotoset als het HAVEN-dashboard.",
     "scherm_b": 800,
     "scherm_h": 480,
     "vervangt": -1,
     "api_versie": 1,
-    "grootte_kb": 8,
+    "grootte_kb": 10,
     "actief": true,
     "volledig_scherm": true,
-    "toon_header": false
+    "toon_header": false,
+    "icoon": "foto"
   }
 ]

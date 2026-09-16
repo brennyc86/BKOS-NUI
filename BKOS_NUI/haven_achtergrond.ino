@@ -8,7 +8,8 @@
 
 #define HAVEN_BG_INTERVAL_MS  60000UL   // "langzame slideshow" — elke 60s de volgende foto
 
-static int  hav_bg_idx    = 0;
+static int           hav_bg_idx         = 0;
+static unsigned long hav_laatste_wissel = 0;  // gedeeld door tick() en het geforceerde volgende()
 
 // Persistente kopie van de laatst gedecodeerde foto, op precies de resolutie
 // waarop 'm ook getekend wordt (zie _hab_scale()) — zodat screen_haven.ino
@@ -287,26 +288,28 @@ static void _hab_laden_icoon(int cx, int cy) {
     tft.drawLine(x0 + 90, y0 + h - 57, x0 + w - 18, y0 + h - 24, fg);   // bergflank 3
 }
 
-void haven_achtergrond_teken() {
-    int inhoud_h = NAV_Y - CONTENT_Y;
-
+// Gedeelde tekenkern: decodeert/tekent de huidige achtergrondfoto gecentreerd
+// binnen een willekeurig verticaal gebied (top_y..top_y+hoogte, volle breedte).
+// haven_achtergrond_teken() gebruikt dit voor het HAVEN-dashboard content-
+// gebied; haven_achtergrond_teken_volledig() (voor fullscreen Lua-apps, zie
+// bkos.foto.tekenen() in lua_runtime.cpp) geeft simpelweg het HELE scherm mee.
+static void _hab_teken_gebied(int top_y, int hoogte) {
     if (!haven_gebruikersfoto_scan_klaar()) {
         // Nog niet bekend of er eigen foto's zijn (achtergrondtaak loopt nog) —
         // niets decoderen/tonen dat straks mogelijk weer moet wijken: het HELE
-        // contentgebied wordt grijs, met het laad-icoon erin getekend. Zodra
-        // bekend is (scherm_bouwen door de achtergrondtaak) volgt hieronder de
-        // normale, definitieve tekening.
-        tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, RGB565(210, 210, 210));
-        _hab_laden_icoon(TFT_W / 2, CONTENT_Y + inhoud_h / 2);
+        // gebied wordt grijs, met het laad-icoon erin getekend. Zodra bekend is
+        // (scherm_bouwen door de achtergrondtaak) volgt de definitieve tekening.
+        tft.fillRect(0, top_y, TFT_W, hoogte, RGB565(210, 210, 210));
+        _hab_laden_icoon(TFT_W / 2, top_y + hoogte / 2);
         return;
     }
 
-    tft.fillRect(0, CONTENT_Y, TFT_W, inhoud_h, C_BG);  // letterbox / lege achtergrond
+    tft.fillRect(0, top_y, TFT_W, hoogte, C_BG);  // letterbox / lege achtergrond
     _hab_init();
     int scale   = _hab_scale();
     int bg_w    = 800 / scale, bg_h = 480 / scale;
     int bg_x    = (TFT_W - bg_w) / 2;
-    int bg_y    = CONTENT_Y + (inhoud_h - bg_h) / 2;
+    int bg_y    = top_y + (hoogte - bg_h) / 2;
 
     // Framebuffer (her)alloceren als de afmetingen nog niet kloppen (eerste
     // keer op dit platform — de schaal ligt daarna vast, dus normaliter maar
@@ -333,14 +336,38 @@ void haven_achtergrond_teken() {
     }
 }
 
-void haven_achtergrond_tick() {
-    static unsigned long laatste_wissel_ms = 0;
-    unsigned long nu = millis();
-    if (laatste_wissel_ms == 0) { laatste_wissel_ms = nu; return; }
-    if (nu - laatste_wissel_ms < HAVEN_BG_INTERVAL_MS) return;
-    laatste_wissel_ms = nu;
+void haven_achtergrond_teken() {
+    _hab_teken_gebied(CONTENT_Y, NAV_Y - CONTENT_Y);
+}
+
+// Voor fullscreen Lua-apps (bkos.foto.tekenen()): het VOLLEDIGE scherm, geen
+// content-gebied — die apps hebben immers zelf geen header/navigatiebalk.
+void haven_achtergrond_teken_volledig() {
+    _hab_teken_gebied(0, TFT_H);
+}
+
+int haven_achtergrond_aantal_actief() {
     int gebruikers = haven_gebruikersfoto_aantal();
-    int totaal = gebruikers > 0 ? gebruikers : HAVEN_FOTO_CNT;
+    return gebruikers > 0 ? gebruikers : HAVEN_FOTO_CNT;
+}
+
+static void _hab_volgende_intern() {
+    int totaal = haven_achtergrond_aantal_actief();
     hav_bg_idx = (hav_bg_idx + 1) % totaal;
     scherm_bouwen = true;  // forceer volledige hertekening (nieuwe foto + tegels erover)
+}
+
+void haven_achtergrond_tick() {
+    unsigned long nu = millis();
+    if (hav_laatste_wissel == 0) { hav_laatste_wissel = nu; return; }
+    if (nu - hav_laatste_wissel < HAVEN_BG_INTERVAL_MS) return;
+    hav_laatste_wissel = nu;
+    _hab_volgende_intern();
+}
+
+// Directe, handmatige wissel (bv. een tik in de fotolijst-app) — reset ook de
+// automatische 60s-klok, zodat die niet vlak erna toevallig alweer wisselt.
+void haven_achtergrond_volgende() {
+    hav_laatste_wissel = millis();
+    _hab_volgende_intern();
 }

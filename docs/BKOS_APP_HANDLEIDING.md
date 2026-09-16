@@ -1,5 +1,5 @@
 # BKOS App Handleiding
-**Versie:** 1.2 — BKOS-NUI v0.0.260505.3+
+**Versie:** 1.3 — BKOS-NUI v0.2.260916.2+
 
 Deze handleiding beschrijft hoe je een BKOS app schrijft, test en publiceert.  
 BKOS apps zijn Lua 5.4 scripts die draaien op het ESP32-S3 boordcomputer scherm.
@@ -18,6 +18,7 @@ BKOS apps zijn Lua 5.4 scripts die draaien op het ESP32-S3 boordcomputer scherm.
    - [IO-kanalen](#53-io-kanalen)
    - [Data-opslag](#54-data-opslag)
    - [Systeem](#55-systeem)
+   - [Achtergrondfoto's](#57-achtergrondfotos)
 6. [App callbacks](#6-app-callbacks)
 7. [Schermresolutie en schalen](#7-schermresolutie-en-schalen)
 8. [Scherm-override](#8-scherm-override)
@@ -467,6 +468,44 @@ bkos.sys.log("temp: " .. temp)
 
 ---
 
+### 5.7 Achtergrondfoto's
+
+Alleen-lezen toegang tot dezelfde foto-pool als het ingebouwde HAVEN-dashboard: de ingebakken voorbeeldfoto's, of — zodra de gebruiker via de webapp (`/fotos`) eigen foto's heeft geüpload — uitsluitend die eigen foto's. Een app kan geen bestanden lezen of een specifieke foto kiezen; alleen "teken de huidige foto" en "ga naar de volgende" zijn beschikbaar.
+
+> **Belangrijk:** `bkos.foto.tekenen()` tekent altijd naar het **volledige fysieke scherm** (0,0 tot de werkelijke schermgrootte), ongeacht de `vervangt`/sandbox-status van de app. Gebruik dit alleen in een app met `"volledig_scherm": true` in het manifest (zie §8).
+
+#### `bkos.foto.tekenen()`
+Decodeert en tekent de huidige achtergrondfoto, gecentreerd en geschaald naar het volledige scherm.
+
+```lua
+function bkos.draw()
+    bkos.foto.tekenen()
+end
+```
+
+#### `bkos.foto.tick()`
+Controleert (goedkoop, elke aanroep) of de ingebouwde 60-seconden-diavoorstelling toe is aan de volgende foto; forceert zo ja zelf een systeembrede hertekening. Roep dit aan vanuit `bkos.update()`.
+
+```lua
+function bkos.update()
+    bkos.foto.tick()
+end
+```
+
+#### `bkos.foto.volgende()`
+Wisselt direct naar de volgende foto (reset ook de interne 60s-klok) en plant zelf een hertekening in — handig als reactie op een tik, i.p.v. op de automatische wissel te wachten.
+
+```lua
+function bkos.touch(x, y)
+    bkos.foto.volgende()
+end
+```
+
+#### `bkos.foto.aantal()` → int
+Aantal foto's in de actieve pool (eigen geüploade foto's indien aanwezig, anders het aantal ingebakken voorbeelden).
+
+---
+
 ## 6. App Callbacks
 
 Jouw app registreert functies die door het systeem aangeroepen worden.
@@ -905,6 +944,15 @@ System data keys (read-only for apps):
 bkos.sys.version()   → string    — firmware version, e.g. "0.0.260505.3"
 bkos.sys.millis()    → integer   — uptime milliseconds
 bkos.sys.log(text)              — debug to Serial (DEBUG build only)
+
+--- BACKGROUND PHOTOS (read-only, same pool as the HAVEN dashboard) ---
+bkos.foto.tekenen()             — draw current photo to the FULL physical screen
+                                   (ignores sandbox/vervangt — use only with volledig_scherm=true)
+bkos.foto.tick()                — cheap per-call check: advance to next photo on the
+                                   built-in 60s slideshow timer; forces a redraw when it does
+bkos.foto.volgende()            — force-advance to next photo now, resets the 60s timer,
+                                   schedules a redraw
+bkos.foto.aantal()   → integer  — number of photos in the active pool
 
 --- CALLBACKS (register as functions) ---
 bkos.draw   = function()        — redraw full screen

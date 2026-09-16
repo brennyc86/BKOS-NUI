@@ -27,8 +27,11 @@ uint16_t haven_achtergrond_pixel_klem(int scherm_x, int scherm_y);
 // header/footer-achtergrond (nav_bar.ino).
 uint16_t haven_kleur_meng(uint16_t foto, uint8_t r5_doel, uint8_t g6_doel, uint8_t b5_doel, uint8_t sterkte);
 
-void haven_achtergrond_teken();  // decodeert + tekent de huidige foto (content-gebied)
-void haven_achtergrond_tick();   // periodieke check: tijd om te wisselen naar de volgende foto?
+void haven_achtergrond_teken();           // decodeert + tekent de huidige foto (content-gebied)
+void haven_achtergrond_teken_volledig();  // idem, maar het VOLLEDIGE scherm — voor fullscreen Lua-apps
+void haven_achtergrond_tick();            // periodieke check: tijd om te wisselen naar de volgende foto?
+void haven_achtergrond_volgende();        // forceer meteen de volgende foto (reset ook de 60s-klok)
+int  haven_achtergrond_aantal_actief();   // eigen foto's indien aanwezig, anders de ingebakken voorbeelden
 
 // ─── Eigen foto's (SPIFFS) ─────────────────────────────────────────────────
 // Max. aantal eigen foto's (vast aantal slots — de échte grens is vrije

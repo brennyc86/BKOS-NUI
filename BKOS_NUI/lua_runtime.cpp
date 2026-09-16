@@ -7,6 +7,7 @@
 #include "ota.h"
 #include "platform_fs.h"
 #include "bkos_net.h"
+#include "haven_achtergrond.h"
 
 bool  lua_fout_actief   = false;
 char  lua_fout_tekst[LUA_FOUT_LEN] = "";
@@ -419,6 +420,33 @@ static int l_net_peers(lua_State* ls) {
     return 1;
 }
 
+// ─── bkos.foto ───────────────────────────────────────────────────────────────
+// Alleen-lezen toegang tot dezelfde achtergrondfoto-pool als het HAVEN-
+// dashboard (ingebakken voorbeelden, of de door de gebruiker via de webapp
+// geüploade /fotos/*.jpg zodra die bestaan) — geen bestandstoegang voor de
+// app zelf, alleen "teken de huidige foto" / "ga naar de volgende". Bedoeld
+// voor een fullscreen-app (manifest `volledig_scherm: true`): tekent altijd
+// naar het VOLLEDIGE fysieke scherm, ook als de app niet fullscreen draait.
+static int l_foto_tekenen(lua_State* ls) {
+    haven_achtergrond_teken_volledig();
+    return 0;
+}
+
+static int l_foto_tick(lua_State* ls) {
+    haven_achtergrond_tick();
+    return 0;
+}
+
+static int l_foto_volgende(lua_State* ls) {
+    haven_achtergrond_volgende();
+    return 0;
+}
+
+static int l_foto_aantal(lua_State* ls) {
+    lua_pushinteger(ls, (lua_Integer)haven_achtergrond_aantal_actief());
+    return 1;
+}
+
 // ─── bkos tabel opbouwen ─────────────────────────────────────────────────────
 static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);  // bkos
@@ -518,6 +546,14 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushnil(ls);                     lua_setfield(ls, -2, "ontvangen");  // callback placeholder
     lua_pushnil(ls);                     lua_setfield(ls, -2, "ontvang");    // alias
     lua_setfield(ls, -2, "net");
+
+    // foto tabel
+    lua_newtable(ls);
+    lua_pushcfunction(ls, l_foto_tekenen);  lua_setfield(ls, -2, "tekenen");
+    lua_pushcfunction(ls, l_foto_tick);     lua_setfield(ls, -2, "tick");
+    lua_pushcfunction(ls, l_foto_volgende); lua_setfield(ls, -2, "volgende");
+    lua_pushcfunction(ls, l_foto_aantal);   lua_setfield(ls, -2, "aantal");
+    lua_setfield(ls, -2, "foto");
 
     lua_setglobal(ls, "bkos");
 }

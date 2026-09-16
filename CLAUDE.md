@@ -12,6 +12,32 @@ Referentie (stripped base): `https://github.com/BrendanKoster86/BaseKOS`
 
 ---
 
+## ⚠️ "Een app voor BKOS" = altijd een Lua-app in het bestaande App Systeem
+
+Als Brendan vraagt om **"een app te maken/bouwen voor BKOS"** (of vergelijkbaar:
+"app-idee", "app hiervoor"), bedoelt hij ALTIJD een **Lua-app** binnen het
+al bestaande, uitgebreide App Systeem van dit project — nooit een nieuwe
+firmware-module, geen losse mobiele/webapp, geen nieuw scherm hardcoded in
+C++. Vraag dit niet na — ga er meteen van uit en verwijs zo nodig naar:
+
+- **Volledige spec (manifest-formaat, Lua BKOS-API, capabilities zoals
+  volledig scherm/opstart-app/vergrendeld)**: sectie [App Systeem](#app-systeem-sessie-13)
+  verderop in dit bestand.
+- **Waar apps leven**: `/apps/<id>/manifest.json` + `/apps/<id>/main.lua` op
+  het apparaat zelf (SPIFFS/LittleFS); voor de publieke app store de map
+  `appstore/` in deze repo-root.
+- **Runtime-code**: `lua_runtime.cpp/h` (Lua 5.4 + BKOS-API-bindings),
+  `app_manager.cpp/h` (installeren/beheren/manifest-parsing), `screen_apps.ino`
+  (APPS-scherm: lijst, installeren, instellingen), `libraries/LuaBKOS/`
+  (sketch-local Lua-library, vereist `--library BKOS_NUI/libraries/LuaBKOS`
+  bij arduino-cli anders is `LUA_BESCHIKBAAR=0`).
+- Belangrijk: dit is bewust een apart ontwikkeltraject van de BKOS-firmware
+  zelf — een Lua-app updaten/toevoegen betekent GEEN firmware-versiebump en
+  kan (en moet, zie Brendans eigen wens) in een aparte sessie/gesprek
+  gebeuren, los van dit BKOS-NUI-firmwarewerk.
+
+---
+
 ## Werkwijze
 
 Na elk afgerond stuk werk: altijd committen en pushen naar `main`. GitHub Actions compileert dan automatisch de firmware.bin zodat Brendan het kan bekijken en OTA ophalen.
@@ -494,12 +520,35 @@ bkos.update = function() ... end
   "beschrijving": "...",
   "scherm_b": 800,
   "scherm_h": 480,
+  "schaal": "geen",
   "vervangt": -1,
   "api_versie": 1,
-  "actief": true
+  "actief": true,
+  "volledig_scherm": false,
+  "toon_header": true
 }
 ```
-`vervangt` is een SCREEN_* constante (0=PANEEL, 2=METEO, 5=INFO, enz.) of -1 voor geen override.
+- `vervangt` is een SCREEN_* constante (0=PANEEL, 2=METEO, 5=INFO, enz.) of -1 voor geen override
+  (dan is de app alleen standalone te openen vanuit het APPS-scherm/de navigatiebalk).
+- `schaal`: `"geen"` (1:1 pixels, standaard) / `"evenredig"` (aspect ratio behouden, gecentreerd) /
+  `"onevenredig"` (elke as apart uitgerekt naar het beschikbare gebied).
+- `volledig_scherm` (bool, standaard false): de app vraagt het VOLLEDIGE scherm (0..TFT_H) i.p.v.
+  alleen het content-gebied — geen navigatiebalk, en de universele "tik in de navbalk-zone
+  navigeert weg"-snelkoppeling is dan uitgeschakeld. Legitiem door de app zelf te zetten (staat in
+  zijn eigen manifest.json). Enige uitgang: lang indrukken op het scherm.
+- `toon_header` (bool, standaard true, alleen relevant als `volledig_scherm`): houdt de koptekst
+  (app-naam bovenin) toch zichtbaar.
+- **"Vergrendeld openhouden"** is bewust GEEN manifest-veld — dat kan een app dus nooit zelf
+  aanzetten. Het leeft in een apart bestand (`/apps/<id>/bkos_lock.txt`, zie `app_vergrendeld()`/
+  `app_zet_vergrendeld()` in `app_manager.cpp`) dat alleen de gebruiker zelf zet, via lang
+  indrukken op de app-rij in het APPS-scherm (instellingen-overlay). Staat dit aan, dan is de
+  boordcomputer-pincode vereist om de app af te sluiten (long-press-uitgang, zie `hardware.ino`).
+- **Opstart-app**: `boot_app_id` (app_state.h, ingesteld via diezelfde instellingen-overlay) laat
+  het apparaat direct in een gekozen app opstarten i.p.v. het gewone paneel.
+- Deze drie mogelijkheden samen (volledig scherm + vergrendeld + opstart-app) zijn de basis om
+  BKOS als platform voor heel andere kiosk-achtige software te gebruiken (bv. een fotolijstje of
+  een escape-room-app die ook `bkos.io.*` gebruikt) — zie Taakoverzicht taak 263 voor de volledige
+  toelichting/afwegingen.
 
 ### App store
 - Index URL: `https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/appstore/index.json`

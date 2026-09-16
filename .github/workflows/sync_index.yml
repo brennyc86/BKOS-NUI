@@ -63,7 +63,8 @@ jobs:
                 grootte_kb:   $kb,
                 actief:       true,
                 volledig_scherm: (if has("volledig_scherm") then .volledig_scherm else false end),
-                toon_header:     (if has("toon_header")     then .toon_header     else true  end)
+                toon_header:     (if has("toon_header")     then .toon_header     else true  end),
+                icoon:           (.icoon // "")
               }')
 
             # Huidige entry uit index.json (compact, zelfde veldvolgorde)

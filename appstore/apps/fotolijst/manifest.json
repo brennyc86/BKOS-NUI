@@ -1,7 +1,7 @@
 {
   "id": "fotolijst",
   "naam": "Digitale Fotolijst",
-  "versie": "1.2.0",
+  "versie": "1.3.0",
   "auteur": "Claude",
   "beschrijving": "Full-screen fotolijst met klok, uit dezelfde fotoset als het HAVEN-dashboard.",
   "scherm_b": 800,
@@ -10,5 +10,6 @@
   "api_versie": 1,
   "actief": true,
   "volledig_scherm": true,
-  "toon_header": false
+  "toon_header": false,
+  "icoon": "foto"
 }

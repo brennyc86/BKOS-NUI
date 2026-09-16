@@ -243,6 +243,16 @@ static void _gui_taak(void*) {
                 } else if (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt &&
                     actief_scherm == SCREEN_LUA_APP && apps[lua_forceer_app].volledig_scherm) {
                     lua_app_run(lua_forceer_app, ts_x, ts_y, true);
+                    // Zelfde reden als bij het laden van een nieuwe app
+                    // (hierboven): deze aanroep kan zelf traag zijn (een app
+                    // die op een tik reageert met een volledige hertekening,
+                    // bv. een JPEG-decode) — de lang-druk-klok telt anders
+                    // die tekentijd al mee vóórdat de check verderop draait.
+                    // Vuurt maar één keer per fysieke touch-down (touch_verwerkt
+                    // voorkomt herhaalde dispatch tijdens een ingedrukt gehouden
+                    // vinger), dus een bewuste lang-druk blijft gewoon werken.
+                    touch_start_ms     = millis();
+                    lang_druk_verwerkt = false;
                 } else
                 {
                     // Universele navigatiebalk: ELKE tik in de balk-zone navigeert,
@@ -799,6 +809,9 @@ void hw_loop() {
             } else if (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt &&
                 actief_scherm == SCREEN_LUA_APP && apps[lua_forceer_app].volledig_scherm) {
                 lua_app_run(lua_forceer_app, ts_x, ts_y, true);
+                // Zie de ESP32 GUI-taak hierboven voor waarom.
+                touch_start_ms     = millis();
+                lang_druk_verwerkt = false;
             } else
             {
                 // Universele navigatiebalk (zie landscape): nav werkt op elk scherm/app

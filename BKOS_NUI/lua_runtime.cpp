@@ -452,6 +452,18 @@ static int l_foto_aantal(lua_State* ls) {
     return 1;
 }
 
+// Exacte fotokleur (RGB565) op een app-coördinaat, uit de al gedecodeerde foto
+// (geen herdecodering) — laat een app een "doorschijnend" element tekenen door
+// zelf een kleur te mengen (zie bkos.color565/de bitwise operatoren in Lua 5.4)
+// i.p.v. een effen vlak. Coördinaten gaan door dezelfde app→scherm-transformatie
+// als de teken-primitieven (sx/sy), dus consistent met bkos.foto.tekenen().
+static int l_foto_pixel(lua_State* ls) {
+    int x = (int)luaL_checkinteger(ls, 1);
+    int y = (int)luaL_checkinteger(ls, 2);
+    lua_pushinteger(ls, (lua_Integer)haven_achtergrond_pixel_klem(sx(x), sy(y)));
+    return 1;
+}
+
 // ─── bkos.app ────────────────────────────────────────────────────────────────
 // Alleen zinvol vanuit een standalone app (via APPS geopend, of als opstart-
 // app): sluit dezelfde weg af als lang indrukken op een fullscreen-app
@@ -569,6 +581,7 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_foto_volgende); lua_setfield(ls, -2, "volgende");
     lua_pushcfunction(ls, l_foto_vorige);   lua_setfield(ls, -2, "vorige");
     lua_pushcfunction(ls, l_foto_aantal);   lua_setfield(ls, -2, "aantal");
+    lua_pushcfunction(ls, l_foto_pixel);    lua_setfield(ls, -2, "pixel");
     lua_setfield(ls, -2, "foto");
 
     // app tabel

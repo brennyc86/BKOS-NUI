@@ -122,6 +122,7 @@ Op het apparaat zelf worden apps opgeslagen als platte SPIFFS-bestanden:
 | `actief` | bool | — | Of de app standaard ingeschakeld is |
 | `volledig_scherm` | bool | — | Vraagt het volledige fysieke scherm aan, geen koptekst/navigatiebalk (standaard: `false`, zie §8) |
 | `toon_header` | bool | — | Toon de koptekst toch, ook bij `volledig_scherm` (standaard: `true`, zie §8) |
+| `icoon` | string | — | Naam van een vast bureaublad-icoon (APPS-scherm), leeg = generiek app-icoon. Beschikbaar: `tv`, `usb`, `230v`, `water`, `licht`, `deklicht`, `haven`, `zeilen`, `motor`, `anker`, `foto` |
 
 ### Screen-IDs voor `vervangt`
 
@@ -510,6 +511,24 @@ Zelfde als `bkos.foto.volgende()`, maar één terug (met wraparound naar de laat
 
 #### `bkos.foto.aantal()` → int
 Aantal foto's in de actieve pool (eigen geüploade foto's indien aanwezig, anders het aantal ingebakken voorbeelden).
+
+#### `bkos.foto.pixel(x, y)` → int
+Geeft de exacte RGB565-kleur van de al getekende foto op coördinaat `(x, y)` (app-ruimte, automatisch geschaald) — geen herdecodering, dus goedkoop. Handig om een "doorschijnend" vlak te tekenen: lees de fotokleur en meng die zelf naar een doelkleur (Lua 5.4 heeft native bitwise operatoren) i.p.v. een effen vlak neer te zetten.
+
+```lua
+-- Doorschijnende knop: fotokleur voor 70% richting zwart mengen
+local function kleur_meng(foto, r, g, b, sterkte)
+    local fr, fg, fb = (foto >> 11) & 0x1F, (foto >> 5) & 0x3F, foto & 0x1F
+    return ((fr + (r - fr) * sterkte // 255) << 11)
+         | ((fg + (g - fg) * sterkte // 255) << 5)
+         |  (fb + (b - fb) * sterkte // 255)
+end
+
+local achtergrond = kleur_meng(bkos.foto.pixel(x + w // 2, y + h // 2), 0, 0, 0, 130)
+bkos.fillRoundRect(x, y, w, h, 10, achtergrond)
+```
+
+> **Let op:** `bkos.foto.tekenen()` (JPEG-decode) is traag — roep dat niet aan alleen om een doorschijnend element bij te werken. `bkos.foto.pixel()` leest de al getekende foto, dus is hier de juiste, snelle keuze.
 
 ---
 
@@ -1002,6 +1021,10 @@ bkos.foto.volgende()            — force-advance to next photo now, resets the 
                                    schedules a redraw
 bkos.foto.vorige()              — same, but one photo back (wraps around)
 bkos.foto.aantal()   → integer  — number of photos in the active pool
+bkos.foto.pixel(x,y) → integer  — RGB565 color of the already-drawn photo at (x,y),
+                                   no redecoding (cheap); blend it yourself for a
+                                   translucent element instead of calling
+                                   bkos.foto.tekenen() again (slow, JPEG decode)
 
 --- APP CONTROL ---
 bkos.app.sluiten()              — close this standalone app (same path as long-press: direct,
@@ -1029,6 +1052,9 @@ bkos.update = function()        — periodic (no touch)
   "actief"      : bool    — enabled by default
   "volledig_scherm": bool — request the full physical screen, no header/nav bar (default false)
   "toon_header"    : bool — show the header even when volledig_scherm (default true)
+  "icoon"          : string — fixed desktop icon name (APPS screen), "" = generic.
+                              One of: tv, usb, 230v, water, licht, deklicht,
+                              haven, zeilen, motor, anker, foto
 }
 
 === CONSTRAINTS ===

@@ -80,6 +80,22 @@ verhogen — zelfde dag `I+1`, nieuwe dag nieuwe datum met `I=1`. CI schrijft da
 autonoom: alleen op expliciete opdracht van Brendan, en altijd code-identiek aan een
 door hem geteste beta.
 
+### Appstore-apps hebben hun EIGEN versienummer — nooit BKOS_NUI_VERSIE in het commitbericht
+
+Een Lua-app in `appstore/apps/<id>/` (zie *App Systeem*) is een los, onafhankelijk
+gebruikt versienummer, ook al leeft de code in dezelfde repo. Een commit die
+uitsluitend een app raakt (main.lua/manifest.json/index.json, geen `BKOS_NUI/**`)
+gebruikt in het commitbericht het **app-versienummer** (`manifest.json`'s `versie`,
+`MAJOR.MINOR.PATCH`), nooit `BKOS_NUI_VERSIE` — die twee staan volledig los van
+elkaar, net zoals BKOS-Blanco of de installer hun eigen versienummer hebben.
+Voorbeeld: `fotolijst v1.2.0: besturingsbalk + instelbaar interval`, niet
+`v0.2.260916.4: ...`.
+
+Raakt een commit ZOWEL firmware (`BKOS_NUI/**`, bv. een nieuwe `bkos.*`-API) ALS een
+app in dezelfde push, noem dan beide versienummers expliciet en apart (bv.
+`v0.2.260916.3 + fotolijst v1.1.0: ...`) — nooit alleen de firmwareversie voor een
+wijziging die net zo goed (of vooral) de app raakt.
+
 ---
 
 ## Compileren & Uploaden

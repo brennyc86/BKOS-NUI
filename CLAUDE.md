@@ -20,9 +20,13 @@ al bestaande, uitgebreide App Systeem van dit project — nooit een nieuwe
 firmware-module, geen losse mobiele/webapp, geen nieuw scherm hardcoded in
 C++. Vraag dit niet na — ga er meteen van uit en verwijs zo nodig naar:
 
-- **Volledige spec (manifest-formaat, Lua BKOS-API, capabilities zoals
-  volledig scherm/opstart-app/vergrendeld)**: sectie [App Systeem](#app-systeem-sessie-13)
-  verderop in dit bestand.
+- **Volledige, actueel gehouden spec (manifest-formaat, complete Lua BKOS-API,
+  callbacks, schalen, publiceren naar de app store, en een aparte
+  "API-referentie voor AI-systemen"-sectie — precies voor dit doel)**:
+  **`docs/BKOS_APP_HANDLEIDING.md`**. Dit IS de bron van waarheid voor app-
+  ontwikkeling; lees dit bestand eerst bij elk verzoek om een app.
+- Beknopte architectuur/overzicht staat ook in sectie [App Systeem](#app-systeem-sessie-13)
+  verderop in dit bestand, maar bij twijfel of een detail ontbreekt: de handleiding wint.
 - **Waar apps leven**: `/apps/<id>/manifest.json` + `/apps/<id>/main.lua` op
   het apparaat zelf (SPIFFS/LittleFS); voor de publieke app store de map
   `appstore/` in deze repo-root.

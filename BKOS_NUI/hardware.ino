@@ -122,22 +122,13 @@ static void _gui_taak(void*) {
                 static int  lua_geladen_voor    = -1;
                 static int  lua_geladen_app     = -1;
                 static bool lua_geladen_sandbox = false;
-                if (actief_scherm != lua_geladen_voor || app_idx != lua_geladen_app
-                        || lua_geladen_sandbox != sandbox_arg) {
+                bool nieuwe_app_geladen = (actief_scherm != lua_geladen_voor || app_idx != lua_geladen_app
+                                            || lua_geladen_sandbox != sandbox_arg);
+                if (nieuwe_app_geladen) {
                     lua_app_laden(app_idx, sandbox_arg);
                     lua_geladen_voor    = actief_scherm;
                     lua_geladen_app     = app_idx;
                     lua_geladen_sandbox = sandbox_arg;
-                    // Nieuw geopende app: de lang-druk-klok mag niet meelopen met
-                    // een aanraking die al vóór het openen bezig was (bv. de tik
-                    // op OPEN zelf, of het laden/eerste tekenen dat wat langer
-                    // duurt dan gewoonlijk — een JPEG-decode zoals de fotolijst-
-                    // app doet, kan dat al zijn) — anders kan touch_start_ms bij
-                    // het zichtbaar worden van dit scherm de 700ms-drempel al
-                    // gepasseerd zijn en sluit een fullscreen-app zichzelf
-                    // meteen weer (zag Brendan bij de eerste fotolijst-test).
-                    touch_start_ms     = millis();
-                    lang_druk_verwerkt = false;
                 }
                 if (is_standalone) {
                     if (!fs || apps[app_idx].toon_header) sb_app_teken(apps[app_idx].naam);
@@ -145,6 +136,19 @@ static void _gui_taak(void*) {
                     if (!fs) nav_bar_teken();
                 } else {
                     lua_app_teken(app_idx);
+                }
+                if (nieuwe_app_geladen) {
+                    // Nieuw geopende app: de lang-druk-klok resetten PAS NA het
+                    // (mogelijk trage, bv. JPEG-decoderende) eerste tekenen
+                    // hierboven — resetten ervóór is niet genoeg, want die
+                    // tekentijd loopt binnen dezelfde loop-iteratie gewoon door
+                    // vóórdat de lang-druk-check verderop draait, en telt dan al
+                    // mee. Zonder deze volgorde kan touch_start_ms bij het
+                    // zichtbaar worden van dit scherm de 700ms-drempel al
+                    // gepasseerd zijn en sluit een fullscreen-app zichzelf
+                    // meteen weer (zag Brendan bij de fotolijst-test).
+                    touch_start_ms     = millis();
+                    lang_druk_verwerkt = false;
                 }
             } else {
                 switch (actief_scherm) {
@@ -683,17 +687,13 @@ void hw_loop() {
             static int  lua_geladen_voor    = -1;
             static int  lua_geladen_app     = -1;
             static bool lua_geladen_sandbox = false;
-            if (actief_scherm != lua_geladen_voor || app_idx != lua_geladen_app
-                    || lua_geladen_sandbox != sandbox_arg) {
+            bool nieuwe_app_geladen = (actief_scherm != lua_geladen_voor || app_idx != lua_geladen_app
+                                        || lua_geladen_sandbox != sandbox_arg);
+            if (nieuwe_app_geladen) {
                 lua_app_laden(app_idx, sandbox_arg);
                 lua_geladen_voor    = actief_scherm;
                 lua_geladen_app     = app_idx;
                 lua_geladen_sandbox = sandbox_arg;
-                // Zie de ESP32 GUI-taak hierboven voor waarom: voorkomt dat een
-                // fullscreen-app zichzelf meteen weer sluit door een lang-druk-
-                // klok die al vóór het openen liep.
-                touch_start_ms     = millis();
-                lang_druk_verwerkt = false;
             }
             if (is_standalone) {
                 if (!fs || apps[app_idx].toon_header) sb_app_teken(apps[app_idx].naam);
@@ -701,6 +701,12 @@ void hw_loop() {
                 if (!fs) nav_bar_teken();
             } else {
                 lua_app_teken(app_idx);
+            }
+            if (nieuwe_app_geladen) {
+                // Zie de ESP32 GUI-taak hierboven voor waarom dit PAS NA het
+                // (mogelijk trage) eerste tekenen moet gebeuren, niet ervóór.
+                touch_start_ms     = millis();
+                lang_druk_verwerkt = false;
             }
         } else {
             switch (actief_scherm) {

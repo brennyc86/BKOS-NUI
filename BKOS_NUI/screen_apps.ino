@@ -72,6 +72,11 @@ static int  _wf_cnt = 0;
 static bool apps_bevestig_actief = false;
 static int  apps_bevestig_idx    = -1;
 
+// App-instellingen overlay (opstart-app + vergrendeld openhouden) — geopend
+// via lang indrukken op een geïnstalleerde-app-rij, zie screen_apps_lang_indruk().
+static bool apps_inst_actief = false;
+static int  apps_inst_idx    = -1;
+
 // Status/download feedback
 static char apps_status[64] = "";
 static bool apps_bezig       = false;
@@ -612,6 +617,61 @@ static void _apps_bevestig_teken() {
 #endif
 }
 
+// ─── App-instellingen overlay (opstart-app + vergrendeld openhouden) ─────────
+// Bewust GEEN losse knop in de al-krappe app-rij (risico op een "getekend
+// hier, hittest daar"-mismatch bij het herindelen van die rij) — lang
+// indrukken op de rij opent dit in plaats daarvan (screen_apps_lang_indruk()).
+// "Vergrendeld" leeft in een apart bestand dat de app zelf nooit aanraakt
+// (zie app_vergrendeld()/app_zet_vergrendeld(), app_manager.cpp) — de enige
+// manier om dit te zetten is hier, door de gebruiker zelf.
+#define AINST_ROW_H  44
+static void _apps_instellingen_teken() {
+    if (apps_inst_idx < 0 || apps_inst_idx >= apps_cnt) return;
+    AppManifest& m = apps[apps_inst_idx];
+    bool is_boot_app = (strcmp(boot_app_id, m.id) == 0);
+    bool vergrendeld = app_vergrendeld(apps_inst_idx);
+
+#if SCREEN_SMALL
+    int bx = 8, by = CONTENT_Y + 20, bw = TFT_W - 16, bh = 190;
+#else
+    int bx = 140, by = 100, bw = 520, bh = 260;
+#endif
+    tft.fillRoundRect(bx, by, bw, bh, 8, C_SURFACE);
+    tft.drawRoundRect(bx, by, bw, bh, 8, C_CYAN);
+
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    tft.setCursor(bx + 12, by + 10);
+    tft.print("App-instellingen: "); tft.print(m.naam);
+
+    if (m.volledig_scherm) {
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(bx + 12, by + 26);
+        tft.print("Deze app vraagt volledig scherm");
+        tft.print(m.toon_header ? " (koptekst zichtbaar)." : " (geen koptekst)." );
+    }
+
+    int ry = by + 42;
+    tft.setTextColor(C_TEXT);
+    tft.setCursor(bx + 12, ry + 10);
+    tft.print("Opstart-app");
+    ui_knop(bx + bw - 132, ry, 120, 32, is_boot_app ? "AAN" : "UIT",
+            is_boot_app ? C_GREEN : C_SURFACE2, is_boot_app ? C_TEXT_DARK : C_TEXT_DIM);
+    ry += AINST_ROW_H;
+
+    tft.setTextColor(C_TEXT);
+    tft.setCursor(bx + 12, ry + 10);
+    tft.print("Vergrendeld openhouden");
+    ui_knop(bx + bw - 132, ry, 120, 32, vergrendeld ? "AAN" : "UIT",
+            vergrendeld ? C_GREEN : C_SURFACE2, vergrendeld ? C_TEXT_DARK : C_TEXT_DIM);
+    ry += AINST_ROW_H;
+
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(bx + 12, ry);
+    tft.print("Vergrendeld: boordcomputer-pincode nodig om de app af te sluiten.");
+
+    ui_knop(bx + (bw - 150) / 2, by + bh - 42, 150, 32, "SLUITEN", C_SURFACE2, C_TEXT);
+}
+
 // ─── Installeer-keuze popup ───────────────────────────────────────────────────
 static void _apps_popup_teken() {
     if (apps_popup_idx < 0 || apps_popup_idx >= winkel_cnt) return;
@@ -849,6 +909,7 @@ void screen_apps_teken() {
 #endif
 
     if (apps_bevestig_actief)   _apps_bevestig_teken();
+    if (apps_inst_actief)       _apps_instellingen_teken();
     if (apps_popup_actief)      _apps_popup_teken();
     if (apps_voortgang_actief)  _apps_voortgang_teken(true);
     nav_bar_teken();
@@ -964,6 +1025,39 @@ void screen_apps_run(int x, int y, bool aanraking) {
             }
         }
 #endif
+        return;
+    }
+
+    // ─── App-instellingen overlay ───────────────────────────────────────────────
+    if (apps_inst_actief) {
+#if SCREEN_SMALL
+        int bx = 8, by = CONTENT_Y + 20, bw = TFT_W - 16, bh = 190;
+#else
+        int bx = 140, by = 100, bw = 520, bh = 260;
+#endif
+        int ry = by + 42;
+        // Opstart-app AAN/UIT
+        if (x >= bx + bw - 132 && x <= bx + bw - 12 && y >= ry && y <= ry + 32) {
+            bool nu_boot_app = (strcmp(boot_app_id, apps[apps_inst_idx].id) == 0);
+            if (nu_boot_app) boot_app_id[0] = '\0';
+            else { strncpy(boot_app_id, apps[apps_inst_idx].id, sizeof(boot_app_id) - 1); boot_app_id[sizeof(boot_app_id) - 1] = '\0'; }
+            state_save();
+            scherm_bouwen = true;
+            return;
+        }
+        ry += AINST_ROW_H;
+        // Vergrendeld openhouden AAN/UIT
+        if (x >= bx + bw - 132 && x <= bx + bw - 12 && y >= ry && y <= ry + 32) {
+            app_zet_vergrendeld(apps_inst_idx, !app_vergrendeld(apps_inst_idx));
+            scherm_bouwen = true;
+            return;
+        }
+        // SLUITEN
+        if (x >= bx + (bw - 150) / 2 && x <= bx + (bw - 150) / 2 + 150 &&
+            y >= by + bh - 42 && y <= by + bh - 10) {
+            apps_inst_actief = false; apps_inst_idx = -1;
+            scherm_bouwen = true;
+        }
         return;
     }
 
@@ -1255,4 +1349,30 @@ void screen_apps_run(int x, int y, bool aanraking) {
         apps_popup_idx = widx; apps_popup_actief = true; scherm_bouwen = true;
     }
 #endif
+}
+
+// Lang indrukken ergens op een geïnstalleerde-app-rij (linker paneel/lijst,
+// niet de winkel) opent de app-instellingen overlay — een korte tik op
+// dezelfde plek raakt gewoon OPEN/AAN-UIT/X zoals altijd, alleen een
+// aanhoudende druk activeert dit. Geen overlay actief en geen andere modus
+// (toewijzing/keyboard/winkel) — dan simpelweg genegeerd.
+void screen_apps_lang_indruk(int x, int y) {
+    if (apps_bevestig_actief || apps_inst_actief || apps_popup_actief ||
+        apps_voortgang_actief || apps_toewijzing_modus || winkel_kb_actief) return;
+#if SCREEN_SMALL
+    if (apps_tab != 0) return;  // alleen de "geïnstalleerd"-tab, niet de winkel-tab
+    int rijen = _apps_rijen_zichtbaar();
+    int rij   = (y - APPS_LIST_Y) / APPS_RIJ_H;
+    if (rij < 0 || rij >= rijen) return;
+    int idx = apps_scroll + rij;
+#else
+    if (x >= APPS_PNL_W || y < APPS_LIST_Y) return;  // alleen linker paneel, onder de headers
+    int rijen = _apps_rijen_zichtbaar();
+    int rij   = (y - APPS_LIST_Y) / APPS_RIJ_H;
+    if (rij < 0 || rij >= rijen) return;
+    int idx = apps_scroll + rij;
+#endif
+    if (idx < 0 || idx >= apps_cnt) return;
+    apps_inst_idx = idx; apps_inst_actief = true;
+    scherm_bouwen = true;
 }

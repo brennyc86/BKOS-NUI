@@ -114,6 +114,10 @@ extern byte boot_vaar_modus;       // vaar_modus bij opstarten
 extern byte boot_licht_instelling; // licht_instelling bij opstarten
 extern bool boot_vaarmodus_auto;   // vaarmodus_auto bij opstarten
 extern bool boot_haven_naar_dashboard;  // opstarten in HAVEN/ANKER opent gelijk het HAVEN-dashboard i.p.v. het vaardashboard
+// Leeg = normale opstart; anders start direct in deze Lua-app (id, zie
+// app_manager.h). 24 = APP_ID_LEN daar — hier los gehouden i.p.v. dat include
+// om een cirkel te voorkomen (app_manager.h include zelf al app_state.h).
+extern char boot_app_id[24];
 
 // Lua app geforceerd open (ongeacht vervangt-veld); -1 = geen
 extern int lua_forceer_app;

@@ -33,6 +33,11 @@ struct AppManifest {
     int   grootte_kb;     // geschatte installatiegrootte in KB
     bool  actief;
     bool  in_balk;        // tonen in navigatiebalk
+    // Door de app zelf aangevraagd (manifest.json, dus legitiem app-content) —
+    // in tegenstelling tot "vergrendeld" hieronder, dat de app NIET zelf mag
+    // zetten (zie app_vergrendeld()/app_zet_vergrendeld()).
+    bool  volledig_scherm; // vraagt het volledige scherm (geen koptekst/navigatiebalk)
+    bool  toon_header;     // koptekst toch tonen, ook bij volledig_scherm (default aan)
 };
 
 extern AppManifest apps[APP_MAX];
@@ -52,6 +57,15 @@ int   app_voor_scherm(int scherm_id);  // returns app_idx, or -1
 
 void  app_zet_actief(int idx, bool actief);
 void  app_verwijder(int idx);
+
+// "Vergrendeld openhouden": moet handmatig door de gebruiker in de native
+// APPS-instellingen aangezet worden en wordt UITDRUKKELIJK NIET in
+// manifest.json (app-content, kan door een update overschreven worden)
+// bijgehouden — een eigen bestand dat de installatie-/update-flow nooit
+// aanraakt, zodat een app dit onmogelijk zelf kan zetten. Zolang aan, is de
+// boordcomputer-pincode vereist om de app af te sluiten (zie hardware.ino).
+bool app_vergrendeld(int idx);
+void app_zet_vergrendeld(int idx, bool aan);
 bool  app_installeer_uit_winkel(int winkel_idx);  // synchroon, voor intern gebruik
 
 void  app_winkel_laden();

@@ -41,6 +41,24 @@ static unsigned long touch_start_ms      = 0;
 static int           touch_start_x       = -1;
 static int           touch_start_y       = -1;
 static bool          lang_druk_verwerkt  = false;
+static bool          _fs_app_pin_wacht   = false;  // wacht op pincode om een vergrendelde fullscreen-app te sluiten
+
+// Lang indrukken op een fullscreen-app (apps[].volledig_scherm) sluit 'm —
+// direct, of pas na de boordcomputer-pincode als de gebruiker de app zelf
+// vergrendeld heeft (screen_apps.ino, app_vergrendeld() — de app kan dit
+// nooit zelf aanzetten). Dit is de ENIGE uitgang voor zo'n app: alle overige
+// navigatie is in de touch-dispatch hierboven uitgeschakeld zolang 'm actief is.
+static void _fs_app_lang_druk() {
+    if (app_vergrendeld(lua_forceer_app)) {
+        _fs_app_pin_wacht = true;
+        pin_vereist_tonen();
+    } else {
+        lua_app_sluiten();
+        lua_forceer_app = -1;
+        actief_scherm   = laatste_hoofdscherm;
+        scherm_bouwen   = true;
+    }
+}
 
 // Flicker-tolerante aanraking-status: sommige touch-drivers (o.a. GT911) rapporteren
 // tijdens een langere, stilliggende aanraking af en toe heel even 'false' (sensor-
@@ -89,20 +107,28 @@ static void _gui_taak(void*) {
                           : app_voor_scherm(actief_scherm);
             if (app_idx >= 0) {
                 bool is_standalone = (lua_forceer_app >= 0 && app_idx == lua_forceer_app);
+                // Volledig scherm: door de app zelf aangevraagd (manifest.json,
+                // legitiem app-content — zie app_manager.h). Geen koptekst/
+                // navigatiebalk, tenzij de app toon_header expliciet aanzet.
+                // sandbox_arg (i.p.v. is_standalone) stuurt lua_app_laden()'s
+                // coördinatenruimte: bij fullscreen krijgt de app het VOLLEDIGE
+                // scherm (0..TFT_H) i.p.v. alleen het content-gebied.
+                bool fs = is_standalone && apps[app_idx].volledig_scherm;
+                bool sandbox_arg = is_standalone && !fs;
                 static int  lua_geladen_voor    = -1;
                 static int  lua_geladen_app     = -1;
                 static bool lua_geladen_sandbox = false;
                 if (actief_scherm != lua_geladen_voor || app_idx != lua_geladen_app
-                        || lua_geladen_sandbox != is_standalone) {
-                    lua_app_laden(app_idx, is_standalone);
+                        || lua_geladen_sandbox != sandbox_arg) {
+                    lua_app_laden(app_idx, sandbox_arg);
                     lua_geladen_voor    = actief_scherm;
                     lua_geladen_app     = app_idx;
-                    lua_geladen_sandbox = is_standalone;
+                    lua_geladen_sandbox = sandbox_arg;
                 }
                 if (is_standalone) {
-                    sb_app_teken(apps[app_idx].naam);
+                    if (!fs || apps[app_idx].toon_header) sb_app_teken(apps[app_idx].naam);
                     lua_app_teken(app_idx);
-                    nav_bar_teken();
+                    if (!fs) nav_bar_teken();
                 } else {
                     lua_app_teken(app_idx);
                 }
@@ -150,13 +176,23 @@ static void _gui_taak(void*) {
         }
         if (!aanraking_vast) lang_druk_verwerkt = false;
 
-        // Lang indrukken detectie (alleen SCREEN_MAIN, vóór debounce verwerking)
+        // Lang indrukken detectie (vóór debounce verwerking)
         if (aanraking_vast && !lang_druk_verwerkt &&
-            millis() - touch_start_ms >= LANG_DRUK_MS &&
-            actief_scherm == SCREEN_MAIN) {
-            lang_druk_verwerkt = true;
-            touch_verwerkt     = true;
-            screen_main_lang_indruk(touch_start_x, touch_start_y);
+            millis() - touch_start_ms >= LANG_DRUK_MS) {
+            if (actief_scherm == SCREEN_MAIN) {
+                lang_druk_verwerkt = true;
+                touch_verwerkt     = true;
+                screen_main_lang_indruk(touch_start_x, touch_start_y);
+            } else if (actief_scherm == SCREEN_APPS) {
+                lang_druk_verwerkt = true;
+                touch_verwerkt     = true;
+                screen_apps_lang_indruk(touch_start_x, touch_start_y);
+            } else if (actief_scherm == SCREEN_LUA_APP && lua_forceer_app >= 0 &&
+                       lua_forceer_app < apps_cnt && apps[lua_forceer_app].volledig_scherm) {
+                lang_druk_verwerkt = true;
+                touch_verwerkt     = true;
+                _fs_app_lang_druk();
+            }
         }
 
         // Wake-touch consumeren (eerste touch na donker scherm)
@@ -168,6 +204,27 @@ static void _gui_taak(void*) {
             if (millis() - laatste_touch_ms >= TOUCH_DEBOUNCE_MS) {
                 touch_verwerkt = true;
                 laatste_touch_ms = millis();
+                // Fullscreen-app: ALLE aanrakingen gaan rechtstreeks naar de app
+                // zelf — geen enkele navigatie-kortweg (nav bar/hoek-sluitknop)
+                // werkt dan nog. De enige uitgang is de lang-druk verderop (evt.
+                // met de boordcomputer-pincode als de app vergrendeld is) — zolang
+                // die pincode-overlay op het scherm staat, gaan tikken daar juist
+                // wél naartoe (en NIET naar de app eronder).
+                if (_fs_app_pin_wacht && pin_overlay_actief) {
+                    if (pin_overlay_run(ts_x, ts_y)) {
+                        _fs_app_pin_wacht = false;
+                        if (config_ontgrendeld) {
+                            config_ontgrendeld = false;
+                            lua_app_sluiten();
+                            lua_forceer_app = -1;
+                            actief_scherm   = laatste_hoofdscherm;
+                        }
+                        scherm_bouwen = true;
+                    }
+                } else if (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt &&
+                    actief_scherm == SCREEN_LUA_APP && apps[lua_forceer_app].volledig_scherm) {
+                    lua_app_run(lua_forceer_app, ts_x, ts_y, true);
+                } else
                 {
                     // Universele navigatiebalk: ELKE tik in de balk-zone navigeert,
                     // ongeacht het actieve scherm/app. Geen scherm kan dit blokkeren.
@@ -469,6 +526,16 @@ void hw_setup() {
     // zien — een extra vaste seconde wachten voordat het paneel bruikbaar
     // wordt, voegde daar niets aan toe.
 
+    // Opstarten direct in een app (nieuwe "opstart-app"-instelling, zie
+    // screen_apps.ino): apps[]/Lua moeten daarvoor al klaar zijn — normaal
+    // gebeurt dat pas in _hw_achtergrond_init_eenmalig() (niet nodig om het
+    // PANEEL te tonen), maar wie bewust in een app wil opstarten (bv. een
+    // fotolijstje/kiosk-toepassing) accepteert daarvoor deze iets langere
+    // synchrone stap i.p.v. heel even het paneel te zien flitsen vóór de
+    // overstap. Dubbel init in _hw_achtergrond_init_eenmalig() hierna is
+    // onschadelijk (app_setup()/lua_setup() zijn beide idempotent).
+    if (boot_app_id[0]) app_setup();
+
     scherm_bouwen = true;
     actief_scherm = SCREEN_MAIN;
     // Opstarten in HAVEN of ANKER: gelijk het HAVEN-dashboard tonen i.p.v.
@@ -483,6 +550,16 @@ void hw_setup() {
     if (ts_kalibratie_vereist && net_modus != NET_HEADLESS)
         actief_scherm = SCREEN_CALIBRATIE;
 #endif
+
+    // Opstart-app heeft voorrang op MAIN/HAVEN, maar niet op een vereiste
+    // kalibratie hierboven.
+    if (actief_scherm != SCREEN_CALIBRATIE && boot_app_id[0]) {
+        int bidx = app_vindt(boot_app_id);
+        if (bidx >= 0 && apps[bidx].actief) {
+            lua_forceer_app = bidx;
+            actief_scherm   = SCREEN_LUA_APP;
+        }
+    }
 
 #if PLATFORM_ESP32
     // Dedicated GUI taak op Core 1 met hogere prioriteit dan de achtergrondlus (loopTask=1).
@@ -587,20 +664,22 @@ void hw_loop() {
                       : app_voor_scherm(actief_scherm);
         if (app_idx >= 0) {
             bool is_standalone = (lua_forceer_app >= 0 && app_idx == lua_forceer_app);
+            bool fs = is_standalone && apps[app_idx].volledig_scherm;
+            bool sandbox_arg = is_standalone && !fs;
             static int  lua_geladen_voor    = -1;
             static int  lua_geladen_app     = -1;
             static bool lua_geladen_sandbox = false;
             if (actief_scherm != lua_geladen_voor || app_idx != lua_geladen_app
-                    || lua_geladen_sandbox != is_standalone) {
-                lua_app_laden(app_idx, is_standalone);
+                    || lua_geladen_sandbox != sandbox_arg) {
+                lua_app_laden(app_idx, sandbox_arg);
                 lua_geladen_voor    = actief_scherm;
                 lua_geladen_app     = app_idx;
-                lua_geladen_sandbox = is_standalone;
+                lua_geladen_sandbox = sandbox_arg;
             }
             if (is_standalone) {
-                sb_app_teken(apps[app_idx].naam);
+                if (!fs || apps[app_idx].toon_header) sb_app_teken(apps[app_idx].naam);
                 lua_app_teken(app_idx);
-                nav_bar_teken();
+                if (!fs) nav_bar_teken();
             } else {
                 lua_app_teken(app_idx);
             }
@@ -648,11 +727,21 @@ void hw_loop() {
     if (!aanraking_vast) lang_druk_verwerkt = false;
 
     if (aanraking_vast && !lang_druk_verwerkt &&
-        millis() - touch_start_ms >= LANG_DRUK_MS &&
-        actief_scherm == SCREEN_MAIN) {
-        lang_druk_verwerkt = true;
-        touch_verwerkt     = true;
-        screen_main_lang_indruk(touch_start_x, touch_start_y);
+        millis() - touch_start_ms >= LANG_DRUK_MS) {
+        if (actief_scherm == SCREEN_MAIN) {
+            lang_druk_verwerkt = true;
+            touch_verwerkt     = true;
+            screen_main_lang_indruk(touch_start_x, touch_start_y);
+        } else if (actief_scherm == SCREEN_APPS) {
+            lang_druk_verwerkt = true;
+            touch_verwerkt     = true;
+            screen_apps_lang_indruk(touch_start_x, touch_start_y);
+        } else if (actief_scherm == SCREEN_LUA_APP && lua_forceer_app >= 0 &&
+                   lua_forceer_app < apps_cnt && apps[lua_forceer_app].volledig_scherm) {
+            lang_druk_verwerkt = true;
+            touch_verwerkt     = true;
+            _fs_app_lang_druk();
+        }
     }
 
     if (scherm_net_gewekt && aanraking) {
@@ -663,6 +752,26 @@ void hw_loop() {
         if (millis() - laatste_touch_ms >= TOUCH_DEBOUNCE_MS) {
             touch_verwerkt = true;
             laatste_touch_ms = millis();
+            // Fullscreen-app: ALLE aanrakingen gaan rechtstreeks naar de app
+            // zelf — geen enkele navigatie-kortweg werkt dan nog. De enige
+            // uitgang is de lang-druk verderop (evt. met de pincode als de
+            // app vergrendeld is) — zolang die pincode-overlay op het scherm
+            // staat, gaan tikken daar juist wél naartoe.
+            if (_fs_app_pin_wacht && pin_overlay_actief) {
+                if (pin_overlay_run(ts_x, ts_y)) {
+                    _fs_app_pin_wacht = false;
+                    if (config_ontgrendeld) {
+                        config_ontgrendeld = false;
+                        lua_app_sluiten();
+                        lua_forceer_app = -1;
+                        actief_scherm   = laatste_hoofdscherm;
+                    }
+                    scherm_bouwen = true;
+                }
+            } else if (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt &&
+                actief_scherm == SCREEN_LUA_APP && apps[lua_forceer_app].volledig_scherm) {
+                lua_app_run(lua_forceer_app, ts_x, ts_y, true);
+            } else
             {
                 // Universele navigatiebalk (zie landscape): nav werkt op elk scherm/app
                 if (ts_y >= NAV_Y - 8) {

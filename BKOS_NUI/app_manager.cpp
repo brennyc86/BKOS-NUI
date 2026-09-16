@@ -87,6 +87,8 @@ static void _json_naar_manifest(JsonObject obj, AppManifest& m) {
     m.grootte_kb = obj["grootte_kb"] | 0;
     m.actief     = obj["actief"]     | true;
     m.in_balk    = obj["in_balk"]    | false;
+    m.volledig_scherm = obj["volledig_scherm"] | false;
+    m.toon_header     = obj["toon_header"]     | true;
 }
 
 static void _manifest_naar_json(AppManifest& m, JsonObject obj) {
@@ -103,6 +105,8 @@ static void _manifest_naar_json(AppManifest& m, JsonObject obj) {
     obj["grootte_kb"]  = m.grootte_kb;
     obj["actief"]      = m.actief;
     obj["in_balk"]     = m.in_balk;
+    if (m.volledig_scherm) obj["volledig_scherm"] = true;  // weglaten als standaard (false)
+    if (!m.toon_header)    obj["toon_header"]     = false; // idem (standaard true)
 }
 
 // ─── Index opslaan/laden ──────────────────────────────────────────────────────
@@ -186,10 +190,29 @@ void app_zet_actief(int idx, bool actief) {
     app_manifest_opslaan(idx);
 }
 
+// "Vergrendeld openhouden" — bewust een apart bestand (niet manifest.json,
+// niet ergens dat de installatie-/update-flow schrijft), zodat een app dit
+// nooit zelf kan zetten door 'm mee te sturen in zijn eigen manifest.json op
+// de store. Simpel aanwezig/afwezig-bestand, geen inhoud nodig.
+static String _lock_pad(const char* id) { return String("/apps/") + id + "/bkos_lock.txt"; }
+
+bool app_vergrendeld(int idx) {
+    if (idx < 0 || idx >= apps_cnt) return false;
+    return SPIFFS.exists(_lock_pad(apps[idx].id));
+}
+
+void app_zet_vergrendeld(int idx, bool aan) {
+    if (idx < 0 || idx >= apps_cnt) return;
+    String pad = _lock_pad(apps[idx].id);
+    if (aan) { File f = SPIFFS.open(pad, "w"); if (f) f.close(); }
+    else       SPIFFS.remove(pad);
+}
+
 void app_verwijder(int idx) {
     if (idx < 0 || idx >= apps_cnt) return;
     SPIFFS.remove(_manifest_pad(apps[idx].id));
     SPIFFS.remove(_lua_pad(apps[idx].id));
+    SPIFFS.remove(_lock_pad(apps[idx].id));
     SPIFFS.rmdir(_app_map(apps[idx].id));  // no-op/virtueel op SPIFFS, echt op Pico
     for (int i = idx; i < apps_cnt - 1; i++) apps[i] = apps[i + 1];
     apps_cnt--;

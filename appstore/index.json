@@ -102,6 +102,6 @@
     "grootte_kb": 8,
     "actief": true,
     "volledig_scherm": true,
-    "toon_header": true
+    "toon_header": false
   }
 ]

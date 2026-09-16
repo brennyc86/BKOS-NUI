@@ -62,8 +62,8 @@ jobs:
                 api_versie:   (.api_versie // 1),
                 grootte_kb:   $kb,
                 actief:       true,
-                volledig_scherm: (.volledig_scherm // false),
-                toon_header:     (.toon_header // true)
+                volledig_scherm: (if has("volledig_scherm") then .volledig_scherm else false end),
+                toon_header:     (if has("toon_header")     then .toon_header     else true  end)
               }')
 
             # Huidige entry uit index.json (compact, zelfde veldvolgorde)

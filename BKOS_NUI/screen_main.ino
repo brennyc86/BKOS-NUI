@@ -87,6 +87,22 @@ void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
             tft.drawLine(cx-2, cy+1, cx-7, cy+8, kleur);                 // bundel links
             tft.drawLine(cx+2, cy+1, cx+7, cy+8, kleur);                 // bundel rechts
             break;
+        case I_APP_GENERIEK:
+            // Standaard app-icoon (bureaublad): 4 afgeronde blokjes in een
+            // 2x2-rooster — het klassieke "apps"-symbool, herkenbaar en
+            // makkelijk te onderscheiden van elk ander icoon hier.
+            tft.fillRoundRect(cx - 9, cy - 9, 7, 7, 2, kleur);
+            tft.fillRoundRect(cx + 2, cy - 9, 7, 7, 2, kleur);
+            tft.fillRoundRect(cx - 9, cy + 2, 7, 7, 2, kleur);
+            tft.fillRoundRect(cx + 2, cy + 2, 7, 7, 2, kleur);
+            break;
+        case I_WINKEL:
+            // APPSTORE: een tasje (winkelen) — romp met een hengsel erboven.
+            tft.drawRect(cx - 8, cy - 3, 16, 12, kleur);
+            tft.drawLine(cx - 5, cy - 3, cx - 5, cy - 8, kleur);
+            tft.drawLine(cx + 5, cy - 3, cx + 5, cy - 8, kleur);
+            tft.drawFastHLine(cx - 5, cy - 8, 10, kleur);
+            break;
         // I_LAMP heeft een eigen tekenfunctie (teken_icoon_lamp) — die kent de
         // aan/uit-stand én de actuele kleur, wat teken_icoon()'s ene kleur-
         // parameter niet kan uitdrukken (peertje moet wit/rood oplichten).

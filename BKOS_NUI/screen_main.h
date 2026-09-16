@@ -130,6 +130,8 @@
 #define I_WATER      10
 #define I_DEKLICHT   11  // exterieur/buitenverlichting in het algemeen (zie paneel_naam_is_exterieur)
 #define I_LAMP       12  // genummerde IL-lampgroep ("**IL_<N>", zie lamp.h)
+#define I_APP_GENERIEK 13  // standaard app-icoon (bureaublad, screen_apps.ino) — geen icoon in manifest.json
+#define I_WINKEL       14  // APPSTORE-tegel op het bureaublad
 
 void screen_main_teken();
 void screen_main_run(int x, int y, bool aanraking);

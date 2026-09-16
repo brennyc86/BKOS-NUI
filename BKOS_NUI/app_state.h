@@ -28,6 +28,7 @@
 #define SCREEN_HAVEN      20 // Haven-dashboard (tegel-overzicht): lang indrukken op HAVEN/ANKER-knop
 #define SCREEN_BESTANDEN  21 // Bestandsbeheer: SPIFFS/SD inzien + verwijderen, via CONFIG
 #define SCREEN_GAST       22 // Gasten-pincodes voor de webapp (HUIS/BOOT-toegang), via CONFIG → BOOT
+#define SCREEN_APPSTORE   23 // Installeren/bijwerken/verwijderen (het oude 2-panelen APPS-scherm) — via knop op SCREEN_APPS (bureaublad)
 
 // Vaarmodi
 #define MODE_HAVEN   0

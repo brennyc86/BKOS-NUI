@@ -1,6 +1,7 @@
 #include "screen_apps.h"
 #include "lua_runtime.h"
 #include "bkos_net.h"
+#include "screen_main.h"  // teken_icoon()/I_* — bureaublad-icoontjes
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 #define APPS_HDR_H    UI_SCY(32)
@@ -68,12 +69,42 @@ static bool winkel_kb_hoofd   = false;
 static int  _wf[WINKEL_MAX];
 static int  _wf_cnt = 0;
 
+// Bureaublad-icoon uit de manifest-veldnaam (zie AppManifest.icoon,
+// app_manager.h) — vaste, bekende namen mappen op bestaande I_*-iconen
+// (screen_main.h); onbekend/leeg → het generieke app-icoon.
+static int _apps_icoon_van_naam(const char* naam) {
+    if (!naam || !naam[0])                    return I_APP_GENERIEK;
+    if (strcmp(naam, "tv") == 0)               return I_TV;
+    if (strcmp(naam, "usb") == 0)              return I_USB;
+    if (strcmp(naam, "230v") == 0)             return I_230V;
+    if (strcmp(naam, "water") == 0)            return I_WATER;
+    if (strcmp(naam, "licht") == 0)            return I_LICHT_AAN;
+    if (strcmp(naam, "deklicht") == 0)         return I_DEKLICHT;
+    if (strcmp(naam, "haven") == 0)            return I_HAVEN;
+    if (strcmp(naam, "zeilen") == 0)           return I_ZEILEN;
+    if (strcmp(naam, "motor") == 0)            return I_MOTOR;
+    if (strcmp(naam, "anker") == 0)            return I_ANKER;
+    return I_APP_GENERIEK;
+}
+
+// Is er een nieuwere versie in de (al geladen) winkel-lijst dan wat lokaal
+// geïnstalleerd staat? false zolang de winkel nog niet opgehaald is — dan is
+// het simpelweg niet bekend, dus toont de UPD-knop zich als niet-beschikbaar
+// i.p.v. een fout "wel beschikbaar" te suggereren.
+static bool _apps_update_beschikbaar(int idx) {
+    if (!winkel_geladen || idx < 0 || idx >= apps_cnt) return false;
+    for (int i = 0; i < winkel_cnt; i++)
+        if (strcmp(winkel[i].id, apps[idx].id) == 0)
+            return strcmp(winkel[i].versie, apps[idx].versie) != 0;
+    return false;
+}
+
 // Bevestigings-overlay (verwijderen)
 static bool apps_bevestig_actief = false;
 static int  apps_bevestig_idx    = -1;
 
 // App-instellingen overlay (opstart-app + vergrendeld openhouden) — geopend
-// via lang indrukken op een geïnstalleerde-app-rij, zie screen_apps_lang_indruk().
+// via lang indrukken op een geïnstalleerde-app-rij, zie screen_appstore_lang_indruk().
 static bool apps_inst_actief = false;
 static int  apps_inst_idx    = -1;
 
@@ -305,8 +336,15 @@ static void _apps_rij_links(int y, int app_idx, int visueel_idx) {
     tft.print(m.auteur); tft.print(" v"); tft.print(m.versie);
 
     int bx = row_w - btn_area + 2;
-    // OPEN knop
-    ui_knop(bx, y + 7, 40, APPS_RIJ_H - 16, "OPEN", C_SURFACE2, m.actief ? C_CYAN : C_TEXT_DIM);
+    // SET (instellingen) + UPD (bijwerken, alleen actief als beschikbaar) —
+    // vervangen de oude OPEN-knop: openen kan nu met één tik op het
+    // bureaublad-icoon (SCREEN_APPS), dat is de vlottere weg geworden.
+    {
+        bool upd = _apps_update_beschikbaar(app_idx);
+        ui_knop(bx, y + 7, 19, APPS_RIJ_H - 16, "SET", C_SURFACE2, C_TEXT_DIM);
+        ui_knop(bx + 21, y + 7, 19, APPS_RIJ_H - 16, "UPD",
+                upd ? C_AMBER : C_SURFACE3, upd ? C_TEXT_DARK : C_DARK_GRAY);
+    }
     bx += 42;
     // Schakelaar (mini toggle)
     bool aan = m.actief;
@@ -334,7 +372,12 @@ static void _apps_rij_links(int y, int app_idx, int visueel_idx) {
     tft.print(" v");
     tft.print(m.versie);
 
-    ui_knop(APPS_PNL_W - 170, y + 15, 52, 26, "OPEN", C_SURFACE2, m.actief ? C_CYAN : C_TEXT_DIM);
+    {
+        bool upd = _apps_update_beschikbaar(app_idx);
+        ui_knop(APPS_PNL_W - 170, y + 15, 25, 26, "SET", C_SURFACE2, C_TEXT_DIM);
+        ui_knop(APPS_PNL_W - 143, y + 15, 25, 26, "UPD",
+                upd ? C_AMBER : C_SURFACE3, upd ? C_TEXT_DARK : C_DARK_GRAY);
+    }
 
     bool aan = m.actief;
     tft.fillRoundRect(APPS_PNL_W - 110, y + 16, 52, 26, 13, aan ? C_GREEN : C_SURFACE3);
@@ -620,7 +663,7 @@ static void _apps_bevestig_teken() {
 // ─── App-instellingen overlay (opstart-app + vergrendeld openhouden) ─────────
 // Bewust GEEN losse knop in de al-krappe app-rij (risico op een "getekend
 // hier, hittest daar"-mismatch bij het herindelen van die rij) — lang
-// indrukken op de rij opent dit in plaats daarvan (screen_apps_lang_indruk()).
+// indrukken op de rij opent dit in plaats daarvan (screen_appstore_lang_indruk()).
 // "Vergrendeld" leeft in een apart bestand dat de app zelf nooit aanraakt
 // (zie app_vergrendeld()/app_zet_vergrendeld(), app_manager.cpp) — de enige
 // manier om dit te zetten is hier, door de gebruiker zelf.
@@ -883,9 +926,143 @@ static void _apps_voortgang_teken(bool volledig) {
 }
 
 // ─── Hoofdfuncties ────────────────────────────────────────────────────────────
+// ─── Bureaublad (SCREEN_APPS) ────────────────────────────────────────────────
+// "Windows-bureaublad"-achtig overzicht: icoon + naam per geïnstalleerde,
+// actieve app, plus een vaste APPSTORE-tegel (altijd laatst) om te
+// installeren/bijwerken/verwijderen — dat oude 2-panelen-scherm is verplaatst
+// naar SCREEN_APPSTORE, één laag dieper.
+#define APPS_DESK_CEL_W   UI_SCX(130)
+#define APPS_DESK_CEL_H   UI_SCY(96)
+#define APPS_DESK_TOP     CONTENT_Y
+static int apps_desk_scroll = 0;
+
+// Lijst van app-indices (alleen actieve apps) die op het bureaublad getoond
+// worden — inactieve apps horen bij "beheer", niet bij "gebruiken", en staan
+// dus alleen nog in APPSTORE.
+static int _apps_desk_lijst(int* out, int max_n) {
+    int n = 0;
+    for (int i = 0; i < apps_cnt && n < max_n; i++) if (apps[i].actief) out[n++] = i;
+    return n;
+}
+
+static int _apps_desk_cols() { return max(1, (TFT_W - UI_SB_W) / APPS_DESK_CEL_W); }
+
+// Positie van tegel 'slot' (0-based, laatste slot = de vaste APPSTORE-tegel) —
+// gedeeld door teken() en run() zodat ze nooit uit de pas kunnen lopen.
+static void _apps_desk_rect(int slot, int cols, int* x, int* y, int* w, int* h) {
+    int col = slot % cols, row = slot / cols;
+    *w = APPS_DESK_CEL_W - 8;
+    *h = APPS_DESK_CEL_H - 8;
+    *x = 4 + col * APPS_DESK_CEL_W;
+    *y = APPS_DESK_TOP + 4 + row * APPS_DESK_CEL_H - apps_desk_scroll;
+}
+
+// app_idx >= 0: geïnstalleerde app; -1: de vaste APPSTORE-tegel. 'negatief'
+// keert de kleuren om — directe tik-feedback (zie screen_apps_run()), ook als
+// het daadwerkelijk starten van de app traag blijkt.
+static void _apps_desk_tegel_teken(int app_idx, int x, int y, int w, int h, bool negatief) {
+    uint16_t bg        = negatief ? C_CYAN : C_SURFACE;
+    uint16_t fg        = negatief ? C_BG   : C_CYAN;
+    uint16_t tekst_kl  = negatief ? C_BG   : C_TEXT;
+    tft.fillRoundRect(x, y, w, h, 8, bg);
+    int icoon = (app_idx >= 0) ? _apps_icoon_van_naam(apps[app_idx].icoon) : I_WINKEL;
+    teken_icoon(icoon, x + w / 2, y + h / 2 - 10, fg);
+
+    const char* lbl = (app_idx >= 0) ? apps[app_idx].naam : "APPSTORE";
+    char buf[14]; strncpy(buf, lbl, sizeof(buf) - 1); buf[sizeof(buf) - 1] = '\0';
+    int maxch = (w - 4) / 6;
+    if ((int)strlen(buf) > maxch && maxch > 0) buf[maxch] = '\0';
+    tft.setTextSize(1); tft.setTextColor(tekst_kl);
+    int tw = strlen(buf) * 6;
+    tft.setCursor(x + (w - tw) / 2, y + h - 16);
+    tft.print(buf);
+}
+
 void screen_apps_teken() {
     tft.fillScreen(C_BG);
     sb_scherm_teken("APPS", C_CYAN);
+
+    int lijst[APP_MAX];
+    int n       = _apps_desk_lijst(lijst, APP_MAX);
+    int totaal  = n + 1;  // + de vaste APPSTORE-tegel
+    int cols    = _apps_desk_cols();
+    int rows    = (totaal + cols - 1) / cols;
+    int venster_h  = NAV_Y - APPS_DESK_TOP;
+    int inhoud_h   = rows * APPS_DESK_CEL_H;
+    int max_scroll = max(0, inhoud_h - venster_h);
+    apps_desk_scroll = constrain(apps_desk_scroll, 0, max_scroll);
+
+    tft.fillRect(0, APPS_DESK_TOP, TFT_W - UI_SB_W, venster_h, C_BG);
+    for (int slot = 0; slot < totaal; slot++) {
+        int x, y, w, h;
+        _apps_desk_rect(slot, cols, &x, &y, &w, &h);
+        if (y + h < APPS_DESK_TOP || y > APPS_DESK_TOP + venster_h) continue;  // buiten beeld
+        _apps_desk_tegel_teken(slot < n ? lijst[slot] : -1, x, y, w, h, false);
+    }
+    if (max_scroll > 0) ui_scrollbar(TFT_W - UI_SB_W, APPS_DESK_TOP, venster_h, apps_desk_scroll, max_scroll);
+
+    nav_bar_teken();
+}
+
+void screen_apps_run(int x, int y, bool aanraking) {
+    if (!aanraking) return;
+
+    int lijst[APP_MAX];
+    int n      = _apps_desk_lijst(lijst, APP_MAX);
+    int totaal = n + 1;
+    int cols   = _apps_desk_cols();
+    int rows   = (totaal + cols - 1) / cols;
+    int venster_h  = NAV_Y - APPS_DESK_TOP;
+    int inhoud_h   = rows * APPS_DESK_CEL_H;
+    int max_scroll = max(0, inhoud_h - venster_h);
+
+    if (x >= TFT_W - UI_SB_W) {
+        int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, APPS_DESK_TOP, venster_h);
+        if (dir == -1) { apps_desk_scroll = max(0, apps_desk_scroll - APPS_DESK_CEL_H); scherm_bouwen = true; }
+        else if (dir == 1) { apps_desk_scroll = min(max_scroll, apps_desk_scroll + APPS_DESK_CEL_H); scherm_bouwen = true; }
+        return;
+    }
+
+    for (int slot = 0; slot < totaal; slot++) {
+        int tx, ty, tw, th;
+        _apps_desk_rect(slot, cols, &tx, &ty, &tw, &th);
+        if (x < tx || x >= tx + tw || y < ty || y >= ty + th) continue;
+        int app_idx = (slot < n) ? lijst[slot] : -1;
+        // Directe tik-feedback vóór het (mogelijk trage) starten zelf: de
+        // tegel flitst negatief en wordt METEEN naar het echte scherm
+        // geflusht — zo weet je altijd dat de tik is aangekomen, ook als de
+        // app zelf traag laadt.
+        _apps_desk_tegel_teken(app_idx, tx, ty, tw, th, true);
+        tft_flush(true);
+        if (app_idx < 0) {
+            actief_scherm = SCREEN_APPSTORE;
+        } else if (apps[app_idx].actief) {
+#if LUA_BESCHIKBAAR
+            lua_forceer_app = app_idx;
+            actief_scherm   = SCREEN_LUA_APP;
+#else
+            strncpy(apps_status, "Lua niet beschikbaar \x2014 OTA vereist", sizeof(apps_status) - 1);
+#endif
+        }
+        scherm_bouwen = true;
+        return;
+    }
+}
+
+// Vaste "< TERUG"-knop rechtsboven (naast de klok), terug naar het bureaublad
+// (SCREEN_APPS) — zelfde afmetingen/positie in teken() en run(), zodat ze
+// nooit uit de pas kunnen lopen.
+#define APPSTORE_TERUG_LBL "< TERUG"
+#define APPSTORE_TERUG_H   20
+static int _apps_terug_x() { return SB_KLOK_X - 12 - ((int)strlen(APPSTORE_TERUG_LBL) * 6 + 16); }
+static int _apps_terug_w() { return (int)strlen(APPSTORE_TERUG_LBL) * 6 + 16; }
+static int _apps_terug_y() { return (SB_H - APPSTORE_TERUG_H) / 2; }
+
+void screen_appstore_teken() {
+    tft.fillScreen(C_BG);
+    sb_scherm_teken("APPSTORE", C_CYAN);
+    ui_knop(_apps_terug_x(), _apps_terug_y(), _apps_terug_w(), APPSTORE_TERUG_H,
+            APPSTORE_TERUG_LBL, C_SURFACE2, C_TEXT_DIM);
     _apps_headers_teken();
 
 #if SCREEN_SMALL
@@ -915,7 +1092,7 @@ void screen_apps_teken() {
     nav_bar_teken();
 }
 
-void screen_apps_run(int x, int y, bool aanraking) {
+void screen_appstore_run(int x, int y, bool aanraking) {
 
     // Voortgang popup: updaten ook zonder aanraking
     if (apps_voortgang_actief) {
@@ -946,6 +1123,15 @@ void screen_apps_run(int x, int y, bool aanraking) {
     }
 
     if (!aanraking) return;
+
+    // ─── < TERUG (naar het bureaublad) ──────────────────────────────────────────
+    if (!apps_popup_actief && !apps_bevestig_actief && !apps_inst_actief &&
+        x >= _apps_terug_x() && x <= _apps_terug_x() + _apps_terug_w() &&
+        y >= _apps_terug_y() && y <= _apps_terug_y() + APPSTORE_TERUG_H) {
+        actief_scherm = SCREEN_APPS;
+        scherm_bouwen = true;
+        return;
+    }
 
     // ─── Installeer-keuze popup ────────────────────────────────────────────────
     if (apps_popup_actief) {
@@ -1138,8 +1324,9 @@ void screen_apps_run(int x, int y, bool aanraking) {
         // Portret knop x-grenzen (zie _apps_rij_links portret layout)
         int row_w   = TFT_W - 1 - UI_SB_W;  // zelfde als in _apps_rij_links
         int btn_area = 108;
-        int bx = row_w - btn_area + 2;  // OPEN start
-        int open_x0 = bx, open_x1 = bx + 40;
+        int bx = row_w - btn_area + 2;  // SET start
+        int set_x0 = bx, set_x1 = bx + 19;
+        int upd_x0 = bx + 21, upd_x1 = bx + 21 + 19;
         bx += 42;
         int sw_x0 = bx, sw_x1 = bx + 36;
         bx += 38;
@@ -1159,17 +1346,22 @@ void screen_apps_run(int x, int y, bool aanraking) {
             scherm_bouwen = true;
             return;
         }
-        // OPEN knop
-        if (x >= open_x0 && x <= open_x1 && y >= btn_y0 && y <= btn_y1) {
-            if (apps[idx].actief) {
-#if LUA_BESCHIKBAAR
-                lua_forceer_app = idx;
-                actief_scherm   = SCREEN_LUA_APP;
-                scherm_bouwen   = true;
-#else
-                strncpy(apps_status, "Lua niet beschikbaar \x2014 OTA vereist", sizeof(apps_status) - 1);
-                scherm_bouwen = true;
-#endif
+        // SET (instellingen)
+        if (x >= set_x0 && x <= set_x1 && y >= btn_y0 && y <= btn_y1) {
+            apps_inst_idx = idx; apps_inst_actief = true;
+            scherm_bouwen = true;
+            return;
+        }
+        // UPD (bijwerken, alleen als daadwerkelijk beschikbaar)
+        if (x >= upd_x0 && x <= upd_x1 && y >= btn_y0 && y <= btn_y1) {
+            if (_apps_update_beschikbaar(idx)) {
+                for (int w = 0; w < winkel_cnt; w++) {
+                    if (strcmp(winkel[w].id, apps[idx].id) == 0) {
+                        apps_popup_idx = w; apps_popup_actief = true;
+                        scherm_bouwen = true;
+                        break;
+                    }
+                }
             }
             return;
         }
@@ -1285,14 +1477,21 @@ void screen_apps_run(int x, int y, bool aanraking) {
                 app_zet_actief(idx, !apps[idx].actief);
                 lua_app_sluiten(); lua_setup(); scherm_bouwen = true; return;
             }
-            if (x >= rw - 170 && x <= rw - 118 && y >= rij_y + 15 && y <= rij_y + 41) {
-                if (apps[idx].actief) {
-#if LUA_BESCHIKBAAR
-                    lua_forceer_app = idx; actief_scherm = SCREEN_LUA_APP; scherm_bouwen = true;
-#else
-                    strncpy(apps_status, "Lua niet beschikbaar", sizeof(apps_status) - 1);
-                    scherm_bouwen = true;
-#endif
+            // SET (instellingen)
+            if (x >= rw - 170 && x <= rw - 145 && y >= rij_y + 15 && y <= rij_y + 41) {
+                apps_inst_idx = idx; apps_inst_actief = true;
+                scherm_bouwen = true; return;
+            }
+            // UPD (bijwerken, alleen als daadwerkelijk beschikbaar)
+            if (x >= rw - 143 && x <= rw - 118 && y >= rij_y + 15 && y <= rij_y + 41) {
+                if (_apps_update_beschikbaar(idx)) {
+                    for (int w = 0; w < winkel_cnt; w++) {
+                        if (strcmp(winkel[w].id, apps[idx].id) == 0) {
+                            apps_popup_idx = w; apps_popup_actief = true;
+                            scherm_bouwen = true;
+                            break;
+                        }
+                    }
                 }
                 return;
             }
@@ -1356,7 +1555,7 @@ void screen_apps_run(int x, int y, bool aanraking) {
 // dezelfde plek raakt gewoon OPEN/AAN-UIT/X zoals altijd, alleen een
 // aanhoudende druk activeert dit. Geen overlay actief en geen andere modus
 // (toewijzing/keyboard/winkel) — dan simpelweg genegeerd.
-void screen_apps_lang_indruk(int x, int y) {
+void screen_appstore_lang_indruk(int x, int y) {
     if (apps_bevestig_actief || apps_inst_actief || apps_popup_actief ||
         apps_voortgang_actief || apps_toewijzing_modus || winkel_kb_actief) return;
 #if SCREEN_SMALL

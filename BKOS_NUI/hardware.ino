@@ -161,6 +161,7 @@ static void _gui_taak(void*) {
                     case SCREEN_WIFI:    screen_wifi_teken();   break;
                     case SCREEN_IO_CFG:  screen_io_cfg_teken(); break;
                     case SCREEN_APPS:       screen_apps_teken();        break;
+                    case SCREEN_APPSTORE:   screen_appstore_teken();    break;
                     case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                     case SCREEN_VICTRON:    screen_victron_teken();     break;
                     case SCREEN_NETWERK:    screen_netwerk_teken();     break;
@@ -201,10 +202,10 @@ static void _gui_taak(void*) {
                 lang_druk_verwerkt = true;
                 touch_verwerkt     = true;
                 screen_main_lang_indruk(touch_start_x, touch_start_y);
-            } else if (actief_scherm == SCREEN_APPS) {
+            } else if (actief_scherm == SCREEN_APPSTORE) {
                 lang_druk_verwerkt = true;
                 touch_verwerkt     = true;
-                screen_apps_lang_indruk(touch_start_x, touch_start_y);
+                screen_appstore_lang_indruk(touch_start_x, touch_start_y);
             } else if (actief_scherm == SCREEN_LUA_APP && lua_forceer_app >= 0 &&
                        lua_forceer_app < apps_cnt && apps[lua_forceer_app].volledig_scherm) {
                 lang_druk_verwerkt = true;
@@ -295,6 +296,7 @@ static void _gui_taak(void*) {
                             case SCREEN_WIFI:   screen_wifi_run(ts_x, ts_y, true);   break;
                             case SCREEN_IO_CFG:     screen_io_cfg_run(ts_x, ts_y, true);     break;
                             case SCREEN_APPS:       screen_apps_run(ts_x, ts_y, true);       break;
+                            case SCREEN_APPSTORE:   screen_appstore_run(ts_x, ts_y, true);   break;
                             case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                             case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
                             case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
@@ -719,6 +721,7 @@ void hw_loop() {
                 case SCREEN_WIFI:    screen_wifi_teken();   break;
                 case SCREEN_IO_CFG:  screen_io_cfg_teken(); break;
                 case SCREEN_APPS:       screen_apps_teken();        break;
+                case SCREEN_APPSTORE:   screen_appstore_teken();    break;
                 case SCREEN_CALIBRATIE: screen_calibratie_teken();  break;
                 case SCREEN_VICTRON:    screen_victron_teken();     break;
                 case SCREEN_NETWERK:    screen_netwerk_teken();     break;
@@ -757,10 +760,10 @@ void hw_loop() {
             lang_druk_verwerkt = true;
             touch_verwerkt     = true;
             screen_main_lang_indruk(touch_start_x, touch_start_y);
-        } else if (actief_scherm == SCREEN_APPS) {
+        } else if (actief_scherm == SCREEN_APPSTORE) {
             lang_druk_verwerkt = true;
             touch_verwerkt     = true;
-            screen_apps_lang_indruk(touch_start_x, touch_start_y);
+            screen_appstore_lang_indruk(touch_start_x, touch_start_y);
         } else if (actief_scherm == SCREEN_LUA_APP && lua_forceer_app >= 0 &&
                    lua_forceer_app < apps_cnt && apps[lua_forceer_app].volledig_scherm) {
             lang_druk_verwerkt = true;
@@ -846,6 +849,7 @@ void hw_loop() {
                         case SCREEN_WIFI:   screen_wifi_run(ts_x, ts_y, true);   break;
                         case SCREEN_IO_CFG:     screen_io_cfg_run(ts_x, ts_y, true);     break;
                         case SCREEN_APPS:       screen_apps_run(ts_x, ts_y, true);       break;
+                        case SCREEN_APPSTORE:   screen_appstore_run(ts_x, ts_y, true);   break;
                         case SCREEN_CALIBRATIE: screen_calibratie_run(ts_x, ts_y, true); break;
                         case SCREEN_VICTRON:    screen_victron_run(ts_x, ts_y, true);   break;
                         case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;

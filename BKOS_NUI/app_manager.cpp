@@ -89,6 +89,8 @@ static void _json_naar_manifest(JsonObject obj, AppManifest& m) {
     m.in_balk    = obj["in_balk"]    | false;
     m.volledig_scherm = obj["volledig_scherm"] | false;
     m.toon_header     = obj["toon_header"]     | true;
+    strncpy(m.icoon, obj["icoon"] | "", APP_ICOON_LEN - 1);
+    m.icoon[APP_ICOON_LEN - 1] = '\0';
 }
 
 static void _manifest_naar_json(AppManifest& m, JsonObject obj) {
@@ -107,6 +109,7 @@ static void _manifest_naar_json(AppManifest& m, JsonObject obj) {
     obj["in_balk"]     = m.in_balk;
     if (m.volledig_scherm) obj["volledig_scherm"] = true;  // weglaten als standaard (false)
     if (!m.toon_header)    obj["toon_header"]     = false; // idem (standaard true)
+    if (m.icoon[0])        obj["icoon"]           = m.icoon;
 }
 
 // ─── Index opslaan/laden ──────────────────────────────────────────────────────

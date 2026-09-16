@@ -14,6 +14,7 @@
 
 #define APP_VERVANGT_GEEN   -1
 #define APP_SCHAAL_LEN      12  // "geen" / "evenredig" / "onevenredig"
+#define APP_ICOON_LEN       12  // naam van een vast icoon (zie _apps_icoon_van_naam, screen_apps.ino)
 
 // URL voor de BKOS app store index
 #define APPSTORE_INDEX_URL \
@@ -38,6 +39,12 @@ struct AppManifest {
     // zetten (zie app_vergrendeld()/app_zet_vergrendeld()).
     bool  volledig_scherm; // vraagt het volledige scherm (geen koptekst/navigatiebalk)
     bool  toon_header;     // koptekst toch tonen, ook bij volledig_scherm (default aan)
+    // Bureaublad-icoon (screen_apps.ino) — vaste naam uit een klein, ingebouwd
+    // iconenset (bv. "tv","usb","water","licht"), leeg = generiek app-icoon
+    // (I_APP_GENERIEK). Geen vrije tekening/afbeelding: houdt het bureaublad
+    // snel te tekenen (geen Lua-aanroep of plaatje-decode nodig per icoon) en
+    // consistent met de rest van de al-bestaande, minimalistische iconenset.
+    char  icoon[APP_ICOON_LEN];
 };
 
 extern AppManifest apps[APP_MAX];

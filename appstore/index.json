@@ -13,7 +13,7 @@
     "actief": true,
     "volledig_scherm": false,
     "toon_header": true,
-    "icoon": ""
+    "icoon": "klok"
   },
   {
     "id": "bke",
@@ -45,7 +45,7 @@
     "actief": true,
     "volledig_scherm": false,
     "toon_header": true,
-    "icoon": ""
+    "icoon": "schaak"
   },
   {
     "id": "dam",
@@ -61,7 +61,7 @@
     "actief": true,
     "volledig_scherm": false,
     "toon_header": true,
-    "icoon": ""
+    "icoon": "dam"
   },
   {
     "id": "tekenapp",
@@ -77,7 +77,7 @@
     "actief": true,
     "volledig_scherm": false,
     "toon_header": true,
-    "icoon": ""
+    "icoon": "teken"
   },
   {
     "id": "zeeslag",
@@ -93,7 +93,7 @@
     "actief": true,
     "volledig_scherm": false,
     "toon_header": true,
-    "icoon": ""
+    "icoon": "zeeslag"
   },
   {
     "id": "fotolijst",

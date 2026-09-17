@@ -84,6 +84,13 @@ static int _apps_icoon_van_naam(const char* naam) {
     if (strcmp(naam, "zeilen") == 0)           return I_ZEILEN;
     if (strcmp(naam, "motor") == 0)            return I_MOTOR;
     if (strcmp(naam, "anker") == 0)            return I_ANKER;
+    if (strcmp(naam, "foto") == 0)             return I_FOTO;
+    if (strcmp(naam, "klok") == 0)             return I_KLOK;
+    if (strcmp(naam, "bke") == 0)              return I_BKE;
+    if (strcmp(naam, "schaak") == 0)           return I_SCHAAK;
+    if (strcmp(naam, "dam") == 0)              return I_DAM;
+    if (strcmp(naam, "teken") == 0)            return I_TEKEN;
+    if (strcmp(naam, "zeeslag") == 0)          return I_ZEESLAG;
     return I_APP_GENERIEK;
 }
 

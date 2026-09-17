@@ -132,6 +132,13 @@
 #define I_LAMP       12  // genummerde IL-lampgroep ("**IL_<N>", zie lamp.h)
 #define I_APP_GENERIEK 13  // standaard app-icoon (bureaublad, screen_apps.ino) — geen icoon in manifest.json
 #define I_WINKEL       14  // APPSTORE-tegel op het bureaublad
+#define I_FOTO         15  // fotolijst/afbeelding — zelfde bergje+zon-motief als _hab_laden_icoon() (haven_achtergrond.ino)
+#define I_KLOK         16  // Voorbeeld Klok-app
+#define I_BKE          17  // Boter Kaas & Eieren-app (3x3-rooster)
+#define I_SCHAAK       18  // Schaakspel-app (pion-silhouet)
+#define I_DAM          19  // Damspel-app (dambord-blokjes)
+#define I_TEKEN        20  // Teken App (potlood)
+#define I_ZEESLAG      21  // Zeeslag-app (scheepje + golven)
 
 void screen_main_teken();
 void screen_main_run(int x, int y, bool aanraking);

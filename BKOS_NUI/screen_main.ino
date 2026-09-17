@@ -103,6 +103,61 @@ void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
             tft.drawLine(cx + 5, cy - 3, cx + 5, cy - 8, kleur);
             tft.drawFastHLine(cx - 5, cy - 8, 10, kleur);
             break;
+        case I_FOTO:
+            // Een foto: kader met bergje+zon erin — zelfde motief als het
+            // "hier komt een foto"-laadicoon (_hab_laden_icoon, haven_
+            // achtergrond.ino), zodat het overal in de app hetzelfde
+            // "afbeelding"-symbool is.
+            tft.drawRect(cx - 9, cy - 8, 18, 16, kleur);
+            tft.drawCircle(cx + 3, cy - 4, 2, kleur);                     // zon
+            tft.drawLine(cx - 6, cy + 5, cx - 1, cy - 1, kleur);          // bergflank 1
+            tft.drawLine(cx - 1, cy - 1, cx + 3, cy + 3, kleur);          // bergflank 2
+            tft.drawLine(cx + 1, cy + 5, cx + 6, cy - 1, kleur);          // tweede, kleinere top
+            break;
+        case I_KLOK:
+            // Voorbeeld Klok: wijzerplaat met een korte (uur) en lange
+            // (minuten) wijzer — het klassieke klok-symbool.
+            tft.drawCircle(cx, cy, 9, kleur);
+            tft.drawLine(cx, cy, cx, cy - 6, kleur);
+            tft.drawLine(cx, cy, cx + 5, cy + 2, kleur);
+            break;
+        case I_BKE:
+            // Boter Kaas & Eieren: het 3x3-rooster van het spel zelf.
+            tft.drawFastVLine(cx - 3, cy - 9, 18, kleur);
+            tft.drawFastVLine(cx + 3, cy - 9, 18, kleur);
+            tft.drawFastHLine(cx - 9, cy - 3, 18, kleur);
+            tft.drawFastHLine(cx - 9, cy + 3, 18, kleur);
+            break;
+        case I_SCHAAK:
+            // Schaakspel: een pion-silhouet (hoofd, kraag, voet).
+            tft.fillCircle(cx, cy - 5, 3, kleur);
+            tft.fillTriangle(cx - 4, cy + 2, cx + 4, cy + 2, cx, cy - 3, kleur);
+            tft.fillRect(cx - 6, cy + 3, 12, 3, kleur);
+            break;
+        case I_DAM:
+            // Damspel: een dambord-motief — kader met twee diagonale
+            // ingevulde vakjes, bewust anders dan I_BKE's rooster-van-lijnen.
+            tft.drawRect(cx - 8, cy - 8, 16, 16, kleur);
+            tft.fillRect(cx - 8, cy - 8, 8, 8, kleur);
+            tft.fillRect(cx, cy, 8, 8, kleur);
+            break;
+        case I_TEKEN:
+            // Teken App: een potlood (lijf + punt + schrijfstreepje).
+            tft.drawLine(cx - 8, cy + 8, cx + 4, cy - 4, kleur);
+            tft.fillTriangle(cx + 2, cy - 6, cx + 6, cy - 2, cx + 4, cy - 4, kleur);
+            tft.drawLine(cx - 9, cy + 9, cx - 7, cy + 7, kleur);
+            break;
+        case I_ZEESLAG:
+            // Zeeslag: een scheepje (romp+mast+vlag) op golven — bewust
+            // anders dan I_HAVEN/I_ANKER (die tonen een anker, geen schip).
+            tft.drawFastHLine(cx - 8, cy + 3, 16, kleur);
+            tft.drawLine(cx - 8, cy + 3, cx - 5, cy - 3, kleur);
+            tft.drawLine(cx + 8, cy + 3, cx + 5, cy - 3, kleur);
+            tft.drawFastVLine(cx, cy - 3, 6, kleur);
+            tft.drawLine(cx, cy - 9, cx + 5, cy - 6, kleur);
+            tft.drawLine(cx - 9, cy + 7, cx - 3, cy + 7, kleur);
+            tft.drawLine(cx + 1, cy + 7, cx + 9, cy + 7, kleur);
+            break;
         // I_LAMP heeft een eigen tekenfunctie (teken_icoon_lamp) — die kent de
         // aan/uit-stand én de actuele kleur, wat teken_icoon()'s ene kleur-
         // parameter niet kan uitdrukken (peertje moet wit/rood oplichten).

@@ -8,5 +8,6 @@
   "scherm_h": 480,
   "vervangt": -1,
   "api_versie": 1,
-  "actief": true
+  "actief": true,
+  "icoon": "klok"
 }

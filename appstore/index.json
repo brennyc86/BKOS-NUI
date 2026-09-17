@@ -18,18 +18,18 @@
   {
     "id": "bke",
     "naam": "Boter Kaas & Eieren",
-    "versie": "1.0.0",
+    "versie": "1.1.0",
     "auteur": "BKOS-NUI Team",
-    "beschrijving": "Klassiek boter kaas en eieren spel voor twee spelers op het aanraakscherm.",
+    "beschrijving": "Klassiek boter kaas en eieren: 2 spelers, of 1 speler tegen de computer (willekeurig wie begint).",
     "scherm_b": 800,
     "scherm_h": 480,
     "vervangt": -1,
     "api_versie": 1,
-    "grootte_kb": 7,
+    "grootte_kb": 11,
     "actief": true,
     "volledig_scherm": false,
     "toon_header": true,
-    "icoon": ""
+    "icoon": "bke"
   },
   {
     "id": "schaak",

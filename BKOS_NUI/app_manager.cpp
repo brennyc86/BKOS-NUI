@@ -250,6 +250,23 @@ void app_master_lijst_verwerken(const uint8_t* data, int len) {
     }
 }
 
+// Zelfde reden als ota.ino's _ota_hotspot_pauzeren(): de hotspot (standaard AAN
+// sinds opstarten) zet de ESP32 in gecombineerde AP_STA-modus — een bekende
+// bron van verstoorde TLS-handshakes richting GitHub (taak 243, "GitHub fout
+// -1"). Die fix ging destijds alleen naar ota.ino; de appstore's eigen HTTPS-
+// aanroepen hieronder (winkelindex ophalen + main.lua downloaden) gebruiken
+// exact hetzelfde WiFiClientSecure+setInsecure()-patroon en liepen er nooit
+// mee. Verklaart apps die met een HTTP-fout halverwege het installatie-
+// voortgangsscherm bleven hangen — willekeurig welke, afhankelijk van of de
+// hotspot's radio net op dat moment de handshake verstoorde.
+static bool _app_hotspot_gepauzeerd = false;
+static void _app_hotspot_pauzeren() {
+    if (wifi_hotspot_actief()) { _app_hotspot_gepauzeerd = true; wifi_hotspot_stoppen(); }
+}
+static void _app_hotspot_hervatten() {
+    if (_app_hotspot_gepauzeerd) { _app_hotspot_gepauzeerd = false; wifi_hotspot_starten(); }
+}
+
 void app_winkel_laden() {
     winkel_cnt    = 0;
     winkel_geladen = false;
@@ -265,6 +282,7 @@ void app_winkel_laden() {
     if (WiFi.status() != WL_CONNECTED) { wifi_ota_modus = false; return; }
     wifi_verbonden = true;
 
+    _app_hotspot_pauzeren();
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;
@@ -272,14 +290,15 @@ void app_winkel_laden() {
     http.useHTTP10(true);
     http.setTimeout(15000);
     int code = http.GET();
-    if (code != 200) { http.end(); wifi_ota_modus = false; return; }
+    if (code != 200) { http.end(); wifi_ota_modus = false; _app_hotspot_hervatten(); return; }
 
     JsonDocument doc;
     if (deserializeJson(doc, http.getStream()) != DeserializationError::Ok) {
-        http.end(); wifi_ota_modus = false; return;
+        http.end(); wifi_ota_modus = false; _app_hotspot_hervatten(); return;
     }
     http.end();
     wifi_ota_modus = false;
+    _app_hotspot_hervatten();
 
     JsonArray arr = doc.as<JsonArray>();
     for (JsonObject obj : arr) {
@@ -335,6 +354,7 @@ static void _installeer_taak(void* param) {
 
     String lua_url = String("https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/appstore/apps/")
                      + wm.id + "/main.lua";
+    _app_hotspot_pauzeren();
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;
@@ -346,6 +366,7 @@ static void _installeer_taak(void* param) {
         snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d", code);
         http.end();
         wifi_ota_modus = false;
+        _app_hotspot_hervatten();
         app_ins_status = APP_INS_MISLUKT;
         vTaskDelete(NULL); return;
     }
@@ -353,6 +374,7 @@ static void _installeer_taak(void* param) {
     String inhoud = http.getString();
     http.end();
     wifi_ota_modus = false;  // download klaar, netwerk_taak mag weer beheren
+    _app_hotspot_hervatten();
 
     if (inhoud.length() == 0) {
         strncpy(app_ins_bericht, "Leeg antwoord van server", sizeof(app_ins_bericht) - 1);

@@ -1,12 +1,24 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- BKOS App: Tic-Tac-Toe
--- Two players, taking turns on the touchscreen.
+-- 1 or 2 players, taking turns on the touchscreen. In 1-player mode the
+-- computer plays a "not unbeatable but not careless" opponent: it wins if
+-- it can, blocks if it must, otherwise plays randomly among safe moves.
 -- Demonstrates: bkos.draw, bkos.touch, bkos.drawCircle, bkos.drawLine, bkos.fillRect
 -- ─────────────────────────────────────────────────────────────────────────────
+
+math.randomseed(bkos.sys.millis())
 
 local EMPTY    = 0
 local PLAYER_X = 1
 local PLAYER_O = 2
+
+local MENU  = 0   -- choosing 1 or 2 players
+local PLAY  = 1
+local state = MENU
+
+local twoPlayers    = true
+local humanPlayer    = PLAYER_X   -- which mark the human plays in 1-player mode
+local computerPlayer = PLAYER_O
 
 local board          = {}
 local currentPlayer  = PLAYER_X
@@ -53,22 +65,84 @@ local WIN_LINES = {
     {1,5,9}, {3,5,7}
 }
 
-local function checkWin()
+local function checkWinBoard(b)
     for _, line in ipairs(WIN_LINES) do
-        local a, b, c = board[line[1]], board[line[2]], board[line[3]]
-        if a ~= EMPTY and a == b and b == c then return a end
+        local a, bb, c = b[line[1]], b[line[2]], b[line[3]]
+        if a ~= EMPTY and a == bb and bb == c then return a end
     end
     return EMPTY
 end
 
-local function isFull()
+local function checkWin()
+    return checkWinBoard(board)
+end
+
+local function isFullBoard(b)
     for i = 1, 9 do
-        if board[i] == EMPTY then return false end
+        if b[i] == EMPTY then return false end
     end
     return true
 end
 
+local function isFull()
+    return isFullBoard(board)
+end
+
+-- ─── Computer opponent ────────────────────────────────────────────────────────
+-- Strategy (deliberately not lookahead / not perfect play):
+--   1. If the computer can win this move, take it.
+--   2. Else if the human can win next move, block it.
+--   3. Else play a random empty cell.
+local function emptyCells(b)
+    local cells = {}
+    for i = 1, 9 do
+        if b[i] == EMPTY then cells[#cells + 1] = i end
+    end
+    return cells
+end
+
+local function findWinningMove(b, forPlayer)
+    for _, i in ipairs(emptyCells(b)) do
+        b[i] = forPlayer
+        local win = checkWinBoard(b) == forPlayer
+        b[i] = EMPTY
+        if win then return i end
+    end
+    return nil
+end
+
+local function computerChooseMove()
+    local mv = findWinningMove(board, computerPlayer)
+    if mv then return mv end
+
+    mv = findWinningMove(board, humanPlayer)
+    if mv then return mv end
+
+    local cells = emptyCells(board)
+    return cells[math.random(#cells)]
+end
+
 -- ─── New game ─────────────────────────────────────────────────────────────────
+local function applyMove(i, player)
+    board[i] = player
+    winner   = checkWin()
+    if winner ~= EMPTY then
+        gameOver = true
+    elseif isFull() then
+        draw     = true
+        gameOver = true
+    else
+        currentPlayer = (currentPlayer == PLAYER_X) and PLAYER_O or PLAYER_X
+    end
+end
+
+local function maybeComputerMove()
+    if twoPlayers or gameOver then return end
+    if currentPlayer ~= computerPlayer then return end
+    local mv = computerChooseMove()
+    if mv then applyMove(mv, computerPlayer) end
+end
+
 local function newGame()
     board = {}
     for i = 1, 9 do board[i] = EMPTY end
@@ -76,29 +150,66 @@ local function newGame()
     winner        = EMPTY
     gameOver      = false
     draw          = false
+
+    if not twoPlayers then
+        -- Randomly decide who starts: human or computer.
+        if math.random(2) == 1 then
+            humanPlayer, computerPlayer = PLAYER_X, PLAYER_O
+        else
+            humanPlayer, computerPlayer = PLAYER_O, PLAYER_X
+        end
+        maybeComputerMove()
+    end
 end
 
-newGame()
+-- ─── Menu ─────────────────────────────────────────────────────────────────────
+local function menuButtons()
+    local bw, bh = 260, 64
+    local bx = math.floor((bkos.W - bw) / 2)
+    local y1 = 170
+    local y2 = y1 + bh + 24
+    return bx, bw, bh, y1, y2
+end
+
+local function drawMenu()
+    bkos.fillScreen(bkos.colors.bg)
+    local title = "Boter Kaas & Eieren"
+    local tx = math.floor((bkos.W - #title * 14) / 2)
+    bkos.drawText(tx, 70, title, 3, bkos.colors.text)
+
+    local bx, bw, bh, y1, y2 = menuButtons()
+    bkos.fillRect(bx, y1, bw, bh, C_BTN)
+    bkos.drawText(bx + 40, y1 + 22, "2 SPELERS", 2, C_BTN_T)
+    bkos.fillRect(bx, y2, bw, bh, C_BTN)
+    bkos.drawText(bx + 20, y2 + 22, "1 SPELER (vs computer)", 2, C_BTN_T)
+end
 
 -- ─── Draw screen ──────────────────────────────────────────────────────────────
-function bkos.draw()
+local function drawPlay()
     bkos.fillScreen(bkos.colors.bg)
 
     -- Status bar at top
     local status, sColor
     if gameOver then
         if winner ~= EMPTY then
-            status = (winner == PLAYER_X) and "Player X wins!" or "Player O wins!"
+            if not twoPlayers then
+                status = (winner == humanPlayer) and "You win!" or "Computer wins!"
+            else
+                status = (winner == PLAYER_X) and "Player X wins!" or "Player O wins!"
+            end
             sColor = C_WIN
         else
             status = "Draw — PLAY AGAIN?"
             sColor = bkos.colors.amber
         end
+    elseif not twoPlayers and currentPlayer == computerPlayer then
+        status = "Computer thinking..."
+        sColor = (computerPlayer == PLAYER_X) and C_X or C_O
     elseif currentPlayer == PLAYER_X then
-        status = "Player X to move"
+        status = twoPlayers and "Player X to move" or (humanPlayer == PLAYER_X and "Your move (X)" or "Player X to move")
         sColor = C_X
     else
-        status = "Player O to move"
+        status = twoPlayers and "Player O to move" or (humanPlayer == PLAYER_O and "Your move (O)" or "Player O to move")
         sColor = C_O
     end
     bkos.fillRect(0, 0, bkos.W, GRID_Y - 4, bkos.color565(18, 26, 36))
@@ -130,8 +241,35 @@ function bkos.draw()
     bkos.drawText(kx + 16, ky + 16, "PLAY AGAIN", 2, C_BTN_T)
 end
 
+function bkos.draw()
+    if state == MENU then
+        drawMenu()
+    else
+        drawPlay()
+    end
+end
+
 -- ─── Touch handling ───────────────────────────────────────────────────────────
-function bkos.touch(x, y)
+local function touchMenu(x, y)
+    local bx, bw, bh, y1, y2 = menuButtons()
+    if x >= bx and x <= bx + bw then
+        if y >= y1 and y <= y1 + bh then
+            twoPlayers = true
+            state = PLAY
+            newGame()
+            bkos.draw()
+            return
+        elseif y >= y2 and y <= y2 + bh then
+            twoPlayers = false
+            state = PLAY
+            newGame()
+            bkos.draw()
+            return
+        end
+    end
+end
+
+local function touchPlay(x, y)
     local kx = math.floor(bkos.W / 2) - 90
     local ky = GRID_Y + 3 * CEL + 18
     if x >= kx and x <= kx + 180 and y >= ky and y <= ky + 48 then
@@ -141,6 +279,7 @@ function bkos.touch(x, y)
     end
 
     if gameOver then return end
+    if not twoPlayers and currentPlayer ~= humanPlayer then return end
 
     if x >= GRID_X and x < GRID_X + 3 * CEL and
        y >= GRID_Y and y < GRID_Y + 3 * CEL then
@@ -148,17 +287,20 @@ function bkos.touch(x, y)
         local r = math.floor((y - GRID_Y) / CEL)
         local i = idx(r, c)
         if board[i] == EMPTY then
-            board[i] = currentPlayer
-            winner   = checkWin()
-            if winner ~= EMPTY then
-                gameOver = true
-            elseif isFull() then
-                draw     = true
-                gameOver = true
-            else
-                currentPlayer = (currentPlayer == PLAYER_X) and PLAYER_O or PLAYER_X
-            end
+            applyMove(i, currentPlayer)
             bkos.draw()
+            if not gameOver and not twoPlayers and currentPlayer == computerPlayer then
+                maybeComputerMove()
+                bkos.draw()
+            end
         end
+    end
+end
+
+function bkos.touch(x, y)
+    if state == MENU then
+        touchMenu(x, y)
+    else
+        touchPlay(x, y)
     end
 end

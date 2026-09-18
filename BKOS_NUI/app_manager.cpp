@@ -283,22 +283,34 @@ void app_winkel_laden() {
     wifi_verbonden = true;
 
     _app_hotspot_pauzeren();
-    WiFiClientSecure sc;
-    sc.setInsecure();
-    HTTPClient http;
-    http.begin(sc, APPSTORE_INDEX_URL);
-    http.useHTTP10(true);
-    http.setTimeout(15000);
-    int code = http.GET();
-    if (code != 200) { http.end(); wifi_ota_modus = false; _app_hotspot_hervatten(); return; }
 
+    // Zelfde retry-patroon als ota_git_check(): één herkansing bij een
+    // verbindingsfout (code<=0) — de hotspot-pauze lost de TLS-verstoring meestal
+    // op, maar de AP_STA->STA radio-overgang is niet gegarandeerd al voltooid
+    // bij de allereerste poging.
+    int code = 0;
     JsonDocument doc;
-    if (deserializeJson(doc, http.getStream()) != DeserializationError::Ok) {
-        http.end(); wifi_ota_modus = false; _app_hotspot_hervatten(); return;
+    bool json_ok = false;
+    for (int poging = 0; poging < 2; poging++) {
+        WiFiClientSecure sc;
+        sc.setInsecure();
+        HTTPClient http;
+        http.begin(sc, APPSTORE_INDEX_URL);
+        http.useHTTP10(true);
+        http.setTimeout(15000);
+        code = http.GET();
+        if (code == 200) {
+            json_ok = (deserializeJson(doc, http.getStream()) == DeserializationError::Ok);
+            http.end();
+            break;
+        }
+        http.end();
+        if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
+        delay(300);             // verbindingsfout (<0): nog één poging
     }
-    http.end();
     wifi_ota_modus = false;
     _app_hotspot_hervatten();
+    if (!json_ok) return;
 
     JsonArray arr = doc.as<JsonArray>();
     for (JsonObject obj : arr) {
@@ -355,26 +367,37 @@ static void _installeer_taak(void* param) {
     String lua_url = String("https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/appstore/apps/")
                      + wm.id + "/main.lua";
     _app_hotspot_pauzeren();
-    WiFiClientSecure sc;
-    sc.setInsecure();
-    HTTPClient http;
-    http.begin(sc, lua_url);
-    http.useHTTP10(true);
-    http.setTimeout(20000);
-    int code = http.GET();
+
+    // Zelfde retry-patroon als ota_git_check()/app_winkel_laden(): één
+    // herkansing bij een verbindingsfout (code<=0).
+    int code = 0;
+    String inhoud;
+    for (int poging = 0; poging < 2; poging++) {
+        WiFiClientSecure sc;
+        sc.setInsecure();
+        HTTPClient http;
+        http.begin(sc, lua_url);
+        http.useHTTP10(true);
+        http.setTimeout(20000);
+        code = http.GET();
+        if (code == 200) {
+            // getString() buffert het volledige antwoord — veilig voor kleine Lua-scripts
+            inhoud = http.getString();
+            http.end();
+            break;
+        }
+        http.end();
+        if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
+        delay(300);             // verbindingsfout (<0): nog één poging
+    }
+    wifi_ota_modus = false;  // download klaar, netwerk_taak mag weer beheren
+    _app_hotspot_hervatten();
+
     if (code != 200) {
         snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d", code);
-        http.end();
-        wifi_ota_modus = false;
-        _app_hotspot_hervatten();
         app_ins_status = APP_INS_MISLUKT;
         vTaskDelete(NULL); return;
     }
-    // getString() buffers het volledige antwoord — veilig voor kleine Lua-scripts
-    String inhoud = http.getString();
-    http.end();
-    wifi_ota_modus = false;  // download klaar, netwerk_taak mag weer beheren
-    _app_hotspot_hervatten();
 
     if (inhoud.length() == 0) {
         strncpy(app_ins_bericht, "Leeg antwoord van server", sizeof(app_ins_bericht) - 1);

@@ -75,6 +75,24 @@ void nav_midden_bouwen();
   #define SB_KLOK_ZWART_X (SB_KLOK_X - 14)
 #endif
 
+// ─── Statusbalk-iconen (wifi/hotspot/alert), alleen niet-SCREEN_SMALL ─────────
+// Eén gedeeld verticaal midden en vaste tussenruimtes, zodat de 3 iconen en de
+// schermtitel niet meer los van elkaar ogen. Elke _xxx_icon(x)-functie in
+// nav_bar.ino tekent zijn eigen glyph rond x (linkerkant) met een bekende
+// breedte in pixels — die breedtes zijn hier de bron van waarheid voor de
+// pitch-berekening, zodat teken-volgorde en tussenruimte hier op één plek
+// staan i.p.v. verspreid als losse magic numbers.
+#define SB_ICON_CY      (SB_H / 2)  // verticaal midden voor alle 3 iconen
+#define SB_ICON_X0      10          // linkermarge vóór het wifi-icoon
+#define SB_ICON_GAP     12          // ruimte tussen de iconen onderling
+#define SB_WIFI_W       22          // breedte wifi-icoon (4 balkjes + tussenruimtes)
+#define SB_HOTSPOT_W    16          // breedte hotspot-icoon (cirkel r=8, licht asymmetrisch)
+#define SB_HOTSPOT_X    (SB_ICON_X0 + SB_WIFI_W + SB_ICON_GAP + 1)
+#define SB_ALERT_W      14          // breedte alert-icoon
+#define SB_ALERT_X      (SB_HOTSPOT_X + SB_HOTSPOT_W - 1 + SB_ICON_GAP)
+#define SB_TITEL_GAP    18          // extra ruimte tussen laatste icoon en schermtitel
+#define SB_TITEL_X      (SB_ALERT_X + SB_ALERT_W + SB_TITEL_GAP)
+
 void nav_bar_teken();
 int  nav_bar_klik(int x, int y);
 void sb_teken_basis();

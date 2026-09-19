@@ -96,6 +96,14 @@ extern volatile AppInstallatieStatus app_ins_status;
 extern char app_ins_bericht[80];
 void app_installeer_start(int winkel_idx);  // start FreeRTOS taak
 
+// Annuleren: de UI zet deze vlag, _installeer_taak() zelf controleert 'm op
+// een paar veilige punten (nooit halverwege een SPIFFS-schrijfactie) en rondt
+// dan netjes af (WiFi-vergrendeling/hotspot-pauze opheffen, status MISLUKT
+// met een duidelijk bericht) — geen vTaskDelete van buitenaf, dat zou die
+// opruimstappen overslaan.
+extern volatile bool app_ins_annuleren;
+void app_installeer_annuleren();
+
 // Master-app tracking: welke app-IDs heeft de master (geldig op slave/extra)
 #define APP_MASTER_MAX 8
 extern char app_master_ids[APP_MASTER_MAX][APP_ID_LEN];

@@ -124,8 +124,12 @@ void nav_midden_bouwen() {
 }
 
 // ─── WiFi signaalicoon ────────────────────────────────────────────────────────
+// y = onderkant van de balkjes (bar-groep is bottom-aligned zoals een gewoon
+// signaalicoon); SB_ICON_CY + halve hoogte van de langste balk (18/2=9) legt
+// het verticale MIDDEN van de hele icoongroep op SB_ICON_CY, gelijk aan de
+// andere twee statusbalk-iconen.
 static void _wifi_icon(int x) {
-    int y = SB_H - 5;
+    int y = SB_ICON_CY + 9;
     int staat;
     if (wifi_verbonden) {
         staat = 2;
@@ -157,7 +161,7 @@ static void _wifi_icon(int x) {
 // zodra de telefoon-hotspot (wifi.ino) actief is, anders gedimd.
 static void _hotspot_icon(int x) {
     uint16_t c = wifi_hotspot_actief() ? C_GREEN : RGB565(55, 70, 90);
-    int cx = x + 7, cy = SB_H / 2 + 2;
+    int cx = x + 7, cy = SB_ICON_CY;
     tft.fillCircle(cx, cy, 2, c);
     tft.drawCircle(cx, cy, 5, c);
     tft.drawCircle(cx, cy, 8, c);
@@ -165,7 +169,7 @@ static void _hotspot_icon(int x) {
 
 static void _alert_icon(int x) {
     uint16_t c = RGB565(55, 70, 90);
-    int cx = x + 7, cy = SB_H / 2 - 1;
+    int cx = x + 7, cy = SB_ICON_CY;
     tft.drawLine(cx, cy - 8, cx - 7, cy + 5, c);
     tft.drawLine(cx, cy - 8, cx + 7, cy + 5, c);
     tft.drawFastHLine(cx - 7, cy + 5, 15, c);
@@ -189,7 +193,7 @@ void sb_teken_basis() {
     tft.print(klok_tijd.c_str());
 #else
     tft.fillRect(SB_KLOK_ZWART_X, 0, TFT_W - SB_KLOK_ZWART_X, SB_H, C_BLACK);
-    _wifi_icon(8); _hotspot_icon(36); _alert_icon(56);
+    _wifi_icon(SB_ICON_X0); _hotspot_icon(SB_HOTSPOT_X); _alert_icon(SB_ALERT_X);
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
     tft.setCursor(SB_KLOK_X, (SB_H - 16) / 2);
     tft.print(klok_tijd.c_str());
@@ -204,7 +208,7 @@ void sb_scherm_teken(const char* titel, uint16_t kleur) {
     tft.print(titel);
 #else
     tft.setTextSize(2); tft.setTextColor(kleur);
-    tft.setCursor(86, (SB_H - 16) / 2);
+    tft.setCursor(SB_TITEL_X, (SB_H - 16) / 2);
     tft.print(titel);
 #endif
 }
@@ -212,7 +216,7 @@ void sb_scherm_teken(const char* titel, uint16_t kleur) {
 void sb_app_teken(const char* app_naam) {
     sb_teken_basis();
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(86, (SB_H - 16) / 2);
+    tft.setCursor(SB_TITEL_X, (SB_H - 16) / 2);
     tft.print(app_naam);
     int bx = TFT_W - SB_H;
     tft.fillRect(bx, 0, SB_H, SB_H, C_RED_BRIGHT);

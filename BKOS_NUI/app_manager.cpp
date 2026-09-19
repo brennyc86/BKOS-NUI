@@ -283,15 +283,18 @@ void app_winkel_laden() {
     wifi_verbonden = true;
 
     _app_hotspot_pauzeren();
+    // Settle-tijd: WiFi.mode() (in wifi_hotspot_stoppen()) schakelt de radio
+    // van AP_STA naar STA, en die overgang is niet gegarandeerd al voltooid
+    // op het moment dat de aanroep terugkeert. Zonder deze pauze faalde de
+    // allereerste HTTPS-poging na een hotspot-pauze soms nog steeds.
+    delay(250);
 
-    // Zelfde retry-patroon als ota_git_check(): één herkansing bij een
-    // verbindingsfout (code<=0) — de hotspot-pauze lost de TLS-verstoring meestal
-    // op, maar de AP_STA->STA radio-overgang is niet gegarandeerd al voltooid
-    // bij de allereerste poging.
+    // Retry-patroon als ota_git_check(): 2 herkansingen (3 pogingen totaal)
+    // bij een verbindingsfout (code<=0).
     int code = 0;
     JsonDocument doc;
     bool json_ok = false;
-    for (int poging = 0; poging < 2; poging++) {
+    for (int poging = 0; poging < 3; poging++) {
         WiFiClientSecure sc;
         sc.setInsecure();
         HTTPClient http;
@@ -306,7 +309,7 @@ void app_winkel_laden() {
         }
         http.end();
         if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
-        delay(300);             // verbindingsfout (<0): nog één poging
+        delay(300);             // verbindingsfout (<0): nog een poging
     }
     wifi_ota_modus = false;
     _app_hotspot_hervatten();
@@ -325,11 +328,27 @@ void app_winkel_laden() {
 // ─── Asynchrone installatie (FreeRTOS Core 0) ────────────────────────────────
 volatile AppInstallatieStatus app_ins_status = APP_INS_IDLE;
 char app_ins_bericht[80] = "";
+volatile bool app_ins_annuleren = false;
+
+void app_installeer_annuleren() { app_ins_annuleren = true; }
 
 static int _ins_winkel_idx = -1;
 
+// Geannuleerd? Ruimt WiFi-vergrendeling/hotspot-pauze op en zet MISLUKT met
+// een duidelijk bericht. Aanroeper moet direct daarna vTaskDelete(NULL) doen.
+static bool _ins_geannuleerd_afhandelen(bool hotspot_gepauzeerd) {
+    if (!app_ins_annuleren) return false;
+    app_ins_annuleren = false;
+    if (hotspot_gepauzeerd) _app_hotspot_hervatten();
+    wifi_ota_modus = false;
+    strncpy(app_ins_bericht, "Geannuleerd", sizeof(app_ins_bericht) - 1);
+    app_ins_status = APP_INS_MISLUKT;
+    return true;
+}
+
 static void _installeer_taak(void* param) {
     int idx = _ins_winkel_idx;
+    app_ins_annuleren = false;
     // Vergrendel WiFi meteen — race met netwerk_taak voorkomen
     wifi_ota_modus = true;
 
@@ -349,9 +368,12 @@ static void _installeer_taak(void* param) {
         strncpy(app_ins_bericht, "WiFi verbinden...", sizeof(app_ins_bericht) - 1);
         wifi_verbind_aanvragen();
         unsigned long t = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - t < 12000)
+        while (WiFi.status() != WL_CONNECTED && millis() - t < 12000) {
+            if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
             vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
     }
+    if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
     if (WiFi.status() != WL_CONNECTED) {
         strncpy(app_ins_bericht, "Geen WiFi verbinding", sizeof(app_ins_bericht) - 1);
         app_ins_status = APP_INS_MISLUKT;
@@ -359,6 +381,7 @@ static void _installeer_taak(void* param) {
         vTaskDelete(NULL); return;
     }
     wifi_verbonden = true;
+    if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
 
     // Stap 2: Download main.lua
     app_ins_status = APP_INS_DOWNLOADEN;
@@ -367,12 +390,13 @@ static void _installeer_taak(void* param) {
     String lua_url = String("https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/appstore/apps/")
                      + wm.id + "/main.lua";
     _app_hotspot_pauzeren();
+    delay(250);  // settle-tijd AP_STA->STA-overgang, zie app_winkel_laden()
 
-    // Zelfde retry-patroon als ota_git_check()/app_winkel_laden(): één
-    // herkansing bij een verbindingsfout (code<=0).
+    // Zelfde retry-patroon als ota_git_check()/app_winkel_laden(): 2
+    // herkansingen (3 pogingen totaal) bij een verbindingsfout (code<=0).
     int code = 0;
     String inhoud;
-    for (int poging = 0; poging < 2; poging++) {
+    for (int poging = 0; poging < 3; poging++) {
         WiFiClientSecure sc;
         sc.setInsecure();
         HTTPClient http;
@@ -388,10 +412,12 @@ static void _installeer_taak(void* param) {
         }
         http.end();
         if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
+        if (_ins_geannuleerd_afhandelen(true)) { vTaskDelete(NULL); return; }
         delay(300);             // verbindingsfout (<0): nog één poging
     }
     wifi_ota_modus = false;  // download klaar, netwerk_taak mag weer beheren
     _app_hotspot_hervatten();
+    if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
 
     if (code != 200) {
         snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d", code);

@@ -925,10 +925,15 @@ static void _apps_voortgang_teken(bool volledig) {
         tft.fillRect(dot_x, bar_y + 1, 10, 14, C_TEXT);
     }
 
-    // Klaar/mislukt: toon SLUITEN knop
+    // Klaar/mislukt: toon SLUITEN knop; bezig: toon ANNULEER knop (zelfde
+    // plek/afmeting, zodat teken() en de hittest in screen_appstore_run()
+    // altijd bij elkaar passen).
     if (status == APP_INS_KLAAR || status == APP_INS_MISLUKT) {
         ui_knop(VPOP_X + VPOP_W / 2 - 80, VPOP_Y + VPOP_H - 52, 160, 36,
                 "SLUITEN", C_SURFACE2, status == APP_INS_KLAAR ? C_GREEN : C_AMBER);
+    } else {
+        ui_knop(VPOP_X + VPOP_W / 2 - 80, VPOP_Y + VPOP_H - 52, 160, 36,
+                "ANNULEER", C_SURFACE2, C_AMBER);
     }
 }
 
@@ -1110,10 +1115,11 @@ void screen_appstore_run(int x, int y, bool aanraking) {
             apps_voortgang_vorige = status;
         }
 
-        if (aanraking && (status == APP_INS_KLAAR || status == APP_INS_MISLUKT)) {
+        if (aanraking) {
             int btn_x = VPOP_X + VPOP_W / 2 - 80;
             int btn_y = VPOP_Y + VPOP_H - 52;
-            if (x >= btn_x && x <= btn_x + 160 && y >= btn_y && y <= btn_y + 36) {
+            bool in_knop = (x >= btn_x && x <= btn_x + 160 && y >= btn_y && y <= btn_y + 36);
+            if (in_knop && (status == APP_INS_KLAAR || status == APP_INS_MISLUKT)) {
                 apps_voortgang_actief = false;
                 if (status == APP_INS_KLAAR) {
                     strncpy(apps_status, app_ins_bericht, sizeof(apps_status) - 1);
@@ -1124,6 +1130,12 @@ void screen_appstore_run(int x, int y, bool aanraking) {
                 }
                 app_ins_status = APP_INS_IDLE;
                 scherm_bouwen = true;
+            } else if (in_knop) {
+                // ANNULEER: de installatietaak rondt zelf netjes af (WiFi/
+                // hotspot-opruiming) en zet status op MISLUKT — de popup blijft
+                // nog even staan met "Geannuleerd" en de gebruiker sluit 'm
+                // zelf via de dan verschijnende SLUITEN-knop.
+                app_installeer_annuleren();
             }
         }
         return;

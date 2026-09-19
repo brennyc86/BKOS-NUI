@@ -34,18 +34,21 @@ function bkos.draw()
     end
     bkos.drawText(bkos.W/2 - 50, 270, tempStr, 3, C_TEXT)
 
-    -- IO lamp button at the bottom
+    -- IO lamp button at the bottom (bkos.H is the actual available height —
+    -- e.g. ~396px sandboxed on the 7" S3, not the full 480px design height)
     local lampOn   = bkos.io.readName(LAMP_NAME)
     local btnColor = lampOn and C_GREEN or bkos.color565(60, 70, 90)
-    bkos.fillRect(bkos.W/2 - 80, 340, 160, 60, btnColor)
-    bkos.drawText(bkos.W/2 - 36, 362, lampOn and "ON" or "OFF", 2, C_TEXT)
-    bkos.drawText(bkos.W/2 - 22, 384, LAMP_NAME, 1, C_DIM)
+    local btnY = bkos.H - 66
+    bkos.fillRect(bkos.W/2 - 80, btnY, 160, 56, btnColor)
+    bkos.drawText(bkos.W/2 - 36, btnY + 16, lampOn and "ON" or "OFF", 2, C_TEXT)
+    bkos.drawText(bkos.W/2 - 22, btnY + 38, LAMP_NAME, 1, C_DIM)
 end
 
 function bkos.touch(x, y)
     -- Lamp button touched?
+    local btnY = bkos.H - 66
     if x >= bkos.W/2 - 80 and x <= bkos.W/2 + 80 and
-       y >= 340 and y <= 400 then
+       y >= btnY and y <= btnY + 56 then
         bkos.io.toggleName(LAMP_NAME)
         bkos.draw()
     end

@@ -1,7 +1,7 @@
 {
   "id"          : "dam",
   "naam"        : "Damspel",
-  "versie"      : "1.0.0",
+  "versie"      : "1.1.0",
   "auteur"      : "Claude",
   "beschrijving": "Dam: speel tegen een andere speler of de computer (3 niveaus).",
   "scherm_b"    : 800,
@@ -9,5 +9,7 @@
   "vervangt"    : -1,
   "api_versie"  : 1,
   "actief"      : true,
+  "volledig_scherm": true,
+  "toon_header": false,
   "icoon"       : "dam"
 }

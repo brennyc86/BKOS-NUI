@@ -2,7 +2,7 @@
   {
     "id": "voorbeeld_klok",
     "naam": "Voorbeeld Klok",
-    "versie": "1.0.0",
+    "versie": "1.0.1",
     "auteur": "BKOS-NUI Team",
     "beschrijving": "Grote klok als voorbeeld voor app-ontwikkelaars.",
     "scherm_b": 800,
@@ -50,7 +50,7 @@
   {
     "id": "dam",
     "naam": "Damspel",
-    "versie": "1.0.0",
+    "versie": "1.1.0",
     "auteur": "Claude",
     "beschrijving": "Dam: speel tegen een andere speler of de computer (3 niveaus).",
     "scherm_b": 800,
@@ -59,8 +59,8 @@
     "api_versie": 1,
     "grootte_kb": 28,
     "actief": true,
-    "volledig_scherm": false,
-    "toon_header": true,
+    "volledig_scherm": true,
+    "toon_header": false,
     "icoon": "dam"
   },
   {

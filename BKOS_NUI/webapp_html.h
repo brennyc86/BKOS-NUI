@@ -92,6 +92,7 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
   text-align:center;padding:8px;gap:4px;
 }
 .tilegrid .ticon{font-size:1.9rem;line-height:1;}
+.tilegrid .ticon svg{width:1.9rem;height:1.9rem;}
 .tilegrid .tlabel{font-size:.68rem;line-height:1.15;font-weight:600;}
 .tilegrid .tlabelGroot{font-size:.85rem;line-height:1.2;font-weight:600;}
 
@@ -758,10 +759,25 @@ function renderPaneel(){
 // boordcomputer zelf (screen_main.ino): buitenverlichting altijd hetzelfde
 // icoon, anders op naam-substring. Onbekende namen krijgen null (geen
 // symbool) — die tonen dan de naam op leesbare grootte, zie renderHuispaneel().
+// Echt USB-drietand-logo (cirkel + stam + vierkantje/driehoekje) als kleine
+// inline SVG — geen Unicode-emoji hiervoor bruikbaar genoeg (Brendans
+// feedback op de eerste 🔌-versie), en meteen consistent met hetzelfde
+// symbool op de boordcomputer (_hv_app_icoon_teken(), screen_haven.ino).
+// Vast lichtgrijs (i.p.v. currentColor) zodat 'm net als de emoji-iconen
+// zijn eigen kleur houdt, los van de knop-status.
+var USB_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-.2em">'
+  + '<circle cx="12" cy="4" r="2.2" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M12 6.2V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M12 13L7 18" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<rect x="5" y="18" width="4" height="4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M12 13L17 18" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M14.3 22L19.7 22 17 17.2Z" fill="#c9d3db"/>'
+  + '</svg>';
+
 function tileIcoon(p){
   if (p.licht) return '\u{1F526}';           // buitenverlichting (dek e.d.)
   var b = p.naam.toLowerCase();
-  if (b.indexOf('usb') >= 0)   return '\u{1F50C}';
+  if (b.indexOf('usb') >= 0)   return USB_SVG;
   if (b.indexOf('230') >= 0)   return '⚡';
   if (b.indexOf('tv') >= 0)    return '\u{1F4FA}';
   if (b.indexOf('water') >= 0) return '\u{1F6B0}';

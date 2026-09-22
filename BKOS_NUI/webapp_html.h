@@ -84,11 +84,16 @@ button.pbtn.mix{background:#3a2a06;color:var(--amber);border-color:var(--amber);
 button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);}
 button.pbtn.locked, button.sw:disabled{opacity:.5;}
 /* Vierkante tegels (HUIS-tab: buitenverlichting/apparaten) — mirrort de
-   vierkante 3x3-tegels van het huispaneel op de boordcomputer zelf. */
+   vierkante 3x3-tegels van het huispaneel op de boordcomputer zelf. Symbool
+   dominant, naam er klein onder; een knop zonder symbool (nog) toont de naam
+   op leesbare grootte in het midden (.tlabelGroot). */
 .tilegrid button.pbtn{
-  aspect-ratio:1;display:flex;align-items:center;justify-content:center;
-  text-align:center;padding:8px;font-size:.8rem;
+  aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:8px;gap:4px;
 }
+.tilegrid .ticon{font-size:1.9rem;line-height:1;}
+.tilegrid .tlabel{font-size:.68rem;line-height:1.15;font-weight:600;}
+.tilegrid .tlabelGroot{font-size:.85rem;line-height:1.2;font-weight:600;}
 
 .iorow{
   display:flex;align-items:center;gap:10px;
@@ -749,6 +754,20 @@ function renderPaneel(){
 // herkenning als het HAVEN-dashboard op het scherm zelf gebruikt), zodat de
 // indeling hier de boordcomputer volgt: basisverlichting → lampen →
 // buitenverlichting → apparaten.
+// Symbool per tegel — zelfde herkenning/volgorde als paneel_icoon() op de
+// boordcomputer zelf (screen_main.ino): buitenverlichting altijd hetzelfde
+// icoon, anders op naam-substring. Onbekende namen krijgen null (geen
+// symbool) — die tonen dan de naam op leesbare grootte, zie renderHuispaneel().
+function tileIcoon(p){
+  if (p.licht) return '\u{1F526}';           // buitenverlichting (dek e.d.)
+  var b = p.naam.toLowerCase();
+  if (b.indexOf('usb') >= 0)   return '\u{1F50C}';
+  if (b.indexOf('230') >= 0)   return '⚡';
+  if (b.indexOf('tv') >= 0)    return '\u{1F4FA}';
+  if (b.indexOf('water') >= 0) return '\u{1F6B0}';
+  return null;
+}
+
 function renderHuispaneel(){
   function knop(p, i){
     var minNiveau = p.minNiveau || NIVEAU_GAST;
@@ -756,7 +775,11 @@ function renderHuispaneel(){
       return '<button class="pbtn locked" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">&#128274; ' + esc(p.naam) + '</button>';
     }
     var cls = p.staat === 2 ? 'aan' : (p.staat === 1 ? 'mix' : '');
-    return '<button class="pbtn ' + cls + '" onclick="toggleHuispaneel(' + i + ')">' + esc(p.naam) + '</button>';
+    var ic = tileIcoon(p);
+    var inner = ic
+      ? '<span class="ticon">' + ic + '</span><span class="tlabel">' + esc(p.naam) + '</span>'
+      : '<span class="tlabelGroot">' + esc(p.naam) + '</span>';
+    return '<button class="pbtn ' + cls + '" onclick="toggleHuispaneel(' + i + ')">' + inner + '</button>';
   }
   var buiten = [], apparaten = [];
   huispaneelData.forEach(function(p, i){ (p.licht ? buiten : apparaten).push(knop(p, i)); });

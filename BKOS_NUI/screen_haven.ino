@@ -52,7 +52,12 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define HV_APP_COLS         3
 #define HV_APP_ROWS         3
 #define HV_APP_MAX_ZICHTBAAR (HV_APP_COLS * HV_APP_ROWS)
-#define HV_APP_NAV_RESERVE  UI_SCX(44)
+// Brendan vond de tegels te klein: was UI_SCX(44) + een extra HV_GAP ervoor
+// (samen 52px van col_w=371 op S3, dus de tegel-breedte was de bottleneck
+// t.o.v. de royalere hoogte-ruimte) — nu een smalle reep, precies genoeg om
+// later een klein vierkant "volgende"-knopje in te tekenen, zonder de 3x3-
+// tegels zelf te blokkeren.
+#define HV_APP_NAV_RESERVE  UI_SCX(24)
 
 // Vaste offsets binnen de VERLICHTING-kolom — teken() en run() delen deze
 // macro's/helper zodat ze nooit uit de pas kunnen lopen.
@@ -372,6 +377,82 @@ static void _hv_alles_uit() {
     io_verlichting_update(); net_app_staat_sturen(); state_save();
 }
 
+// Kleur voor het icoon zelf, los van de aan/uit-status (die al zichtbaar is
+// via de tegelrand/accentbalk, zie _hv_tile_frame) — Brendan wil dat het
+// SYMBOOL het type apparaat verraadt: water blauw, 230V een geel bliksempje.
+// Alleen de twee expliciet genoemde types krijgen nu een eigen kleur; de rest
+// valt terug op 'standaard' (de bestaande aan/uit-kleur) tot er meer voorbeelden
+// gevraagd worden.
+static uint16_t _hv_app_icoon_kleur(int icoon, uint16_t standaard) {
+    switch (icoon) {
+        case I_WATER: return RGB565(70, 165, 255);
+        case I_230V:  return RGB565(255, 205, 40);
+        default:      return standaard;
+    }
+}
+
+static int _hv_app_ic_o(int v, float s) { return (int)(v * s + (v >= 0 ? 0.5f : -0.5f)); }
+
+// Grotere variant van teken_icoon()'s USB/230V/TV/WATER/DEKLICHT, specifiek
+// voor huispaneel-tegels — Brendan vond de symbolen te weinig dominant.
+// Zelfde relatieve vormen als de kleine 16px-canvas-iconen (herkenbaar
+// dezelfde tekening), alleen geschaald met 's' — teken_icoon() zelf blijft
+// ongemoeid voor al zijn andere (kleinformaat) aanroepers elders in de app
+// (nav bar, vaarmodus-knoppen, apps-bureaublad).
+static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kleur) {
+    switch (icoon) {
+        case I_USB: {
+            int o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s),
+                o7 = _hv_app_ic_o(7, s), o8 = _hv_app_ic_o(8, s), o2 = max(2, _hv_app_ic_o(2, s));
+            tft.drawRect(cx - o4, cy - o7, o8, o7, kleur);
+            tft.drawFastVLine(cx, cy, o6, kleur);
+            tft.drawLine(cx, cy + o6, cx - o5, cy + _hv_app_ic_o(3, s), kleur);
+            tft.drawLine(cx, cy + o6, cx + o5, cy + _hv_app_ic_o(3, s), kleur);
+            tft.fillCircle(cx - o5, cy + _hv_app_ic_o(3, s), o2, kleur);
+            tft.fillCircle(cx + o5, cy + _hv_app_ic_o(3, s), o2, kleur);
+            break;
+        }
+        case I_230V: {
+            int o2 = _hv_app_ic_o(2, s), o3 = _hv_app_ic_o(3, s), o4 = _hv_app_ic_o(4, s), o8 = _hv_app_ic_o(8, s);
+            // dubbele lijn per segment voor een dikker, dominanter bliksem-silhouet
+            for (int d = 0; d <= 1; d++) {
+                tft.drawLine(cx + o3 + d, cy - o8, cx - o2 + d, cy, kleur);
+                tft.drawLine(cx - o2 + d, cy,      cx + o3 + d, cy, kleur);
+                tft.drawLine(cx + o3 + d, cy,      cx - o4 + d, cy + o8, kleur);
+            }
+            break;
+        }
+        case I_TV: {
+            int o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s),
+                o8 = _hv_app_ic_o(8, s), o9 = _hv_app_ic_o(9, s), o11 = _hv_app_ic_o(11, s), o16 = _hv_app_ic_o(16, s);
+            tft.drawRect(cx - o8, cy - o5, o16, o11, kleur);
+            tft.drawFastVLine(cx, cy + o6, _hv_app_ic_o(3, s), kleur);
+            tft.drawFastHLine(cx - o4, cy + o9, o8, kleur);
+            break;
+        }
+        case I_WATER: {
+            int o5 = _hv_app_ic_o(5, s), o9 = _hv_app_ic_o(9, s), o3 = _hv_app_ic_o(3, s);
+            tft.drawLine(cx, cy - o9, cx - o5, cy, kleur);
+            tft.drawLine(cx, cy - o9, cx + o5, cy, kleur);
+            tft.drawCircle(cx, cy + o3, o5, kleur);
+            break;
+        }
+        case I_DEKLICHT: {
+            int o7 = _hv_app_ic_o(7, s), o4 = _hv_app_ic_o(4, s), o10 = _hv_app_ic_o(10, s),
+                o3 = _hv_app_ic_o(3, s), o2 = _hv_app_ic_o(2, s), o1 = _hv_app_ic_o(1, s),
+                o9 = _hv_app_ic_o(9, s), o8 = _hv_app_ic_o(8, s);
+            tft.fillTriangle(cx - o7, cy - o4, cx + o7, cy - o4, cx, cy - o10, kleur);
+            tft.fillCircle(cx, cy - o2, o3, kleur);
+            tft.drawLine(cx,      cy + o1, cx,      cy + o9, kleur);
+            tft.drawLine(cx - o2, cy + o1, cx - o7, cy + o8, kleur);
+            tft.drawLine(cx + o2, cy + o1, cx + o7, cy + o8, kleur);
+            break;
+        }
+        default:
+            teken_icoon(icoon, cx, cy, kleur);
+    }
+}
+
 // ─── Tegels: PANEEL-apparaten (ook de 'dek'-achtige lichten) ──────────────
 // Eigen (niet-opake) variant van screen_main.ino's paneel_knop_teken() — die
 // gedeelde functie tekent zelf een opake achtergrond en wordt ook door het
@@ -380,18 +461,32 @@ static void _hv_paneel_tegel_teken(int x, int y, int w, int h, const char* label
                                     int icoon, bool aan, bool mix) {
     _hv_tile_frame(x, y, w, h, aan);
     uint16_t fg = aan ? C_CYAN : HV_CONTENT_UIT;
-    tft.setTextSize(2); tft.setTextColor(fg);
-    int tw = strlen(label) * 12;
     if (icoon == I_LAMP) {
         teken_icoon_lamp(x + w / 2, y + h * 3 / 8, aan, interieur_kleur_rood, HV_CONTENT_UIT);
-        tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8);
+        tft.setTextSize(1); tft.setTextColor(fg);
+        int tw = strlen(label) * 6;
+        tft.setCursor(x + (w - tw) / 2, y + h - 16);
+        tft.print(label);
     } else if (icoon >= 0) {
-        teken_icoon(icoon, x + w / 2, y + h * 3 / 8, fg);
-        tft.setCursor(x + (w - tw) / 2, y + h * 6 / 8 - 8);
+        // Symbool dominant en groot; de naam eronder mag kleiner — het symbool
+        // moet het al verklaren (Brendans expliciete wens). Schaal t.o.v.
+        // teken_icoon()'s ~16-18px-canvas-referentie, geclamped zodat een heel
+        // kleine of heel grote tegel geen absurd symbool krijgt.
+        float s = constrain(min(w, h) / 32.0f, 1.2f, 4.5f);
+        uint16_t ic_kleur = _hv_app_icoon_kleur(icoon, fg);
+        _hv_app_icoon_teken(icoon, x + w / 2, y + h * 2 / 5, s, ic_kleur);
+        tft.setTextSize(1); tft.setTextColor(fg);
+        int tw = strlen(label) * 6;
+        tft.setCursor(x + (w - tw) / 2, y + h - 16);
+        tft.print(label);
     } else {
+        // Geen symbool bekend voor deze naam: tekst blijft op de oude, grote
+        // schaal (uitzondering op Brendans verzoek).
+        tft.setTextSize(2); tft.setTextColor(fg);
+        int tw = strlen(label) * 12;
         tft.setCursor(x + (w - tw) / 2, y + h / 2 - 8);
+        tft.print(label);
     }
-    tft.print(label);
     if (mix) tft.fillRoundRect(x + 4, y + h - 6, w - 8, 4, 2, C_ORANGE);
 }
 
@@ -487,7 +582,7 @@ static int _hv_verlichting_teken(int x0, int w, int y_top, int cols, int tile_w)
 // zodat de vierkantgrootte/positie nooit uit de pas kan lopen.
 static void _hv_app_layout(int x0, int w, int* sq, int* grid_top) {
     *grid_top = HV_START_Y + HV_SECTIE_H;
-    int beschikbaar_w = w - HV_APP_NAV_RESERVE - HV_GAP;
+    int beschikbaar_w = w - HV_APP_NAV_RESERVE;
     int sq_w = (beschikbaar_w - (HV_APP_COLS - 1) * HV_GAP) / HV_APP_COLS;
     int beschikbaar_h = HV_LIST_BOT - *grid_top;
     int sq_h = (beschikbaar_h - (HV_APP_ROWS - 1) * HV_GAP) / HV_APP_ROWS;

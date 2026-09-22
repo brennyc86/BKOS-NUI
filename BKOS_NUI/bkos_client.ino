@@ -13,6 +13,8 @@
 #include "screen_info.h"
 #include "screen_config.h"  // pin_lezen_pub()
 #include "paneel.h"
+#include "huispaneel.h"
+#include "screen_main.h"     // paneel_naam_is_exterieur() — licht/apparaat-indeling huispaneel
 #include "lamp.h"            // genummerde lampgroepen — Huis-tab in de webapp
 #include "gast.h"            // pin_niveau() — eigenaar vs. gastcode
 #include "wifi.h"            // ntp_synced() — gasten-vervaldatum, zie gast.h
@@ -38,6 +40,7 @@ static bool _ws_prev_input[MAX_IO_KANALEN];
 static byte _ws_prev_modus = 255;
 static byte _ws_prev_licht = 255;
 static byte _ws_prev_paneel[PANEEL_KNOP_MAX];
+static byte _ws_prev_huispaneel[HUISPANEEL_KNOP_MAX];
 static bool _mdns_gestart = false;
 static bool _ws_gestart = false;
 // onEvent() hoeft maar één keer geregistreerd — bkos_client_setup()/_stop()
@@ -119,6 +122,29 @@ static String _paneel_json() {
         char lbl[IO_NAAM_LEN]; paneel_label(naam, lbl, sizeof(lbl));
         s += F("{\"naam\":\""); s += lbl;
         s += F("\",\"staat\":"); s += io_apparaat_staat3(naam);
+        s += F(",\"minNiveau\":"); s += io_min_niveau_voor_naam(naam); s += '}';
+    }
+    s += F("]}");
+    return s;
+}
+
+// Huispaneel: analoog aan _paneel_json() hierboven, maar over huispaneel_knop[]
+// (onafhankelijk van het vaarpaneel sinds de huis/vaarpaneel-herbouw, zie
+// io_paneel_vinkje_toepassen() in io.h/.ino). Extra "licht"-veld (via de
+// gedeelde paneel_naam_is_exterieur(), screen_main.h — dezelfde herkenning
+// als het HAVEN-dashboard gebruikt om VERLICHTING/APPARATEN te scheiden) zodat
+// de webapp exact dezelfde indeling kan tonen zonder die classificatie zelf
+// te dupliceren.
+static String _huispaneel_json() {
+    String s = F("{\"t\":\"huispaneel\",\"items\":[");
+    int n = huispaneel_aantal();
+    for (int i = 0; i < n && i < HUISPANEEL_KNOP_MAX; i++) {
+        if (i) s += ',';
+        const char* naam = huispaneel_knop_naam(i);
+        char lbl[IO_NAAM_LEN]; paneel_label(naam, lbl, sizeof(lbl));
+        s += F("{\"naam\":\""); s += lbl;
+        s += F("\",\"staat\":"); s += io_apparaat_staat3(naam);
+        s += F(",\"licht\":"); s += paneel_naam_is_exterieur(naam) ? F("true") : F("false");
         s += F(",\"minNiveau\":"); s += io_min_niveau_voor_naam(naam); s += '}';
     }
     s += F("]}");
@@ -333,6 +359,17 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             int i = t.substring(idx + 4).toInt();
             if (i >= 0 && i < paneel_aantal()) {
                 const char* naam = paneel_knop_naam(i);
+                if (_ws_niveau[num] >= io_min_niveau_voor_naam(naam)) net_io_apparaat_toggle(naam);
+                else { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); }
+            }
+        }
+
+    } else if (t.indexOf(F("\"huispaneel_toggle\"")) >= 0) {
+        int idx = t.indexOf(F("\"i\":"));
+        if (idx >= 0) {
+            int i = t.substring(idx + 4).toInt();
+            if (i >= 0 && i < huispaneel_aantal()) {
+                const char* naam = huispaneel_knop_naam(i);
                 if (_ws_niveau[num] >= io_min_niveau_voor_naam(naam)) net_io_apparaat_toggle(naam);
                 else { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); }
             }
@@ -571,6 +608,7 @@ void bkos_client_setup() {
     if (_ws_gestart) return;
     memset(_ws_prev_output, 255, sizeof(_ws_prev_output));
     memset(_ws_prev_paneel, 255, sizeof(_ws_prev_paneel));
+    memset(_ws_prev_huispaneel, 255, sizeof(_ws_prev_huispaneel));
     memset(_ws_klanten, 0, sizeof(_ws_klanten));
     for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) _ws_niveau[i] = NIVEAU_GEEN;
     _ws_lamp_scan();
@@ -588,6 +626,7 @@ void bkos_client_setup() {
                     String m4 = _info_json();    _ws.sendTXT(num, m4);
                     String m5 = _paneel_json();  _ws.sendTXT(num, m5);
                     String m6 = _lamp_json();    _ws.sendTXT(num, m6);
+                    String m7 = _huispaneel_json(); _ws.sendTXT(num, m7);
                     break;
                 }
                 case WStype_DISCONNECTED:
@@ -644,6 +683,16 @@ void bkos_client_loop() {
             if (st != _ws_prev_paneel[i]) { _ws_prev_paneel[i] = st; gewijzigd = true; }
         }
         if (gewijzigd) { String p = _paneel_json(); _ws.broadcastTXT(p); }
+    }
+
+    {
+        int hn = huispaneel_aantal();
+        bool gewijzigd = false;
+        for (int i = 0; i < hn && i < HUISPANEEL_KNOP_MAX; i++) {
+            byte st = io_apparaat_staat3(huispaneel_knop_naam(i));
+            if (st != _ws_prev_huispaneel[i]) { _ws_prev_huispaneel[i] = st; gewijzigd = true; }
+        }
+        if (gewijzigd) { String hp = _huispaneel_json(); _ws.broadcastTXT(hp); }
     }
 
     {

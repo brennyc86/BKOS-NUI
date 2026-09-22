@@ -8,6 +8,8 @@
 #include "lamp.h"
 #include "wifi.h"   // ntp_synced() — fail-safe "neem donker aan" zolang de tijd niet bekend is
 #include "gast.h"   // NIVEAU_GAST/LOGE/DELER/EIGENAAR — io_min_niveau_voor_naam/_voor_lamp()
+#include "paneel.h"      // paneel_knop[]/paneel_aantal() — vaarpaneel-vinkje/migratie
+#include "huispaneel.h"  // huispaneel_knop[]/huispaneel_aantal() — huispaneel-vinkje/migratie
 
 byte licht_cfg_idx = 0;
 bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=rood, wit anders) — voor UI
@@ -1172,6 +1174,15 @@ byte io_apparaat_staat3(const char* prefix) {
     return 1;
 }
 
+bool io_apparaat_gevonden(const char* prefix) {
+    int n = io_zichtbaar();
+    for (int i = 0; i < n; i++) {
+        if (io_richting[i] == IO_RICHTING_IN) continue;
+        if (io_naam_match(i, prefix)) return true;
+    }
+    return false;
+}
+
 void io_apparaat_toggle(const char* prefix) {
     int lamp_nr = io_il_lamp_nr(prefix);
     if (lamp_nr > 0) {
@@ -1192,6 +1203,111 @@ void io_apparaat_toggle(const char* prefix) {
             io_gewijzigd[i] = true;
         }
     }
+}
+
+// ─── Huispaneel/vaarpaneel vinkjes ─────────────────────────────────────────
+// Exacte naamgelijkheid: spaties (voor+achter) genegeerd, "**" optioneel aan
+// beide kanten, hoofdletterongevoelig — bewust strenger dan io_naam_match()
+// (prefix-match, gebruikt voor het samen-schakelen van knoppen) zodat het
+// aanvinken op één kanaal niet onbedoeld andere, toevallig-met-hetzelfde-
+// begin-genoemde kanalen meekoppelt.
+static bool _naam_exact_gelijk(const char* a, const char* b) {
+    a = _naam_zonder_ster(a);
+    b = _naam_zonder_ster(b);
+    int la = strlen(a); while (la > 0 && a[la - 1] == ' ') la--;
+    int lb = strlen(b); while (lb > 0 && b[lb - 1] == ' ') lb--;
+    if (la != lb) return false;
+    for (int i = 0; i < la; i++)
+        if (tolower((unsigned char)a[i]) != tolower((unsigned char)b[i])) return false;
+    return true;
+}
+
+bool io_naam_gelijk(int kanaal_a, int kanaal_b) {
+    if (kanaal_a < 0 || kanaal_a >= MAX_IO_KANALEN || kanaal_b < 0 || kanaal_b >= MAX_IO_KANALEN) return false;
+    return _naam_exact_gelijk(io_namen[kanaal_a], io_namen[kanaal_b]);
+}
+
+// Compacte-naamlijst-hulpfuncties, gedeeld door paneel_knop[]/huispaneel_knop[]
+// (beide char[][IO_NAAM_LEN], alleen de bovengrens verschilt — die grens komt
+// hier binnen als parameter i.p.v. via het arraytype).
+static int _paneelnaam_index(char arr[][IO_NAAM_LEN], int max_n, const char* naam) {
+    for (int i = 0; i < max_n && arr[i][0]; i++)
+        if (_naam_exact_gelijk(arr[i], naam)) return i;
+    return -1;
+}
+
+static bool _paneelnaam_toevoegen(char arr[][IO_NAAM_LEN], int max_n, const char* naam) {
+    int n = 0;
+    while (n < max_n && arr[n][0]) n++;
+    if (n >= max_n) return false;
+    strncpy(arr[n], naam, IO_NAAM_LEN - 1);
+    arr[n][IO_NAAM_LEN - 1] = '\0';
+    return true;
+}
+
+static void _paneelnaam_verwijderen(char arr[][IO_NAAM_LEN], int max_n, int idx) {
+    int n = 0;
+    while (n < max_n && arr[n][0]) n++;
+    for (int i = idx; i < n - 1; i++) strncpy(arr[i], arr[i + 1], IO_NAAM_LEN);
+    if (n > 0) arr[n - 1][0] = '\0';
+}
+
+bool io_paneel_vinkje_toepassen(int kanaal, bool huis, bool vaar) {
+    if (kanaal < 0 || kanaal >= MAX_IO_KANALEN || !io_huispaneel || !io_vaarpaneel) return true;
+
+    // Vaarpaneel: een NIEUWE naam weigeren als de lijst al vol is (9) — vóór
+    // er iets gewijzigd wordt, zodat een weigering de bestaande staat niet
+    // half aanpast.
+    if (vaar && !io_vaarpaneel[kanaal]) {
+        int idx = _paneelnaam_index(paneel_knop, PANEEL_KNOP_MAX, io_namen[kanaal]);
+        if (idx < 0 && paneel_aantal() >= PANEEL_KNOP_MAX) return false;
+    }
+
+    // Vlag toepassen op dit kanaal + alle exact gelijknamige kanalen.
+    int n = io_zichtbaar();
+    for (int i = 0; i < n; i++) {
+        if (i == kanaal || io_naam_gelijk(i, kanaal)) {
+            io_huispaneel[i] = huis;
+            io_vaarpaneel[i] = vaar;
+        }
+    }
+
+    // Ordelijsten bijwerken: naam toevoegen (append) als de vlag nu aan
+    // staat en er nog geen entry was, verwijderen (compact schuiven) als
+    // de vlag nu uit staat.
+    int hidx = _paneelnaam_index(huispaneel_knop, HUISPANEEL_KNOP_MAX, io_namen[kanaal]);
+    if (huis && hidx < 0)       _paneelnaam_toevoegen(huispaneel_knop, HUISPANEEL_KNOP_MAX, io_namen[kanaal]);
+    else if (!huis && hidx >= 0) _paneelnaam_verwijderen(huispaneel_knop, HUISPANEEL_KNOP_MAX, hidx);
+
+    int vidx = _paneelnaam_index(paneel_knop, PANEEL_KNOP_MAX, io_namen[kanaal]);
+    if (vaar && vidx < 0)       _paneelnaam_toevoegen(paneel_knop, PANEEL_KNOP_MAX, io_namen[kanaal]);
+    else if (!vaar && vidx >= 0) _paneelnaam_verwijderen(paneel_knop, PANEEL_KNOP_MAX, vidx);
+
+    return true;
+}
+
+// Eenmalige migratie — zie io.h voor de volledige toelichting. Moet ná
+// io_detect() draaien (io_zichtbaar() is pas dan betrouwbaar); wordt
+// aangeroepen vanuit io_boot() (hardware.ino), ná paneel_laden()/
+// huispaneel_laden() zijn geladen.
+void io_paneel_migratie_indien_nodig() {
+    if (!io_vaarpaneel || !io_huispaneel) return;
+    int n = io_zichtbaar();
+    for (int i = 0; i < n; i++) if (io_vaarpaneel[i]) return;  // al gemigreerd (of bewust leeg)
+    int pn = paneel_aantal();
+    if (pn == 0) return;
+
+    for (int p = 0; p < pn; p++) {
+        const char* naam = paneel_knop_naam(p);
+        for (int i = 0; i < n; i++) {
+            if (io_richting[i] == IO_RICHTING_IN) continue;
+            if (io_naam_match(i, naam)) { io_huispaneel[i] = true; io_vaarpaneel[i] = true; }
+        }
+        if (_paneelnaam_index(huispaneel_knop, HUISPANEEL_KNOP_MAX, naam) < 0)
+            _paneelnaam_toevoegen(huispaneel_knop, HUISPANEEL_KNOP_MAX, naam);
+    }
+    hw_io_cfg_opslaan();
+    huispaneel_opslaan();
 }
 
 int io_zichtbaar() {

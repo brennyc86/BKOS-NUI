@@ -4,6 +4,7 @@
 #include "io.h"
 #include "lamp.h"
 #include "paneel.h"
+#include "huispaneel.h"
 #include "bkos_net.h"      // net_io_apparaat_toggle/net_app_staat_sturen
 #include "nav_bar.h"        // sb_scherm_teken, SB_KLOK_X
 #include "haven_achtergrond.h"
@@ -42,6 +43,17 @@ extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino 
 #define HV_START_Y   CONTENT_Y
 #define HV_LIST_BOT  (NAV_Y - 8)
 
+// APPARATEN-kolom: vast, niet-scrollend 3x3-raster van vierkante tegels
+// (i.p.v. de rechthoekige, meescrollende N-rijen-indeling van vroeger).
+// Paginering bij >9 komt later — HV_APP_NAV_RESERVE reserveert nu al de
+// ruimte rechts in de kolom voor die toekomstige knop, ook al doet 'ie nog
+// niets. hv_paneel_idx[] zelf is niet beperkt tot 9 (het datamodel staat al
+// klaar), alleen het RENDEREN hieronder toont voorlopig alleen de eerste 9.
+#define HV_APP_COLS         3
+#define HV_APP_ROWS         3
+#define HV_APP_MAX_ZICHTBAAR (HV_APP_COLS * HV_APP_ROWS)
+#define HV_APP_NAV_RESERVE  UI_SCX(44)
+
 // Vaste offsets binnen de VERLICHTING-kolom — teken() en run() delen deze
 // macro's/helper zodat ze nooit uit de pas kunnen lopen.
 #define HV_ALG_SQ(w)                (((w) - 2 * HV_ALG_GAP_KL - HV_ALG_GAP_GR) / 4)
@@ -60,10 +72,17 @@ static void _hv_alg_layout(int x0, int w, int y_top, int* sq, int* row_y, int bx
 
 static int hv_lamp_nrs[LAMP_MAX];
 static int hv_lamp_cnt = 0;
-static int hv_paneel_idx[PANEEL_KNOP_MAX];      // gewone apparaten
-static int hv_paneel_cnt = 0;
-static int hv_licht_paneel_idx[PANEEL_KNOP_MAX]; // PANEEL-knoppen die zelf een licht zijn (bv. deklicht), geen IL-nummer
-static int hv_licht_paneel_cnt = 0;
+// Heap-gealloceerd (i.p.v. static int[HUISPANEEL_KNOP_MAX], 2x120 bytes) —
+// zelfde reden/patroon als io_min_niveau (hw_io.ino): duwde eerdere, veel
+// kleinere toevoegingen al over het krappe DRAM-BSS-segment op classic ESP32.
+static int* hv_paneel_idx = nullptr;       // gewone apparaten (index in huispaneel_knop[])
+static int  hv_paneel_cnt = 0;
+static int* hv_licht_paneel_idx = nullptr; // HUISPANEEL-knoppen die zelf een licht zijn (bv. deklicht), geen IL-nummer
+static int  hv_licht_paneel_cnt = 0;
+static void _hv_buf_klaar() {
+    if (!hv_paneel_idx)       hv_paneel_idx       = (int*)malloc(HUISPANEEL_KNOP_MAX * sizeof(int));
+    if (!hv_licht_paneel_idx) hv_licht_paneel_idx = (int*)malloc(HUISPANEEL_KNOP_MAX * sizeof(int));
+}
 static bool hv_overig_aanwezig = false;  // ongenummerd **IL_wit/**IL_rood ("hoofdverlichting") aanwezig?
 static int hv_scroll_y   = 0;
 static int hv_max_scroll = 0;
@@ -214,6 +233,8 @@ static void _hv_layout(int w, int* cols, int* tile_w) {
 // een volledige hertekening opnieuw, zodat een net aangemaakte lampgroep of
 // PANEEL-knop meteen verschijnt.
 static void _hv_scan() {
+    _hv_buf_klaar();
+
     hv_lamp_cnt = 0;
     int n = io_zichtbaar();
     for (int i = 0; i < n && hv_lamp_cnt < LAMP_MAX; i++) {
@@ -229,13 +250,13 @@ static void _hv_scan() {
 
     hv_paneel_cnt = 0;
     hv_licht_paneel_cnt = 0;
-    int pn = paneel_aantal();
+    int pn = huispaneel_aantal();
     for (int i = 0; i < pn; i++) {
-        const char* naam = paneel_knop_naam(i);
+        const char* naam = huispaneel_knop_naam(i);
         if (io_il_lamp_nr(naam) > 0) continue;  // al gedekt door de LAMPEN-sectie
-        if (_hv_is_licht_naam(naam) && hv_licht_paneel_cnt < PANEEL_KNOP_MAX) {
+        if (_hv_is_licht_naam(naam) && hv_licht_paneel_idx && hv_licht_paneel_cnt < HUISPANEEL_KNOP_MAX) {
             hv_licht_paneel_idx[hv_licht_paneel_cnt++] = i;
-        } else if (hv_paneel_cnt < PANEEL_KNOP_MAX) {
+        } else if (hv_paneel_idx && hv_paneel_cnt < HUISPANEEL_KNOP_MAX) {
             hv_paneel_idx[hv_paneel_cnt++] = i;
         }
     }
@@ -375,15 +396,15 @@ static void _hv_paneel_tegel_teken(int x, int y, int w, int h, const char* label
 }
 
 static void _hv_paneel_teken(int paneel_idx, int x, int y, int w, int h) {
-    const char* naam = paneel_knop_naam(paneel_idx);
-    byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[paneel_idx] ? 2 : 0);
+    const char* naam = huispaneel_knop_naam(paneel_idx);
+    byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal_huis[paneel_idx] ? 2 : 0);
     char lab[16]; paneel_label(naam, lab, sizeof(lab));
     _hv_paneel_tegel_teken(x, y, w, h, lab, paneel_icoon(naam), (s3 == 2), (s3 == 1));
 }
 
 static void _hv_paneel_toggle(int paneel_idx) {
-    net_io_apparaat_toggle(paneel_knop_naam(paneel_idx));
-    dev_lokaal[paneel_idx] = !dev_lokaal[paneel_idx];
+    net_io_apparaat_toggle(huispaneel_knop_naam(paneel_idx));
+    dev_lokaal_huis[paneel_idx] = !dev_lokaal_huis[paneel_idx];
 }
 
 // Positie van tegel-index i (0-based) binnen een grid dat bij (x0, grid_top)
@@ -459,20 +480,37 @@ static int _hv_verlichting_teken(int x0, int w, int y_top, int cols, int tile_w)
     return (grid_top - y_top) + rijen * (HV_TILE_H + HV_GAP);
 }
 
-// ─── APPARATEN-kolom ───────────────────────────────────────────────────────
-static int _hv_apparaten_teken(int x0, int w, int y_top, int cols, int tile_w) {
-    if (y_top + HV_SECTIE_H > HV_START_Y && y_top < HV_LIST_BOT) {
-        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(x0, y_top + 4); tft.print("APPARATEN");
+// ─── APPARATEN-kolom: vast 3x3-raster van vierkante tegels ─────────────────
+// Vast (geen scroll — HV_START_Y i.p.v. het gescrolde y0), begrensd tot
+// HV_APP_MAX_ZICHTBAAR (9) tegels; de rest van hv_paneel_idx[] bestaat al in
+// de data voor een latere paginering. Gedeeld door teken() en de tik-hittest
+// zodat de vierkantgrootte/positie nooit uit de pas kan lopen.
+static void _hv_app_layout(int x0, int w, int* sq, int* grid_top) {
+    *grid_top = HV_START_Y + HV_SECTIE_H;
+    int beschikbaar_w = w - HV_APP_NAV_RESERVE - HV_GAP;
+    int sq_w = (beschikbaar_w - (HV_APP_COLS - 1) * HV_GAP) / HV_APP_COLS;
+    int beschikbaar_h = HV_LIST_BOT - *grid_top;
+    int sq_h = (beschikbaar_h - (HV_APP_ROWS - 1) * HV_GAP) / HV_APP_ROWS;
+    *sq = min(sq_w, sq_h);
+}
+
+static void _hv_app_tegel_rect(int x0, int grid_top, int sq, int i, int* tx, int* ty) {
+    int col = i % HV_APP_COLS, row = i / HV_APP_COLS;
+    *tx = x0 + col * (sq + HV_GAP);
+    *ty = grid_top + row * (sq + HV_GAP);
+}
+
+static void _hv_apparaten_teken(int x0, int w) {
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(x0, HV_START_Y + 4); tft.print("APPARATEN");
+
+    int sq, grid_top;
+    _hv_app_layout(x0, w, &sq, &grid_top);
+    int zichtbaar = min(hv_paneel_cnt, HV_APP_MAX_ZICHTBAAR);
+    for (int i = 0; i < zichtbaar; i++) {
+        int tx, ty; _hv_app_tegel_rect(x0, grid_top, sq, i, &tx, &ty);
+        _hv_paneel_teken(hv_paneel_idx[i], tx, ty, sq, sq);
     }
-    int grid_top = y_top + HV_SECTIE_H;
-    int rijen = (hv_paneel_cnt + cols - 1) / cols;
-    for (int i = 0; i < hv_paneel_cnt; i++) {
-        int tx, ty; _hv_tegel_rect(x0, grid_top, i, cols, tile_w, &tx, &ty);
-        if (ty + HV_TILE_H <= HV_START_Y || ty >= HV_LIST_BOT) continue;
-        _hv_paneel_teken(hv_paneel_idx[i], tx, ty, tile_w, HV_TILE_H);
-    }
-    return HV_SECTIE_H + rijen * (HV_TILE_H + HV_GAP);
 }
 
 void screen_haven_teken() {
@@ -480,9 +518,8 @@ void screen_haven_teken() {
 
     int col_w   = (TFT_W - UI_SB_W - 24) / 2;   // 8px marge + 8px tussenruimte + 8px marge
     int right_x = 8 + col_w + HV_GAP;
-    int cols_l, tw_l, cols_r, tw_r;
+    int cols_l, tw_l;
     _hv_layout(col_w, &cols_l, &tw_l);
-    _hv_layout(col_w, &cols_r, &tw_r);
     int y0 = HV_START_Y - hv_scroll_y;
 
     haven_achtergrond_teken();   // achtergrondfoto (incl. letterbox-fill) — tegels komen er overheen
@@ -502,11 +539,12 @@ void screen_haven_teken() {
         tft.print(txt);
     }
 
-    int h_links  = _hv_verlichting_teken(8,       col_w, y0, cols_l, tw_l);
-    int h_rechts = _hv_apparaten_teken(right_x,   col_w, y0, cols_r, tw_r);
+    int h_links  = _hv_verlichting_teken(8, col_w, y0, cols_l, tw_l);
+    // APPARATEN is vast (geen scroll, geen bijdrage aan hv_max_scroll) — zie
+    // _hv_apparaten_teken()/_hv_app_layout(). Alleen VERLICHTING scrolt nog.
+    _hv_apparaten_teken(right_x, col_w);
 
-    int inhoud_h  = max(h_links, h_rechts);
-    hv_max_scroll = max(0, (HV_START_Y + inhoud_h) - HV_LIST_BOT);
+    hv_max_scroll = max(0, (HV_START_Y + h_links) - HV_LIST_BOT);
     hv_scroll_y   = constrain(hv_scroll_y, 0, hv_max_scroll);
     ui_scrollbar(TFT_W - UI_SB_W, HV_START_Y, HV_LIST_BOT - HV_START_Y, hv_scroll_y, hv_max_scroll);
 
@@ -560,9 +598,8 @@ void screen_haven_run(int x, int y, bool aanraking) {
 
     int col_w   = (TFT_W - UI_SB_W - 24) / 2;
     int right_x = 8 + col_w + HV_GAP;
-    int cols_l, tw_l, cols_r, tw_r;
+    int cols_l, tw_l;
     _hv_layout(col_w, &cols_l, &tw_l);
-    _hv_layout(col_w, &cols_r, &tw_r);
 
     int y0 = HV_START_Y - hv_scroll_y;
 
@@ -626,14 +663,24 @@ void screen_haven_run(int x, int y, bool aanraking) {
         return;
     }
 
-    // ── APPARATEN ──
-    int apparaten_grid_top = y0 + HV_SECTIE_H;
-    int ai = _hv_grid_hit(x, y, right_x, apparaten_grid_top, hv_paneel_cnt, cols_r, tw_r);
-    if (ai >= 0) {
-        int tx, ty; _hv_tegel_rect(right_x, apparaten_grid_top, ai, cols_r, tw_r, &tx, &ty);
-        int pidx = hv_paneel_idx[ai];
-        _hv_paneel_toggle(pidx);
-        _hv_paneel_teken(pidx, tx, ty, tw_r, HV_TILE_H);
-        return;
+    // ── APPARATEN (vast 3x3-raster, geen scroll-offset in de y-berekening) ──
+    int app_sq, app_grid_top;
+    _hv_app_layout(right_x, col_w, &app_sq, &app_grid_top);
+    int app_zichtbaar = min(hv_paneel_cnt, HV_APP_MAX_ZICHTBAAR);
+    if (y >= app_grid_top && x >= right_x) {
+        int row  = (y - app_grid_top) / (app_sq + HV_GAP);
+        int rely = (y - app_grid_top) % (app_sq + HV_GAP);
+        int col  = (x - right_x) / (app_sq + HV_GAP);
+        int relx = (x - right_x) % (app_sq + HV_GAP);
+        if (rely < app_sq && relx < app_sq && col < HV_APP_COLS) {
+            int ai = row * HV_APP_COLS + col;
+            if (ai >= 0 && ai < app_zichtbaar) {
+                int tx, ty; _hv_app_tegel_rect(right_x, app_grid_top, app_sq, ai, &tx, &ty);
+                int pidx = hv_paneel_idx[ai];
+                _hv_paneel_toggle(pidx);
+                _hv_paneel_teken(pidx, tx, ty, app_sq, app_sq);
+                return;
+            }
+        }
     }
 }

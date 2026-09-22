@@ -613,15 +613,37 @@ void paneel_knop_teken(int x, int y, int w, int h, const char* label,
     if (mix) tft.fillRoundRect(x + 4, y + h - 6, w - 8, 4, 2, C_ORANGE);
 }
 
+// Compacte lijst van vaarpaneel-namen die op dit moment daadwerkelijk nog een
+// gekoppeld IO-kanaal hebben — met het nieuwe huis/vaarpaneel-vinkjes-model
+// (screen_io_cfg.ino) komt een naam er sowieso alleen in als er een koppeling
+// bestaat, dus dit filtert in de praktijk vrijwel nooit; het vangt alleen het
+// randgeval af waarbij een kanaal ná toevoeging hernoemd/verwijderd is (zie
+// io_apparaat_gevonden(), io.ino) — zelfde patroon als _apps_desk_lijst()
+// in screen_apps.ino. Zonder hardware (io_zichtbaar()==0, dev_lokaal[]-
+// testmodus) wordt niet gefilterd, want dan is er toch niets om tegen te
+// controleren.
+static int _paneel_zichtbaar_lijst(const char** out, int max_n) {
+    int n = paneel_aantal();
+    bool filter = (io_zichtbaar() > 0);
+    int c = 0;
+    for (int i = 0; i < n && c < max_n; i++) {
+        const char* naam = paneel_knop_naam(i);
+        if (filter && !io_apparaat_gevonden(naam)) continue;
+        out[c++] = naam;
+    }
+    return c;
+}
+
 static void apparaat_knoppen_teken() {
     tft.setTextSize(1);
     tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(DKNOP_X1, DKNOP_Y1 - 12);
     tft.print("APPARATEN");
 
-    int totaal = paneel_aantal();
+    const char* lijst[PANEEL_KNOP_MAX];
+    int totaal = _paneel_zichtbaar_lijst(lijst, PANEEL_KNOP_MAX);
     for (int i = 0; i < totaal; i++) {
-        const char* naam = paneel_knop_naam(i);
+        const char* naam = lijst[i];
         int bx, by, bw, bh; _paneel_rect(i, totaal, &bx, &by, &bw, &bh);
         byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
         char lab[16]; _paneel_label_effectief(naam, lab, sizeof(lab));
@@ -997,14 +1019,14 @@ static void pico_modus_knoppen_teken() {
 
 static void pico_apparaten_teken() {
     // 1 rij configureerbare apparaat-knoppen over volledige breedte
-    int totaal = paneel_aantal();
+    const char* lijst[PANEEL_KNOP_MAX];
+    int totaal = _paneel_zichtbaar_lijst(lijst, PANEEL_KNOP_MAX);
     if (totaal < 1) return;
-    if (totaal > PANEEL_KNOP_MAX) totaal = PANEEL_KNOP_MAX;
     int gap = 4;
     int bw  = (TFT_W - 8 - (totaal - 1) * gap) / totaal;
     for (int i = 0; i < totaal; i++) {
         int bx = 4 + i * (bw + gap);
-        const char* naam = paneel_knop_naam(i);
+        const char* naam = lijst[i];
         byte s3 = (io_zichtbaar() > 0) ? io_apparaat_staat3(naam) : (dev_lokaal[i] ? 2 : 0);
         bool aan = (s3 == 2), mix = (s3 == 1);
         char lab[16]; _paneel_label_effectief(naam, lab, sizeof(lab));
@@ -1127,15 +1149,15 @@ static void pico_screen_main_run(int x, int y, bool aanraking) {
 
     // Apparaat knoppen (1 rij volle breedte, configureerbaar)
     {
-        int totaal = paneel_aantal();
-        if (totaal > PANEEL_KNOP_MAX) totaal = PANEEL_KNOP_MAX;
+        const char* lijst[PANEEL_KNOP_MAX];
+        int totaal = _paneel_zichtbaar_lijst(lijst, PANEEL_KNOP_MAX);
         if (totaal >= 1 && y >= PICO_DKNOP_Y && y < PICO_DKNOP_Y + PICO_DKNOP_H) {
             int gap = 4;
             int bw  = (TFT_W - 8 - (totaal - 1) * gap) / totaal;
             for (int i = 0; i < totaal; i++) {
                 int bx = 4 + i * (bw + gap);
                 if (x >= bx && x < bx + bw) {
-                    net_io_apparaat_toggle(paneel_knop_naam(i));
+                    net_io_apparaat_toggle(lijst[i]);
                     dev_lokaal[i] = !dev_lokaal[i];
                     gewijzigd = true;
                 }
@@ -1412,13 +1434,16 @@ void screen_main_run(int x, int y, bool aanraking) {
         }
     }
 
-    // Apparaat knoppen (configureerbaar, adaptieve layout)
+    // Apparaat knoppen (configureerbaar, adaptieve layout) — zelfde
+    // zichtbaarheidsfilter als apparaat_knoppen_teken(), zodat tik-hitboxen
+    // nooit uit de pas lopen met wat daadwerkelijk getekend is.
     {
-        int totaal = paneel_aantal();
+        const char* lijst[PANEEL_KNOP_MAX];
+        int totaal = _paneel_zichtbaar_lijst(lijst, PANEEL_KNOP_MAX);
         for (int i = 0; i < totaal; i++) {
             int bx, by, bw, bh; _paneel_rect(i, totaal, &bx, &by, &bw, &bh);
             if (x >= bx && x < bx + bw && y >= by && y < by + bh) {
-                net_io_apparaat_toggle(paneel_knop_naam(i));
+                net_io_apparaat_toggle(lijst[i]);
                 dev_lokaal[i] = !dev_lokaal[i];
                 gewijzigd = true;
             }

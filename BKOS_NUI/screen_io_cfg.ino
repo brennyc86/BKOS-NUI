@@ -1,6 +1,8 @@
 #include "screen_io_cfg.h"
 #include "nav_bar.h"
 #include "gast.h"  // NIVEAU_GAST/LOGE/DELER/EIGENAAR + niveau_naam() — MINIMAAL NIVEAU-rij
+#include "paneel.h"      // PANEEL_KNOP_MAX + paneel_opslaan() — OP VAARPANEEL-rij
+#include "huispaneel.h"  // huispaneel_opslaan() — OP HUISPANEEL-rij
 
 extern int hw_touch_drag_dy;  // y-delta van swipe, ingesteld door hardware.ino vóór screen_X_run
 
@@ -23,6 +25,10 @@ static uint8_t ov_param;
 static uint8_t ov_dynpuls;   // dynamo-bekrachtiging (globaal, alleen bij **motor)
 static uint8_t ov_boot_gedrag;  // IO_BOOT_UIT/AAN/ONTHOUD (alleen UITGANG-kanalen)
 static uint8_t ov_min_niveau;   // NIVEAU_GAST/LOGE/DELER/EIGENAAR (alleen UITGANG-kanalen)
+static bool    ov_huispaneel;   // op huispaneel (alleen UITGANG-kanalen)
+static bool    ov_vaarpaneel;   // op vaarpaneel (alleen UITGANG-kanalen)
+static char    ov_paneel_fout[40] = "";  // "vaarpaneel vol" enz. — leeg = geen fout
+static unsigned long ov_paneel_fout_tot = 0;
 
 // ─── Layout constanten ──────────────────────────────────────────────────
 #define IOCFG_COUNT_Y    (SB_H + 2)
@@ -277,6 +283,44 @@ static void iocfg_overlay_teken() {
                 tft.setCursor(OV_IX + i * (nbw + 6) + (nbw - tw) / 2, cy + (32 - 8) / 2);
                 tft.print(lbl);
             }
+        }
+        cy += 44;
+
+        // Op huispaneel/vaarpaneel: knop op resp. het HAVEN-dashboard en het
+        // vaardashboard. Gelijknamige kanalen (exact, zie io_naam_gelijk())
+        // krijgen automatisch dezelfde instelling — één knop kan zo meerdere
+        // fysieke kanalen tegelijk schakelen.
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(OV_IX, cy + 4); tft.print("OP HUISPANEEL:");
+        cy += 18;
+        {
+            int hbw = (OV_IW - 6) / 2;
+            tft.fillRoundRect(OV_IX,            cy, hbw, 32, 4, !ov_huispaneel ? C_AMBER : C_SURFACE2);
+            tft.setTextSize(1); tft.setTextColor(!ov_huispaneel ? C_TEXT_DARK : C_TEXT_DIM);
+            tft.setCursor(OV_IX + (hbw - 18) / 2, cy + (32 - 8) / 2); tft.print("UIT");
+            tft.fillRoundRect(OV_IX + hbw + 6,  cy, hbw, 32, 4, ov_huispaneel ? C_AMBER : C_SURFACE2);
+            tft.setTextSize(1); tft.setTextColor(ov_huispaneel ? C_TEXT_DARK : C_TEXT_DIM);
+            tft.setCursor(OV_IX + hbw + 6 + (hbw - 18) / 2, cy + (32 - 8) / 2); tft.print("AAN");
+        }
+        cy += 44;
+
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(OV_IX, cy + 4); tft.print("OP VAARPANEEL:");
+        cy += 18;
+        {
+            int vbw = (OV_IW - 6) / 2;
+            tft.fillRoundRect(OV_IX,            cy, vbw, 32, 4, !ov_vaarpaneel ? C_AMBER : C_SURFACE2);
+            tft.setTextSize(1); tft.setTextColor(!ov_vaarpaneel ? C_TEXT_DARK : C_TEXT_DIM);
+            tft.setCursor(OV_IX + (vbw - 18) / 2, cy + (32 - 8) / 2); tft.print("UIT");
+            tft.fillRoundRect(OV_IX + vbw + 6,  cy, vbw, 32, 4, ov_vaarpaneel ? C_AMBER : C_SURFACE2);
+            tft.setTextSize(1); tft.setTextColor(ov_vaarpaneel ? C_TEXT_DARK : C_TEXT_DIM);
+            tft.setCursor(OV_IX + vbw + 6 + (vbw - 18) / 2, cy + (32 - 8) / 2); tft.print("AAN");
+        }
+        cy += 30;
+        if (ov_paneel_fout[0] && millis() - ov_paneel_fout_tot < 4000) {
+            tft.setTextSize(1); tft.setTextColor(C_RED_BRIGHT);
+            tft.setCursor(OV_IX, cy); tft.print(ov_paneel_fout);
+            cy += 14;
         }
     } else {
         // INGANG: actie bij actief worden
@@ -920,12 +964,32 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 if (idx >= 0 && idx < N_BOOT) { ov_boot_gedrag = (uint8_t)idx; iocfg_overlay_teken(); }
                 return;
             }
-            cy += 32 + 44 + 18;
+            // Was "cy += 32 + 44 + 18" (een verdwaalde extra "32 +" t.o.v. de
+            // draw-functie, die tussen elke sectie steeds precies 44+18
+            // optelt — zie ALERT->BOOT hierboven) — legde de tikzone 32px te
+            // laag t.o.v. waar de knoppen daadwerkelijk getekend staan.
+            cy += 44 + 18;
             // Minimaal niveau knoppen
             if (y >= cy && y < cy + 32) {
                 int nbw = (OV_IW - 3 * 6) / 4;
                 int idx = (x - OV_IX) / (nbw + 6);
                 if (idx >= 0 && idx < 4) { ov_min_niveau = (uint8_t)(NIVEAU_GAST + idx); iocfg_overlay_teken(); }
+                return;
+            }
+            cy += 44 + 18;
+            // Op huispaneel knoppen
+            if (y >= cy && y < cy + 32) {
+                int hbw = (OV_IW - 6) / 2;
+                if (x >= OV_IX && x < OV_IX + hbw)              { ov_huispaneel = false; iocfg_overlay_teken(); }
+                else if (x >= OV_IX + hbw + 6 && x < OV_IX + hbw + 6 + hbw) { ov_huispaneel = true;  iocfg_overlay_teken(); }
+                return;
+            }
+            cy += 44 + 18;
+            // Op vaarpaneel knoppen
+            if (y >= cy && y < cy + 32) {
+                int vbw = (OV_IW - 6) / 2;
+                if (x >= OV_IX && x < OV_IX + vbw)              { ov_vaarpaneel = false; iocfg_overlay_teken(); }
+                else if (x >= OV_IX + vbw + 6 && x < OV_IX + vbw + 6 + vbw) { ov_vaarpaneel = true;  iocfg_overlay_teken(); }
                 return;
             }
         } else {
@@ -977,6 +1041,24 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
                 // i.p.v. tot 5s te wachten op de periodieke achtergrondcontrole
                 if (ov_boot_gedrag == IO_BOOT_ONTHOUD)
                     io_boot_waarde[iocfg_kanaal] = (io_output[iocfg_kanaal] == IO_AAN || io_output[iocfg_kanaal] == IO_INV_AAN) ? 1 : 0;
+                // Huis-/vaarpaneel-vinkjes — alleen relevant voor een UITGANG
+                // (een INGANG kan nooit een paneelknop zijn, zie
+                // io_apparaat_staat3()/_toggle()'s IO_RICHTING_IN-skip); bij
+                // een (in dezelfde actie) net naar INGANG omgezet kanaal dus
+                // altijd beide UIT toepassen, niet de mogelijk-verouderde
+                // ov_huispaneel/ov_vaarpaneel-waarden van vóór de omzetting.
+                bool wil_huis = (ov_richting == IO_RICHTING_UIT) && ov_huispaneel;
+                bool wil_vaar = (ov_richting == IO_RICHTING_UIT) && ov_vaarpaneel;
+                if (!io_paneel_vinkje_toepassen(iocfg_kanaal, wil_huis, wil_vaar)) {
+                    snprintf(ov_paneel_fout, sizeof(ov_paneel_fout), "Vaarpaneel is vol (max %d)", PANEEL_KNOP_MAX);
+                    ov_paneel_fout_tot = millis();
+                    ov_huispaneel = io_huispaneel[iocfg_kanaal];  // ongewijzigd terugzetten in de UI
+                    ov_vaarpaneel = io_vaarpaneel[iocfg_kanaal];
+                    iocfg_overlay_teken();
+                    return;   // overlay blijft open zodat de foutmelding zichtbaar is
+                }
+                huispaneel_opslaan();
+                paneel_opslaan();
                 hw_io_cfg_opslaan();
                 if (ov_toont_dynamo() && ov_dynpuls != dynamo_puls_min) {
                     dynamo_puls_min = ov_dynpuls;   // globaal, dus in de app-config
@@ -1029,6 +1111,9 @@ void screen_io_cfg_run(int x, int y, bool aanraking) {
             ov_dynpuls    = dynamo_puls_min;
             ov_boot_gedrag = io_boot_gedrag[kanaal];
             ov_min_niveau  = io_min_niveau[kanaal];
+            ov_huispaneel  = io_huispaneel && io_huispaneel[kanaal];
+            ov_vaarpaneel  = io_vaarpaneel && io_vaarpaneel[kanaal];
+            ov_paneel_fout[0] = '\0';
             iocfg_overlay = true;
             iocfg_ov_scroll_y = 0;
             iocfg_sloot   = millis();

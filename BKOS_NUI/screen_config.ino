@@ -1441,9 +1441,9 @@ static void cfg_hoofd_teken() {
 }
 
 // Rijhoogtes: categorie/model/zeilnr/naam module (44 elk) + IO-configuratierij
-// (50, inclusief padding) + PANEEL-KNOPPEN-rij + LAMPEN-rij + GASTEN-rij
+// (50, inclusief padding) + VAARPANEEL-KNOPPEN-rij + HUISPANEEL-KNOPPEN-rij + LAMPEN-rij + GASTEN-rij
 // (44 elk) — nodig voor de scrollbar.
-#define CFG_BOOT_INHOUD_H   (44 * 4 + 50 + 44 + 44 + 44)
+#define CFG_BOOT_INHOUD_H   (44 * 4 + 50 + 44 + 44 + 44 + 44)
 #define CFG_BOOT_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_BOOT_INHOUD_H - (int)NAV_Y)
 
 static void cfg_boot_teken() {
@@ -1554,8 +1554,13 @@ static void cfg_boot_teken() {
 #endif
     y += 50;   // zelfde 50px die de touch-hittest van de IO-rij ook gebruikt
 
-    // PANEEL-knoppen instellen (opent het paneel-scherm)
-    ui_knop(10, y + 4, TFT_W - 20, 38, "PANEEL-KNOPPEN  >",
+    // Vaarpaneel-knoppen instellen (opent het vaarpaneel-scherm)
+    ui_knop(10, y + 4, TFT_W - 20, 38, "VAARPANEEL-KNOPPEN  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    y += 44;
+
+    // Huispaneel-knoppen instellen (opent het huispaneel-scherm)
+    ui_knop(10, y + 4, TFT_W - 20, 38, "HUISPANEEL-KNOPPEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
     y += 44;
 
@@ -2148,7 +2153,7 @@ static void cfg_boot_run(int x, int y) {
         return;
     }
 
-    // PANEEL-knoppen instellen
+    // Vaarpaneel-knoppen instellen
     int paneel_y = io_y + 50;
     if (y >= paneel_y && y < paneel_y + 44) {
         if (!ontg) { pin_vereist_tonen(); return; }
@@ -2156,8 +2161,16 @@ static void cfg_boot_run(int x, int y) {
         return;
     }
 
+    // Huispaneel-knoppen instellen
+    int huispaneel_y = paneel_y + 44;
+    if (y >= huispaneel_y && y < huispaneel_y + 44) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_HUISPANEEL; scherm_bouwen = true;
+        return;
+    }
+
     // Genummerde IL-lampgroepen (naam + opstartstand)
-    int lampen_y = paneel_y + 44;
+    int lampen_y = huispaneel_y + 44;
     if (y >= lampen_y && y < lampen_y + 44) {
         if (!ontg) { pin_vereist_tonen(); return; }
         actief_scherm = SCREEN_LAMPEN; scherm_bouwen = true;

@@ -2,7 +2,8 @@
 #include <Arduino.h>
 #include "hw_io.h"   // MAX_IO_KANALEN, IO_NAAM_LEN hier gedefinieerd
 #include "boot_modellen.h"  // BootModel/BootCategorie vroeg zichtbaar (prototype-hoisting)
-#include "paneel.h"  // PANEEL_KNOP_MAX (dev_lokaal[] moet daarmee meeschalen)
+#include "paneel.h"      // PANEEL_KNOP_MAX (dev_lokaal[] moet daarmee meeschalen)
+#include "huispaneel.h"  // HUISPANEEL_KNOP_MAX (dev_lokaal_huis[] moet daarmee meeschalen)
 
 // Actief scherm
 #define SCREEN_MAIN    0
@@ -29,6 +30,7 @@
 #define SCREEN_BESTANDEN  21 // Bestandsbeheer: SPIFFS/SD inzien + verwijderen, via CONFIG
 #define SCREEN_GAST       22 // Gasten-pincodes voor de webapp (HUIS/BOOT-toegang), via CONFIG → BOOT
 #define SCREEN_APPSTORE   23 // Installeren/bijwerken/verwijderen (het oude 2-panelen APPS-scherm) — via knop op SCREEN_APPS (bureaublad)
+#define SCREEN_HUISPANEEL 24 // Configureerbare HUISPANEEL-knoppen (HAVEN-dashboard), via CONFIG → BOOT
 
 // Vaarmodi
 #define MODE_HAVEN   0
@@ -91,8 +93,14 @@ extern String klok_tijd;
 extern volatile bool wifi_verbonden;  // geschreven door Core 0, gelezen door Core 1
 extern bool wifi_open_auto;           // auto-verbinden met open netwerken (tracking)
 
-// Apparaat lokale staat (fallback als geen IO module) — één per PANEEL-slot
+// Apparaat lokale staat (fallback als geen IO module) — één per VAARPANEEL-
+// resp. HUISPANEEL-knop. Twee losse arrays sinds huis/vaarpaneel onafhankelijke
+// lijsten werden (voorheen deelde screen_haven.ino toevallig dezelfde indices
+// als screen_main.ino, omdat de HAVEN-apparaten-tegels tot dan toe letterlijk
+// uit paneel_knop[] kwamen) — anders zou index i in het ene paneel per ongeluk
+// de testtoggle-staat van een heel andere knop in het andere paneel tonen.
 extern bool dev_lokaal[PANEEL_KNOP_MAX];
+extern bool dev_lokaal_huis[HUISPANEEL_KNOP_MAX];
 
 // Weergave-instellingen
 #define ZEILNR_LEN 16

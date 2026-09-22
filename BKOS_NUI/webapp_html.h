@@ -83,6 +83,12 @@ button.pbtn{
 button.pbtn.mix{background:#3a2a06;color:var(--amber);border-color:var(--amber);}
 button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);}
 button.pbtn.locked, button.sw:disabled{opacity:.5;}
+/* Vierkante tegels (HUIS-tab: buitenverlichting/apparaten) — mirrort de
+   vierkante 3x3-tegels van het huispaneel op de boordcomputer zelf. */
+.tilegrid button.pbtn{
+  aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:8px;font-size:.8rem;
+}
 
 .iorow{
   display:flex;align-items:center;gap:10px;
@@ -266,9 +272,13 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
         <h2>Lampen</h2>
         <div id="huisLampen"></div>
       </section>
-      <section id="paneelSectionHuis" style="display:none">
-        <h2>Paneel</h2>
-        <div class="grid3" id="paneelGridHuis"></div>
+      <section id="huisBuitenSection" style="display:none">
+        <h2>Buitenverlichting</h2>
+        <div class="grid3 tilegrid" id="huisBuiten"></div>
+      </section>
+      <section id="huisApparatenSection" style="display:none">
+        <h2>Apparaten</h2>
+        <div class="grid3 tilegrid" id="huisApparaten"></div>
       </section>
     </div>
 
@@ -284,7 +294,7 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
       </section>
 
       <section id="paneelSection" style="display:none">
-        <h2>Paneel</h2>
+        <h2>Vaarpaneel</h2>
         <div class="grid3" id="paneelGrid"></div>
       </section>
     </div>
@@ -438,6 +448,7 @@ var ws = null;
 var unlocked = false;
 var ioData = {cnt:0,o:[],i:[],r:[],n:[],lbl:[]};
 var paneelData = [];
+var huispaneelData = [];
 var stateData = {m:0,l:0};
 var infoData = {};
 var netData = {peers:[]};
@@ -555,7 +566,7 @@ function setLock(on, niv){
   // (met niveau=0, want de server pusht paneel/lampen/state al vóór de
   // authenticatie) — tot toevallig een latere broadcast een her-render
   // triggerde. Vandaar "staat soms alles op slot, dan ineens niet".
-  renderPaneel(); renderHuis(); renderState();
+  renderPaneel(); renderHuispaneel(); renderHuis(); renderState();
 }
 
 function setTab(naam){
@@ -606,6 +617,8 @@ function handleMsg(msg){
       infoData = msg; renderInfo(); break;
     case 'paneel':
       paneelData = msg.items || []; renderPaneel(); break;
+    case 'huispaneel':
+      huispaneelData = msg.items || []; renderHuispaneel(); break;
     case 'lampen':
       lampData = msg; renderHuis(); break;
     case 'instellingen':
@@ -649,6 +662,7 @@ function setModus(m){ if (needAuth()) return; send({t:'set_modus', m:m}); }
 function setLicht(l){ if (needAuth()) return; send({t:'set_licht', l:l}); }
 function toggleIO(i){ if (needAuth()) return; send({t:'io_toggle', i:i}); }
 function togglePaneel(i){ if (needAuth()) return; send({t:'paneel_toggle', i:i}); }
+function toggleHuispaneel(i){ if (needAuth()) return; send({t:'huispaneel_toggle', i:i}); }
 function hoofdToggle(){ if (needAuth()) return; send({t:'interieur_toggle'}); }
 function kleurKiezen(rood){ if (needAuth()) return; send({t:'interieur_kleur', rood:(rood?1:0)}); }
 function lampToggle(nr){ if (needAuth()) return; send({t:'lamp_toggle', nr:nr}); }
@@ -712,10 +726,9 @@ function renderHuis(){
   }).join('');
 }
 
-// Getoond in zowel BOOT als HUIS (Brendan wil zijn TV/paneel-knoppen ook
-// makkelijk vanuit HUIS kunnen bedienen, net als op de boordcomputer zelf
-// waar dit allemaal op één scherm staat) — zelfde data, zelfde click-index,
-// gewoon twee keer dezelfde HTML neergezet.
+// BOOT-tab (vaarpaneel) — de server stuurt hier alleen knoppen mee die
+// daadwerkelijk aan een IO-kanaal gekoppeld zijn (zie io_paneel_vinkje_
+// toepassen(), io.ino), dus niets te verbergen op basis van ontbrekende IO.
 function renderPaneel(){
   var html = paneelData.length ? paneelData.map(function(p, i){
     var minNiveau = p.minNiveau || NIVEAU_GAST;
@@ -726,9 +739,31 @@ function renderPaneel(){
     return '<button class="pbtn ' + cls + '" onclick="togglePaneel(' + i + ')">' + esc(p.naam) + '</button>';
   }).join('') : '';
   document.getElementById('paneelSection').style.display = paneelData.length ? '' : 'none';
-  document.getElementById('paneelSectionHuis').style.display = paneelData.length ? '' : 'none';
   document.getElementById('paneelGrid').innerHTML = html;
-  document.getElementById('paneelGridHuis').innerHTML = html;
+}
+
+// HUIS-tab (huispaneel) — losstaand van het vaarpaneel hierboven sinds de
+// huis/vaarpaneel-herbouw (voorheen hergebruikte deze sectie letterlijk de
+// BOOT-data, wat HUIS en BOOT bijna identiek liet aanvoelen). Gesplitst in
+// buitenverlichting/apparaten via het server-berekende "licht"-veld (dezelfde
+// herkenning als het HAVEN-dashboard op het scherm zelf gebruikt), zodat de
+// indeling hier de boordcomputer volgt: basisverlichting → lampen →
+// buitenverlichting → apparaten.
+function renderHuispaneel(){
+  function knop(p, i){
+    var minNiveau = p.minNiveau || NIVEAU_GAST;
+    if (niveau < minNiveau) {
+      return '<button class="pbtn locked" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">&#128274; ' + esc(p.naam) + '</button>';
+    }
+    var cls = p.staat === 2 ? 'aan' : (p.staat === 1 ? 'mix' : '');
+    return '<button class="pbtn ' + cls + '" onclick="toggleHuispaneel(' + i + ')">' + esc(p.naam) + '</button>';
+  }
+  var buiten = [], apparaten = [];
+  huispaneelData.forEach(function(p, i){ (p.licht ? buiten : apparaten).push(knop(p, i)); });
+  document.getElementById('huisBuitenSection').style.display = buiten.length ? '' : 'none';
+  document.getElementById('huisBuiten').innerHTML = buiten.join('');
+  document.getElementById('huisApparatenSection').style.display = apparaten.length ? '' : 'none';
+  document.getElementById('huisApparaten').innerHTML = apparaten.join('');
 }
 
 function renderIO(){

@@ -48,6 +48,35 @@ void  io_verlichting_update();
 void  io_zekering_check();
 byte  io_apparaat_staat3(const char* prefix);  // 0=all off, 1=mix, 2=all on
 void  io_apparaat_toggle(const char* prefix);
+// Bestaat er minstens één zichtbare, niet-ingangs-kanaal dat qua naam bij
+// 'prefix' hoort? Voor het verbergen van een paneelknop zonder (meer)
+// gekoppelde IO (bv. na een hernoeming/verwijdering van het kanaal ná
+// toevoeging aan het paneel) — zie apparaat_knoppen_teken() (screen_main.ino)
+// en het huispaneel-equivalent (screen_haven.ino).
+bool  io_apparaat_gevonden(const char* prefix);
+
+// Huispaneel/vaarpaneel-vinkjes (hw_io.h: io_huispaneel[]/io_vaarpaneel[]).
+// Exacte naamgelijkheid (in tegenstelling tot de tolerante prefix-match
+// hierboven, io_naam_match) — "**tv" en "**tv2" zijn NIET gelijknamig,
+// bewust strenger dan het schakelgedrag om onbedoelde koppelingen tussen
+// kanalen die toevallig met dezelfde tekst beginnen te voorkomen.
+bool  io_naam_gelijk(int kanaal_a, int kanaal_b);
+// Zet huispaneel/vaarpaneel op 'kanaal' én op elk ander kanaal met
+// io_naam_gelijk()==true, en werkt huispaneel_knop[]/paneel_knop[] bij
+// (naam toevoegen als de vlag nu aan staat en er nog geen entry was, naam
+// verwijderen als de vlag nu uit staat). Retourneert false als het
+// vaarpaneel al vol is (9) en dit een nieuwe naam zou zijn — de aanroeper
+// (screen_io_cfg.ino) toont dan een foutmelding i.p.v. de vlag te zetten.
+bool  io_paneel_vinkje_toepassen(int kanaal, bool huis, bool vaar);
+// Eenmalige, zelf-gatende migratie: als nog geen enkel kanaal vaarpaneel==
+// true heeft maar paneel_knop[] (de oude, handmatig getypte lijst) wel
+// gevulde slots heeft, worden de bijbehorende kanalen op huis+vaarpaneel
+// gezet en huispaneel_knop[] gevuld in dezelfde volgorde — reproduceert het
+// bestaande zichtbare gedrag (HAVEN toonde toch al dezelfde namen als
+// PANEEL) zonder dat Brendan iets opnieuw hoeft in te stellen. Roept zelf
+// hw_io_cfg_opslaan()/huispaneel_opslaan() aan zodat de trigger-conditie de
+// volgende boot niet meer waar is.
+void  io_paneel_migratie_indien_nodig();
 // Herkent de virtuele lampgroep-schakelnaam "**IL_<N>" (N=1..99, geen kleur);
 // 0 = geen match. Gebruikt door io_apparaat_toggle/staat3 en (voor gepaarde
 // slaves) de master-kant van NET_MSG_IO_NAAM in bkos_net.ino.

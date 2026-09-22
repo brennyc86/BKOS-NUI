@@ -100,6 +100,14 @@ extern uint8_t io_boot_waarde[];  // laatst opgeslagen AAN/UIT-stand (0/1) voor 
 // (webapp-commando's, IO CFG-overlay) 'm kan aanspreken.
 extern uint8_t* io_min_niveau;
 
+// Op huispaneel/vaarpaneel — of dit kanaal (samen met alle exact gelijknamige
+// kanalen, zie io_naam_gelijk()/io_paneel_vinkje_toepassen() in io.h/.ino) een
+// knop krijgt op resp. het HAVEN-dashboard ("huispaneel") en het vaardashboard
+// ("vaarpaneel", het bestaande PANEEL-systeem). Heap-gealloceerd, zelfde reden
+// en patroon als io_min_niveau hierboven.
+extern bool* io_huispaneel;
+extern bool* io_vaarpaneel;
+
 void hw_io_setup();
 void hw_io_namen_laden();
 void hw_io_namen_opslaan();

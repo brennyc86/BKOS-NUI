@@ -27,6 +27,8 @@ uint8_t io_actie_param[MAX_IO_KANALEN];
 uint8_t io_boot_gedrag[MAX_IO_KANALEN];
 uint8_t io_boot_waarde[MAX_IO_KANALEN];
 uint8_t* io_min_niveau = nullptr;
+bool*    io_huispaneel = nullptr;
+bool*    io_vaarpaneel = nullptr;
 
 #define IO_NAMEN_BESTAND "/io_namen.csv"
 #define IO_CFG_BESTAND   "/io_cfg.csv"
@@ -57,6 +59,10 @@ void hw_io_setup() {
     memset(io_boot_waarde,0,sizeof(io_boot_waarde));
     if (!io_min_niveau) io_min_niveau = (uint8_t*)malloc(MAX_IO_KANALEN);
     if (io_min_niveau) for (int i = 0; i < MAX_IO_KANALEN; i++) io_min_niveau[i] = NIVEAU_GAST;  // default: geen extra restrictie
+    if (!io_huispaneel) io_huispaneel = (bool*)malloc(MAX_IO_KANALEN * sizeof(bool));
+    if (io_huispaneel) memset(io_huispaneel, 0, MAX_IO_KANALEN * sizeof(bool));
+    if (!io_vaarpaneel) io_vaarpaneel = (bool*)malloc(MAX_IO_KANALEN * sizeof(bool));
+    if (io_vaarpaneel) memset(io_vaarpaneel, 0, MAX_IO_KANALEN * sizeof(bool));
     SPIFFS_BEGIN();
     hw_io_namen_laden();
     hw_io_cfg_laden();
@@ -109,13 +115,15 @@ void hw_io_cfg_laden() {
         if (lijn.startsWith("cfg:"))    { io_kanalen_cfg  = lijn.substring(4).toInt(); continue; }
         if (lijn.startsWith("hb_aan:")) { io_heartbeat_aan = (uint16_t)constrain(lijn.substring(7).toInt(), 10, 600); continue; }
         if (lijn.startsWith("hb_uit:")) { io_heartbeat_uit = (uint16_t)constrain(lijn.substring(7).toInt(), 30, 600); continue; }
-        // formaat: idx:richting:alert:actie_aan:actie_uit:param:boot_gedrag:boot_waarde:min_niveau
-        // (boot_gedrag/boot_waarde/min_niveau ontbreken in oudere bestanden —
-        // v[] blijft dan 0, wat na de constrain() hieronder netjes uitkomt op
-        // IO_BOOT_UIT resp. NIVEAU_GAST — geen aparte migratielogica nodig)
-        int v[9] = {0};
+        // formaat: idx:richting:alert:actie_aan:actie_uit:param:boot_gedrag:boot_waarde:min_niveau:huis:vaar
+        // (ontbrekende velden in oudere bestanden — v[] blijft dan 0, wat na
+        // de constrain()/default hieronder netjes uitkomt op IO_BOOT_UIT resp.
+        // NIVEAU_GAST resp. huis/vaarpaneel UIT — geen aparte migratielogica
+        // nodig voor het CSV-formaat zelf; de eenmalige inhoudelijke migratie
+        // vanuit de oude PANEEL-lijst zit in io_paneel_migratie_indien_nodig())
+        int v[11] = {0};
         int vi = 0, pos = 0;
-        for (int i = 0; i <= (int)lijn.length() && vi < 9; i++) {
+        for (int i = 0; i <= (int)lijn.length() && vi < 11; i++) {
             if (i == (int)lijn.length() || lijn[i] == ':') {
                 v[vi++] = lijn.substring(pos, i).toInt();
                 pos = i + 1;
@@ -131,6 +139,8 @@ void hw_io_cfg_laden() {
             io_boot_gedrag[idx] = constrain(v[6], IO_BOOT_UIT, IO_BOOT_ONTHOUD);
             io_boot_waarde[idx] = v[7] ? 1 : 0;
             if (io_min_niveau) io_min_niveau[idx] = (uint8_t)constrain(v[8], NIVEAU_GAST, NIVEAU_EIGENAAR);
+            if (io_huispaneel) io_huispaneel[idx] = v[9]  ? true : false;
+            if (io_vaarpaneel) io_vaarpaneel[idx] = v[10] ? true : false;
 
             // Opstartgedrag meteen toepassen — io_output is hier nog vers (0 = UIT)
             switch (io_boot_gedrag[idx]) {
@@ -165,12 +175,15 @@ void hw_io_cfg_opslaan() {
     f.printf("hb_uit:%d\n", io_heartbeat_uit);
     for (int i = 0; i < MAX_IO_KANALEN; i++) {
         uint8_t niveau_i = io_min_niveau ? io_min_niveau[i] : NIVEAU_GAST;
+        bool huis_i = io_huispaneel && io_huispaneel[i];
+        bool vaar_i = io_vaarpaneel && io_vaarpaneel[i];
         if (io_richting[i] || io_alert[i] || io_actie_aan[i] || io_actie_uit[i] || io_boot_gedrag[i] ||
-            niveau_i != NIVEAU_GAST) {
-            f.printf("%d:%d:%d:%d:%d:%d:%d:%d:%d\n",
+            niveau_i != NIVEAU_GAST || huis_i || vaar_i) {
+            f.printf("%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d\n",
                      i, io_richting[i], io_alert[i],
                      io_actie_aan[i], io_actie_uit[i], io_actie_param[i],
-                     io_boot_gedrag[i], io_boot_waarde[i], niveau_i);
+                     io_boot_gedrag[i], io_boot_waarde[i], niveau_i,
+                     huis_i ? 1 : 0, vaar_i ? 1 : 0);
         }
     }
     f.close();

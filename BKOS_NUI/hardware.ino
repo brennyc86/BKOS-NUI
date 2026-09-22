@@ -167,6 +167,7 @@ static void _gui_taak(void*) {
                     case SCREEN_NETWERK:    screen_netwerk_teken();     break;
                     case SCREEN_MELDING:    screen_melding_teken();     break;
                     case SCREEN_PANEEL:     screen_paneel_teken();      break;
+                    case SCREEN_HUISPANEEL: screen_huispaneel_teken();  break;
                     case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                     case SCREEN_KLEUR:      screen_kleur_teken();       break;
                     case SCREEN_HAVEN:      screen_haven_teken();       break;
@@ -312,6 +313,7 @@ static void _gui_taak(void*) {
                             case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
                             case SCREEN_MELDING:    screen_melding_run(ts_x, ts_y, true);   break;
                             case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
+                            case SCREEN_HUISPANEEL: screen_huispaneel_run(ts_x, ts_y, true); break;
                             case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                             case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
                             case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;
@@ -523,8 +525,15 @@ void hw_setup() {
     // nodig om het PANEEL/hoofdscherm te tonen/bedienen, alleen voor de
     // achtergrondfoto op het HAVEN-dashboard. Brendans eigen voorstel: liever
     // het paneel meteen zonder foto tonen dan wachten op het laden ervan.
-    paneel_laden();  // laad configureerbare PANEEL-knoppen (default = oorspronkelijke 5) — hoofdscherm toont deze
-    lamp_laden();    // laad genummerde IL-lampgroepen (naam + opstartstand) — idem
+    paneel_laden();      // laad configureerbare VAARPANEEL-knoppen (default = oorspronkelijke 5) — vaardashboard toont deze
+    huispaneel_laden();  // laad configureerbare HUISPANEEL-knoppen — HAVEN-dashboard toont deze
+    lamp_laden();        // laad genummerde IL-lampgroepen (naam + opstartstand) — idem
+    // Eenmalige migratie van de oude, handmatig-getypte PANEEL-lijst naar de
+    // nieuwe per-kanaal huispaneel/vaarpaneel-vinkjes — moet ná io_boot()
+    // (io_zichtbaar() betrouwbaar) en ná paneel_laden()/huispaneel_laden()
+    // draaien. Zie io_paneel_migratie_indien_nodig() (io.ino) voor de
+    // zelf-gatende logica (draait hooguit één keer, ooit).
+    io_paneel_migratie_indien_nodig();
     _boot_stap("paneel+lamp geladen", splash);
 
     // Splash: BKOSS status tonen
@@ -738,6 +747,7 @@ void hw_loop() {
                 case SCREEN_NETWERK:    screen_netwerk_teken();     break;
                 case SCREEN_MELDING:    screen_melding_teken();     break;
                 case SCREEN_PANEEL:     screen_paneel_teken();      break;
+                case SCREEN_HUISPANEEL: screen_huispaneel_teken();  break;
                 case SCREEN_LAMPEN:     screen_lampen_teken();      break;
                 case SCREEN_KLEUR:      screen_kleur_teken();       break;
                 case SCREEN_HAVEN:      screen_haven_teken();       break;
@@ -869,6 +879,7 @@ void hw_loop() {
                         case SCREEN_NETWERK:    screen_netwerk_run(ts_x, ts_y, true);   break;
                         case SCREEN_MELDING:    screen_melding_run(ts_x, ts_y, true);   break;
                         case SCREEN_PANEEL:     screen_paneel_run(ts_x, ts_y, true);    break;
+                        case SCREEN_HUISPANEEL: screen_huispaneel_run(ts_x, ts_y, true); break;
                         case SCREEN_LAMPEN:     screen_lampen_run(ts_x, ts_y, true);    break;
                         case SCREEN_KLEUR:      screen_kleur_run(ts_x, ts_y, true);     break;
                         case SCREEN_HAVEN:      screen_haven_run(ts_x, ts_y, true);     break;

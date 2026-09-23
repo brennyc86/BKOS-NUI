@@ -408,23 +408,29 @@ static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kle
             // stukje schuin vanaf het vertakpunt en dan recht omhoog naar
             // het symbool, zodat de lijn er precies op aansluit (geen
             // gaatje meer); driehoek een fractie kleiner dan de vorige ronde
-            // en meer hoogteverschil tussen de 3 takken (beide gevraagd).
-            int o2 = max(2, _hv_app_ic_o(2, s)), o4 = _hv_app_ic_o(4, s),
-                o6 = _hv_app_ic_o(6, s), o7 = _hv_app_ic_o(7, s), o9 = _hv_app_ic_o(9, s);
+            // en meer hoogteverschil tussen de 3 takken. Vierkant (rechts)
+            // nu een fractie lager, en cirkel (links) heeft er zijn eigen
+            // korte rechte stukje bij gekregen (schuin naar het vertakpunt,
+            // dan recht omhoog naar de cirkel) — zo ziet het echte logo er
+            // ook uit — en komt daardoor lager uit dan het vierkant.
+            int o2 = max(2, _hv_app_ic_o(2, s)), o3 = _hv_app_ic_o(3, s),
+                o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s),
+                o7 = _hv_app_ic_o(7, s), o9 = _hv_app_ic_o(9, s);
             int o_tri = _hv_app_ic_o(5, s) / 2;   // driehoek: tussen o2 en o3 in, kleiner dan de vorige ronde (was o3)
             int r_zij = max(1, o2 - 1);           // cirkel/vierkant: iets kleiner dan de driehoek
             tft.fillCircle(cx, cy + o7, o2, kleur);                        // balletje onderin
             tft.drawFastVLine(cx, cy + o2, o7 - o2, kleur);                // stam naar het vertakpunt
 
-            tft.drawLine(cx, cy + o2, cx - o4, cy - o2, kleur);            // linkertak (laagste): alleen schuin...
-            tft.fillCircle(cx - o4, cy - o2 - r_zij, r_zij, kleur);        // ...die er precies op aansluit
+            tft.drawLine(cx, cy + o2, cx - o4, cy - o2, kleur);            // linkertak (laagste): schuin...
+            tft.drawFastVLine(cx - o4, cy - o3, o3 - o2, kleur);           // ...dan een kort stukje recht omhoog naar de cirkel
+            tft.fillCircle(cx - o4, cy - o3 - r_zij, r_zij, kleur);        // ...die er precies op aansluit
 
             tft.drawFastVLine(cx, cy - o9, o9 + o2, kleur);                // middentak (hoogste): recht omhoog
             tft.fillTriangle(cx - o_tri, cy - o9, cx + o_tri, cy - o9, cx, cy - o9 - o_tri, kleur);  // driehoek, sluit aan op de lijn
 
-            tft.drawLine(cx, cy + o2, cx + o4, cy - o2, kleur);            // rechtertak (middelste hoogte): kort schuin...
-            tft.drawFastVLine(cx + o4, cy - o6, o6 - o2, kleur);           // ...dan recht omhoog naar het vierkant
-            tft.fillRect(cx + o4 - r_zij, cy - o6 - 2 * r_zij, 2 * r_zij, 2 * r_zij, kleur);  // ...die er precies op aansluit
+            tft.drawLine(cx, cy + o2, cx + o4, cy - o2, kleur);            // rechtertak (middelste hoogte, iets lager): schuin...
+            tft.drawFastVLine(cx + o4, cy - o5, o5 - o2, kleur);           // ...dan recht omhoog naar het vierkant
+            tft.fillRect(cx + o4 - r_zij, cy - o5 - 2 * r_zij, 2 * r_zij, 2 * r_zij, kleur);  // ...die er precies op aansluit
             break;
         }
         case I_230V: {
@@ -521,10 +527,10 @@ static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kle
             int binnen_r = max(1, buiten_r - o2);  // en weer druppelkleur ná het maantje (het gat)
             int mid_r = binnen_r + (buiten_r - binnen_r) / 2;
             int tip = 12;   // graden dunner gemaakt aan elk uiteinde, voor een puntiger maantje
-            // Driehoek-basis nu op o5+o1 — nog een fractie breder dan de
-            // bolstraal zelf (exact o5 sloot nog niet mooi aan, gaf een
-            // zichtbare naad); het kleine beetje overlap met de bol lost dat op.
-            tft.fillTriangle(cx, cy - o9, cx - (o5 + o1), cy + o2, cx + (o5 + o1), cy + o2, kleur);
+            // Driehoek-basis op o5+o1 sloot mooi aan, maar bleek een fractie
+            // te breed (~3px, vast getal) — stak net iets uit voorbij de bol.
+            int driehoek_breedte = max(o2 + 1, o5 + o1 - 3);
+            tft.fillTriangle(cx, cy - o9, cx - driehoek_breedte, cy + o2, cx + driehoek_breedte, cy + o2, kleur);
             tft.fillCircle(dcx, dcy, o5, kleur);
             tft.fillArc(dcx, dcy, buiten_r, binnen_r, 195 + tip, 255 - tip, licht);  // glans: volle band in het midden...
             tft.fillArc(dcx, dcy, buiten_r, mid_r, 195, 195 + tip, licht);           // ...dunner uiteinde 1

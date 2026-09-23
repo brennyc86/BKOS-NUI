@@ -401,56 +401,68 @@ static int _hv_app_ic_o(int v, float s) { return (int)(v * s + (v >= 0 ? 0.5f : 
 static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kleur) {
     switch (icoon) {
         case I_USB: {
-            // Het officiële USB-drietand-logo: een balletje ONDERIN, een stam
-            // die omhoog naar een vertakpunt loopt en daar in 3-en splitst —
-            // elke tak met een eigen eindsymbool (vierkant/cirkel/driehoek),
-            // i.p.v. de eerdere, vereenvoudigde 2-tak-versie.
-            int o2 = max(2, _hv_app_ic_o(2, s)), o4 = _hv_app_ic_o(4, s), o6 = _hv_app_ic_o(6, s),
-                o8 = _hv_app_ic_o(8, s), o9 = _hv_app_ic_o(9, s);
+            // USB-drietand: balletje ONDERIN, een stam die naar een
+            // vertakpunt loopt en daar symmetrisch in 3-en splitst (gelijke
+            // taklengte, i.p.v. de vorige asymmetrische vorm) — elke tak
+            // eindigt in een GEVULD symbool (vierkant/cirkel/driehoek), niet
+            // meer een mix van omlijnd en gevuld.
+            int o2 = max(2, _hv_app_ic_o(2, s)), o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s),
+                o7 = _hv_app_ic_o(7, s), o9 = _hv_app_ic_o(9, s);
             tft.fillCircle(cx, cy + o9, o2, kleur);                 // balletje onderin
             tft.drawFastVLine(cx, cy + o2, o9 - o2, kleur);         // stam naar het vertakpunt
-            tft.drawLine(cx, cy + o2, cx - o6, cy - o4, kleur);     // linkertak
-            tft.drawRect(cx - o6 - o2, cy - o4 - o2, o4, o4, kleur);        // ...naar een vierkant
-            tft.drawLine(cx, cy + o2, cx, cy - o6, kleur);          // middentak (hoogste)
-            tft.drawCircle(cx, cy - o8, o2, kleur);                 // ...naar een cirkel
-            tft.drawLine(cx, cy + o2, cx + o6, cy - o4, kleur);     // rechtertak
-            tft.fillTriangle(cx + o6 - o2, cy - o4, cx + o6 + o2, cy - o4, cx + o6, cy - o4 - o4, kleur);  // ...naar een driehoek
+            tft.drawLine(cx, cy + o2, cx - o6, cy - o5, kleur);     // linkertak
+            tft.fillRect(cx - o6 - o2, cy - o5 - o2, 2 * o2, 2 * o2, kleur);        // ...naar een gevuld vierkant
+            tft.drawLine(cx, cy + o2, cx, cy - o7, kleur);          // middentak (hoogste)
+            tft.fillCircle(cx, cy - o7 - o2, o2, kleur);            // ...naar een gevulde cirkel
+            tft.drawLine(cx, cy + o2, cx + o6, cy - o5, kleur);     // rechtertak
+            tft.fillTriangle(cx + o6 - o2, cy - o5 + o2, cx + o6 + o2, cy - o5 + o2, cx + o6, cy - o5 - o2, kleur);  // ...naar een gevulde driehoek
             break;
         }
         case I_230V: {
             // Bliksemschicht als 2 gevulde driehoeken die een knik delen —
-            // breed aan de uiteinden, smal bij de knik, voor een echt
-            // wisselende dikte i.p.v. de vorige, overal even dikke lijnen.
+            // breed aan de uiteinden, smal bij de knik — plus een lichtere
+            // glans-lijn langs de ene rand en een donkerder schaduw-lijn
+            // langs de andere, voor een licht 3D/gefacetteerd effect.
             int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s), o3 = _hv_app_ic_o(3, s),
                 o5 = _hv_app_ic_o(5, s), o9 = _hv_app_ic_o(9, s);
+            uint16_t licht  = RGB565(255, 240, 150);
+            uint16_t donker = RGB565(200, 130, 10);
             tft.fillTriangle(cx + o2, cy - o9,  cx - o3, cy - o1,  cx + o1, cy, kleur);
             tft.fillTriangle(cx + o1, cy,       cx + o5, cy - o1,  cx - o2, cy + o9, kleur);
+            tft.drawLine(cx + o2, cy - o9, cx + o1, cy, licht);   // glans, voorkant
+            tft.drawLine(cx - o2, cy + o9, cx + o1, cy, donker);  // schaduw, achterkant
             break;
         }
         case I_TV: {
-            // Herkenbaarder als TV: scherpe buitenkast (echte tv-vorm) met
-            // een licht afgeronde binnenkant als "scherm", een grotere voet,
-            // en klassieke konijnenoren-antenne erboven — een TV heeft dat
-            // tegenwoordig niet meer, maar niets zegt "televisie" zo direct.
-            int o1 = _hv_app_ic_o(1, s), o2 = max(2, _hv_app_ic_o(2, s)), o3 = _hv_app_ic_o(3, s),
+            // Herkenbaarder als TV: één omtrek als scherm — overal afgeronde
+            // hoeken (een écht asymmetrische "rond vanbinnen, scherp
+            // vanbuiten" rand is met een 1px-lijn niet zinvol te tekenen) —
+            // met klassieke konijnenoren-antenne erboven. Voet nu een dunnere
+            // hals + een aparte, bredere lijn als de daadwerkelijke voet
+            // (i.p.v. één dikke balk), meer zoals een TV op een standaard oogt.
+            int o2 = max(2, _hv_app_ic_o(2, s)), o3 = _hv_app_ic_o(3, s),
                 o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s), o7 = _hv_app_ic_o(7, s),
-                o8 = _hv_app_ic_o(8, s), o9 = _hv_app_ic_o(9, s), o11 = _hv_app_ic_o(11, s),
+                o8 = _hv_app_ic_o(8, s), o11 = _hv_app_ic_o(11, s),
                 o13 = _hv_app_ic_o(13, s), o16 = _hv_app_ic_o(16, s);
             tft.drawLine(cx - o2, cy - o5, cx - o7, cy - o13, kleur);   // antenne links
             tft.drawLine(cx + o2, cy - o5, cx + o7, cy - o13, kleur);   // antenne rechts
-            tft.drawRect(cx - o8, cy - o5, o16, o11, kleur);                              // buitenkast: scherpe hoeken
-            tft.drawRoundRect(cx - o8 + o1 + 1, cy - o5 + o1 + 1,
-                               o16 - 2 * o1 - 2, o11 - 2 * o1 - 2, o2, kleur);             // scherm: licht afgerond
-            tft.fillRoundRect(cx - o5, cy + o6, o9, o3, 1, kleur);                         // grotere, gevulde voet
+            tft.drawRoundRect(cx - o8, cy - o5, o16, o11, o2, kleur);   // scherm: één lijn, afgeronde hoeken
+            tft.drawFastVLine(cx, cy + o6, o3, kleur);                  // dunne hals
+            tft.drawFastHLine(cx - o5, cy + o6 + o3, 2 * o5, kleur);    // brede voet als losse lijn
             break;
         }
         case I_WATER: {
-            // Gevulde druppel (punt bovenaan vloeit over in een gevulde bol)
-            // i.p.v. de vorige omtrek-cirkel met 2 losse lijnen — meer "body",
-            // oogt als een echte druppel i.p.v. een ijsje.
-            int o2 = _hv_app_ic_o(2, s), o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s), o9 = _hv_app_ic_o(9, s);
+            // Gevulde druppel met een lichte glans linksboven en een
+            // donkerder schaduwaccent rechtsonder, voor een subtiel 3D-effect
+            // — i.p.v. de vorige, vlakke eenkleurige vulling.
+            int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s), o4 = _hv_app_ic_o(4, s),
+                o5 = _hv_app_ic_o(5, s), o9 = _hv_app_ic_o(9, s);
+            uint16_t licht  = RGB565(195, 228, 255);
+            uint16_t donker = RGB565(15, 85, 170);
             tft.fillTriangle(cx, cy - o9, cx - o4, cy + o2, cx + o4, cy + o2, kleur);
             tft.fillCircle(cx, cy + o2, o5, kleur);
+            tft.fillCircle(cx + o2, cy + o2 + o1, max(1, o2 - 1), donker);  // schaduw rechtsonder
+            tft.fillCircle(cx - o2, cy,          max(1, o2 - 1), licht);   // glans linksboven
             break;
         }
         case I_DEKLICHT: {

@@ -766,15 +766,18 @@ function renderPaneel(){
 // hetzelfde symbool op de boordcomputer (_hv_app_icoon_teken(),
 // screen_haven.ino). Vast lichtgrijs (i.p.v. currentColor) zodat 'm net als
 // de emoji-iconen zijn eigen kleur houdt, los van de knop-status.
+// Symmetrische taklengtes + alle 3 eindsymbolen GEVULD (was: cirkel/vierkant
+// omlijnd, alleen de driehoek gevuld) — Brendan wilde alle vormen consequent
+// óf gekleurd óf omlijnd, nooit een mix.
 var USB_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-.2em">'
   + '<circle cx="12" cy="20" r="2" fill="#c9d3db"/>'
   + '<path d="M12 18V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M12 13L6 8" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<rect x="4" y="6" width="4" height="4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M12 13V5" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<circle cx="12" cy="4" r="2" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M12 13L18 8" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M16 8L20 8 18 4Z" fill="#c9d3db"/>'
+  + '<path d="M12 13L7 8" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<rect x="5" y="6" width="4" height="4" fill="#c9d3db"/>'
+  + '<path d="M12 13V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<circle cx="12" cy="4.5" r="2" fill="#c9d3db"/>'
+  + '<path d="M12 13L17 8" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M15 8L19 8 17 4Z" fill="#c9d3db"/>'
   + '</svg>';
 
 function tileIcoon(p){

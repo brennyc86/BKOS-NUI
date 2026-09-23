@@ -369,8 +369,11 @@ void screen_wifi_run(int x, int y, bool aanraking) {
     }
     return;
 #else
-    // Terug knop in status bar
-    if (y < SB_H && x >= TFT_W - 110) {
+    // Terug knop in status bar — hit-test moet exact overeenkomen met de
+    // getekende knop (SB_KLOK_X - 120, breedte 112, zie screen_wifi_teken()).
+    // Stond hier op `TFT_W - 110`, dat het linker deel van de knop volledig
+    // miste (dood gebied) en voorbij de knop (t/m de klok) wél reageerde.
+    if (y < SB_H && x >= SB_KLOK_X - 120 && x < SB_KLOK_X - 8) {
         actief_scherm = SCREEN_CONFIG;
         scherm_bouwen = true;
         wifi_staat = WIFI_ST_IDLE;

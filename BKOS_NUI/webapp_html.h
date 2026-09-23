@@ -771,17 +771,19 @@ function renderPaneel(){
 // omhoog. Alle 3 eindsymbolen GEVULD (was: cirkel/vierkant omlijnd, alleen
 // de driehoek gevuld) — Brendan wilde alle vormen consequent óf gekleurd óf
 // omlijnd, nooit een mix.
+// Iets minder hoog dan de vorige ronde (Brendans "nog echt te hoog") — ball
+// en topsymbolen dichter naar het midden toe getrokken.
 var USB_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-.2em">'
-  + '<circle cx="12" cy="20" r="2" fill="#c9d3db"/>'
-  + '<path d="M12 18V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<circle cx="12" cy="18" r="2" fill="#c9d3db"/>'
+  + '<path d="M12 16V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
   + '<path d="M12 13L8 9" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M8 9V4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<rect x="6" y="1" width="4" height="4" fill="#c9d3db"/>'
-  + '<path d="M12 13V4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<circle cx="12" cy="2.5" r="2" fill="#c9d3db"/>'
+  + '<path d="M8 9V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<rect x="6" y="3" width="4" height="4" fill="#c9d3db"/>'
+  + '<path d="M12 13V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<circle cx="12" cy="4.5" r="2" fill="#c9d3db"/>'
   + '<path d="M12 13L16 9" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M16 9V4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M14 5L18 5 16 1Z" fill="#c9d3db"/>'
+  + '<path d="M16 9V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M14 7L18 7 16 3Z" fill="#c9d3db"/>'
   + '</svg>';
 
 function tileIcoon(p){

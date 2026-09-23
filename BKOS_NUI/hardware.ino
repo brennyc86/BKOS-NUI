@@ -663,6 +663,17 @@ void hw_loop() {
         sb_paneel_open = false;   // schermwissel via een andere weg (nav-bar, TERUG) sluit het uitklap-paneel ook mee
     }
 
+    // ota_nieuwer_beschikbaar wordt asynchroon gezet door de netwerktaak
+    // (Core 0) — o.a. de opstartcheck vlak na de eerste WiFi-verbinding.
+    // Zonder deze check bleef het statusbalk-icoon onzichtbaar totdat er
+    // toevallig een andere reden voor een volledige herteken kwam; nu
+    // forceert de eerste false->true-overgang meteen een herteken.
+    static bool vorige_ota_nieuwer = false;
+    if (ota_nieuwer_beschikbaar != vorige_ota_nieuwer) {
+        vorige_ota_nieuwer = ota_nieuwer_beschikbaar;
+        scherm_bouwen = true;
+    }
+
     // Periodieke data-opslag (elke 60s als er wijzigingen zijn)
     // SPIFFS-schrijven hier (niet in GUI taak) zodat de GUI nooit blokkeert
     static unsigned long data_opgeslagen_ms = 0;
@@ -962,6 +973,13 @@ void hw_loop() {
         bool ota_scherm = (actief_scherm == SCREEN_OTA);
         wifi_ota_zet(ota_scherm || ota_push_actief);
         sb_paneel_open = false;   // schermwissel via een andere weg (nav-bar, TERUG) sluit het uitklap-paneel ook mee
+    }
+
+    // Zie de identieke check in de ESP32-GUI-taak hierboven in dit bestand.
+    static bool vorige_ota_nieuwer = false;
+    if (ota_nieuwer_beschikbaar != vorige_ota_nieuwer) {
+        vorige_ota_nieuwer = ota_nieuwer_beschikbaar;
+        scherm_bouwen = true;
     }
 
     vorige_touch = aanraking_vast;

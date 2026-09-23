@@ -511,7 +511,14 @@ void screen_ota_run(int x, int y, bool aanraking) {
     if (y >= PICO_OTA_BTN_Y1 && y < PICO_OTA_BTN_Y1 + PICO_OTA_BTN_H) {
 #if !PLATFORM_PICO
         ota_status_tekst = "Controleren..."; pico_ota_info_teken();
-        ota_git_check(); pico_screen_ota_teken_impl();
+        ota_git_check();
+        // ota_git_check() zelf zet alleen ota_versie_github/ota_status_tekst —
+        // het statusbalk-icoon leest ota_nieuwer_beschikbaar, dat normaal
+        // alleen door de achtergrond-netwerktaak gezet wordt. Een handmatige
+        // check hier moet het icoon ook laten oplichten.
+        if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+            ota_nieuwer_beschikbaar = true;
+        pico_screen_ota_teken_impl();
 #endif
         return;
     }
@@ -636,6 +643,12 @@ void screen_ota_run(int x, int y, bool aanraking) {
             ota_status_tekst = "Controleren...";
             _ota_info_rechts_teken();
             ota_git_check();
+            // Zie de Pico-tak hierboven in dit bestand: ota_git_check() zet
+            // zelf geen ota_nieuwer_beschikbaar, dat is anders het exclusieve
+            // terrein van de achtergrond-netwerktaak. Handmatige check moet
+            // het statusbalk-icoon ook laten oplichten.
+            if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
+                ota_nieuwer_beschikbaar = true;
             screen_ota_teken();
             return;
         }

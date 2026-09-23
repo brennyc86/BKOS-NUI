@@ -288,24 +288,20 @@ static char      _hs_wachtwoord[13] = "";
 static DNSServer _hs_dns;
 #define HS_DNS_POORT 53
 
-// Vast, gepubliceerd wachtwoord i.p.v. een open netwerk (was bewust open op
-// Brendans verzoek, zie de oude comment hier — teruggedraaid nadat bleek dat
-// juist een open, internetloos netwerk telefoons (vooral iOS) ertoe aanzet
-// om per verbinding een NIEUW gerandomiseerd MAC-adres te tonen, waardoor
-// mac_record.h's "onthoud dit apparaat"-koppeling nooit standhoudt. Een
-// netwerk met een vast wachtwoord wordt door telefoons als "bekend"/
-// vertrouwd behandeld en krijgt doorgaans een STABIEL privé-adres per
-// netwerk — geen echte beveiliging (het wachtwoord staat straks gewoon op
-// het scherm/de captive portal), puur een stabiliteitsanker voor MAC-
-// herkenning. Kort, makkelijk te typen op een telefoontoetsenbord (geen
-// hoofdletters/symbolen nodig), 8 tekens (WPA2-minimum).
-#define HS_WACHTWOORD "bkosboot"
-
+// Weer terug naar een open netwerk (geen wachtwoord) — het vaste wachtwoord
+// (v0.2.260923.15) loste de MAC-rotatie mogelijk op, maar botst frontaal met
+// Brendans eigenlijke doel: iedereen zonder voorkennis moet het netwerk
+// kunnen zien, inloggen en een bericht kunnen sturen. Een wachtwoord (hoe
+// makkelijk ook) is per definitie iets dat je vooraf moet weten — dat weegt
+// hier zwaarder dan stabielere MAC-herkenning. mac_record.h's MAC-koppeling
+// blijft wel gewoon bestaan (werkt nog steeds binnen één sessie, en op
+// apparaten/OSen die niet roteren) — puur de wachtwoord-mitigatie is
+// teruggedraaid; het bestaande localStorage-mechanisme (webapp_html.h) is nu
+// weer de primaire weg voor "ingelogd blijven".
 static void _hs_creds_genereren() {
     if (strlen(net_eigen_naam) > 0) snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-%s", net_eigen_naam);
     else                            snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-NUI");
-    strncpy(_hs_wachtwoord, HS_WACHTWOORD, sizeof(_hs_wachtwoord) - 1);
-    _hs_wachtwoord[sizeof(_hs_wachtwoord) - 1] = '\0';
+    _hs_wachtwoord[0] = '\0';
 }
 
 bool wifi_hotspot_actief() { return _hs_actief; }
@@ -340,7 +336,7 @@ void wifi_hotspot_starten() {
     _hs_creds_genereren();
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);  // zie _wifi_verbinden_intern() — voorkomt trage/gemiste verbindingen
-    WiFi.softAP(_hs_ssid, _hs_wachtwoord);
+    WiFi.softAP(_hs_ssid);  // geen wachtwoord = open netwerk
     _hs_actief = true;
 
     // Captive portal: alle DNS-namen wijzen naar dit apparaat zelf, zodat

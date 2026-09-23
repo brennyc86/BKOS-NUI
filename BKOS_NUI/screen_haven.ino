@@ -402,81 +402,94 @@ static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kle
     switch (icoon) {
         case I_USB: {
             // USB-drietand: balletje ONDERIN, stam naar het vertakpunt; de
-            // buitenste 2 takken lopen EERST diagonaal naar buiten en dan
-            // RECHT OMHOOG naar hun symbool (i.p.v. één rechte diagonale
-            // lijn) — de middentak blijft recht omhoog. Alle 3 eindsymbolen
-            // gevuld.
-            int o2 = max(2, _hv_app_ic_o(2, s)), o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s),
-                o7 = _hv_app_ic_o(7, s), o9 = _hv_app_ic_o(9, s);
+            // buitenste 2 takken lopen EERST diagonaal (~45°, gelijke dx/dy)
+            // naar buiten en dan een RUIME rechte stap omhoog naar hun
+            // symbool — langere, rustigere verhoudingen dan de vorige,
+            // wat gedrongen versie. Middentak blijft recht omhoog en is het
+            // langst (hoogste symbool). Alle 3 eindsymbolen gevuld.
+            int o2 = max(2, _hv_app_ic_o(2, s)), o4 = _hv_app_ic_o(4, s),
+                o8 = _hv_app_ic_o(8, s), o9 = _hv_app_ic_o(9, s);
             tft.fillCircle(cx, cy + o9, o2, kleur);                        // balletje onderin
             tft.drawFastVLine(cx, cy + o2, o9 - o2, kleur);                // stam naar het vertakpunt
 
-            tft.drawLine(cx, cy + o2, cx - o5, cy, kleur);                 // linkertak: eerst diagonaal...
-            tft.drawFastVLine(cx - o5, cy - o6, o6, kleur);                // ...dan recht omhoog
-            tft.fillRect(cx - o5 - o2, cy - o6 - o2, 2 * o2, 2 * o2, kleur);       // ...naar een gevuld vierkant
+            tft.drawLine(cx, cy + o2, cx - o4, cy - o2, kleur);            // linkertak: diagonaal (45°)...
+            tft.drawFastVLine(cx - o4, cy - o8, o8 - o2, kleur);           // ...dan recht omhoog
+            tft.fillRect(cx - o4 - o2, cy - o8 - o2, 2 * o2, 2 * o2, kleur);      // ...naar een gevuld vierkant
 
-            tft.drawFastVLine(cx, cy - o7, o7 + o2, kleur);                // middentak: recht omhoog (hoogste)
-            tft.fillCircle(cx, cy - o7 - o2, o2, kleur);                   // ...naar een gevulde cirkel
+            tft.drawFastVLine(cx, cy - o9, o9 + o2, kleur);                // middentak: recht omhoog (hoogste)
+            tft.fillCircle(cx, cy - o9 - o2, o2, kleur);                   // ...naar een gevulde cirkel
 
-            tft.drawLine(cx, cy + o2, cx + o5, cy, kleur);                 // rechtertak: eerst diagonaal...
-            tft.drawFastVLine(cx + o5, cy - o6, o6, kleur);                // ...dan recht omhoog
-            tft.fillTriangle(cx + o5 - o2, cy - o6 - o2, cx + o5 + o2, cy - o6 - o2, cx + o5, cy - o6 - 2 * o2, kleur);  // ...naar een gevulde driehoek
+            tft.drawLine(cx, cy + o2, cx + o4, cy - o2, kleur);            // rechtertak: diagonaal (45°)...
+            tft.drawFastVLine(cx + o4, cy - o8, o8 - o2, kleur);           // ...dan recht omhoog
+            tft.fillTriangle(cx + o4 - o2, cy - o8 - o2, cx + o4 + o2, cy - o8 - o2, cx + o4, cy - o8 - 2 * o2, kleur);  // ...naar een gevulde driehoek
             break;
         }
         case I_230V: {
-            // Bliksemschicht als 4 driehoeken (2 per segment, elk zijn eigen
-            // breedte) voor een strakkere "Z"-vorm dan de vorige 2-driehoeken-
-            // versie, plus een lichtere glans-lijn en donkerder schaduw-lijn.
-            int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s), o3 = _hv_app_ic_o(3, s),
-                o4 = _hv_app_ic_o(4, s), o9 = _hv_app_ic_o(9, s);
+            // Echte "Z"-bliksemschicht: platte bovenkant, 2 kepen (een korte
+            // horizontale sprong halverwege elke kant) en een spitse punt
+            // onderaan — gebaseerd op een beproefd bliksem-icoon-silhouet
+            // i.p.v. de eerdere, te simpele 2-punts-diamant-vorm. Opgebouwd
+            // uit 5 driehoeken (fan vanuit de bovenste keep).
+            int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s), o3 = _hv_app_ic_o(3, s), o9 = _hv_app_ic_o(9, s);
+            int tlx = cx - o1, tly = cy - o9;    // platte top, links
+            int trx = cx + o2, trry = cy - o9;   // platte top, rechts
+            int n1x = cx - o1, n1y = cy - o2;    // keep 1 (bovenste)
+            int jrx = cx + o3, jry = cy - o2;    // horizontale sprong bij keep 1
+            int btx = cx - o2, bty = cy + o9;    // spitse punt onderaan
+            int n2x = cx + o1, n2y = cy + o2;    // keep 2 (onderste)
+            int jlx = cx - o3, jly = cy + o2;    // horizontale sprong bij keep 2
             uint16_t licht  = RGB565(255, 240, 150);
             uint16_t donker = RGB565(200, 130, 10);
-            tft.fillTriangle(cx + o3, cy - o9,  cx - o2, cy - o1,  cx + o1, cy - o1, kleur);
-            tft.fillTriangle(cx + o3, cy - o9,  cx + o1, cy - o1,  cx + o4, cy - o3, kleur);
-            tft.fillTriangle(cx - o3, cy + o9,  cx + o2, cy + o1,  cx - o1, cy + o1, kleur);
-            tft.fillTriangle(cx - o3, cy + o9,  cx - o1, cy + o1,  cx - o4, cy + o3, kleur);
-            tft.drawLine(cx + o3, cy - o9, cx + o1, cy - o1, licht);   // glans, voorkant
-            tft.drawLine(cx - o3, cy + o9, cx - o1, cy + o1, donker);  // schaduw, achterkant
+            tft.fillTriangle(tlx, tly, trx, trry, n1x, n1y, kleur);
+            tft.fillTriangle(trx, trry, jrx, jry, n1x, n1y, kleur);
+            tft.fillTriangle(jrx, jry, btx, bty, n1x, n1y, kleur);
+            tft.fillTriangle(btx, bty, n2x, n2y, jlx, jly, kleur);
+            tft.fillTriangle(btx, bty, jlx, jly, tlx, tly, kleur);
+            tft.drawLine(trx, trry, n1x, n1y, licht);   // rechterflank boven = glans
+            tft.drawLine(btx, bty, jlx, jly, donker);   // linkerflank onder = schaduw
             break;
         }
         case I_TV: {
             // Kast als 2 dikke (~5pt) lagen exact over elkaar — één afgerond,
-            // één scherp — plus klassieke konijnenoren-antenne. Voet: één
-            // dikkere (~8pt) lijn recht naar beneden (hals), dan een
-            // horizontale voetplaat van ~5pt dik.
+            // één scherp — plus dikkere (2-3px) konijnenoren-antenne. Hals nu
+            // half zo lang als voorheen; voetplaat bijna net zo breed als de
+            // kast (10px smaller), niet meer een losse, smalle balk.
             int dik = max(2, _hv_app_ic_o(2, s));    // ~5pt kaderdikte
             int hals_dik = _hv_app_ic_o(3, s);       // ~8pt, dikker dan het kader
-            int o3 = _hv_app_ic_o(3, s), o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s),
+            int o3 = _hv_app_ic_o(3, s), o5 = _hv_app_ic_o(5, s),
                 o7 = _hv_app_ic_o(7, s), o8 = _hv_app_ic_o(8, s), o11 = _hv_app_ic_o(11, s),
                 o13 = _hv_app_ic_o(13, s), o16 = _hv_app_ic_o(16, s);
             int bx = cx - o8, by = cy - o5;
-            tft.drawLine(cx - o3, by, cx - o7, cy - o13, kleur);   // antenne links
-            tft.drawLine(cx + o3, by, cx + o7, cy - o13, kleur);   // antenne rechts
+            for (int d = -1; d <= 1; d++) {                                // antenne, 3x geteken (±1px) voor meer dikte
+                tft.drawLine(cx - o3 + d, by, cx - o7 + d, cy - o13, kleur);
+                tft.drawLine(cx + o3 + d, by, cx + o7 + d, cy - o13, kleur);
+            }
             // Laag 1: scherpe, dikke rand
             for (int i = 0; i < dik; i++)
                 tft.drawRect(bx + i, by + i, o16 - 2 * i, o11 - 2 * i, kleur);
             // Laag 2: afgeronde, dikke rand — exact dezelfde plek erover
             for (int i = 0; i < dik; i++)
                 tft.drawRoundRect(bx + i, by + i, o16 - 2 * i, o11 - 2 * i, o3, kleur);
-            tft.fillRect(cx - hals_dik / 2, cy + o5, hals_dik, o6, kleur);       // hals: dikker, recht naar beneden
-            tft.fillRect(cx - o5, cy + o5 + o6, 2 * o5, dik, kleur);              // voetplaat: horizontaal, dik
+            int voet_w = max(dik * 2, o16 - 10);   // ~10px smaller dan de kastbreedte, niet schalend met s
+            tft.fillRect(cx - hals_dik / 2, cy + o5, hals_dik, o3, kleur);        // hals: half zo lang, dikker
+            tft.fillRect(cx - voet_w / 2, cy + o5 + o3, voet_w, dik, kleur);       // voetplaat: bijna zo breed als de kast
             break;
         }
         case I_WATER: {
             // Gevulde druppel met een licht "maantje" linksboven en een
-            // donkerder "maantje" rechtsonder (i.p.v. gewone rondjes) — een
-            // maanvorm door een klein stukje van de accentcirkel in de
-            // basiskleur weg te "happen".
+            // donkerder "maantje" rechtsonder — de hap uit de accentcirkel
+            // wijst nu NAAR het druppelcentrum toe (was verkeerd om), zodat
+            // de zichtbare sikkel met de buitenrand van de druppel meekromt.
             int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s), o4 = _hv_app_ic_o(4, s),
                 o5 = _hv_app_ic_o(5, s), o9 = _hv_app_ic_o(9, s);
             uint16_t licht  = RGB565(195, 228, 255);
             uint16_t donker = RGB565(15, 85, 170);
             tft.fillTriangle(cx, cy - o9, cx - o4, cy + o2, cx + o4, cy + o2, kleur);
             tft.fillCircle(cx, cy + o2, o5, kleur);
-            tft.fillCircle(cx + o2, cy + o2 + o1, o2, donker);                      // schaduw rechtsonder...
-            tft.fillCircle(cx + o2 + o1, cy + o2 + o1 - o1, max(1, o2 - 1), kleur);  // ...hap eruit -> maantje
-            tft.fillCircle(cx - o2, cy, o2, licht);                                 // glans linksboven...
-            tft.fillCircle(cx - o2 - o1, cy - o1, max(1, o2 - 1), kleur);           // ...hap eruit -> maantje
+            tft.fillCircle(cx + o2, cy + o2 + o1, o2, donker);                // schaduw rechtsonder...
+            tft.fillCircle(cx + o2 - o1, cy + o2, max(1, o2 - 1), kleur);     // ...hap NAAR het centrum toe -> sikkel volgt de rand
+            tft.fillCircle(cx - o2, cy, o2, licht);                          // glans linksboven...
+            tft.fillCircle(cx - o2 + o1, cy + o1, max(1, o2 - 1), kleur);    // ...hap NAAR het centrum toe -> sikkel volgt de rand
             break;
         }
         case I_DEKLICHT: {

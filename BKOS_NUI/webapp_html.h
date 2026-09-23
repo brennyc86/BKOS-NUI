@@ -777,13 +777,12 @@ var USB_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical
   + '<circle cx="12" cy="18" r="2" fill="#c9d3db"/>'
   + '<path d="M12 16V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
   + '<path d="M12 13L8 9" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M8 9V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<rect x="6" y="3" width="4" height="4" fill="#c9d3db"/>'
-  + '<path d="M12 13V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<circle cx="12" cy="4.5" r="2" fill="#c9d3db"/>'
+  + '<circle cx="8" cy="9" r="2" fill="#c9d3db"/>'
+  + '<path d="M12 13V4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M10 4L14 4 12 1Z" fill="#c9d3db"/>'
   + '<path d="M12 13L16 9" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
   + '<path d="M16 9V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M14 7L18 7 16 3Z" fill="#c9d3db"/>'
+  + '<rect x="14" y="5" width="4" height="4" fill="#c9d3db"/>'
   + '</svg>';
 
 function tileIcoon(p){

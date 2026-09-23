@@ -401,25 +401,25 @@ static int _hv_app_ic_o(int v, float s) { return (int)(v * s + (v >= 0 ? 0.5f : 
 static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kleur) {
     switch (icoon) {
         case I_USB: {
-            // USB-drietand: balletje ONDERIN, stam naar het vertakpunt; de
-            // buitenste 2 takken lopen eerst diagonaal (~45°) en dan recht
-            // omhoog naar hun symbool. Iets compacter in de hoogte dan de
-            // vorige versie (was te hoog) — o7/o6 i.p.v. o9/o8.
-            int o2 = max(2, _hv_app_ic_o(2, s)), o4 = _hv_app_ic_o(4, s),
-                o6 = _hv_app_ic_o(6, s), o7 = _hv_app_ic_o(7, s);
+            // USB-drietand: balletje ONDERIN, stam naar het vertakpunt. De
+            // 3 symbolen staan op verschillende hoogte (Brendans expliciete
+            // volgorde): middentak recht omhoog = HOOGSTE (driehoek),
+            // rechtertak (diagonaal+kort recht omhoog) = MIDDELSTE hoogte
+            // (vierkant), linkertak (alleen diagonaal) = LAAGSTE (cirkel).
+            int o2 = max(2, _hv_app_ic_o(2, s)),
+                o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s), o7 = _hv_app_ic_o(7, s);
             tft.fillCircle(cx, cy + o7, o2, kleur);                        // balletje onderin
             tft.drawFastVLine(cx, cy + o2, o7 - o2, kleur);                // stam naar het vertakpunt
 
-            tft.drawLine(cx, cy + o2, cx - o4, cy - o2, kleur);            // linkertak: diagonaal (45°)...
-            tft.drawFastVLine(cx - o4, cy - o6, o6 - o2, kleur);           // ...dan recht omhoog
-            tft.fillRect(cx - o4 - o2, cy - o6 - o2, 2 * o2, 2 * o2, kleur);      // ...naar een gevuld vierkant
+            tft.drawLine(cx, cy + o2, cx - o4, cy - o2, kleur);            // linkertak (laagste): alleen diagonaal...
+            tft.fillCircle(cx - o4, cy - o2 - o2, o2, kleur);              // ...naar een gevulde cirkel
 
-            tft.drawFastVLine(cx, cy - o7, o7 + o2, kleur);                // middentak: recht omhoog (hoogste)
-            tft.fillCircle(cx, cy - o7 - o2, o2, kleur);                   // ...naar een gevulde cirkel
+            tft.drawFastVLine(cx, cy - o7, o7 + o2, kleur);                // middentak (hoogste): recht omhoog
+            tft.fillTriangle(cx - o2, cy - o7 - o2, cx + o2, cy - o7 - o2, cx, cy - o7 - 2 * o2, kleur);  // ...naar een gevulde driehoek
 
-            tft.drawLine(cx, cy + o2, cx + o4, cy - o2, kleur);            // rechtertak: diagonaal (45°)...
-            tft.drawFastVLine(cx + o4, cy - o6, o6 - o2, kleur);           // ...dan recht omhoog
-            tft.fillTriangle(cx + o4 - o2, cy - o6 - o2, cx + o4 + o2, cy - o6 - o2, cx + o4, cy - o6 - 2 * o2, kleur);  // ...naar een gevulde driehoek
+            tft.drawLine(cx, cy + o2, cx + o4, cy - o2, kleur);            // rechtertak (middelste hoogte): diagonaal...
+            tft.drawFastVLine(cx + o4, cy - o5, o5 - o2, kleur);           // ...dan een stuk recht omhoog
+            tft.fillRect(cx + o4 - o2, cy - o5 - o2, 2 * o2, 2 * o2, kleur);      // ...naar een gevuld vierkant
             break;
         }
         case I_230V: {
@@ -431,8 +431,9 @@ static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kle
             // punt onderaan. Fan-triangulatie (5 driehoeken) vanaf de
             // bovenste keep (p3).
             int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s), o4 = _hv_app_ic_o(4, s), o9 = _hv_app_ic_o(9, s);
-            int p1x = cx - o2, p1y = cy - o9;   // platte top, links
-            int p2x = cx + o2, p2y = cy - o9;   // platte top, rechts
+            int top_half = max(1, o2 / 2);      // bovenkant gehalveerd in breedte (gevraagd) — smal boven, breder bij de keep
+            int p1x = cx - top_half, p1y = cy - o9;   // platte top, links
+            int p2x = cx + top_half, p2y = cy - o9;   // platte top, rechts
             int p3x = cx + o1, p3y = cy - o2;   // keep 1 (bovenste)
             int p4x = cx + o4, p4y = cy - o2;   // sprong bij keep 1
             int p5x = cx - o2, p5y = cy + o9;   // spitse punt onderaan
@@ -457,7 +458,8 @@ static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kle
             // onder, ~6px boven — vaste pixelbreedtes, niet schalend met s)
             // i.p.v. een rechte balk, en een fractie hoger/korter.
             int dik = max(2, _hv_app_ic_o(2, s));    // ~5pt kaderdikte
-            int o2 = max(1, _hv_app_ic_o(2, s)), o3 = _hv_app_ic_o(3, s), o5 = _hv_app_ic_o(5, s),
+            int o3 = _hv_app_ic_o(3, s),
+                o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s),
                 o7 = _hv_app_ic_o(7, s), o8 = _hv_app_ic_o(8, s), o11 = _hv_app_ic_o(11, s),
                 o12 = _hv_app_ic_o(12, s), o16 = _hv_app_ic_o(16, s);
             int bx = cx - o8, by = cy - o5;
@@ -473,30 +475,37 @@ static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kle
             // Laag 2: afgeronde, dikke rand — exact dezelfde plek erover
             for (int i = 0; i < dik; i++)
                 tft.drawRoundRect(bx + i, by + i, o16 - 2 * i, o11 - 2 * i, o3, kleur);
+            // Bug: voet_top_y stond hierboven op cy+o5, wat BOVEN de werkelijke
+            // onderkant van de kast (by+o11) ligt — de voet begon dus binnen
+            // de kastrand zelf en verdween daar bijna helemaal in. Nu expliciet
+            // vanaf de echte onderkant, en een stuk langer (was maar o2 hoog).
+            int tv_onder = by + o11;
             int top_w = 6, bot_w = 9;               // vast, niet schalend met s (zoals gevraagd)
-            int voet_top_y = cy + o5, voet_bot_y = cy + o5 + o2;
+            int voet_top_y = tv_onder, voet_bot_y = tv_onder + o4;
             tft.fillTriangle(cx - top_w / 2, voet_top_y, cx + top_w / 2, voet_top_y, cx - bot_w / 2, voet_bot_y, kleur);
             tft.fillTriangle(cx + top_w / 2, voet_top_y, cx + bot_w / 2, voet_bot_y, cx - bot_w / 2, voet_bot_y, kleur);
             break;
         }
         case I_WATER: {
-            // Gevulde druppel met een groter "maantje" linksboven en
-            // rechtsonder, dicht tegen de rand van de bol aan (bijna-even-
-            // grote cirkel als de druppel zelf, i.p.v. het vorige kleine
-            // rondje) — de hap (in de basiskleur) ligt telkens iets dichter
-            // naar het druppelcentrum toe dan het accent zelf, zodat de
-            // resterende sikkel een flink stuk van de druppelrand volgt.
-            int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s), o3 = _hv_app_ic_o(3, s),
+            // Maan-accenten nu als ring-segment (tft.fillArc(), zelfde
+            // primitief als de AUTO-knop in screen_main.ino) tussen een
+            // binnen- en buitenstraal die allebei BINNEN de druppelrand
+            // blijven. Dat geeft automatisch, van buiten naar binnen: een
+            // randje druppelkleur, dan het maantje, dan weer druppelkleur in
+            // het gat — precies gevraagd, en betrouwbaarder dan de vorige
+            // "hap uit 2 cirkels"-techniek (die de sikkel bijna tot de
+            // druppelrand liet doorlopen).
+            int o1 = _hv_app_ic_o(1, s), o2 = _hv_app_ic_o(2, s),
                 o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s), o9 = _hv_app_ic_o(9, s);
             int dcx = cx, dcy = cy + o2;   // druppel(bol)centrum
             uint16_t licht  = RGB565(195, 228, 255);
             uint16_t donker = RGB565(15, 85, 170);
+            int buiten_r = max(o2 + 1, o5 - o1);   // randje druppelkleur vóór het maantje
+            int binnen_r = max(1, buiten_r - o2);  // en weer druppelkleur ná het maantje (het gat)
             tft.fillTriangle(cx, cy - o9, cx - o4, cy + o2, cx + o4, cy + o2, kleur);
             tft.fillCircle(dcx, dcy, o5, kleur);
-            tft.fillCircle(dcx + o2, dcy + o2, o3, donker);       // schaduw rechtsonder, dicht tegen de rand...
-            tft.fillCircle(dcx + o1, dcy + o1, o3, kleur);        // ...hap iets dichter naar het centrum -> brede sikkel
-            tft.fillCircle(dcx - o2, dcy - o2, o3, licht);        // glans linksboven, dicht tegen de rand...
-            tft.fillCircle(dcx - o1, dcy - o1, o3, kleur);        // ...hap iets dichter naar het centrum -> brede sikkel
+            tft.fillArc(dcx, dcy, buiten_r, binnen_r, 195, 255, licht);   // glans linksboven
+            tft.fillArc(dcx, dcy, buiten_r, binnen_r, 15, 75, donker);    // schaduw rechtsonder
             break;
         }
         case I_DEKLICHT: {

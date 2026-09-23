@@ -408,6 +408,19 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
           <div id="gastMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
           <div id="gastLijst" style="margin-top:8px;"></div>
         </section>
+
+        <section>
+          <h2>Berichtlimiet</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Maximum aantal berichten per apparaat (MAC-adres) via het "bericht aan eigenaar"-formulier, voordat er gewacht moet worden — voorkomt spam. 0 = geen limiet.</p>
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Max. berichten — ingelogd (gast-/eigenaarscode)</label>
+          <input id="blimIngelogd" type="number" min="0" max="65535" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Max. berichten — niet ingelogd</label>
+          <input id="blimGast" type="number" min="0" max="65535" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Reset-periode (uren zonder bericht voordat de teller weer op nul mag)</label>
+          <input id="blimResetUren" type="number" min="0" max="65535" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <button class="mbtn" onclick="berichtlimietOpslaan()">OPSLAAN</button>
+          <div id="blimMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
       </div>
 
       <div id="instSubBackup" class="tabpane" style="display:none">
@@ -583,7 +596,7 @@ function setTab(naam){
     if (pane) pane.style.display = (t === naam) ? '' : 'none';
   });
   if (naam === 'fotos') { fotosInfo(); fotosLijst(); bfInfo(); bfLijst(); }
-  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); setSubTab(subTab); }
+  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); berichtlimietLaden(); setSubTab(subTab); }
   document.querySelectorAll('.tabbar')[0].querySelectorAll('.tabbtn').forEach(function(btn){
     btn.classList.toggle('active', btn.getAttribute('data-tab') === naam);
   });
@@ -637,6 +650,8 @@ function handleMsg(msg){
       renderGastBewerkt(msg); break;
     case 'melding':
       meldingData = msg; renderMelding(); break;
+    case 'berichtlimiet':
+      renderBerichtlimiet(msg); break;
     case 'melding_test_res':
       { var mm = document.getElementById('meldingMelding'); if (mm) { mm.style.color = 'var(--green)'; mm.textContent = 'Testbericht verstuurd.'; } }
       break;
@@ -988,6 +1003,7 @@ var I18N = {
     phNaam:'jouw naam', phTel:'jouw telefoonnummer', phVrij:'of typ zelf een bericht…', btnStuur:'STUUR',
     okBericht:'Bericht verzonden.', okNood:'Noodmelding verzonden.', foutVerzenden:'Versturen mislukt.',
     foutNaamTel:'Vul eerst je naam en telefoonnummer in.', foutTypEerst:'Typ eerst een bericht.',
+    foutLimiet:'Je hebt het maximum aantal berichten bereikt. Probeer het over {wacht} opnieuw.',
     lockedHint:'Bediening vereist de eigenaars- of een gastpincode.', ontgrendelen:'Ontgrendelen →' },
   en: { ehLabel:'Owner:', kopBoot:'Boat & owner', labelNood:'Emergency',
     kopBericht:'Messages',
@@ -995,6 +1011,7 @@ var I18N = {
     phNaam:'your name', phTel:'your phone number', phVrij:'or type your own message…', btnStuur:'SEND',
     okBericht:'Message sent.', okNood:'Emergency message sent.', foutVerzenden:'Sending failed.',
     foutNaamTel:'Please fill in your name and phone number first.', foutTypEerst:'Please type a message first.',
+    foutLimiet:'You have reached the maximum number of messages. Try again in {wacht}.',
     lockedHint:"Control requires the owner's or a guest PIN.", ontgrendelen:'Unlock →' },
   de: { ehLabel:'Eigentümer:', kopBoot:'Boot & Eigentümer', labelNood:'Notfall',
     kopBericht:'Nachrichten',
@@ -1111,8 +1128,18 @@ function stuurNood(i){
 }
 
 function ladenBericht(){
-  document.getElementById('berichtAfzNaam').value = localStorage.getItem(BERICHT_NAAM_KEY) || '';
-  document.getElementById('berichtAfzTel').value  = localStorage.getItem(BERICHT_TEL_KEY)  || '';
+  var naamEl = document.getElementById('berichtAfzNaam');
+  var telEl  = document.getElementById('berichtAfzTel');
+  naamEl.value = localStorage.getItem(BERICHT_NAAM_KEY) || '';
+  telEl.value  = localStorage.getItem(BERICHT_TEL_KEY)  || '';
+  // Server-kant (MAC-adres, zie mac_record.h) vult aan waar localStorage
+  // niets weet — bv. een ander apparaat/browser dan de vorige keer.
+  if (!naamEl.value || !telEl.value) {
+    fetch('/bericht/afzender').then(function(r){ return r.json(); }).then(function(d){
+      if (!naamEl.value && d.naam) naamEl.value = d.naam;
+      if (!telEl.value  && d.tel)  telEl.value  = d.tel;
+    }).catch(function(){});
+  }
   var taal = huidigeTaal();
   fetch('/bericht/lijst').then(function(r){ return r.json(); }).then(function(d){
     var presets = d.presets || [];
@@ -1143,13 +1170,27 @@ function berichtAfzGegevens(){
   return { naam: naam, tel: tel };
 }
 
+// Ratelimiet (mac_record.h) geeft de resterende wachttijd in seconden mee —
+// leesbaar maken i.p.v. kaal "3600 seconden".
+function _berichtLeesbareTijd(sec){
+  if (sec < 90) return sec + 's';
+  var min = Math.ceil(sec / 60);
+  if (min < 90) return min + 'min';
+  return Math.ceil(min / 60) + 'u';
+}
+function _berichtFoutmelding(d, dict){
+  if (d.reden === 'limiet') return (dict.foutLimiet || dict.foutVerzenden).replace('{wacht}', _berichtLeesbareTijd(d.wachtSec || 0));
+  return dict.foutVerzenden;
+}
+
 function stuurBericht(i){
   var dict = huidigDict();
   var afz = berichtAfzGegevens(); if (!afz) return;
   var fd = new URLSearchParams(); fd.set('idx', i); fd.set('naam', afz.naam); fd.set('tel', afz.tel);
+  fd.set('pin', localStorage.getItem(PIN_KEY) || '');
   fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
     .then(function(r){ return r.json(); })
-    .then(function(d){ berichtMelding(d.ok ? dict.okBericht : dict.foutVerzenden, !d.ok); })
+    .then(function(d){ berichtMelding(d.ok ? dict.okBericht : _berichtFoutmelding(d, dict), !d.ok); })
     .catch(function(){ berichtMelding(dict.foutVerzenden, true); });
 }
 
@@ -1160,10 +1201,11 @@ function stuurBerichtVrij(){
   var tekst = veld.value.trim();
   if (!tekst) { berichtMelding(dict.foutTypEerst, true); return; }
   var fd = new URLSearchParams(); fd.set('tekst', tekst); fd.set('naam', afz.naam); fd.set('tel', afz.tel);
+  fd.set('pin', localStorage.getItem(PIN_KEY) || '');
   fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
     .then(function(r){ return r.json(); })
     .then(function(d){
-      berichtMelding(d.ok ? dict.okBericht : dict.foutVerzenden, !d.ok);
+      berichtMelding(d.ok ? dict.okBericht : _berichtFoutmelding(d, dict), !d.ok);
       if (d.ok) veld.value = '';
     })
     .catch(function(){ berichtMelding(dict.foutVerzenden, true); });
@@ -1801,6 +1843,28 @@ function meldingTest(){
   send({t:'melding_test'});
   var el = document.getElementById('meldingMelding');
   el.style.color = ''; el.textContent = 'Testbericht versturen…';
+}
+
+// Berichtlimiet (mac_record.h) — max. aantal berichten per MAC-adres,
+// apart voor ingelogd/niet-ingelogd, plus een reset-periode. Zelfde
+// get/render/opslaan-patroon als de meldingen-instellingen hierboven.
+function berichtlimietLaden(){ send({t:'berichtlimiet_get'}); }
+function renderBerichtlimiet(d){
+  document.getElementById('blimIngelogd').value  = d.ingelogd;
+  document.getElementById('blimGast').value      = d.gast;
+  document.getElementById('blimResetUren').value = d.resetUren;
+}
+function berichtlimietOpslaan(){
+  if (needAuth()) return;
+  send({
+    t: 'berichtlimiet_set',
+    ingelogd:  document.getElementById('blimIngelogd').value,
+    gast:      document.getElementById('blimGast').value,
+    resetUren: document.getElementById('blimResetUren').value
+  });
+  var el = document.getElementById('blimMelding');
+  el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.';
+  setTimeout(function(){ if (el.textContent === 'Opgeslagen.') el.textContent = ''; }, 3000);
 }
 
 achtergrondToepassen();

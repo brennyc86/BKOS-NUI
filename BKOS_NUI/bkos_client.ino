@@ -19,6 +19,7 @@
 #include "gast.h"            // pin_niveau() — eigenaar vs. gastcode
 #include "wifi.h"            // ntp_synced() — gasten-vervaldatum, zie gast.h
 #include "melding.h"         // CallMeBot Signal/WhatsApp — INSTELLINGEN → VERBINDINGEN in de webapp
+#include "mac_record.h"      // MAC-adres-onthouden-login + berichtlimiet-instellingen
 
 #include <WebSocketsServer.h>
 #include <ESPmDNS.h>
@@ -283,6 +284,16 @@ static String _gast_json() {
     return s;
 }
 
+// ─── INSTELLINGEN → TOEGANG (webapp) — berichtlimiet per MAC-adres (zie
+// mac_record.h). 0 = geen limiet.
+static String _berichtlimiet_json() {
+    String s = F("{\"t\":\"berichtlimiet\",\"ingelogd\":"); s += bericht_limiet_ingelogd;
+    s += F(",\"gast\":"); s += bericht_limiet_gast;
+    s += F(",\"resetUren\":"); s += bericht_limiet_reset_uren;
+    s += F("}");
+    return s;
+}
+
 // ─── INSTELLINGEN → VERBINDINGEN (webapp) — Meldingen (CallMeBot). Eigenaar-
 // only; de lange Signal-/WhatsApp-code is nu vanaf een computer/telefoon te
 // plakken i.p.v. op het scherm van de boordcomputer te moeten intypen.
@@ -326,8 +337,17 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             int niveau = pin_niveau(buf);
             _ws_niveau[num] = niveau;
             String r;
-            if (niveau > NIVEAU_GEEN) { r = F("{\"t\":\"auth_ok\",\"niveau\":"); r += niveau; r += '}'; }
-            else                            r = F("{\"t\":\"auth_fout\"}");
+            if (niveau > NIVEAU_GEEN) {
+                r = F("{\"t\":\"auth_ok\",\"niveau\":"); r += niveau; r += '}';
+                // Onthoud deze geslaagde pincode op het MAC-adres van deze client,
+                // zodat een volgende reconnect (ander apparaat/browser, of dezelfde
+                // browser na gewiste opslag) automatisch weer inlogt — zie
+                // mac_record.h. Alleen zinvol/betrouwbaar via de eigen hotspot.
+                uint8_t mac[6];
+                if (wifi_mac_voor_ip(_ws.remoteIP(num), mac)) mac_record_login_onthoud(mac, buf);
+            } else {
+                r = F("{\"t\":\"auth_fout\"}");
+            }
             _ws.sendTXT(num, r);
         }
         return;
@@ -577,6 +597,18 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         melding_test();
         String r = F("{\"t\":\"melding_test_res\"}");
         _ws.sendTXT(num, r);
+
+    } else if (t.indexOf(F("\"berichtlimiet_get\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        String s = _berichtlimiet_json(); _ws.sendTXT(num, s);
+
+    } else if (t.indexOf(F("\"berichtlimiet_set\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
+        long li = _getal_uit(t, "ingelogd"); if (li >= 0 && li <= 65535) bericht_limiet_ingelogd   = (uint16_t)li;
+        long lg = _getal_uit(t, "gast");     if (lg >= 0 && lg <= 65535) bericht_limiet_gast       = (uint16_t)lg;
+        long lr = _getal_uit(t, "resetUren"); if (lr >= 0 && lr <= 65535) bericht_limiet_reset_uren = (uint16_t)lr;
+        mac_record_limiet_opslaan();
+        String s = _berichtlimiet_json(); _ws.sendTXT(num, s);
     }
 }
 
@@ -620,6 +652,18 @@ void bkos_client_setup() {
                 case WStype_CONNECTED: {
                     _ws_klanten[num] = true;
                     _ws_niveau[num]  = NIVEAU_GEEN;
+                    // Automatische her-login op MAC-adres (zie mac_record.h) — de
+                    // client hoeft geen "auth" te sturen; een eerder onthouden,
+                    // nog geldige pincode logt hier meteen in. Zelfde auth_ok-
+                    // bericht als een handmatige login, dus geen client-wijziging
+                    // nodig (handleMsg()'s "auth_ok"-tak reageert hier al op).
+                    uint8_t _auto_mac[6]; int _auto_niveau;
+                    if (wifi_mac_voor_ip(_ws.remoteIP(num), _auto_mac) &&
+                        mac_record_login_probeer(_auto_mac, &_auto_niveau)) {
+                        _ws_niveau[num] = _auto_niveau;
+                        String ra = F("{\"t\":\"auth_ok\",\"niveau\":"); ra += _auto_niveau; ra += '}';
+                        _ws.sendTXT(num, ra);
+                    }
                     String m1 = _io_full_json(); _ws.sendTXT(num, m1);
                     String m2 = _state_json();   _ws.sendTXT(num, m2);
                     String m3 = _net_json();     _ws.sendTXT(num, m3);

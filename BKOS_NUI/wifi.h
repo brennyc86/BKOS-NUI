@@ -82,3 +82,9 @@ void     wifi_hotspot_starten();
 void     wifi_hotspot_stoppen();
 void     wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, size_t wachtwoord_len);
 void     wifi_hotspot_tick();  // aanroepen vanuit de hoofdlus — auto-start bij opstarten + captive-portal DNS
+
+// MAC-adres van een client die via de eigen hotspot (softAP) verbonden is,
+// opgezocht via diens IP-adres — alleen zinvol/betrouwbaar zolang de webapp
+// uitsluitend over de hotspot loopt (zie mac_record.h). false als het
+// IP-adres niet (meer) bij een verbonden AP-station hoort.
+bool     wifi_mac_voor_ip(IPAddress ip, uint8_t mac_uit[6]);

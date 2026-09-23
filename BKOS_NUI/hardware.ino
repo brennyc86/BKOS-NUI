@@ -458,6 +458,8 @@ static void _hw_achtergrond_init_eenmalig() {
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
     gast_laden();    // laad gasten-pincodes voor de webapp (HUIS/BOOT-toegang)
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
+    mac_record_laden();        // laad MAC-adres-onthouden-login + afzendergegevens
+    mac_record_limiet_laden(); // laad instelbare berichtlimieten (default 20/5/24u)
 #if BKOS_REMOTE_ENABLED
     bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
     webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)

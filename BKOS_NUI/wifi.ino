@@ -10,6 +10,7 @@
 #include "melding.h"
 #include "bkos_client.h"    // bkos_client_setup/stop() — alleen actief tijdens de tijdelijke hotspot
 #include "webapp.h"         // webapp_setup/stop()
+#include "mac_record.h"     // mac_record_opschonen() — dagelijkse opruiming
 
 bool wifi_aangesloten     = false;
 volatile bool wifi_ota_modus = false;
@@ -279,6 +280,8 @@ static void _wifi_verbinden_intern() {
 // limiet meer.
 #if PLATFORM_ESP32
 #include <DNSServer.h>
+#include "esp_wifi.h"    // esp_wifi_ap_get_sta_list() — MAC-lijst van verbonden hotspot-clients
+#include "esp_netif.h"   // esp_netif_get_sta_list() — koppelt die MACs aan hun DHCP-IP
 static bool      _hs_actief    = false;
 static char      _hs_ssid[24]  = "";
 static char      _hs_wachtwoord[13] = "";
@@ -296,6 +299,26 @@ static void _hs_creds_genereren() {
 }
 
 bool wifi_hotspot_actief() { return _hs_actief; }
+
+// Zoekt het MAC-adres op van een client-IP in de lijst van momenteel
+// geassocieerde hotspot-stations (softAP DHCP-lease-lijst) — dus alleen
+// zinvol zolang die client ook echt via de eigen hotspot verbonden is (zie
+// mac_record.h). Geeft false als de lijst leeg is of het IP er niet in
+// voorkomt (bv. het apparaat is intussen losgekoppeld).
+bool wifi_mac_voor_ip(IPAddress ip, uint8_t mac_uit[6]) {
+    wifi_sta_list_t      wifi_sta_list;
+    esp_netif_sta_list_t netif_sta_list;
+    if (esp_wifi_ap_get_sta_list(&wifi_sta_list) != ESP_OK) return false;
+    if (esp_netif_get_sta_list(&wifi_sta_list, &netif_sta_list) != ESP_OK) return false;
+    for (int i = 0; i < netif_sta_list.num; i++) {
+        esp_netif_sta_info_t& info = netif_sta_list.sta[i];
+        if (IPAddress(info.ip.addr) == ip) {
+            memcpy(mac_uit, info.mac, 6);
+            return true;
+        }
+    }
+    return false;
+}
 
 void wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out, size_t wachtwoord_len) {
     if (ssid_out && ssid_len)             { strncpy(ssid_out, _hs_ssid, ssid_len - 1); ssid_out[ssid_len - 1] = '\0'; }
@@ -357,6 +380,7 @@ void     wifi_hotspot_info(char* ssid_out, size_t ssid_len, char* wachtwoord_out
 void wifi_hotspot_starten() {}
 void wifi_hotspot_stoppen() {}
 void wifi_hotspot_tick() {}
+bool wifi_mac_voor_ip(IPAddress ip, uint8_t mac_uit[6]) { return false; }
 #endif
 
 // ─── WiFi verbreken (energiebesparing) ───────────────────────────────────────
@@ -434,6 +458,7 @@ static void netwerk_taak(void* param) {
                 ota_git_check();
                 if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
                     ota_nieuwer_beschikbaar = true;
+                mac_record_opschonen();   // meegelift op deze ~30-minutencyclus, hoeft niet exact dagelijks
             } else if (ota_gevraagd) {
                 ota_git_check();
                 if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)

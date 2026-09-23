@@ -16,6 +16,8 @@
 #include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /fotos/foto, webapp-achtergrond
 #include "gast.h"           // pin_niveau() — eigenaar vs. gastcode (HUIS/BOOT-toegang)
 #include "app_manager.h"    // app_spiffs_vrij/totaal, app_sd_aanwezig/vrij — Bestanden-tab
+#include "mac_record.h"     // MAC-adres-onthouden afzendergegevens + berichtlimiet
+#include "wifi.h"           // wifi_mac_voor_ip()
 #include <WebServer.h>
 
 // SD-kaart is alleen aangesloten op de S3 (zie app_manager.cpp) — zelfde
@@ -208,7 +210,10 @@ void webapp_setup() {
     });
 
     // Naam + telefoonnummer van de afzender zijn verplicht (server-side
-    // afgedwongen, niet alleen client-side) — zie bericht.h.
+    // afgedwongen, niet alleen client-side) — zie bericht.h. Ratelimiet en
+    // afzender-onthouden zijn MAC-gebonden (mac_record.h) — een client-side/
+    // localStorage-teller is triviaal te omzeilen door de opslag te wissen,
+    // dat beschermt niet tegen een "grapjas" die wil spammen.
     _http.on("/bericht/verzend", HTTP_POST, []() {
         String naam = _http.arg("naam"); naam.trim();
         String tel  = _http.arg("tel");  tel.trim();
@@ -217,6 +222,18 @@ void webapp_setup() {
         }
         if ((int)naam.length() > BERICHT_AFZ_NAAM_LEN - 1) naam = naam.substring(0, BERICHT_AFZ_NAAM_LEN - 1);
         if ((int)tel.length()  > BERICHT_AFZ_TEL_LEN - 1)  tel  = tel.substring(0, BERICHT_AFZ_TEL_LEN - 1);
+
+        uint8_t mac[6];
+        bool heeft_mac = wifi_mac_voor_ip(_http.client().remoteIP(), mac);
+        if (heeft_mac) {
+            bool ingelogd = _pin_ok(_http.arg("pin"));
+            uint32_t wacht_sec = 0;
+            if (!mac_record_bericht_toegestaan(mac, ingelogd, &wacht_sec)) {
+                String r = "{\"ok\":false,\"reden\":\"limiet\",\"wachtSec\":"; r += wacht_sec; r += "}";
+                _http.send(429, "application/json", r); return;
+            }
+        }
+
         String vrij = _http.arg("tekst"); vrij.trim();
         if (vrij.length() > 0) {
             bericht_verzend_vrij(vrij.c_str(), naam.c_str(), tel.c_str());
@@ -225,7 +242,22 @@ void webapp_setup() {
             if (idx < 0 || idx >= BERICHT_AANTAL) { _http.send(400, "application/json", "{\"ok\":false}"); return; }
             bericht_verzend(idx, naam.c_str(), tel.c_str());
         }
+        if (heeft_mac) mac_record_bericht_registreer(mac, naam.c_str(), tel.c_str());
         _http.send(200, "application/json", "{\"ok\":true}");
+    });
+
+    // Eerder onthouden naam/telefoon voor dit MAC-adres (indien bekend) —
+    // vult het formulier alvast in zodat iemand die eerder al eens een
+    // bericht stuurde dit niet opnieuw hoeft te typen, ook op een ander
+    // apparaat/browser dan de vorige keer (localStorage dekt alleen "zelfde
+    // browser").
+    _http.on("/bericht/afzender", HTTP_GET, []() {
+        uint8_t mac[6];
+        char naam[BERICHT_AFZ_NAAM_LEN] = "", tel[BERICHT_AFZ_TEL_LEN] = "";
+        if (wifi_mac_voor_ip(_http.client().remoteIP(), mac))
+            mac_record_afzender_ophalen(mac, naam, sizeof(naam), tel, sizeof(tel));
+        String s = "{\"naam\":\""; s += naam; s += "\",\"tel\":\""; s += tel; s += "\"}";
+        _http.send(200, "application/json", s);
     });
 
     // ─── Noodgevallen: aparte, vaste knoppenset — naam/telefoon hier BEWUST

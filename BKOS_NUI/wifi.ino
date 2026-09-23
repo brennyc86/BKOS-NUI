@@ -288,14 +288,24 @@ static char      _hs_wachtwoord[13] = "";
 static DNSServer _hs_dns;
 #define HS_DNS_POORT 53
 
-// Bewust een open netwerk (geen wachtwoord) — op Brendans expliciete verzoek,
-// zeker tijdens het testen. _hs_wachtwoord blijft leeg; wifi_hotspot_info()
-// geeft die leeg terug, en de aanroeper (screen_bestanden.ino) laat het
-// wachtwoorddeel dan weg i.p.v. een lege waarde te tonen.
+// Vast, gepubliceerd wachtwoord i.p.v. een open netwerk (was bewust open op
+// Brendans verzoek, zie de oude comment hier — teruggedraaid nadat bleek dat
+// juist een open, internetloos netwerk telefoons (vooral iOS) ertoe aanzet
+// om per verbinding een NIEUW gerandomiseerd MAC-adres te tonen, waardoor
+// mac_record.h's "onthoud dit apparaat"-koppeling nooit standhoudt. Een
+// netwerk met een vast wachtwoord wordt door telefoons als "bekend"/
+// vertrouwd behandeld en krijgt doorgaans een STABIEL privé-adres per
+// netwerk — geen echte beveiliging (het wachtwoord staat straks gewoon op
+// het scherm/de captive portal), puur een stabiliteitsanker voor MAC-
+// herkenning. Kort, makkelijk te typen op een telefoontoetsenbord (geen
+// hoofdletters/symbolen nodig), 8 tekens (WPA2-minimum).
+#define HS_WACHTWOORD "bkosboot"
+
 static void _hs_creds_genereren() {
     if (strlen(net_eigen_naam) > 0) snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-%s", net_eigen_naam);
     else                            snprintf(_hs_ssid, sizeof(_hs_ssid), "BKOS-NUI");
-    _hs_wachtwoord[0] = '\0';
+    strncpy(_hs_wachtwoord, HS_WACHTWOORD, sizeof(_hs_wachtwoord) - 1);
+    _hs_wachtwoord[sizeof(_hs_wachtwoord) - 1] = '\0';
 }
 
 bool wifi_hotspot_actief() { return _hs_actief; }
@@ -330,7 +340,7 @@ void wifi_hotspot_starten() {
     _hs_creds_genereren();
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);  // zie _wifi_verbinden_intern() — voorkomt trage/gemiste verbindingen
-    WiFi.softAP(_hs_ssid);  // geen wachtwoord = open netwerk
+    WiFi.softAP(_hs_ssid, _hs_wachtwoord);
     _hs_actief = true;
 
     // Captive portal: alle DNS-namen wijzen naar dit apparaat zelf, zodat

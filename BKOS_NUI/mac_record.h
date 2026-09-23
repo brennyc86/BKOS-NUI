@@ -5,9 +5,10 @@
 
 // ─── MAC-adres-gebaseerd onthouden (webapp) ───────────────────────────────────
 // De webapp draait uitsluitend via de eigen, altijd-aan ESP32-hotspot
-// (softAP, open netwerk) — als access point kent de ESP32 dus altijd het
-// MAC-adres van elk verbonden apparaat. Dat maakt "ingelogd blijven"
-// betrouwbaarder dan het bestaande localStorage-in-de-browser-truukje
+// (softAP, vast gepubliceerd wachtwoord — zie HS_WACHTWOORD in wifi.ino) —
+// als access point kent de ESP32 dus altijd het MAC-adres van elk verbonden
+// apparaat. Dat maakt "ingelogd blijven" betrouwbaarder dan het bestaande
+// localStorage-in-de-browser-truukje
 // (werkt niet in een andere browser/privénavigatie/na gewiste opslag): één
 // record per MAC-adres met twee onafhankelijke doelen:
 //

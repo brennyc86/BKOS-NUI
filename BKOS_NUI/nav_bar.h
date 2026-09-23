@@ -82,19 +82,48 @@ void nav_midden_bouwen();
 // breedte in pixels — die breedtes zijn hier de bron van waarheid voor de
 // pitch-berekening, zodat teken-volgorde en tussenruimte hier op één plek
 // staan i.p.v. verspreid als losse magic numbers.
-#define SB_ICON_CY      (SB_H / 2)  // verticaal midden voor alle 3 iconen
+#define SB_ICON_CY      (SB_H / 2)  // verticaal midden voor alle iconen
 #define SB_ICON_X0      10          // linkermarge vóór het wifi-icoon
 #define SB_ICON_GAP     12          // ruimte tussen de iconen onderling
 #define SB_WIFI_W       22          // breedte wifi-icoon (4 balkjes + tussenruimtes)
 #define SB_HOTSPOT_W    16          // breedte hotspot-icoon (cirkel r=8, licht asymmetrisch)
 #define SB_HOTSPOT_X    (SB_ICON_X0 + SB_WIFI_W + SB_ICON_GAP + 1)
+#define SB_UPDATE_W     18          // breedte update-beschikbaar-icoon (pijl + bakje)
 #define SB_ALERT_W      14          // breedte alert-icoon
-#define SB_ALERT_X      (SB_HOTSPOT_X + SB_HOTSPOT_W - 1 + SB_ICON_GAP)
 #define SB_TITEL_GAP    18          // extra ruimte tussen laatste icoon en schermtitel
-#define SB_TITEL_X      (SB_ALERT_X + SB_ALERT_W + SB_TITEL_GAP)
+
+// WIFI en HOTSPOT staan altijd op een vaste plek (SB_ICON_X0/SB_HOTSPOT_X).
+// UPDATE en ALERT verschijnen alleen als ze actief zijn (zie sb_teken_basis()
+// in nav_bar.ino) — hun x-positie en het eindpunt van de hele strook zijn dus
+// runtime-afhankelijk. `sb_iconen_eind_x` is de bron van waarheid daarvoor;
+// sb_scherm_teken()/sb_app_teken() gebruiken 'm i.p.v. een vast SB_TITEL_X.
+extern int sb_iconen_eind_x;
+
+// ─── Uitklap-paneel (grotere, beter klikbare versie van de statusbalk-iconen) ─
+// Opent vanuit de linkerbovenhoek zodra op de iconenstrook getikt wordt; op
+// diezelfde plek (nu leeg terwijl het paneel open is) of duidelijk ernaast
+// tikken sluit 'm weer. Zie nav_bar.ino: sb_paneel_teken()/sb_paneel_klik().
+extern bool sb_paneel_open;
+#define SB_PANEEL_X      (SB_ICON_X0 - 4)
+#define SB_PANEEL_Y0     SB_H
+#define SB_PANEEL_W      240
+#define SB_PANEEL_RIJ_H  46
+#define SB_PANEEL_PAD    6
+
+// ─── Waarschuwing-infrastructuur (nog door niets aangeroepen) ─────────────────
+// Zodra er ooit een echte bron komt (IO-alert, WiFi-verlies, ...) volstaat
+// een aanroep van sb_waarschuwing_zet(); zolang dat niet gebeurt blijft het
+// alert-icoon volledig onzichtbaar (geen ruimte, niet gedimd).
+#define SB_WAARSCHUWING_LEN 80
+extern bool sb_waarschuwing_actief;
+extern char sb_waarschuwing_tekst[SB_WAARSCHUWING_LEN];
+void sb_waarschuwing_zet(const char* tekst);
+void sb_waarschuwing_wis();
 
 void nav_bar_teken();
 int  nav_bar_klik(int x, int y);
 void sb_teken_basis();
 void sb_scherm_teken(const char* titel, uint16_t kleur);
 void sb_app_teken(const char* app_naam);
+void sb_paneel_teken();
+int  sb_paneel_klik(int x, int y);   // >=0 = navigeer naar dit SCREEN_*, -1 = alleen sluiten

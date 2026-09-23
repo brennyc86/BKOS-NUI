@@ -288,6 +288,17 @@ static void _gui_taak(void*) {
                                 lua_app_run(app_idx, ts_x, ts_y, true);
                             }
                         }
+                    } else if (sb_paneel_open) {
+                        // Uitklap-paneel is open: raak-tik op een rij navigeert,
+                        // elders (incl. de nu lege iconenstrook zelf) sluit 'm alleen.
+                        int nav = sb_paneel_klik(ts_x, ts_y);
+                        sb_paneel_open = false;
+                        if (nav >= 0) { actief_scherm = nav; scherm_bouwen = true; }
+                        else scherm_bouwen = true;
+                    } else if (ts_y < SB_H && ts_x >= SB_ICON_X0 - 4 && ts_x < sb_iconen_eind_x + 4) {
+                        // Tik op de statusbalk-iconen (wifi/hotspot/update/alert) -> paneel openen
+                        sb_paneel_open = true;
+                        sb_paneel_teken();
                     } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
                                actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
                                actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN &&
@@ -649,6 +660,7 @@ void hw_loop() {
         vorig_scherm = actief_scherm;
         bool ota_scherm = (actief_scherm == SCREEN_OTA);
         wifi_ota_zet(ota_scherm || ota_push_actief);
+        sb_paneel_open = false;   // schermwissel via een andere weg (nav-bar, TERUG) sluit het uitklap-paneel ook mee
     }
 
     // Periodieke data-opslag (elke 60s als er wijzigingen zijn)
@@ -856,6 +868,14 @@ void hw_loop() {
                             lua_app_run(app_idx, ts_x, ts_y, true);
                         }
                     }
+                } else if (sb_paneel_open) {
+                    int nav = sb_paneel_klik(ts_x, ts_y);
+                    sb_paneel_open = false;
+                    if (nav >= 0) { actief_scherm = nav; scherm_bouwen = true; }
+                    else scherm_bouwen = true;
+                } else if (ts_y < SB_H && ts_x >= SB_ICON_X0 - 4 && ts_x < sb_iconen_eind_x + 4) {
+                    sb_paneel_open = true;
+                    sb_paneel_teken();
                 } else if (ts_y < SB_H && ts_x >= SB_KLOK_X &&
                            actief_scherm != SCREEN_WIFI && actief_scherm != SCREEN_INFO &&
                            actief_scherm != SCREEN_TIJD && actief_scherm != SCREEN_HAVEN &&
@@ -941,6 +961,7 @@ void hw_loop() {
         vorig_scherm = actief_scherm;
         bool ota_scherm = (actief_scherm == SCREEN_OTA);
         wifi_ota_zet(ota_scherm || ota_push_actief);
+        sb_paneel_open = false;   // schermwissel via een andere weg (nav-bar, TERUG) sluit het uitklap-paneel ook mee
     }
 
     vorige_touch = aanraking_vast;

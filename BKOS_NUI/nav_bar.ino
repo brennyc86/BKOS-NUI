@@ -3,6 +3,7 @@
 #include "app_manager.h"
 #include "haven_achtergrond.h"  // haven_achtergrond_pixel_klem/haven_kleur_meng — getinte HAVEN-achtergrond
 #include "wifi.h"               // wifi_hotspot_actief() — statusbalk-icoon
+#include "ota.h"                // ota_nieuwer_beschikbaar/ota_versie_github — update-icoon
 #include <math.h>
 
 // ─── Getinte achtergrond i.p.v. vlakke kleur op het HAVEN-dashboard ─────────
@@ -123,13 +124,18 @@ void nav_midden_bouwen() {
     if (nav_midden_scroll > max_scroll) nav_midden_scroll = max(0, max_scroll);
 }
 
-// ─── WiFi signaalicoon ────────────────────────────────────────────────────────
+// ─── Schaalbare statusbalk-iconen ──────────────────────────────────────────────
+// Zelfde techniek als _hv_app_ic_o() in screen_haven.ino: elke functie neemt
+// nu (x, cy, s) i.p.v. een vast x/SB_ICON_CY, zodat 'm zowel op de normale
+// kleine strook (s=1.0, pixel-identiek aan voorheen) als vergroot in het
+// uitklap-paneel (s>1) getekend kan worden zonder duplicatie.
+static int _sb_ic_o(int v, float s) { return (int)(v * s + (v >= 0 ? 0.5f : -0.5f)); }
+
 // y = onderkant van de balkjes (bar-groep is bottom-aligned zoals een gewoon
-// signaalicoon); SB_ICON_CY + halve hoogte van de langste balk (18/2=9) legt
-// het verticale MIDDEN van de hele icoongroep op SB_ICON_CY, gelijk aan de
-// andere twee statusbalk-iconen.
-static void _wifi_icon(int x) {
-    int y = SB_ICON_CY + 9;
+// signaalicoon); cy + halve hoogte van de langste balk legt het verticale
+// MIDDEN van de hele icoongroep op cy, gelijk aan de andere iconen.
+static void _wifi_icon(int x, int cy, float s) {
+    int y = cy + _sb_ic_o(9, s);
     int staat;
     if (wifi_verbonden) {
         staat = 2;
@@ -139,45 +145,81 @@ static void _wifi_icon(int x) {
     } else {
         staat = 0;
     }
-    const int bw = 4, bg = 2;
-    const int bh[] = {6, 10, 14, 18};
+    int bw = max(1, _sb_ic_o(4, s)), bg = max(1, _sb_ic_o(2, s));
+    const int bh0[] = {6, 10, 14, 18};
     uint16_t kleur = (staat == 2) ? C_GREEN : (staat == 1) ? C_AMBER : RGB565(80, 90, 100);
     uint16_t dimkl = RGB565(38, 48, 60);
     for (int b = 0; b < 4; b++) {
         bool lit = (staat == 2) || (staat == 1 && b < 2);
-        tft.fillRect(x + b * (bw + bg), y - bh[b], bw, bh[b], lit ? kleur : dimkl);
+        int bh = _sb_ic_o(bh0[b], s);
+        tft.fillRect(x + b * (bw + bg), y - bh, bw, bh, lit ? kleur : dimkl);
     }
     if (staat == 0) {
-        int cx = x + 11, cy = y - 10;
-        tft.drawLine(cx - 4, cy - 4, cx + 4, cy + 4, C_RED_BRIGHT);
-        tft.drawLine(cx + 4, cy - 4, cx - 4, cy + 4, C_RED_BRIGHT);
-        tft.drawLine(cx - 3, cy - 4, cx + 5, cy + 4, C_RED_BRIGHT);
-        tft.drawLine(cx + 5, cy - 4, cx - 3, cy + 4, C_RED_BRIGHT);
+        int ccx = x + _sb_ic_o(11, s), ccy = y - _sb_ic_o(10, s);
+        int o3 = _sb_ic_o(3, s), o4 = _sb_ic_o(4, s), o5 = _sb_ic_o(5, s);
+        tft.drawLine(ccx - o4, ccy - o4, ccx + o4, ccy + o4, C_RED_BRIGHT);
+        tft.drawLine(ccx + o4, ccy - o4, ccx - o4, ccy + o4, C_RED_BRIGHT);
+        tft.drawLine(ccx - o3, ccy - o4, ccx + o5, ccy + o4, C_RED_BRIGHT);
+        tft.drawLine(ccx + o5, ccy - o4, ccx - o3, ccy + o4, C_RED_BRIGHT);
     }
 }
 
-// Hotspot-icoon (vervangt het oude, nooit aan een echte status gekoppelde
-// bluetooth-icoontje op dezelfde plek) — "broadcast"-stippenbogen, groen
-// zodra de telefoon-hotspot (wifi.ino) actief is, anders gedimd.
-static void _hotspot_icon(int x) {
+// Hotspot-icoon — "broadcast"-stippenbogen, groen zodra de telefoon-hotspot
+// (wifi.ino) actief is, anders gedimd.
+static void _hotspot_icon(int x, int cy, float s) {
     uint16_t c = wifi_hotspot_actief() ? C_GREEN : RGB565(55, 70, 90);
-    int cx = x + 7, cy = SB_ICON_CY;
-    tft.fillCircle(cx, cy, 2, c);
-    tft.drawCircle(cx, cy, 5, c);
-    tft.drawCircle(cx, cy, 8, c);
+    int cx = x + _sb_ic_o(7, s);
+    tft.fillCircle(cx, cy, _sb_ic_o(2, s), c);
+    tft.drawCircle(cx, cy, _sb_ic_o(5, s), c);
+    tft.drawCircle(cx, cy, _sb_ic_o(8, s), c);
 }
 
-static void _alert_icon(int x) {
-    uint16_t c = RGB565(55, 70, 90);
-    int cx = x + 7, cy = SB_ICON_CY;
-    tft.drawLine(cx, cy - 8, cx - 7, cy + 5, c);
-    tft.drawLine(cx, cy - 8, cx + 7, cy + 5, c);
-    tft.drawFastHLine(cx - 7, cy + 5, 15, c);
-    tft.drawFastVLine(cx, cy - 3, 6, c);
-    tft.fillRect(cx, cy + 4, 2, 2, c);
+// Waarschuwing-icoon — nu alleen getekend als er echt iets actief is (zie
+// sb_teken_basis()), dus geen vaste gedimde kleur meer: kleur komt van de
+// aanroeper.
+static void _alert_icon(int x, int cy, float s, uint16_t c) {
+    int cx = x + _sb_ic_o(7, s);
+    int o8 = _sb_ic_o(8, s), o7 = _sb_ic_o(7, s), o5 = _sb_ic_o(5, s),
+        o15 = _sb_ic_o(15, s), o3 = _sb_ic_o(3, s), o6 = _sb_ic_o(6, s),
+        o4 = _sb_ic_o(4, s), o2 = max(1, _sb_ic_o(2, s));
+    tft.drawLine(cx, cy - o8, cx - o7, cy + o5, c);
+    tft.drawLine(cx, cy - o8, cx + o7, cy + o5, c);
+    tft.drawFastHLine(cx - o7, cy + o5, o15, c);
+    tft.drawFastVLine(cx, cy - o3, o6, c);
+    tft.fillRect(cx, cy + o4, o2, o2, c);
+}
+
+// Update-beschikbaar-icoon (nieuw) — pijl naar beneden boven een bakje,
+// zelfde opbouw-techniek als de andere statusbalk-iconen.
+static void _update_icon(int x, int cy, float s, uint16_t c) {
+    int cx = x + _sb_ic_o(7, s);
+    int o2 = max(1, _sb_ic_o(2, s)), o3 = _sb_ic_o(3, s), o5 = _sb_ic_o(5, s),
+        o7 = _sb_ic_o(7, s), o8 = _sb_ic_o(8, s);
+    tft.fillRect(cx - max(1, o2 / 2), cy - o7, max(1, o2), o7 - o2, c);         // stam
+    tft.fillTriangle(cx - o5, cy - o2, cx + o5, cy - o2, cx, cy + o2, c);       // pijlpunt
+    tft.drawFastHLine(cx - o8, cy + o5, 2 * o8, c);                            // bakje
+    tft.drawLine(cx - o8, cy + o5, cx - o8, cy + o3, c);
+    tft.drawLine(cx + o8, cy + o5, cx + o8, cy + o3, c);
+}
+
+// ─── Waarschuwing-infrastructuur (nog door niets aangeroepen) ─────────────────
+bool sb_waarschuwing_actief = false;
+char sb_waarschuwing_tekst[SB_WAARSCHUWING_LEN] = "";
+
+void sb_waarschuwing_zet(const char* tekst) {
+    strncpy(sb_waarschuwing_tekst, tekst, SB_WAARSCHUWING_LEN - 1);
+    sb_waarschuwing_tekst[SB_WAARSCHUWING_LEN - 1] = '\0';
+    sb_waarschuwing_actief = true;
+}
+void sb_waarschuwing_wis() {
+    sb_waarschuwing_actief   = false;
+    sb_waarschuwing_tekst[0] = '\0';
 }
 
 // ─── Status bar ───────────────────────────────────────────────────────────────
+int  sb_iconen_eind_x = SB_HOTSPOT_X + SB_HOTSPOT_W;   // bijgewerkt door sb_teken_basis()
+bool sb_paneel_open   = false;
+
 void sb_teken_basis() {
     nb_fill(0, 0, TFT_W, SB_H, C_STATUSBAR, NB_TINT_NORMAAL);
     tft.drawFastHLine(0, SB_H - 1, TFT_W, C_SURFACE2);
@@ -193,7 +235,28 @@ void sb_teken_basis() {
     tft.print(klok_tijd.c_str());
 #else
     tft.fillRect(SB_KLOK_ZWART_X, 0, TFT_W - SB_KLOK_ZWART_X, SB_H, C_BLACK);
-    _wifi_icon(SB_ICON_X0); _hotspot_icon(SB_HOTSPOT_X); _alert_icon(SB_ALERT_X);
+    if (sb_paneel_open) {
+        // Iconenstrook leeg -> dit is de "tik hier om het paneel te sluiten"-
+        // zone die Brendan vroeg. sb_iconen_eind_x blijft ongewijzigd (laatst
+        // bekende waarde) zodat de tikzone in hardware.ino consistent blijft.
+        int breedte = (sb_iconen_eind_x + 4) - (SB_ICON_X0 - 4);
+        tft.fillRect(SB_ICON_X0 - 4, 0, breedte, SB_H, C_STATUSBAR);
+    } else {
+        _wifi_icon(SB_ICON_X0, SB_ICON_CY, 1.0f);
+        _hotspot_icon(SB_HOTSPOT_X, SB_ICON_CY, 1.0f);
+        int x = SB_HOTSPOT_X + SB_HOTSPOT_W;
+        if (ota_nieuwer_beschikbaar) {
+            x += SB_ICON_GAP;
+            _update_icon(x, SB_ICON_CY, 1.0f, C_AMBER);
+            x += SB_UPDATE_W;
+        }
+        if (sb_waarschuwing_actief) {
+            x += SB_ICON_GAP;
+            _alert_icon(x, SB_ICON_CY, 1.0f, C_RED_BRIGHT);
+            x += SB_ALERT_W;
+        }
+        sb_iconen_eind_x = x;
+    }
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
     tft.setCursor(SB_KLOK_X, (SB_H - 16) / 2);
     tft.print(klok_tijd.c_str());
@@ -208,7 +271,7 @@ void sb_scherm_teken(const char* titel, uint16_t kleur) {
     tft.print(titel);
 #else
     tft.setTextSize(2); tft.setTextColor(kleur);
-    tft.setCursor(SB_TITEL_X, (SB_H - 16) / 2);
+    tft.setCursor(sb_iconen_eind_x + SB_TITEL_GAP, (SB_H - 16) / 2);
     tft.print(titel);
 #endif
 }
@@ -216,7 +279,7 @@ void sb_scherm_teken(const char* titel, uint16_t kleur) {
 void sb_app_teken(const char* app_naam) {
     sb_teken_basis();
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(SB_TITEL_X, (SB_H - 16) / 2);
+    tft.setCursor(sb_iconen_eind_x + SB_TITEL_GAP, (SB_H - 16) / 2);
     tft.print(app_naam);
     int bx = TFT_W - SB_H;
     tft.fillRect(bx, 0, SB_H, SB_H, C_RED_BRIGHT);
@@ -230,6 +293,91 @@ void sb_app_teken(const char* app_naam) {
     tft.setTextSize(2); tft.setTextColor(C_TEXT);
     tft.setCursor(klok_x, (SB_H - 16) / 2);
     tft.print(klok_tijd.c_str());
+}
+
+// ─── Uitklap-paneel (grotere, klikbare versie van de statusbalk-iconen) ───────
+// Rij-volgorde is vast (WIFI, HOTSPOT, UPDATE, ALERT); WIFI/HOTSPOT staan er
+// altijd, UPDATE/ALERT alleen als ze actief zijn. Zelfde array wordt door
+// zowel het tekenen als de hit-test gebruikt, zodat ze nooit uit de pas
+// kunnen lopen (zie WiFi-terugknop-les eerder deze sessie).
+static int _sb_paneel_rijen(int* types) {
+    int n = 0;
+    types[n++] = 0;   // wifi
+    types[n++] = 1;   // hotspot
+    if (ota_nieuwer_beschikbaar) types[n++] = 2;   // update
+    if (sb_waarschuwing_actief)  types[n++] = 3;   // alert
+    return n;
+}
+
+static void _sb_paneel_rij_teken(int y, int type) {
+    int cy  = y + SB_PANEEL_RIJ_H / 2;
+    int icx = SB_PANEEL_X + 14;
+    const char* label;
+    String sub;
+    uint16_t kleur;
+    switch (type) {
+        case 0:
+            label = "WIFI";
+            sub   = wifi_verbonden ? WiFi.SSID() : String("Niet verbonden");
+            kleur = wifi_verbonden ? C_GREEN : C_TEXT_DIM;
+            _wifi_icon(icx, cy, 1.8f);
+            break;
+        case 1:
+            label = "HOTSPOT";
+            sub   = wifi_hotspot_actief() ? String("Actief") : String("Uit");
+            kleur = wifi_hotspot_actief() ? C_GREEN : C_TEXT_DIM;
+            _hotspot_icon(icx, cy, 1.8f);
+            break;
+        case 2:
+            label = "UPDATE BESCHIKBAAR";
+            sub   = ota_versie_github;
+            kleur = C_AMBER;
+            _update_icon(icx, cy, 1.8f, C_AMBER);
+            break;
+        default:
+            label = "WAARSCHUWING";
+            sub   = String(sb_waarschuwing_tekst);
+            kleur = C_RED_BRIGHT;
+            _alert_icon(icx, cy, 1.8f, C_RED_BRIGHT);
+            break;
+    }
+    tft.setTextSize(1); tft.setTextColor(kleur);
+    tft.setCursor(SB_PANEEL_X + 54, y + 11);
+    tft.print(label);
+    tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(SB_PANEEL_X + 54, y + 27);
+    tft.print(sub);
+}
+
+void sb_paneel_teken() {
+    // Iconenstrook leegmaken (niet de hele statusbalk — titel/klok blijven
+    // staan) — dat lege stuk is de "tik hier om te sluiten"-zone.
+    int breedte = (sb_iconen_eind_x + 4) - (SB_ICON_X0 - 4);
+    tft.fillRect(SB_ICON_X0 - 4, 0, breedte, SB_H, C_STATUSBAR);
+
+    int types[4];
+    int n = _sb_paneel_rijen(types);
+    int h = 2 * SB_PANEEL_PAD + n * SB_PANEEL_RIJ_H;
+    ui_rrect_gevuld_rand(SB_PANEEL_X, SB_PANEEL_Y0, SB_PANEEL_W, h, C_SURFACE, C_CYAN, 2);
+    for (int i = 0; i < n; i++)
+        _sb_paneel_rij_teken(SB_PANEEL_Y0 + SB_PANEEL_PAD + i * SB_PANEEL_RIJ_H, types[i]);
+}
+
+int sb_paneel_klik(int x, int y) {
+    int types[4];
+    int n = _sb_paneel_rijen(types);
+    int h = 2 * SB_PANEEL_PAD + n * SB_PANEEL_RIJ_H;
+    if (x < SB_PANEEL_X || x >= SB_PANEEL_X + SB_PANEEL_W ||
+        y < SB_PANEEL_Y0 || y >= SB_PANEEL_Y0 + h)
+        return -1;   // buiten het paneel -> alleen sluiten
+    int rij = (y - SB_PANEEL_Y0 - SB_PANEEL_PAD) / SB_PANEEL_RIJ_H;
+    if (rij < 0 || rij >= n) return -1;
+    switch (types[rij]) {
+        case 0: return SCREEN_WIFI;
+        case 1: return SCREEN_BESTANDEN;
+        case 2: return SCREEN_OTA;
+        default: return -1;   // ALERT: toont alleen tekst, navigeert niet
+    }
 }
 
 // ─── Icoon-hulpfuncties ───────────────────────────────────────────────────────

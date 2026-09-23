@@ -401,17 +401,20 @@ static int _hv_app_ic_o(int v, float s) { return (int)(v * s + (v >= 0 ? 0.5f : 
 static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kleur) {
     switch (icoon) {
         case I_USB: {
-            // Het echte USB-drietand-logo: cirkel bovenaan, een stam die
-            // splitst naar een vierkantje (links) en een driehoekje (rechts)
-            // — i.p.v. de vorige, generieke stekker-met-pinnen-tekening.
-            int o1 = _hv_app_ic_o(1, s), o2 = max(2, _hv_app_ic_o(2, s)), o4 = _hv_app_ic_o(4, s),
-                o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s), o7 = _hv_app_ic_o(7, s), o8 = _hv_app_ic_o(8, s);
-            tft.drawCircle(cx, cy - o8, o2, kleur);
-            tft.drawFastVLine(cx, cy - o6, o5, kleur);
-            tft.drawLine(cx, cy - o1, cx - o5, cy + o4, kleur);
-            tft.drawRect(cx - o7, cy + o4, o4, o4, kleur);
-            tft.drawLine(cx, cy - o1, cx + o5, cy + o4, kleur);
-            tft.fillTriangle(cx + o4, cy + o8, cx + o7, cy + o8, cx + o5, cy + o2, kleur);
+            // Het officiële USB-drietand-logo: een balletje ONDERIN, een stam
+            // die omhoog naar een vertakpunt loopt en daar in 3-en splitst —
+            // elke tak met een eigen eindsymbool (vierkant/cirkel/driehoek),
+            // i.p.v. de eerdere, vereenvoudigde 2-tak-versie.
+            int o2 = max(2, _hv_app_ic_o(2, s)), o4 = _hv_app_ic_o(4, s), o6 = _hv_app_ic_o(6, s),
+                o8 = _hv_app_ic_o(8, s), o9 = _hv_app_ic_o(9, s);
+            tft.fillCircle(cx, cy + o9, o2, kleur);                 // balletje onderin
+            tft.drawFastVLine(cx, cy + o2, o9 - o2, kleur);         // stam naar het vertakpunt
+            tft.drawLine(cx, cy + o2, cx - o6, cy - o4, kleur);     // linkertak
+            tft.drawRect(cx - o6 - o2, cy - o4 - o2, o4, o4, kleur);        // ...naar een vierkant
+            tft.drawLine(cx, cy + o2, cx, cy - o6, kleur);          // middentak (hoogste)
+            tft.drawCircle(cx, cy - o8, o2, kleur);                 // ...naar een cirkel
+            tft.drawLine(cx, cy + o2, cx + o6, cy - o4, kleur);     // rechtertak
+            tft.fillTriangle(cx + o6 - o2, cy - o4, cx + o6 + o2, cy - o4, cx + o6, cy - o4 - o4, kleur);  // ...naar een driehoek
             break;
         }
         case I_230V: {
@@ -425,13 +428,20 @@ static void _hv_app_icoon_teken(int icoon, int cx, int cy, float s, uint16_t kle
             break;
         }
         case I_TV: {
-            // Meer "body": dubbele omtrek (dikkere rand i.p.v. 1px) + een
-            // stevige, gevulde voet i.p.v. de vorige dunne lijntjes.
-            int o2 = max(2, _hv_app_ic_o(2, s)), o4 = _hv_app_ic_o(4, s), o5 = _hv_app_ic_o(5, s),
-                o6 = _hv_app_ic_o(6, s), o8 = _hv_app_ic_o(8, s), o11 = _hv_app_ic_o(11, s), o16 = _hv_app_ic_o(16, s);
-            tft.drawRoundRect(cx - o8, cy - o5, o16, o11, o2, kleur);
-            tft.drawRoundRect(cx - o8 + 1, cy - o5 + 1, o16 - 2, o11 - 2, max(1, o2 - 1), kleur);
-            tft.fillRoundRect(cx - o4, cy + o6, o8, o2, 1, kleur);
+            // Herkenbaarder als TV: scherpe buitenkast (echte tv-vorm) met
+            // een licht afgeronde binnenkant als "scherm", een grotere voet,
+            // en klassieke konijnenoren-antenne erboven — een TV heeft dat
+            // tegenwoordig niet meer, maar niets zegt "televisie" zo direct.
+            int o1 = _hv_app_ic_o(1, s), o2 = max(2, _hv_app_ic_o(2, s)), o3 = _hv_app_ic_o(3, s),
+                o5 = _hv_app_ic_o(5, s), o6 = _hv_app_ic_o(6, s), o7 = _hv_app_ic_o(7, s),
+                o8 = _hv_app_ic_o(8, s), o9 = _hv_app_ic_o(9, s), o11 = _hv_app_ic_o(11, s),
+                o13 = _hv_app_ic_o(13, s), o16 = _hv_app_ic_o(16, s);
+            tft.drawLine(cx - o2, cy - o5, cx - o7, cy - o13, kleur);   // antenne links
+            tft.drawLine(cx + o2, cy - o5, cx + o7, cy - o13, kleur);   // antenne rechts
+            tft.drawRect(cx - o8, cy - o5, o16, o11, kleur);                              // buitenkast: scherpe hoeken
+            tft.drawRoundRect(cx - o8 + o1 + 1, cy - o5 + o1 + 1,
+                               o16 - 2 * o1 - 2, o11 - 2 * o1 - 2, o2, kleur);             // scherm: licht afgerond
+            tft.fillRoundRect(cx - o5, cy + o6, o9, o3, 1, kleur);                         // grotere, gevulde voet
             break;
         }
         case I_WATER: {

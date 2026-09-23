@@ -759,19 +759,22 @@ function renderPaneel(){
 // boordcomputer zelf (screen_main.ino): buitenverlichting altijd hetzelfde
 // icoon, anders op naam-substring. Onbekende namen krijgen null (geen
 // symbool) — die tonen dan de naam op leesbare grootte, zie renderHuispaneel().
-// Echt USB-drietand-logo (cirkel + stam + vierkantje/driehoekje) als kleine
-// inline SVG — geen Unicode-emoji hiervoor bruikbaar genoeg (Brendans
-// feedback op de eerste 🔌-versie), en meteen consistent met hetzelfde
-// symbool op de boordcomputer (_hv_app_icoon_teken(), screen_haven.ino).
-// Vast lichtgrijs (i.p.v. currentColor) zodat 'm net als de emoji-iconen
-// zijn eigen kleur houdt, los van de knop-status.
+// Het officiële USB-drietand-logo: balletje onderin, stam naar een
+// vertakpunt, dan 3 takken elk met een eigen eindsymbool (vierkant/cirkel/
+// driehoek) — als kleine inline SVG, geen Unicode-emoji hiervoor bruikbaar
+// genoeg (Brendans feedback op de eerste 🔌-versie). Meteen consistent met
+// hetzelfde symbool op de boordcomputer (_hv_app_icoon_teken(),
+// screen_haven.ino). Vast lichtgrijs (i.p.v. currentColor) zodat 'm net als
+// de emoji-iconen zijn eigen kleur houdt, los van de knop-status.
 var USB_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-.2em">'
-  + '<circle cx="12" cy="4" r="2.2" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M12 6.2V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M12 13L7 18" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<rect x="5" y="18" width="4" height="4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M12 13L17 18" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
-  + '<path d="M14.3 22L19.7 22 17 17.2Z" fill="#c9d3db"/>'
+  + '<circle cx="12" cy="20" r="2" fill="#c9d3db"/>'
+  + '<path d="M12 18V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M12 13L6 8" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<rect x="4" y="6" width="4" height="4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M12 13V5" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<circle cx="12" cy="4" r="2" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M12 13L18 8" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M16 8L20 8 18 4Z" fill="#c9d3db"/>'
   + '</svg>';
 
 function tileIcoon(p){

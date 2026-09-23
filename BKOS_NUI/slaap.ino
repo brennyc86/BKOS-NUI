@@ -6,6 +6,7 @@
 #include "io.h"
 #include "bkos_net.h"
 #include "fout_log.h"
+#include "nav_bar.h"   // sb_waarschuwing_zet() — ATtiny-firmware-te-oud-voor-slaapstand-melding
 #include <Preferences.h>
 
 uint8_t       slaap_modus    = SLAAP_GEEN;
@@ -164,8 +165,25 @@ void slaap_loop() {
     // Wachten tot slaap_tijd verstreken is na scherm-uit
     if ((millis() - scherm_uit_ms) < (uint32_t)slaap_tijd * 1000UL) return;
 
-    // ATtiny slapen sturen (wekt automatisch op eerste UART activiteit)
-    if (slaap_attiny) io_attiny_slaap(true);
+    // ATtiny slapen sturen (wekt automatisch op eerste UART activiteit).
+    // Als de instelling aan staat maar de aangesloten ATtiny-firmware AT
+    // SLAAP niet daadwerkelijk uitvoert (< v0.5), levert de instelling
+    // stilzwijgend niets op — dat melden we via het statusbalk-icoon.
+    if (slaap_attiny) {
+        if (io_attiny_slaap_ondersteund()) {
+            io_attiny_slaap(true);
+            // Wist ook een eerder door dit blok gezette melding (ATtiny inmiddels
+            // bijgewerkt). sb_waarschuwing_* is nu nog een systeembreed enkelvoudig
+            // veld zonder bron-tracking — als er ooit een 2e bron bijkomt moet dit
+            // preciezer (alleen wissen als de melding van déze bron kwam).
+            if (sb_waarschuwing_actief) sb_waarschuwing_wis();
+        } else {
+            char msg[SB_WAARSCHUWING_LEN];
+            snprintf(msg, sizeof(msg), "ATtiny-firmware (%s) ondersteunt slaapstand niet (v0.5+ nodig)",
+                     bkoss_versie[0] ? bkoss_versie : "onbekend");
+            sb_waarschuwing_zet(msg);
+        }
+    }
 
     slaap_actief = true;
 

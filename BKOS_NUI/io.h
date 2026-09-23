@@ -110,6 +110,7 @@ int io_min_niveau_voor_lamp(int nr);
 
 void  io_actie_uitvoeren(uint8_t actie, uint8_t param);
 void  io_attiny_slaap(bool aan);   // ATtiny slaap/wake commando via UART
+bool  io_attiny_slaap_ondersteund();   // true als de gedetecteerde ATtiny-firmware AT SLAAP echt uitvoert (>= v0.5)
 int         io_zichtbaar();
 const char* io_module_naam(byte id);
 void        io_kanaal_label(int kanaal, char* buf, size_t buflen);  // "A1", "B16", ...

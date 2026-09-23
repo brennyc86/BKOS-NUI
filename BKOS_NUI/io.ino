@@ -1426,12 +1426,25 @@ void io_actie_uitvoeren(uint8_t actie, uint8_t param) {
     }
 }
 
+// bkoss_versie heeft het formaat "<type> V <versie>" (bv. "3217 V 0.5"),
+// zie io_bkoss_check(). AT SLAAP werd pas in BKOSS-firmware v0.5 echt
+// uitgevoerd — in v0.4 riep de SLAAP-tak per ongeluk alleen het
+// versienummer terug (bugfix: brennyc86/BKOSS). Op een oudere/onbekende
+// ATtiny sturen we AT SLAAP dus niet: BKOS-NUI zou anders denken dat de
+// ATtiny slaapt/wakker is terwijl er niets gebeurt.
+bool io_attiny_slaap_ondersteund() {
+    if (!bkoss_actief) return false;
+    int idx = String(bkoss_versie).indexOf(" V ");
+    if (idx < 0) return false;
+    return String(bkoss_versie).substring(idx + 3).toFloat() >= 0.5f;
+}
+
 void io_attiny_slaap(bool aan) {
-    // Slaap: "AT SLAAP" → ATtiny gaat naar STANDBY (v0.4, eerste poging).
+    // Slaap: "AT SLAAP" → ATtiny gaat naar STANDBY.
     // Wake:  "WAKKER"   → ATtiny antwoordt "GEREED"/"LETS GO".
     // ATtiny wekt ook automatisch op elke inkomende UART byte.
 #if !PLATFORM_PICO && !PLATFORM_WROOM
-    if (!bkoss_actief) return;
+    if (!io_attiny_slaap_ondersteund()) return;
     while (IO_SERIAL.available()) IO_SERIAL.read();  // buffer leegmaken
     if (aan) {
         IO_SERIAL.print("AT SLAAP\n");

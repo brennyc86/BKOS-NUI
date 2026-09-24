@@ -433,11 +433,14 @@ static void _hab_hoek_teken() {
         // gezamenlijke blit hieronder in dezelfde buffer gecomponeerd. Iets
         // ingekort ("foto's worden geladen" -> "foto's laden...") zodat het
         // op dit formaat past — zelfde betekenis, minder lang.
-        // Iets naar links/boven t.o.v. de vorige ronde — meer richting het
-        // midden van de driehoek, met wat extra ruimte t.o.v. het camera-
-        // icoon (dat ook is verschoven, zie hieronder).
+        // Stond te laag: het stuk van de driehoek ONDER NAV_Y telt niet mee
+        // voor wat je daadwerkelijk ziet (de navigatiebalk zit erover heen),
+        // dus tellen voor "gecentreerd in het lichtere vlak" alleen mee wat
+        // er ZICHTBAAR boven NAV_Y ligt — vandaar nu een stuk naar
+        // rechtsboven t.o.v. de vorige ronde, ruim boven de navigatiebalk en
+        // nog net niet tegen het camera-icoon aan.
         _hab_hoek_tekst_diagonaal(hab_hoek_buf, w, h, x0, y0, "foto's laden...",
-                                   515, 418, HAB_HOEK_TEKST_GRADEN, RGB565(50, 50, 50));
+                                   560, 395, HAB_HOEK_TEKST_GRADEN, RGB565(50, 50, 50));
         tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
     }
 

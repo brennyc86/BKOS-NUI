@@ -313,6 +313,34 @@ static void _hab_hoek_camera_icoon(int cx, int cy) {
     tft.fillRoundRect(cx - 8, y0 - 7, 16, 8, 2, fg);           // bumpje bovenop
 }
 
+// Pijlpunt (gevulde driehoek), tangentieel aan de cirkel bij `graden`,
+// wijzend in de richting van toenemende hoek — met dit assenstelsel
+// (screen-coördinaten, y omlaag) is dat met de klok mee. Zelfde constructie
+// als _pijlpunt_teken() in screen_main.ino (AUTO-knop), hier lokaal
+// gehouden i.p.v. cross-file een static functie aan te roepen.
+static void _hab_hoek_pijlpunt(int cx, int cy, int r, float graden, uint16_t kleur) {
+    float rad  = graden * (float)M_PI / 180.0f;
+    float trad = rad + (float)M_PI / 2.0f;   // tangent: richting van de draai
+    int px = cx + (int)(r * cosf(rad)),  py = cy + (int)(r * sinf(rad));
+    int tx = (int)(cosf(trad) * 7),      ty = (int)(sinf(trad) * 7);
+    int rx = (int)(cosf(rad) * 5),       ry = (int)(sinf(rad) * 5);
+    tft.fillTriangle(px + tx, py + ty, px - tx + rx, py - ty + ry, px - tx - rx, py - ty - ry, kleur);
+}
+
+// Laad-symbool rond het camera-icoontje: 3 boogjes/pijlen in een cirkel, met
+// de klok mee — herkenbaar "bezig"-motief. Zelfde fillArc()-band-techniek
+// als de AUTO-knop (screen_main.ino) en de waterdruppel-maantjes hierboven.
+static void _hab_hoek_laad_symbool(int cx, int cy) {
+    uint16_t fg = RGB565(50, 50, 50);
+    int buiten_r = 30, binnen_r = 26;
+    const float start[3] = { 0, 120, 240 };   // 3x 80° boog + 3x 40° tussenruimte = 360°
+    for (int i = 0; i < 3; i++) {
+        float eind = start[i] + 80;
+        tft.fillArc(cx, cy, buiten_r, binnen_r, start[i], eind, fg);
+        _hab_hoek_pijlpunt(cx, cy, (buiten_r + binnen_r) / 2, eind, fg);   // pijlpunt aan het "voorste" (met de klok mee) uiteinde
+    }
+}
+
 // Echt gedraaide tekst — deze GFX-library kan geen tekst zelf roteren, dus:
 // eerst gewoon horizontaal naar een klein offscreen canvas tekenen (waarop
 // print()/setCursor() heel normaal werken, Arduino_Canvas is ook een
@@ -386,7 +414,8 @@ static void _hab_hoek_teken() {
         tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
     }
 
-    _hab_hoek_camera_icoon(TFT_W - 50, 410);
+    _hab_hoek_laad_symbool(TFT_W - 50, 400);
+    _hab_hoek_camera_icoon(TFT_W - 50, 400);
 }
 
 // Gedeelde tekenkern: decodeert/tekent de huidige achtergrondfoto gecentreerd

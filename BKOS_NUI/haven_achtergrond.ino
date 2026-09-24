@@ -285,8 +285,8 @@ static void _hab_init() {
 // blijven ruim boven NAV_Y, zodat ze nooit met de navigatiebalk-knoppen
 // overlappen.
 #define HAB_HOEK_Y_TOP   (NAV_Y - 190)   // bovenpunt van de driehoek, op de rechterrand
-#define HAB_HOEK_X_LEFT  (TFT_W - 280)   // linkerpunt van de driehoek, op de onderrand
-#define HAB_HOEK_STERKTE 51              // richting wit, ~20% van 255
+#define HAB_HOEK_X_LEFT  (TFT_W - 320)   // linkerpunt van de driehoek, op de onderrand — iets breder voor de grotere tekst
+#define HAB_HOEK_STERKTE 204             // richting wit — "20% helderheid" = nog 20% van de foto zichtbaar, dus 80% (204/255) lichter
 
 static uint16_t* hab_hoek_buf     = nullptr;
 static size_t    hab_hoek_buf_cap = 0;
@@ -313,10 +313,8 @@ static void _hab_hoek_camera_icoon(int cx, int cy) {
 
 // Driehoek rechtsonder lichter maken (richting wit blenden t.o.v. de al
 // getekende foto, via dezelfde haven_kleur_meng()-kern als nav_bar.ino se
-// getinte balken), plus tekst "in trapjes" langs de schuine kant — elk teken
-// los en rechtop getekend (deze GFX-library kan geen tekst roteren), maar wel
-// telkens een stukje verder naar rechtsonder, zodat het geheel de diagonale
-// rand volgt.
+// getinte balken). Tekst diagonaal-in-trapjes bleek onleesbaar — nu gewoon
+// rechtop, groter (size 2) en horizontaal, ruim binnen het lichtere vlak.
 static void _hab_hoek_teken() {
     int x0 = HAB_HOEK_X_LEFT, y0 = HAB_HOEK_Y_TOP;
     int w = TFT_W - x0, h = TFT_H - y0;
@@ -337,16 +335,18 @@ static void _hab_hoek_teken() {
         tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
     }
 
-    const char* txt = "foto's worden geladen";
-    tft.setTextSize(1); tft.setTextColor(RGB565(50, 50, 50));
-    float tx = TFT_W - 34, ty = HAB_HOEK_Y_TOP + 14;
-    float stapx = -8.6f, stapy = 6.7f;   // volgt ongeveer de richting van de schuine kant
-    for (int i = 0; txt[i]; i++) {
-        tft.setCursor((int)(tx + i * stapx), (int)(ty + i * stapy));
-        tft.print(txt[i]);
-    }
+    // Twee regels, rechts uitgelijnd tegen de rechterrand — onderin het
+    // lichtere vlak (daar is de driehoek het breedst), ruim boven NAV_Y.
+    tft.setTextSize(2); tft.setTextColor(RGB565(50, 50, 50));
+    const char* regel1 = "foto's worden";
+    const char* regel2 = "geladen";
+    int rand = 20;
+    tft.setCursor(TFT_W - rand - (int)strlen(regel1) * 12, NAV_Y - 43);
+    tft.print(regel1);
+    tft.setCursor(TFT_W - rand - (int)strlen(regel2) * 12, NAV_Y - 25);
+    tft.print(regel2);
 
-    _hab_hoek_camera_icoon(TFT_W - 60, HAB_HOEK_Y_TOP + 130);
+    _hab_hoek_camera_icoon(TFT_W - 45, HAB_HOEK_Y_TOP + 75);
 }
 
 // Gedeelde tekenkern: decodeert/tekent de huidige achtergrondfoto gecentreerd

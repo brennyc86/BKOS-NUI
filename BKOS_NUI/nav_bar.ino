@@ -189,17 +189,14 @@ static void _alert_icon(int x, int cy, float s, uint16_t c) {
     tft.fillRect(cx, cy + o4, o2, o2, c);
 }
 
-// Update-beschikbaar-icoon (nieuw) — pijl naar beneden boven een bakje,
-// zelfde opbouw-techniek als de andere statusbalk-iconen.
+// Update-beschikbaar-icoon — pijl OMHOOG (was naar beneden in een bakje; een
+// update is een verbetering, geen download, dus de pijl moet omhoog wijzen).
 static void _update_icon(int x, int cy, float s, uint16_t c) {
     int cx = x + _sb_ic_o(7, s);
-    int o2 = max(1, _sb_ic_o(2, s)), o3 = _sb_ic_o(3, s), o5 = _sb_ic_o(5, s),
+    int o2 = max(1, _sb_ic_o(2, s)), o5 = _sb_ic_o(5, s),
         o7 = _sb_ic_o(7, s), o8 = _sb_ic_o(8, s);
-    tft.fillRect(cx - max(1, o2 / 2), cy - o7, max(1, o2), o7 - o2, c);         // stam
-    tft.fillTriangle(cx - o5, cy - o2, cx + o5, cy - o2, cx, cy + o2, c);       // pijlpunt
-    tft.drawFastHLine(cx - o8, cy + o5, 2 * o8, c);                            // bakje
-    tft.drawLine(cx - o8, cy + o5, cx - o8, cy + o3, c);
-    tft.drawLine(cx + o8, cy + o5, cx + o8, cy + o3, c);
+    tft.fillTriangle(cx - o5, cy - o2, cx + o5, cy - o2, cx, cy - o8, c);       // pijlpunt omhoog
+    tft.fillRect(cx - max(1, o2 / 2), cy - o2, max(1, o2), o7 + o2, c);         // stam naar beneden
 }
 
 // ─── Waarschuwing-infrastructuur (nog door niets aangeroepen) ─────────────────

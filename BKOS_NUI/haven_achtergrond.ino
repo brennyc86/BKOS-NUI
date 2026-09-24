@@ -409,13 +409,18 @@ static void _hab_hoek_teken() {
         // gezamenlijke blit hieronder in dezelfde buffer gecomponeerd. Iets
         // ingekort ("foto's worden geladen" -> "foto's laden...") zodat het
         // op dit formaat past — zelfde betekenis, minder lang.
+        // Iets naar links/boven t.o.v. de vorige ronde — meer richting het
+        // midden van de driehoek, met wat extra ruimte t.o.v. het camera-
+        // icoon (dat ook is verschoven, zie hieronder).
         _hab_hoek_tekst_diagonaal(hab_hoek_buf, w, h, x0, y0, "foto's laden...",
-                                   525, 414, HAB_HOEK_TEKST_GRADEN, RGB565(50, 50, 50));
+                                   515, 418, HAB_HOEK_TEKST_GRADEN, RGB565(50, 50, 50));
         tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
     }
 
-    _hab_hoek_laad_symbool(TFT_W - 50, 400);
-    _hab_hoek_camera_icoon(TFT_W - 50, 400);
+    // Terug richting de (goed bevonden) x-positie van vóór de tekst-rotatie
+    // (versie .3), met de y wat hoger om ruimte te maken voor de nieuwe ring.
+    _hab_hoek_laad_symbool(TFT_W - 65, 375);
+    _hab_hoek_camera_icoon(TFT_W - 65, 375);
 }
 
 // Gedeelde tekenkern: decodeert/tekent de huidige achtergrondfoto gecentreerd

@@ -271,21 +271,82 @@ static void _hab_init() {
     TJpgDec.setCallback(_hab_output);
 }
 
-// Herkenbaar "hier komt nog een foto"-icoon (fotolijst met bergje+zon) — i.p.v.
-// zolang niet bekend is of er eigen foto's zijn de (mogelijk verkeerde)
-// ingebakken voorbeeldfoto op volle grootte/sterkte te tonen. Getekend op een
-// al-grijze achtergrond (haven_achtergrond_teken() hieronder) — hier dus
-// alleen de zwarte tekening zelf, geen eigen vlak/rand meer. Geen fotodata
-// wordt hiervoor gedecodeerd — hav_fb blijft leeg, dus de tegels erboven tonen
-// gewoon hun effen (nog niet foto-getinte) kleur.
-static void _hab_laden_icoon(int cx, int cy) {
-    uint16_t fg = RGB565(0, 0, 0);
-    int w = 192, h = 135;  // 3x zo groot als de eerdere versie
-    int x0 = cx - w / 2, y0 = cy - h / 2;
-    tft.drawCircle(x0 + 48, y0 + 39, 15, fg);                           // zon
-    tft.drawLine(x0 + 18, y0 + h - 24, x0 + 72,  y0 + 42, fg);          // bergflank 1
-    tft.drawLine(x0 + 72, y0 + 42,     x0 + 111, y0 + h - 39, fg);      // bergflank 2
-    tft.drawLine(x0 + 90, y0 + h - 57, x0 + w - 18, y0 + h - 24, fg);   // bergflank 3
+// ─── "Foto's worden geladen"-hoekje (rechtsonder, HAVEN-dashboard) ────────────
+// Zolang nog niet bekend is of er eigen foto's zijn (achtergrondtaak nog
+// bezig), toonde dit voorheen een vlak grijs vlak — "het ontbreken van de
+// afbeelding doet veel afbreuk aan het gevoel" (Brendan). Nu blijft gewoon een
+// ingebakken voorbeeldfoto zichtbaar (_hab_teken_gebied() hieronder behandelt
+// "scan nog bezig" niet meer als apart geval — gebruikers==0 valt daardoor
+// vanzelf al terug op haven_fotos[]), met dit lichtere hoekje rechtsonder als
+// duidelijke, niet-opdringerige indicator dat het nog niet de eigen foto is.
+// De driehoek loopt door tot de fysieke rechteronderhoek van het scherm — dus
+// ook zichtbaar ONDER de navigatiebalk, die op HAVEN toch al een getinte
+// foto-achtergrond toont (nav_bar.ino) — maar de tekst en het camera-icoontje
+// blijven ruim boven NAV_Y, zodat ze nooit met de navigatiebalk-knoppen
+// overlappen.
+#define HAB_HOEK_Y_TOP   (NAV_Y - 190)   // bovenpunt van de driehoek, op de rechterrand
+#define HAB_HOEK_X_LEFT  (TFT_W - 280)   // linkerpunt van de driehoek, op de onderrand
+#define HAB_HOEK_STERKTE 51              // richting wit, ~20% van 255
+
+static uint16_t* hab_hoek_buf     = nullptr;
+static size_t    hab_hoek_buf_cap = 0;
+static bool _hab_hoek_buf_klaar(size_t nodig) {
+    if (hab_hoek_buf && hab_hoek_buf_cap >= nodig) return true;
+    free(hab_hoek_buf);
+    hab_hoek_buf = (uint16_t*)malloc(nodig * sizeof(uint16_t));
+    hab_hoek_buf_cap = hab_hoek_buf ? nodig : 0;
+    return hab_hoek_buf != nullptr;
+}
+
+// Instagram-achtig cameraicoontje — rechtop getekend (geen rotatie), afgeronde
+// behuizing + ronde lens + klein blokje bovenop (flitser/viewfinder-bump).
+static void _hab_hoek_camera_icoon(int cx, int cy) {
+    uint16_t fg = RGB565(50, 50, 50);
+    int w = 46, h = 34;
+    int x0 = cx - w / 2, y0 = cy - h / 2 + 4;
+    tft.drawRoundRect(x0,     y0,     w,     h,     6, fg);
+    tft.drawRoundRect(x0 + 1, y0 + 1, w - 2, h - 2, 5, fg);   // iets dikkere rand
+    tft.drawCircle(cx, cy + 4, 10, fg);
+    tft.drawCircle(cx, cy + 4, 9,  fg);
+    tft.fillRoundRect(cx - 8, y0 - 7, 16, 8, 2, fg);           // bumpje bovenop
+}
+
+// Driehoek rechtsonder lichter maken (richting wit blenden t.o.v. de al
+// getekende foto, via dezelfde haven_kleur_meng()-kern als nav_bar.ino se
+// getinte balken), plus tekst "in trapjes" langs de schuine kant — elk teken
+// los en rechtop getekend (deze GFX-library kan geen tekst roteren), maar wel
+// telkens een stukje verder naar rechtsonder, zodat het geheel de diagonale
+// rand volgt.
+static void _hab_hoek_teken() {
+    int x0 = HAB_HOEK_X_LEFT, y0 = HAB_HOEK_Y_TOP;
+    int w = TFT_W - x0, h = TFT_H - y0;
+    if (w <= 0 || h <= 0) return;
+    if (_hab_hoek_buf_klaar((size_t)w * (size_t)h)) {
+        long dx = HAB_HOEK_X_LEFT - TFT_W, dy = TFT_H - HAB_HOEK_Y_TOP;
+        for (int ry = 0; ry < h; ry++) {
+            int sy = y0 + ry;
+            for (int rx = 0; rx < w; rx++) {
+                int sx = x0 + rx;
+                uint16_t foto = haven_achtergrond_pixel_klem(sx, sy);
+                long cross = dx * (sy - HAB_HOEK_Y_TOP) - dy * (sx - TFT_W);
+                hab_hoek_buf[ry * w + rx] = (cross <= 0)
+                    ? haven_kleur_meng(foto, 31, 63, 31, HAB_HOEK_STERKTE)  // binnen de driehoek: lichter
+                    : foto;                                                 // erbuiten: ongewijzigd
+            }
+        }
+        tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
+    }
+
+    const char* txt = "foto's worden geladen";
+    tft.setTextSize(1); tft.setTextColor(RGB565(50, 50, 50));
+    float tx = TFT_W - 34, ty = HAB_HOEK_Y_TOP + 14;
+    float stapx = -8.6f, stapy = 6.7f;   // volgt ongeveer de richting van de schuine kant
+    for (int i = 0; txt[i]; i++) {
+        tft.setCursor((int)(tx + i * stapx), (int)(ty + i * stapy));
+        tft.print(txt[i]);
+    }
+
+    _hab_hoek_camera_icoon(TFT_W - 60, HAB_HOEK_Y_TOP + 130);
 }
 
 // Gedeelde tekenkern: decodeert/tekent de huidige achtergrondfoto gecentreerd
@@ -294,16 +355,12 @@ static void _hab_laden_icoon(int cx, int cy) {
 // gebied; haven_achtergrond_teken_volledig() (voor fullscreen Lua-apps, zie
 // bkos.foto.tekenen() in lua_runtime.cpp) geeft simpelweg het HELE scherm mee.
 static void _hab_teken_gebied(int top_y, int hoogte) {
-    if (!haven_gebruikersfoto_scan_klaar()) {
-        // Nog niet bekend of er eigen foto's zijn (achtergrondtaak loopt nog) —
-        // niets decoderen/tonen dat straks mogelijk weer moet wijken: het HELE
-        // gebied wordt grijs, met het laad-icoon erin getekend. Zodra bekend is
-        // (scherm_bouwen door de achtergrondtaak) volgt de definitieve tekening.
-        tft.fillRect(0, top_y, TFT_W, hoogte, RGB565(210, 210, 210));
-        _hab_laden_icoon(TFT_W / 2, top_y + hoogte / 2);
-        return;
-    }
-
+    // "Scan nog bezig" wordt hier bewust niet meer apart behandeld: zolang
+    // haven_gebruikersfoto_aantal()==0 (start op 0, blijft 0 tot de scan
+    // klaar is) valt dit toch al terug op haven_fotos[] hieronder — dus
+    // gewoon een ingebakken voorbeeldfoto i.p.v. een leeg grijs vlak. Het
+    // lichtere "foto's worden geladen"-hoekje (_hab_hoek_teken(), aangeroepen
+    // vanuit haven_achtergrond_teken()) maakt het loading-karakter duidelijk.
     tft.fillRect(0, top_y, TFT_W, hoogte, C_BG);  // letterbox / lege achtergrond
     _hab_init();
     int scale   = _hab_scale();
@@ -338,6 +395,9 @@ static void _hab_teken_gebied(int top_y, int hoogte) {
 
 void haven_achtergrond_teken() {
     _hab_teken_gebied(CONTENT_Y, NAV_Y - CONTENT_Y);
+    // Alleen op het HAVEN-dashboard zelf (niet _teken_volledig(), dat is voor
+    // fullscreen Lua-apps zonder navigatiebalk-context) — zie _hab_hoek_teken().
+    if (!haven_gebruikersfoto_scan_klaar()) _hab_hoek_teken();
 }
 
 // Voor fullscreen Lua-apps (bkos.foto.tekenen()): het VOLLEDIGE scherm, geen

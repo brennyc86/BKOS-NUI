@@ -5,6 +5,7 @@
 #include "platform.h"      // PLATFORM_MALLOC/FREE (PSRAM op de S3, gewone heap elders)
 #include "platform_fs.h"   // SPIFFS-macro (LittleFS op Pico)
 #include <TJpg_Decoder.h>
+#include <Arduino_GFX_Library.h>   // Arduino_Canvas (offscreen) — enige manier om tekst te kunnen roteren (zie _hab_hoek_tekst_diagonaal())
 
 #define HAVEN_BG_INTERVAL_MS  60000UL   // "langzame slideshow" — elke 60s de volgende foto
 
@@ -285,8 +286,9 @@ static void _hab_init() {
 // blijven ruim boven NAV_Y, zodat ze nooit met de navigatiebalk-knoppen
 // overlappen.
 #define HAB_HOEK_Y_TOP   (NAV_Y - 190)   // bovenpunt van de driehoek, op de rechterrand
-#define HAB_HOEK_X_LEFT  (TFT_W - 320)   // linkerpunt van de driehoek, op de onderrand — iets breder voor de grotere tekst
+#define HAB_HOEK_X_LEFT  (TFT_W - 360)   // linkerpunt van de driehoek, op de onderrand — breed genoeg voor de gedraaide tekst
 #define HAB_HOEK_STERKTE 179             // richting wit — 70% (179/255) lichter (was 80%, dat oogde te heftig)
+#define HAB_HOEK_TEKST_GRADEN 33         // zelfde hoek als de schuine kant van de driehoek (atan(232/360))
 
 static uint16_t* hab_hoek_buf     = nullptr;
 static size_t    hab_hoek_buf_cap = 0;
@@ -311,10 +313,53 @@ static void _hab_hoek_camera_icoon(int cx, int cy) {
     tft.fillRoundRect(cx - 8, y0 - 7, 16, 8, 2, fg);           // bumpje bovenop
 }
 
+// Echt gedraaide tekst — deze GFX-library kan geen tekst zelf roteren, dus:
+// eerst gewoon horizontaal naar een klein offscreen canvas tekenen (waarop
+// print()/setCursor() heel normaal werken, Arduino_Canvas is ook een
+// Arduino_GFX), dan dat canvas pixel-voor-pixel ROTEREND bemonsteren
+// (inverse rotatie + nearest-neighbor) rechtstreeks in `buf` (dezelfde
+// pixelbuffer als de lichtere-driehoek-vulling hierboven, vóór de ene
+// gezamenlijke draw16bitRGBBitmap()). `origin_x,origin_y` is het scherm-punt
+// waar de LINKERBOVENHOEK van de (nog ongedraaide) tekst op uitkomt;
+// positieve `graden` draait tegen de klok in (rechts gaat omhoog — precies
+// het gevraagde linksonder-naar-rechtsboven-effect).
+static void _hab_hoek_tekst_diagonaal(uint16_t* buf, int buf_w, int buf_h, int buf_x0, int buf_y0,
+                                       const char* txt, int origin_x, int origin_y, float graden,
+                                       uint16_t kleur) {
+    int len = (int)strlen(txt);
+    int cw = len * 12 + 4, ch = 20;   // textSize 2: 12px breed / 16px hoog per teken, + kleine marge
+    Arduino_Canvas canvas(cw, ch, nullptr);
+    if (!canvas.begin(GFX_SKIP_OUTPUT_BEGIN)) return;
+    canvas.fillScreen(RGB565(0, 0, 0));   // sentinel: puur zwart, komt in de tekstkleur niet voor
+    canvas.setTextSize(2);
+    canvas.setTextColor(kleur);
+    canvas.setCursor(2, 2);
+    canvas.print(txt);
+    uint16_t* bron = canvas.getFramebuffer();
+    if (!bron) return;
+
+    float rad = graden * (float)M_PI / 180.0f;
+    float c = cosf(rad), s = sinf(rad);
+    int span = cw + ch;   // royale scherm-bounding box rondom origin_x/y, ruim genoeg voor elke hoek
+    for (int dy = -span; dy <= span; dy++) {
+        int sy = origin_y + dy;
+        if (sy < buf_y0 || sy >= buf_y0 + buf_h) continue;
+        for (int dx = -span; dx <= span; dx++) {
+            int sx = origin_x + dx;
+            if (sx < buf_x0 || sx >= buf_x0 + buf_w) continue;
+            // Inverse rotatie: scherm-offset (dx,dy) -> canvas-lokale (lx,ly)
+            int lx = (int)(dx * c - dy * s);
+            int ly = (int)(dx * s + dy * c);
+            if (lx < 0 || ly < 0 || lx >= cw || ly >= ch) continue;
+            uint16_t p = bron[ly * cw + lx];
+            if (p != 0) buf[(sy - buf_y0) * buf_w + (sx - buf_x0)] = p;
+        }
+    }
+}
+
 // Driehoek rechtsonder lichter maken (richting wit blenden t.o.v. de al
 // getekende foto, via dezelfde haven_kleur_meng()-kern als nav_bar.ino se
-// getinte balken). Tekst diagonaal-in-trapjes bleek onleesbaar — nu gewoon
-// rechtop, groter (size 2) en horizontaal, ruim binnen het lichtere vlak.
+// getinte balken).
 static void _hab_hoek_teken() {
     int x0 = HAB_HOEK_X_LEFT, y0 = HAB_HOEK_Y_TOP;
     int w = TFT_W - x0, h = TFT_H - y0;
@@ -332,28 +377,16 @@ static void _hab_hoek_teken() {
                     : foto;                                                 // erbuiten: ongewijzigd
             }
         }
+        // Echt gedraaide tekst (linksonder -> rechtsboven), vóór de ene
+        // gezamenlijke blit hieronder in dezelfde buffer gecomponeerd. Iets
+        // ingekort ("foto's worden geladen" -> "foto's laden...") zodat het
+        // op dit formaat past — zelfde betekenis, minder lang.
+        _hab_hoek_tekst_diagonaal(hab_hoek_buf, w, h, x0, y0, "foto's laden...",
+                                   525, 414, HAB_HOEK_TEKST_GRADEN, RGB565(50, 50, 50));
         tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
     }
 
-    // Diagonaal van linksonder naar rechtsboven — maar wél leesbaar: i.p.v.
-    // los teken-voor-teken te verschuiven (bleek onleesbaar) nu 3 woorden,
-    // elk gewoon als normale, horizontale tekst getekend (dus leesbaar per
-    // woord), met elk volgend woord een stuk naar rechts én omhoog t.o.v.
-    // het vorige — dat geeft het diagonale effect. De driehoek is bovenin
-    // (bij de punt) te smal voor tekst, dus dit trapje blijft bewust in het
-    // bredere onderste deel van de driehoek, ruim boven NAV_Y.
-    tft.setTextSize(2); tft.setTextColor(RGB565(50, 50, 50));
-    struct { const char* w; int rechterrand; int y; } regels[] = {
-        { "foto's", 675, 410 },   // linksonder
-        { "worden", 725, 375 },
-        { "geladen", 775, 340 },  // rechtsboven
-    };
-    for (auto& r : regels) {
-        tft.setCursor(r.rechterrand - (int)strlen(r.w) * 12, r.y);
-        tft.print(r.w);
-    }
-
-    _hab_hoek_camera_icoon(TFT_W - 65, 405);
+    _hab_hoek_camera_icoon(TFT_W - 50, 410);
 }
 
 // Gedeelde tekenkern: decodeert/tekent de huidige achtergrondfoto gecentreerd

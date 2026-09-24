@@ -327,17 +327,41 @@ static void _hab_hoek_pijlpunt(int cx, int cy, int r, float graden, uint16_t kle
     tft.fillTriangle(px + tx, py + ty, px - tx + rx, py - ty + ry, px - tx - rx, py - ty - ry, kleur);
 }
 
+// Lineaire interpolatie tussen 2 RGB565-kleuren (elk kanaal apart, op zijn
+// eigen 5/6/5-precisie) — voor het licht-naar-donker-verloop in elk boogje.
+static uint16_t _hab_hoek_lerp565(uint16_t a, uint16_t b, float t) {
+    int ar = (a >> 11) & 0x1F, ag = (a >> 5) & 0x3F, ab = a & 0x1F;
+    int br = (b >> 11) & 0x1F, bg = (b >> 5) & 0x3F, bb = b & 0x1F;
+    int r = ar + (int)((br - ar) * t), g = ag + (int)((bg - ag) * t), bl = ab + (int)((bb - ab) * t);
+    return (uint16_t)((r << 11) | (g << 5) | bl);
+}
+
 // Laad-symbool rond het camera-icoontje: 3 boogjes/pijlen in een cirkel, met
-// de klok mee — herkenbaar "bezig"-motief. Zelfde fillArc()-band-techniek
-// als de AUTO-knop (screen_main.ino) en de waterdruppel-maantjes hierboven.
+// de klok mee — herkenbaar "bezig"-motief. Zelfde fillArc()-band-techniek als
+// de AUTO-knop (screen_main.ino) en de waterdruppel-maantjes hierboven. Elk
+// boogje in zijn eigen kleur (rood/groen/blauw) en loopt binnen dat boogje
+// van heel licht (bij de staart) naar donker (bij de pijlpunt) — opgebouwd
+// uit een stel kleine deel-boogjes met elk een geïnterpoleerde kleur, want
+// fillArc() zelf kent maar één vlakke kleur per aanroep.
 static void _hab_hoek_laad_symbool(int cx, int cy) {
-    uint16_t fg = RGB565(50, 50, 50);
-    int buiten_r = 30, binnen_r = 26;
+    int buiten_r = 40, binnen_r = 35;   // verder van de camera af (was 30/26)
+    struct { uint16_t licht, donker; } kl[3] = {
+        { RGB565(255, 190, 190), RGB565(160, 20, 20) },    // rood
+        { RGB565(190, 255, 190), RGB565(20, 130, 20) },    // groen
+        { RGB565(190, 210, 255), RGB565(20, 70, 170) },    // blauw
+    };
     const float start[3] = { 0, 120, 240 };   // 3x 80° boog + 3x 40° tussenruimte = 360°
+    const int   SUBSTAPS = 10;
     for (int i = 0; i < 3; i++) {
+        float span = 80.0f / SUBSTAPS;
+        for (int j = 0; j < SUBSTAPS; j++) {
+            float t  = (float)j / (SUBSTAPS - 1);
+            float a0 = start[i] + j * span;
+            float a1 = a0 + span + 0.5f;   // kleine overlap tegen naadjes tussen de deel-boogjes
+            tft.fillArc(cx, cy, buiten_r, binnen_r, a0, a1, _hab_hoek_lerp565(kl[i].licht, kl[i].donker, t));
+        }
         float eind = start[i] + 80;
-        tft.fillArc(cx, cy, buiten_r, binnen_r, start[i], eind, fg);
-        _hab_hoek_pijlpunt(cx, cy, (buiten_r + binnen_r) / 2, eind, fg);   // pijlpunt aan het "voorste" (met de klok mee) uiteinde
+        _hab_hoek_pijlpunt(cx, cy, (buiten_r + binnen_r) / 2, eind, kl[i].donker);   // pijlpunt: donkere kop
     }
 }
 

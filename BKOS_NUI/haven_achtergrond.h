@@ -29,10 +29,23 @@ uint16_t haven_kleur_meng(uint16_t foto, uint8_t r5_doel, uint8_t g6_doel, uint8
 
 void haven_achtergrond_teken();           // decodeert + tekent de huidige foto (content-gebied)
 void haven_achtergrond_teken_volledig();  // idem, maar het VOLLEDIGE scherm — voor fullscreen Lua-apps
-void haven_achtergrond_tick();            // periodieke check: tijd om te wisselen naar de volgende foto?
-void haven_achtergrond_volgende();        // forceer meteen de volgende foto (reset ook de 60s-klok)
+void haven_achtergrond_tick();            // periodieke check: tijd om te wisselen naar de volgende foto? (alleen actief scherm, lange sessie — fallback)
+void haven_achtergrond_volgende();        // forceer meteen de volgende foto (reset ook de wisselklok) — gebruikt door bkos.foto.volgende() (Lua), bewust zichtbaar/direct
 void haven_achtergrond_vorige();          // idem, maar één terug (wraparound)
 int  haven_achtergrond_aantal_actief();   // eigen foto's indien aanwezig, anders de ingebakken voorbeelden
+
+// Onzichtbaar wisselen: aan te roepen op het moment dat het scherm volledig
+// zwart wordt (backlight 0%, zie hw_scherm.ino's tft_loop()) — de foto
+// verspringt dan "in het donker", ruim voordat een volgende aanraking de
+// backlight weer aanzet, dus zonder dat iemand het ziet gebeuren. Reset ook
+// de wisselklok (zie hieronder) zodat de actief-scherm-fallback pas weer na
+// een volle wachttijd vanaf het wakker worden kan afgaan.
+void haven_achtergrond_idle_wissel();
+// Alleen de wisselklok resetten, zonder te wisselen — aan te roepen bij het
+// (opnieuw) binnenkomen op het HAVEN-scherm, zodat een allang-verstreken
+// klok niet meteen bij aankomst een zichtbare wissel afdwingt ("bij het
+// opstarten of naar dit scherm gaan is er geen keuze", Brendan).
+void haven_achtergrond_tijd_reset();
 
 // ─── Eigen foto's (SPIFFS) ─────────────────────────────────────────────────
 // Max. aantal eigen foto's (vast aantal slots — de échte grens is vrije

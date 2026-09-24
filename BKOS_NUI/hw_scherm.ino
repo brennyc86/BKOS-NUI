@@ -4,6 +4,7 @@
 #include "platform_fs.h"   // SPIFFS voor de instelbare scherm-PCLK
 #include "app_state.h"     // vaar_modus/MODE_* voor tft_helderheid_auto_loop()
 #include "meteo.h"         // meteo_zonsopgang/-ondergang/-is_dag
+#include "haven_achtergrond.h"   // haven_achtergrond_idle_wissel() — onzichtbaar foto-wisselmoment
 
 Arduino_GFX *tft_p = nullptr;  // aangemaakt in tft_setup()
 
@@ -269,6 +270,10 @@ void tft_loop() {
         } else if (millis() - tft_dim_ms > 5000UL) {
             tft_bijna_uit = false;
             tft_helderheid_zet(0);  // volledig zwart
+            // HAVEN-achtergrondfoto onzichtbaar laten verspringen nu het
+            // scherm toch al zwart is — scheelt een zichtbare "flits" bij
+            // het wisselen tijdens actief kijken (Brendan).
+            if (actief_scherm == SCREEN_HAVEN) haven_achtergrond_idle_wissel();
         }
     } else {
         // Fase 2: volledig zwart, wachten op touch

@@ -7,7 +7,11 @@
 #include <TJpg_Decoder.h>
 #include <Arduino_GFX_Library.h>   // Arduino_Canvas (offscreen) — enige manier om tekst te kunnen roteren (zie _hab_hoek_tekst_diagonaal())
 
-#define HAVEN_BG_INTERVAL_MS  60000UL   // "langzame slideshow" — elke 60s de volgende foto
+// Alleen nog de FALLBACK voor een lang-actief scherm dat nooit idle wordt —
+// de normale weg is nu het onzichtbare wisselmoment als het scherm zwart
+// wordt (haven_achtergrond_idle_wissel()). Op Brendans verzoek verruimd van
+// 60s naar 90s.
+#define HAVEN_BG_INTERVAL_MS  90000UL
 
 static int           hav_bg_idx         = 0;
 static unsigned long hav_laatste_wissel = 0;  // gedeeld door tick() en het geforceerde volgende()
@@ -539,4 +543,22 @@ void haven_achtergrond_vorige() {
     int totaal = haven_achtergrond_aantal_actief();
     hav_bg_idx = (hav_bg_idx - 1 + totaal) % totaal;
     scherm_bouwen = true;
+}
+
+// Aangeroepen op het moment dat het scherm net volledig zwart is geworden
+// (hw_scherm.ino's tft_loop()) — de foto verspringt hier "in het donker":
+// scherm_bouwen wordt wel gezet (dus de volgende hertekencyclus tekent de
+// nieuwe foto), maar dat gebeurt terwijl de backlight nog op 0% staat, dus
+// zichtbaar is er niets — pas bij de eerstvolgende aanraking gaat de
+// backlight weer aan, en dan staat de nieuwe foto er al.
+void haven_achtergrond_idle_wissel() {
+    hav_laatste_wissel = millis();
+    _hab_volgende_intern();
+}
+
+// Alleen de wisselklok resetten (geen wissel) — voor het (opnieuw) binnen-
+// komen op het HAVEN-scherm, zodat de actief-scherm-fallback niet een allang
+// verstreken klok meteen bij aankomst afvuurt.
+void haven_achtergrond_tijd_reset() {
+    hav_laatste_wissel = millis();
 }

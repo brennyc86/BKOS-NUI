@@ -663,6 +663,12 @@ void hw_loop() {
         bool ota_scherm = (actief_scherm == SCREEN_OTA);
         wifi_ota_zet(ota_scherm || ota_push_actief);
         sb_paneel_open = false;   // schermwissel via een andere weg (nav-bar, TERUG) sluit het uitklap-paneel ook mee
+        // Vers binnengekomen op HAVEN: de wisselklok resetten zodat een allang
+        // verstreken klok niet meteen bij aankomst een zichtbare foto-wissel
+        // afdwingt ("bij het opstarten of naar dit scherm gaan is er geen
+        // keuze", Brendan) — het echte wisselmoment is nu het onzichtbare
+        // moment als het scherm zwart wordt (hw_scherm.ino).
+        if (actief_scherm == SCREEN_HAVEN) haven_achtergrond_tijd_reset();
     }
 
     // ota_nieuwer_beschikbaar wordt asynchroon gezet door de netwerktaak
@@ -975,6 +981,12 @@ void hw_loop() {
         bool ota_scherm = (actief_scherm == SCREEN_OTA);
         wifi_ota_zet(ota_scherm || ota_push_actief);
         sb_paneel_open = false;   // schermwissel via een andere weg (nav-bar, TERUG) sluit het uitklap-paneel ook mee
+        // Vers binnengekomen op HAVEN: de wisselklok resetten zodat een allang
+        // verstreken klok niet meteen bij aankomst een zichtbare foto-wissel
+        // afdwingt ("bij het opstarten of naar dit scherm gaan is er geen
+        // keuze", Brendan) — het echte wisselmoment is nu het onzichtbare
+        // moment als het scherm zwart wordt (hw_scherm.ino).
+        if (actief_scherm == SCREEN_HAVEN) haven_achtergrond_tijd_reset();
     }
 
     // Zie de identieke check in de ESP32-GUI-taak hierboven in dit bestand.

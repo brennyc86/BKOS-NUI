@@ -433,14 +433,14 @@ static void _hab_hoek_teken() {
         // gezamenlijke blit hieronder in dezelfde buffer gecomponeerd. Iets
         // ingekort ("foto's worden geladen" -> "foto's laden...") zodat het
         // op dit formaat past — zelfde betekenis, minder lang.
-        // Stond te laag: het stuk van de driehoek ONDER NAV_Y telt niet mee
-        // voor wat je daadwerkelijk ziet (de navigatiebalk zit erover heen),
-        // dus tellen voor "gecentreerd in het lichtere vlak" alleen mee wat
-        // er ZICHTBAAR boven NAV_Y ligt — vandaar nu een stuk naar
-        // rechtsboven t.o.v. de vorige ronde, ruim boven de navigatiebalk en
-        // nog net niet tegen het camera-icoon aan.
+        // (560,395) bleek zelf nog niet goed: bij een gedraaid tekstblok zijn
+        // er 4 hoekpunten om tegen de schuine driehoekrand te toetsen, niet
+        // alleen de onderkant (ly=20) — de bovenkant (ly=0, waar bv. het
+        // streepje van een "t" zit) lag daar juist ~13px BUITEN de driehoek.
+        // Alle 4 hoekpunten nu narekend en dit origin geeft op elk ervan een
+        // ruime marge (11-50px) t.o.v. de schuine rand.
         _hab_hoek_tekst_diagonaal(hab_hoek_buf, w, h, x0, y0, "foto's laden...",
-                                   560, 395, HAB_HOEK_TEKST_GRADEN, RGB565(50, 50, 50));
+                                   600, 385, HAB_HOEK_TEKST_GRADEN, RGB565(50, 50, 50));
         tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
     }
 

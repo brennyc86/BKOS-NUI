@@ -286,7 +286,7 @@ static void _hab_init() {
 // overlappen.
 #define HAB_HOEK_Y_TOP   (NAV_Y - 190)   // bovenpunt van de driehoek, op de rechterrand
 #define HAB_HOEK_X_LEFT  (TFT_W - 320)   // linkerpunt van de driehoek, op de onderrand — iets breder voor de grotere tekst
-#define HAB_HOEK_STERKTE 204             // richting wit — "20% helderheid" = nog 20% van de foto zichtbaar, dus 80% (204/255) lichter
+#define HAB_HOEK_STERKTE 179             // richting wit — 70% (179/255) lichter (was 80%, dat oogde te heftig)
 
 static uint16_t* hab_hoek_buf     = nullptr;
 static size_t    hab_hoek_buf_cap = 0;
@@ -335,18 +335,25 @@ static void _hab_hoek_teken() {
         tft.draw16bitRGBBitmap(x0, y0, hab_hoek_buf, w, h);
     }
 
-    // Twee regels, rechts uitgelijnd tegen de rechterrand — onderin het
-    // lichtere vlak (daar is de driehoek het breedst), ruim boven NAV_Y.
+    // Diagonaal van linksonder naar rechtsboven — maar wél leesbaar: i.p.v.
+    // los teken-voor-teken te verschuiven (bleek onleesbaar) nu 3 woorden,
+    // elk gewoon als normale, horizontale tekst getekend (dus leesbaar per
+    // woord), met elk volgend woord een stuk naar rechts én omhoog t.o.v.
+    // het vorige — dat geeft het diagonale effect. De driehoek is bovenin
+    // (bij de punt) te smal voor tekst, dus dit trapje blijft bewust in het
+    // bredere onderste deel van de driehoek, ruim boven NAV_Y.
     tft.setTextSize(2); tft.setTextColor(RGB565(50, 50, 50));
-    const char* regel1 = "foto's worden";
-    const char* regel2 = "geladen";
-    int rand = 20;
-    tft.setCursor(TFT_W - rand - (int)strlen(regel1) * 12, NAV_Y - 43);
-    tft.print(regel1);
-    tft.setCursor(TFT_W - rand - (int)strlen(regel2) * 12, NAV_Y - 25);
-    tft.print(regel2);
+    struct { const char* w; int rechterrand; int y; } regels[] = {
+        { "foto's", 675, 410 },   // linksonder
+        { "worden", 725, 375 },
+        { "geladen", 775, 340 },  // rechtsboven
+    };
+    for (auto& r : regels) {
+        tft.setCursor(r.rechterrand - (int)strlen(r.w) * 12, r.y);
+        tft.print(r.w);
+    }
 
-    _hab_hoek_camera_icoon(TFT_W - 45, HAB_HOEK_Y_TOP + 75);
+    _hab_hoek_camera_icoon(TFT_W - 65, 405);
 }
 
 // Gedeelde tekenkern: decodeert/tekent de huidige achtergrondfoto gecentreerd

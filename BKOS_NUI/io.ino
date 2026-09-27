@@ -14,6 +14,14 @@
 byte licht_cfg_idx = 0;
 bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=rood, wit anders) — voor UI
 
+// Pacing tussen elk verzonden output-bit-teken naar de ATtiny (BKOSS) over
+// IO_SERIAL — zie io_cyclus() voor de volledige analyse. De ATtiny verwerkt
+// elk teken via een pollinglus (~7ms/teken); zonder deze pacing verstuurt de
+// ESP32 sneller dan de ATtiny's kleine UART-ontvangbuffer kan afvoeren, wat
+// bij genoeg kanalen bytes laat verdwijnen/verschuiven — zichtbaar als een
+// kort knipperend kanaal dat de volgende cyclus zichzelf herstelt.
+#define IO_BIT_PACE_MS 8
+
 volatile bool io_direct_aanvraag = false;
 volatile bool io_staat_gewijzigd = false;
 
@@ -339,17 +347,25 @@ void io_cyclus(bool stil) {
     while (IO_SERIAL.available()) IO_SERIAL.read();
     IO_SERIAL.print("IO\n");
     IO_SERIAL.flush();
-    delay(10);
+    // De ATtiny (BKOSS) doet vóór hij ook maar één bit leest eerst een eigen
+    // parallelle-klok-puls (3× p_delay=10ms ≈ 30ms) — deze wachttijd moet dat
+    // ruim overtreffen, anders begint onze burst al te versturen vóórdat de
+    // ATtiny start met lezen (zie IO_BIT_PACE_MS hieronder voor het vervolg
+    // van deze analyse).
+    delay(40);
     while (IO_SERIAL.available()) IO_SERIAL.read();
 
     // Stuur ALLE outputs in één keer (omgekeerde volgorde voor shift registers).
     // De ATtiny verwerkt pas per volledige module (8 bits) en stuurt dan de inputs
     // terug — bit-voor-bit interleaven geeft een 1-positie verschuiving.
+    // Gepaced via IO_BIT_PACE_MS (zie boven) om de ATtiny's UART-ontvangbuffer
+    // niet te laten overlopen.
     for (int i = 0; i < n; i++) {
         // Ingangskanalen worden nooit aangestuurd (altijd '0')
         IO_SERIAL.print(io_drijf_hoog(n - 1 - i) ? '1' : '0');
+        IO_SERIAL.flush();
+        delay(IO_BIT_PACE_MS);
     }
-    IO_SERIAL.flush();
 
     // Lees ALLE inputs nadat de ATtiny alle outputs heeft verwerkt
     for (int i = 0; i < n; i++) {

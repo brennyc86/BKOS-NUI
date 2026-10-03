@@ -31,13 +31,22 @@
 -- "IO-pogingen" = aantal eigen polling-ticks (bkos.update(), ~elke 50ms) --
 -- de app heeft geen zicht op de werkelijke hardware-IO-cyclusteller.
 
+-- Gewoon (niet-volledig-scherm) app: bkos.H is het content-gebied onder de
+-- koptekst en boven de navigatiebalk (op S3 ~396px, niet de volle 480px) --
+-- geen eigen titelbalk/sluitknop meer nodig of gewenst, de systeem-koptekst
+-- toont de appnaam al en de navigatiebalk blijft altijd bereikbaar.
 local TIMEOUT_MS       = 3000
 local CONFIRM_CYCLI    = 3
 local INIT_SETTLE_MS   = 300
-local RIJ_H            = 24
-local TABEL_TOP        = 70
-local ZICHTBARE_RIJEN  = 15
-local SLUIT_W, SLUIT_H = 70, 34
+local RIJ_H            = 22
+local KOP_Y            = 2    -- kolomkoppen, rijteller, scrollknoppen
+local LIJN_Y           = 16   -- horizontale scheidingslijn onder de koppen
+local TABEL_TOP        = 20   -- eerste datarij
+local FOOTER_H         = 44
+
+local function zichtbare_rijen()
+    return math.max(1, math.floor((bkos.H - TABEL_TOP - FOOTER_H) / RIJ_H))
+end
 
 local SNEL_SAMPLE_GAP_MS    = 500
 local SNEL_SAMPLES_PER_STAP = 5
@@ -49,7 +58,10 @@ local SNEL_STAPPEN = {
     { staat = false, label = "UIT" },
 }
 
-local KOL_L_X, KOL_R_X, KOL_W = 16, 406, 378
+-- 2 kolomgroepen + een gutter rechts voor rijteller/scrollknoppen, zodat die
+-- nooit overlappen met de STAT-iconen van de rechterkolom.
+local GUTTER_X                = 750
+local KOL_L_X, KOL_R_X, KOL_W = 16, 384, 360
 
 -- ─── Algemene staat ───────────────────────────────────────────────────────────
 local scherm            = "keuze"     -- "keuze" | "scan" | "rapport" | "detail"
@@ -467,99 +479,73 @@ local function teken_regels(x, y, label, inhoud, kleur, breedte_chars)
 end
 
 -- ───────────────────────────────────────────────────────────────────────────────
--- Gemeenschappelijke knoppen
--- ───────────────────────────────────────────────────────────────────────────────
-
-local function teken_titelbalk(titel)
-    bkos.fillRect(0, 0, bkos.W, 44, bkos.color565(18, 28, 40))
-    bkos.drawText(16, 12, titel, 2, bkos.colors.cyan)
-end
-
-local function sluitknop_rect()
-    return bkos.W - SLUIT_W - 10, 6, SLUIT_W, SLUIT_H
-end
-
-local function teken_sluitknop()
-    local x, y, w, h = sluitknop_rect()
-    bkos.fillRoundRect(x, y, w, h, 6, bkos.color565(60, 30, 30))
-    bkos.drawText(x + 10, y + 9, "SLUIT", 1, bkos.colors.red)
-end
-
-local function sluitknop_geraakt(x, y)
-    local bx, by, bw, bh = sluitknop_rect()
-    return x >= bx and x <= bx + bw and y >= by and y <= by + bh
-end
-
--- ───────────────────────────────────────────────────────────────────────────────
 -- Scherm: KEUZE
 -- ───────────────────────────────────────────────────────────────────────────────
 
 teken_keuze = function()
     bkos.fillScreen(bkos.colors.bg)
-    teken_titelbalk("IO POORTTEST")
-    teken_sluitknop()
 
-    bkos.drawText(30, 58, "Test fysieke IO-poorten rechtstreeks, los van namen/richting.", 1, bkos.colors.textDim)
-    bkos.drawText(30, 72, "Let op: aangesloten apparaten/relais schakelen echt mee!", 1, bkos.colors.amber)
+    bkos.drawText(16, 2,  "Test fysieke IO-poorten rechtstreeks, los van namen/richting.", 1, bkos.colors.textDim)
+    bkos.drawText(16, 16, "Let op: aangesloten apparaten/relais schakelen echt mee!", 1, bkos.colors.amber)
 
     local auto_actief = (modus == "auto")
     local n = bkos.io.count()
-    bkos.fillRoundRect(30, 108, 360, 56, 8, auto_actief and bkos.color565(20, 60, 50) or bkos.colors.surface)
-    bkos.drawText(50, 122, "AUTOMATISCH", 2, auto_actief and bkos.colors.green or bkos.colors.text)
-    bkos.drawText(50, 146, n .. " poorten gedetecteerd bij opstarten", 1, bkos.colors.textDim)
+    bkos.fillRoundRect(16, 40, 360, 48, 8, auto_actief and bkos.color565(20, 60, 50) or bkos.colors.surface)
+    bkos.drawText(36, 52, "AUTOMATISCH", 2, auto_actief and bkos.colors.green or bkos.colors.text)
+    bkos.drawText(36, 74, n .. " poorten gedetecteerd bij opstarten", 1, bkos.colors.textDim)
 
     local hand_actief = (modus == "handmatig")
-    bkos.fillRoundRect(410, 108, 360, 56, 8, hand_actief and bkos.color565(20, 60, 50) or bkos.colors.surface)
-    bkos.drawText(430, 122, "HANDMATIG", 2, hand_actief and bkos.colors.green or bkos.colors.text)
-    bkos.drawText(430, 146, "zelf een aantal opgeven", 1, bkos.colors.textDim)
+    bkos.fillRoundRect(406, 40, 360, 48, 8, hand_actief and bkos.color565(20, 60, 50) or bkos.colors.surface)
+    bkos.drawText(426, 52, "HANDMATIG", 2, hand_actief and bkos.colors.green or bkos.colors.text)
+    bkos.drawText(426, 74, "zelf een aantal opgeven", 1, bkos.colors.textDim)
 
     if modus == "handmatig" then
-        bkos.drawText(30, 188, "Aantal poorten:", 1, bkos.colors.textDim)
-        bkos.fillRoundRect(30,  208, 50, 50, 8, bkos.colors.surface)
-        bkos.drawText(48,  223, "-", 3, bkos.colors.cyan)
-        bkos.drawText(100, 218, tostring(handmatig_aantal), 3, bkos.colors.text)
-        bkos.fillRoundRect(200, 208, 50, 50, 8, bkos.colors.surface)
-        bkos.drawText(216, 223, "+", 3, bkos.colors.cyan)
+        bkos.drawText(16, 98, "Aantal poorten:", 1, bkos.colors.textDim)
+        bkos.fillRoundRect(16,  114, 46, 46, 8, bkos.colors.surface)
+        bkos.drawText(32,  128, "-", 3, bkos.colors.cyan)
+        bkos.drawText(82, 124, tostring(handmatig_aantal), 3, bkos.colors.text)
+        bkos.fillRoundRect(182, 114, 46, 46, 8, bkos.colors.surface)
+        bkos.drawText(198, 128, "+", 3, bkos.colors.cyan)
     end
 
     local start_mag = (modus == "handmatig") or (n > 0)
-    bkos.fillRoundRect(30, 390, 260, 56, 8, start_mag and bkos.colors.green or bkos.colors.surface)
-    bkos.drawText(50, 408, "START TEST", 2, start_mag and bkos.color565(10, 20, 10) or bkos.colors.textDim)
+    local start_y = bkos.H - 58
+    bkos.fillRoundRect(16, start_y, 250, 50, 8, start_mag and bkos.colors.green or bkos.colors.surface)
+    bkos.drawText(36, start_y + 16, "START TEST", 2, start_mag and bkos.color565(10, 20, 10) or bkos.colors.textDim)
     if not start_mag then
-        bkos.drawText(30, 460, "Geen hardware gedetecteerd bij opstarten -- herstart het apparaat", 1, bkos.colors.amber)
+        bkos.drawText(16, start_y - 16, "Geen hardware gedetecteerd -- herstart het apparaat", 1, bkos.colors.amber)
     end
 
     if heeft_resultaat then
-        bkos.fillRoundRect(310, 390, 300, 56, 8, bkos.color565(30, 50, 70))
-        bkos.drawText(330, 402, "TERUG NAAR", 1, bkos.colors.cyan)
-        bkos.drawText(330, 416, "LAATSTE TEST", 2, bkos.colors.cyan)
+        bkos.fillRoundRect(286, start_y, 280, 50, 8, bkos.color565(30, 50, 70))
+        bkos.drawText(304, start_y + 4,  "TERUG NAAR", 1, bkos.colors.cyan)
+        bkos.drawText(304, start_y + 18, "LAATSTE TEST", 2, bkos.colors.cyan)
     end
 end
 
 raak_keuze = function(x, y)
-    if sluitknop_geraakt(x, y) then bkos.app.sluiten(); return end
-
-    if x >= 30 and x <= 390 and y >= 108 and y <= 164 then modus = "auto"; bkos.draw(); return end
-    if x >= 410 and x <= 770 and y >= 108 and y <= 164 then modus = "handmatig"; bkos.draw(); return end
+    if x >= 16 and x <= 376 and y >= 40 and y <= 88 then modus = "auto"; bkos.draw(); return end
+    if x >= 406 and x <= 766 and y >= 40 and y <= 88 then modus = "handmatig"; bkos.draw(); return end
 
     if modus == "handmatig" then
-        if x >= 30 and x <= 80 and y >= 208 and y <= 258 then
+        if x >= 16 and x <= 62 and y >= 114 and y <= 160 then
             handmatig_aantal = math.max(1, handmatig_aantal - 1); bkos.draw(); return
         end
-        if x >= 200 and x <= 250 and y >= 208 and y <= 258 then
+        if x >= 182 and x <= 228 and y >= 114 and y <= 160 then
             handmatig_aantal = math.min(240, handmatig_aantal + 1); bkos.draw(); return
         end
     end
 
     local n = bkos.io.count()
     local start_mag = (modus == "handmatig") or (n > 0)
-    if start_mag and x >= 30 and x <= 290 and y >= 390 and y <= 446 then
+    local start_y = bkos.H - 58
+    if start_mag and x >= 16 and x <= 266 and y >= start_y and y <= start_y + 50 then
         start_scan()
         bkos.draw()
         return
     end
 
-    if heeft_resultaat and x >= 310 and x <= 610 and y >= 390 and y <= 446 then
+    if heeft_resultaat and x >= 286 and x <= 566 and y >= start_y and y <= start_y + 50 then
         scherm = "scan"
         bkos.draw()
     end
@@ -635,14 +621,14 @@ end
 
 -- Tekent één kolomgroep (poort/aan/uit/status) voor poorten [van..tot].
 local function teken_kolom(kol_x, van, tot)
-    bkos.drawText(kol_x + 6,   TABEL_TOP - 18, "PRT",    1, bkos.colors.textDim)
-    bkos.drawText(kol_x + 44,  TABEL_TOP - 18, "AAN",    1, bkos.colors.textDim)
-    bkos.drawText(kol_x + 190, TABEL_TOP - 18, "UIT",    1, bkos.colors.textDim)
-    bkos.drawText(kol_x + 330, TABEL_TOP - 18, "STAT",   1, bkos.colors.textDim)
-    bkos.drawFastHLine(kol_x, TABEL_TOP - 6, KOL_W - 8, bkos.color565(60, 70, 85))
+    bkos.drawText(kol_x + 6,   KOP_Y, "PRT",    1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 44,  KOP_Y, "AAN",    1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 190, KOP_Y, "UIT",    1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 318, KOP_Y, "STAT",   1, bkos.colors.textDim)
+    bkos.drawFastHLine(kol_x, LIJN_Y, KOL_W - 8, bkos.color565(60, 70, 85))
 
     local rij_idx = 0
-    for p = van + scroll_offset, math.min(tot, van + scroll_offset + ZICHTBARE_RIJEN - 1) do
+    for p = van + scroll_offset, math.min(tot, van + scroll_offset + zichtbare_rijen() - 1) do
         local y = TABEL_TOP + rij_idx * RIJ_H
         rij_idx = rij_idx + 1
 
@@ -668,7 +654,7 @@ local function teken_kolom(kol_x, van, tot)
         elseif ms_uit[p] then uit_txt = ms_uit[p] .. "ms(" .. pog_uit[p] .. "x)" end
         bkos.drawText(kol_x + 190, y + 5, uit_txt, 1, uit_kleur)
 
-        conclusie_icoon(kol_x + 345, y + math.floor(RIJ_H / 2), p)
+        conclusie_icoon(kol_x + 318, y + math.floor(RIJ_H / 2), p)
     end
 end
 
@@ -681,24 +667,17 @@ local function teken_tabel()
     teken_kolom(KOL_L_X, 1, h)
     teken_kolom(KOL_R_X, h + 1, aantal)
 
-    local grootste_helft = math.max(h, aantal - h)
-    if grootste_helft > ZICHTBARE_RIJEN then
-        bkos.drawText(KOL_R_X + KOL_W - 170, TABEL_TOP - 18,
-            "rij " .. (scroll_offset + 1) .. "-" .. math.min(grootste_helft, scroll_offset + ZICHTBARE_RIJEN) .. "/" .. grootste_helft,
-            1, bkos.colors.textDim)
-    end
 end
 
--- Naast elkaar (niet gestapeld) in de koprij, zodat ze nooit overlappen met
--- de SLUIT-knop rechtsboven (die eindigt bij y=40) -- TABEL_TOP-18 ligt daar
--- ruim onder.
+-- Eigen gutter helemaal rechts (GUTTER_X..bkos.W), ruim los van de
+-- rechterkolom se eigen inhoud (eindigt bij KOL_R_X+KOL_W-8).
 local function scroll_knop_rects()
-    local y = TABEL_TOP - 18
-    return bkos.W - 62, y, bkos.W - 30, y   -- omhoog-x, y, omlaag-x, y
+    local y = KOP_Y
+    return GUTTER_X, y, GUTTER_X + 28, y   -- omhoog-x, y, omlaag-x, y
 end
 
 local function teken_scroll_knoppen()
-    if math.max(helft(), aantal - helft()) <= ZICHTBARE_RIJEN then return end
+    if math.max(helft(), aantal - helft()) <= zichtbare_rijen() then return end
     local ux, y, dx, _ = scroll_knop_rects()
     bkos.fillTriangle(ux, y + 10, ux + 14, y + 10, ux + 7, y,      bkos.colors.cyan)
     bkos.fillTriangle(dx, y,      dx + 14, y,      dx + 7, y + 10, bkos.colors.cyan)
@@ -706,19 +685,21 @@ end
 
 local function voetknoppen_rects()
     -- Tijdens het lopen: alleen STOP. Klaar: OPNIEUW + RAPPORT + APP.
+    local by = bkos.H - FOOTER_H + 4
     if fase ~= "klaar" then
-        return { stop = { bkos.W - 160, bkos.H - 46, 140, 36 } }
+        return { stop = { bkos.W - 160, by, 140, 32 } }
     end
     return {
-        opnieuw = { bkos.W - 156, bkos.H - 46, 140, 36 },
-        rapport = { bkos.W - 312, bkos.H - 46, 148, 36 },
-        app     = { bkos.W - 476, bkos.H - 46, 156, 36 },
+        opnieuw = { bkos.W - 156, by, 140, 32 },
+        rapport = { bkos.W - 312, by, 148, 32 },
+        app     = { bkos.W - 476, by, 156, 32 },
     }
 end
 
 local function teken_voet()
-    bkos.fillRect(0, bkos.H - 50, bkos.W, 50, bkos.color565(18, 28, 40))
-    bkos.drawText(16, bkos.H - 36, status_tekst(), 1, bkos.colors.text)
+    local voet_y = bkos.H - FOOTER_H
+    bkos.fillRect(0, voet_y, bkos.W, FOOTER_H, bkos.color565(18, 28, 40))
+    bkos.drawText(16, voet_y + 4, status_tekst(), 1, bkos.colors.text)
 
     local knoppen = voetknoppen_rects()
     if knoppen.stop then
@@ -743,14 +724,12 @@ local function teken_voet()
     end
 
     if bericht_status ~= "" and bkos.sys.millis() - bericht_status_ms < 4000 then
-        bkos.drawText(16, bkos.H - 20, bericht_status, 1, bkos.colors.amber)
+        bkos.drawText(16, voet_y + 26, bericht_status, 1, bkos.colors.amber)
     end
 end
 
 teken_scan = function()
     bkos.fillScreen(bkos.colors.bg)
-    teken_titelbalk("IO POORTTEST -- scan")
-    teken_sluitknop()
     teken_tabel()
     teken_scroll_knoppen()
     teken_voet()
@@ -759,7 +738,7 @@ end
 -- Vertaalt een scherm-coordinaat naar een poortnummer (of nil), rekening
 -- houdend met beide kolomgroepen en de huidige scroll.
 local function poort_bij_coordinaat(x, y)
-    if y < TABEL_TOP or y >= TABEL_TOP + ZICHTBARE_RIJEN * RIJ_H then return nil end
+    if y < TABEL_TOP or y >= TABEL_TOP + zichtbare_rijen() * RIJ_H then return nil end
     local rij_idx = math.floor((y - TABEL_TOP) / RIJ_H)
     local h = helft()
     if x >= KOL_L_X and x < KOL_L_X + KOL_W then
@@ -773,8 +752,6 @@ local function poort_bij_coordinaat(x, y)
 end
 
 raak_scan = function(x, y)
-    if sluitknop_geraakt(x, y) then bkos.app.sluiten(); return end
-
     local knoppen = voetknoppen_rects()
     for naam, r in pairs(knoppen) do
         local bx, by, bw, bh = table.unpack(r)
@@ -794,10 +771,10 @@ raak_scan = function(x, y)
         end
     end
 
-    if math.max(helft(), aantal - helft()) > ZICHTBARE_RIJEN then
+    if math.max(helft(), aantal - helft()) > zichtbare_rijen() then
         local ux, ky, dx, _ = scroll_knop_rects()
         if y >= ky - 4 and y <= ky + 16 then
-            local maxscroll = math.max(helft(), aantal - helft()) - ZICHTBARE_RIJEN
+            local maxscroll = math.max(helft(), aantal - helft()) - zichtbare_rijen()
             if x >= ux - 4 and x <= ux + 18 then
                 scroll_offset = math.max(0, scroll_offset - 1); bkos.draw(); return
             end
@@ -822,48 +799,47 @@ end
 
 teken_rapport = function()
     bkos.fillScreen(bkos.colors.bg)
-    teken_titelbalk("IO POORTTEST -- rapport")
-    teken_sluitknop()
 
     local goed, kapot, ingang, kort = categorieen_bepalen()
 
-    local y = 64
-    bkos.drawText(20, y, aantal .. " poorten getest  --  " .. #goed .. " goed, " .. #kapot
+    local y = 2
+    bkos.drawText(16, y, aantal .. " poorten getest  --  " .. #goed .. " goed, " .. #kapot
         .. " kapot, " .. #ingang .. " mogelijk ingang, " .. #kort .. " kort(e)verbinding(en)",
         1, bkos.colors.textDim)
-    y = y + 26
+    y = y + 22
 
-    y = teken_regels(20, y, "Goed:",            lijst_tekst(goed),   bkos.colors.green, 78) + 10
-    y = teken_regels(20, y, "Kapot:",           lijst_tekst(kapot),  bkos.colors.red,   78) + 10
-    y = teken_regels(20, y, "Mogelijk ingang:", lijst_tekst(ingang), bkos.colors.amber, 78) + 10
+    y = teken_regels(16, y, "Goed:",            lijst_tekst(goed),   bkos.colors.green, 78) + 8
+    y = teken_regels(16, y, "Kapot:",           lijst_tekst(kapot),  bkos.colors.red,   78) + 8
+    y = teken_regels(16, y, "Mogelijk ingang:", lijst_tekst(ingang), bkos.colors.amber, 78) + 8
 
-    bkos.drawText(20, y, "Verbonden:", 1, bkos.colors.textDim)
+    bkos.drawText(16, y, "Verbonden:", 1, bkos.colors.textDim)
     if #kort == 0 then
-        bkos.drawText(130, y, "geen", 1, bkos.colors.textDim)
+        bkos.drawText(126, y, "geen", 1, bkos.colors.textDim)
         y = y + 16
     else
         for _, regel in ipairs(kort) do
-            bkos.drawText(130, y, regel, 1, KLEUR_ORANJE)
+            bkos.drawText(126, y, regel, 1, KLEUR_ORANJE)
             y = y + 16
         end
     end
 
-    bkos.fillRoundRect(bkos.W - 320, bkos.H - 46, 150, 36, 6, bkos.color565(30, 60, 80))
-    bkos.drawText(bkos.W - 300, bkos.H - 36, "NAAR SCAN", 1, bkos.colors.cyan)
-    bkos.fillRoundRect(bkos.W - 160, bkos.H - 46, 140, 36, 6, bkos.color565(30, 60, 80))
-    bkos.drawText(bkos.W - 148, bkos.H - 36, "APP EIGENAAR", 1, bkos.colors.cyan)
+    local voet_y = bkos.H - FOOTER_H
+    bkos.fillRoundRect(bkos.W - 320, voet_y + 4, 150, 32, 6, bkos.color565(30, 60, 80))
+    bkos.drawText(bkos.W - 300, voet_y + 14, "NAAR SCAN", 1, bkos.colors.cyan)
+    bkos.fillRoundRect(bkos.W - 160, voet_y + 4, 140, 32, 6, bkos.color565(30, 60, 80))
+    bkos.drawText(bkos.W - 148, voet_y + 14, "APP EIGENAAR", 1, bkos.colors.cyan)
 
     if bericht_status ~= "" and bkos.sys.millis() - bericht_status_ms < 4000 then
-        bkos.drawText(20, bkos.H - 20, bericht_status, 1, bkos.colors.amber)
+        bkos.drawText(16, bkos.H - 12, bericht_status, 1, bkos.colors.amber)
     end
 end
 
 raak_rapport = function(x, y)
-    if sluitknop_geraakt(x, y) then bkos.app.sluiten(); return end
-    if x >= bkos.W - 320 and x <= bkos.W - 170 and y >= bkos.H - 46 and y <= bkos.H - 10 then
+    local voet_y = bkos.H - FOOTER_H
+    if x >= bkos.W - 320 and x <= bkos.W - 170 and y >= voet_y + 4 and y <= voet_y + 36 then
         scherm = "scan"; bkos.draw(); return
     end
-    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= bkos.H - 46 and y <= bkos.H - 10 then
+    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= voet_y + 4 and y <= voet_y + 36 then
         bkos.melding.stuur(rapport_tekst_kort())
         bericht_status    = "Bericht in wachtrij gezet voor de eigenaar."
         bericht_status_ms = bkos.sys.millis()
@@ -885,11 +861,10 @@ local SNEL_LABEL = {
 
 teken_detail = function()
     bkos.fillScreen(bkos.colors.bg)
-    teken_titelbalk("IO POORTTEST -- poort " .. tostring(detail_poort))
-    teken_sluitknop()
+    bkos.drawText(16, 2, "Poort " .. tostring(detail_poort), 2, bkos.colors.cyan)
 
     local p = detail_poort
-    local y = 70
+    local y = 34
 
     bkos.drawText(20, y, "Sneltest:", 1, bkos.colors.textDim); y = y + 16
     local sc = snel_concl[p] or "?"
@@ -927,13 +902,14 @@ teken_detail = function()
         bkos.drawText(20, y, "Conclusie: " .. concl_txt, 1, concl_kleur)
     end
 
-    bkos.fillRoundRect(bkos.W - 160, bkos.H - 46, 140, 36, 6, bkos.color565(30, 60, 80))
-    bkos.drawText(bkos.W - 140, bkos.H - 36, "TERUG", 1, bkos.colors.cyan)
+    local voet_y = bkos.H - FOOTER_H
+    bkos.fillRoundRect(bkos.W - 160, voet_y + 4, 140, 32, 6, bkos.color565(30, 60, 80))
+    bkos.drawText(bkos.W - 140, voet_y + 14, "TERUG", 1, bkos.colors.cyan)
 end
 
 raak_detail = function(x, y)
-    if sluitknop_geraakt(x, y) then bkos.app.sluiten(); return end
-    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= bkos.H - 46 and y <= bkos.H - 10 then
+    local voet_y = bkos.H - FOOTER_H
+    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= voet_y + 4 and y <= voet_y + 36 then
         scherm = scherm_voor_detail
         bkos.draw()
     end
@@ -975,13 +951,13 @@ function bkos.update()
         local h = helft()
         local lokaal = (doel <= h) and doel or (doel - h)
         local grootste_helft = math.max(h, aantal - h)
-        if grootste_helft > ZICHTBARE_RIJEN then
+        if grootste_helft > zichtbare_rijen() then
             if lokaal - 1 < scroll_offset then
                 scroll_offset = lokaal - 1
-            elseif lokaal - 1 >= scroll_offset + ZICHTBARE_RIJEN then
-                scroll_offset = lokaal - ZICHTBARE_RIJEN
+            elseif lokaal - 1 >= scroll_offset + zichtbare_rijen() then
+                scroll_offset = lokaal - zichtbare_rijen()
             end
-            scroll_offset = math.max(0, math.min(scroll_offset, grootste_helft - ZICHTBARE_RIJEN))
+            scroll_offset = math.max(0, math.min(scroll_offset, grootste_helft - zichtbare_rijen()))
         end
     end
 

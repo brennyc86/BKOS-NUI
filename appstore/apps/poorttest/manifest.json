@@ -1,7 +1,7 @@
 {
   "id":             "poorttest",
   "naam":           "IO Poorttest",
-  "versie":         "1.1.0",
+  "versie":         "1.2.0",
   "auteur":         "Claude",
   "beschrijving":   "Test fysieke IO-poorten rechtstreeks, los van namen/richting-configuratie.",
   "scherm_b":       800,
@@ -9,7 +9,5 @@
   "vervangt":       -1,
   "api_versie":     1,
   "actief":         true,
-  "volledig_scherm": true,
-  "toon_header":    false,
-  "icoon":          ""
+  "icoon":          "poorttest"
 }

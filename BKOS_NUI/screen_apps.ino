@@ -91,6 +91,7 @@ static int _apps_icoon_van_naam(const char* naam) {
     if (strcmp(naam, "dam") == 0)              return I_DAM;
     if (strcmp(naam, "teken") == 0)            return I_TEKEN;
     if (strcmp(naam, "zeeslag") == 0)          return I_ZEESLAG;
+    if (strcmp(naam, "poorttest") == 0)        return I_POORTTEST;
     return I_APP_GENERIEK;
 }
 

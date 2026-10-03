@@ -158,6 +158,17 @@ void teken_icoon(int type, int cx, int cy, uint16_t kleur) {
             tft.drawLine(cx - 9, cy + 7, cx - 3, cy + 7, kleur);
             tft.drawLine(cx + 1, cy + 7, cx + 9, cy + 7, kleur);
             break;
+        case I_POORTTEST:
+            // IO Poorttest: vergrootglas (inspecteren) met een kleine
+            // signaalpuls (blokgolf) erin -- bewust geen stekker/relais-motief,
+            // dat zou verwarren met de HAVEN-apparaaticonen (I_USB/I_230V/enz.).
+            tft.drawCircle(cx - 2, cy - 2, 7, kleur);
+            tft.drawLine(cx + 3, cy + 3, cx + 8, cy + 8, kleur);   // handvat
+            tft.drawLine(cx - 6, cy - 2, cx - 3, cy - 2, kleur);   // puls: laag
+            tft.drawLine(cx - 3, cy - 2, cx - 3, cy - 5, kleur);   // puls: omhoog
+            tft.drawLine(cx - 3, cy - 5, cx + 1, cy - 5, kleur);   // puls: hoog
+            tft.drawLine(cx + 1, cy - 5, cx + 1, cy - 2, kleur);   // puls: omlaag
+            break;
         // I_LAMP heeft een eigen tekenfunctie (teken_icoon_lamp) — die kent de
         // aan/uit-stand én de actuele kleur, wat teken_icoon()'s ene kleur-
         // parameter niet kan uitdrukken (peertje moet wit/rood oplichten).

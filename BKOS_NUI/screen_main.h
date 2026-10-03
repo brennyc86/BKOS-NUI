@@ -139,6 +139,7 @@
 #define I_DAM          19  // Damspel-app (dambord-blokjes)
 #define I_TEKEN        20  // Teken App (potlood)
 #define I_ZEESLAG      21  // Zeeslag-app (scheepje + golven)
+#define I_POORTTEST    22  // IO Poorttest-app (vergrootglas + signaalpuls)
 
 void screen_main_teken();
 void screen_main_run(int x, int y, bool aanraking);

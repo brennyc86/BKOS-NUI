@@ -111,10 +111,17 @@ static bool _apps_update_beschikbaar(int idx) {
 static bool apps_bevestig_actief = false;
 static int  apps_bevestig_idx    = -1;
 
-// App-instellingen overlay (opstart-app + vergrendeld openhouden) — geopend
-// via lang indrukken op een geïnstalleerde-app-rij, zie screen_appstore_lang_indruk().
+// App-instellingen overlay (opstart-app + vergrendeld openhouden) — nu
+// bereikbaar via de INSTELLINGEN-knop in het actiemenu (zie hieronder), en nog
+// steeds via lang indrukken op een geïnstalleerde-app-rij (screen_appstore_lang_indruk()).
 static bool apps_inst_actief = false;
 static int  apps_inst_idx    = -1;
+
+// App-actiemenu — geopend door op een geïnstalleerde-app-RIJ te tikken
+// (verving de vroegere losse, te-kleine SET/UPD-mini-knopjes in die rij zelf,
+// zie _apps_rij_links()). Vijf ruime knoppen i.p.v. 25px-brede mini-knoppen.
+static bool apps_actie_actief = false;
+static int  apps_actie_idx    = -1;
 
 // Status/download feedback
 static char apps_status[64] = "";
@@ -323,18 +330,23 @@ static void _apps_headers_teken() {
 }
 
 // ─── Linker deelscherm / portret rij: GEÏNSTALLEERD ──────────────────────────
+// Geïnstalleerde-app-rij: toont alleen informatie + status-badges (update
+// beschikbaar / actief-of-niet) — GEEN losse mini-knopjes meer (die waren
+// met ~19-25px breed te klein om betrouwbaar te raken, en op het liggende
+// scherm bleek de hittest er bovendien 35px naast te zitten t.o.v. waar ze
+// getekend werden). De hele rij is nu de tikzone: één tik opent het
+// actiemenu (_apps_actie_teken()) met ruime knoppen voor alles wat voorheen
+// hier verstopt zat, plus ruimte voor toekomstige acties.
 static void _apps_rij_links(int y, int app_idx, int visueel_idx) {
     AppManifest& m = apps[app_idx];
     bool even = (visueel_idx % 2 == 0);
     int row_w = APPS_PNL_W - 1 - UI_SB_W;  // ruimte voor scrollbar rechts
+    bool upd  = _apps_update_beschikbaar(app_idx);
+
 #if SCREEN_SMALL
-    // Portret: kompakte rij volledige breedte
     tft.fillRect(0, y, row_w, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
     tft.drawFastHLine(0, y + APPS_RIJ_H - 1, row_w, C_SURFACE2);
 
-    // Naam + auteur (links, tot aan knoppen)
-    int btn_area = 108;  // OPEN(44) + SW(38) + X(24) + gaps(2)
-    int naam_w = row_w - btn_area - 6;
     tft.setTextSize(1);
     tft.setTextColor(m.actief ? C_TEXT : C_TEXT_DIM);
     tft.setCursor(6, y + 6);
@@ -343,33 +355,20 @@ static void _apps_rij_links(int y, int app_idx, int visueel_idx) {
     tft.setCursor(6, y + 18);
     tft.print(m.auteur); tft.print(" v"); tft.print(m.versie);
 
-    int bx = row_w - btn_area + 2;
-    // SET (instellingen) + UPD (bijwerken, alleen actief als beschikbaar) —
-    // vervangen de oude OPEN-knop: openen kan nu met één tik op het
-    // bureaublad-icoon (SCREEN_APPS), dat is de vlottere weg geworden.
-    {
-        bool upd = _apps_update_beschikbaar(app_idx);
-        ui_knop(bx, y + 7, 19, APPS_RIJ_H - 16, "SET", C_SURFACE2, C_TEXT_DIM);
-        ui_knop(bx + 21, y + 7, 19, APPS_RIJ_H - 16, "UPD",
-                upd ? C_AMBER : C_SURFACE3, upd ? C_TEXT_DARK : C_DARK_GRAY);
+    // Badges rechts: update (amber bolletje) + uitgeschakeld (grijze tekst)
+    int badge_x = row_w - 14;
+    if (upd) { tft.fillCircle(badge_x, y + 10, 5, C_AMBER); badge_x -= 16; }
+    if (!m.actief) {
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(row_w - 46, y + 20);
+        tft.print("UIT");
     }
-    bx += 42;
-    // Schakelaar (mini toggle)
-    bool aan = m.actief;
-    tft.fillRoundRect(bx, y + 7, 36, APPS_RIJ_H - 16, (APPS_RIJ_H - 16) / 2,
-                      aan ? C_GREEN : C_SURFACE3);
-    int cy = y + APPS_RIJ_H / 2;
-    tft.fillCircle(aan ? bx + 28 : bx + 8, cy, (APPS_RIJ_H - 16) / 2 - 1, C_TEXT);
-    bx += 38;
-    // Verwijder knop
-    ui_knop(bx, y + 7, 26, APPS_RIJ_H - 16, "X", C_SURFACE2, C_RED_BRIGHT);
 #else
-    // Liggend: originele layout
     tft.fillRect(0, y, row_w, APPS_RIJ_H - 1, even ? C_SURFACE : C_BG);
     tft.drawFastHLine(0, y + APPS_RIJ_H - 1, row_w, C_SURFACE2);
 
     tft.setTextSize(2);
-    tft.setTextColor(C_TEXT);
+    tft.setTextColor(m.actief ? C_TEXT : C_TEXT_DIM);
     tft.setCursor(8, y + 6);
     tft.print(m.naam);
 
@@ -380,18 +379,20 @@ static void _apps_rij_links(int y, int app_idx, int visueel_idx) {
     tft.print(" v");
     tft.print(m.versie);
 
-    {
-        bool upd = _apps_update_beschikbaar(app_idx);
-        ui_knop(APPS_PNL_W - 170, y + 15, 25, 26, "SET", C_SURFACE2, C_TEXT_DIM);
-        ui_knop(APPS_PNL_W - 143, y + 15, 25, 26, "UPD",
-                upd ? C_AMBER : C_SURFACE3, upd ? C_TEXT_DARK : C_DARK_GRAY);
+    // Badges rechts: update (amber bolletje + label) + uitgeschakeld (label)
+    int badge_x = row_w - 14;
+    if (upd) {
+        tft.fillCircle(badge_x, y + 16, 6, C_AMBER);
+        tft.setTextColor(C_AMBER);
+        tft.setCursor(badge_x - 72, y + 11);
+        tft.print("UPDATE");
+        badge_x -= 90;
     }
-
-    bool aan = m.actief;
-    tft.fillRoundRect(APPS_PNL_W - 110, y + 16, 52, 26, 13, aan ? C_GREEN : C_SURFACE3);
-    tft.fillCircle(aan ? APPS_PNL_W - 70 : APPS_PNL_W - 100, y + 29, 10, C_TEXT);
-
-    ui_knop(APPS_PNL_W - 50, y + 15, 38, 26, "X", C_SURFACE2, C_RED_BRIGHT);
+    if (!m.actief) {
+        tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(badge_x - 60, y + 11);
+        tft.print("UITGESCHAKELD");
+    }
 #endif
 }
 
@@ -668,10 +669,84 @@ static void _apps_bevestig_teken() {
 #endif
 }
 
+// ─── App-actiemenu ────────────────────────────────────────────────────────────
+// Vervangt de vroegere, te kleine SET/UPD-mini-knopjes + aparte schakelaar/X
+// binnen de app-rij zelf: nu opent een tik op de HELE rij dit menu, met 5
+// ruime knoppen. Rects komen uit ÉÉN gedeelde functie (teken/hittest kunnen
+// zo nooit uit de pas lopen — dit project is daar al meermaals door geraakt,
+// zie CLAUDE.md-taakoverzicht, o.a. de liggende SET/UPD/schakelaar/X-rijen
+// die deze knop zelf vervangt: die bleken 35px naast hun hittest getekend).
+struct AppActieRect { int x, y, w, h; };
+#define AACT_RIJEN 5
+static void _apps_actie_layout(int* out_bx, int* out_by, int* out_bw, int* out_bh,
+                                AppActieRect rij[AACT_RIJEN], AppActieRect* sluiten) {
+#if SCREEN_SMALL
+    int row_h = 34, gap = 4, pad_top = 26, pad_bottom = 8, close_h = 30;
+    int bw = TFT_W - 16;
+#else
+    int row_h = 44, gap = 6, pad_top = 36, pad_bottom = 14, close_h = 36;
+    int bw = min(520, TFT_W - 40);
+#endif
+    int bh = pad_top + AACT_RIJEN * row_h + (AACT_RIJEN - 1) * gap + pad_bottom + close_h + gap;
+    int beschikbaar = TFT_H - NAV_H - CONTENT_Y;
+    int by = CONTENT_Y + max(0, (beschikbaar - bh) / 2);
+    int bx = (TFT_W - bw) / 2;
+
+    int y = by + pad_top;
+    for (int i = 0; i < AACT_RIJEN; i++) {
+        rij[i] = { bx + 10, y, bw - 20, row_h };
+        y += row_h + gap;
+    }
+    *sluiten = { bx + (bw - 150) / 2, y + pad_bottom - gap, 150, close_h };
+    *out_bx = bx; *out_by = by; *out_bw = bw; *out_bh = bh;
+}
+
+static void _apps_actie_teken() {
+    if (apps_actie_idx < 0 || apps_actie_idx >= apps_cnt) return;
+    AppManifest& m = apps[apps_actie_idx];
+    bool upd = _apps_update_beschikbaar(apps_actie_idx);
+
+    int bx, by, bw, bh;
+    AppActieRect rij[AACT_RIJEN], sluiten;
+    _apps_actie_layout(&bx, &by, &bw, &bh, rij, &sluiten);
+
+    tft.fillRect(0, CONTENT_Y, TFT_W, TFT_H - NAV_H - CONTENT_Y, 0x2104);
+    tft.fillRoundRect(bx, by, bw, bh, 8, C_SURFACE);
+    tft.drawRoundRect(bx, by, bw, bh, 8, C_CYAN);
+
+    tft.setTextSize(1); tft.setTextColor(C_CYAN);
+    tft.setCursor(bx + 12, by + 10);
+    tft.print(m.naam);
+    tft.setTextColor(C_TEXT_DIM);
+    tft.print("  v"); tft.print(m.versie);
+
+    // 1: OPEN (alleen als de app actief/inschakeld is)
+    if (m.actief && LUA_BESCHIKBAAR) {
+        ui_knop(rij[0].x, rij[0].y, rij[0].w, rij[0].h, "OPEN", C_CYAN, C_TEXT_DARK);
+    } else {
+        ui_knop(rij[0].x, rij[0].y, rij[0].w, rij[0].h,
+                LUA_BESCHIKBAAR ? "OPEN (app staat uit)" : "OPEN (Lua niet beschikbaar)",
+                C_SURFACE2, C_TEXT_DIM);
+    }
+    // 2: BIJWERKEN (alleen als er echt een update is)
+    ui_knop(rij[1].x, rij[1].y, rij[1].w, rij[1].h,
+            upd ? "BIJWERKEN BESCHIKBAAR" : "GEEN UPDATE BESCHIKBAAR",
+            upd ? C_AMBER : C_SURFACE2, upd ? C_TEXT_DARK : C_TEXT_DIM);
+    // 3: INSTELLINGEN (opstart-app + vergrendeld openhouden)
+    ui_knop(rij[2].x, rij[2].y, rij[2].w, rij[2].h, "INSTELLINGEN", C_SURFACE2, C_TEXT);
+    // 4: IN-/UITSCHAKELEN
+    ui_knop(rij[3].x, rij[3].y, rij[3].w, rij[3].h,
+            m.actief ? "UITSCHAKELEN" : "INSCHAKELEN",
+            m.actief ? C_SURFACE2 : C_GREEN, m.actief ? C_AMBER : C_TEXT_DARK);
+    // 5: VERWIJDEREN
+    ui_knop(rij[4].x, rij[4].y, rij[4].w, rij[4].h, "VERWIJDEREN", C_SURFACE2, C_RED_BRIGHT);
+
+    ui_knop(sluiten.x, sluiten.y, sluiten.w, sluiten.h, "SLUITEN", C_SURFACE2, C_TEXT);
+}
+
 // ─── App-instellingen overlay (opstart-app + vergrendeld openhouden) ─────────
-// Bewust GEEN losse knop in de al-krappe app-rij (risico op een "getekend
-// hier, hittest daar"-mismatch bij het herindelen van die rij) — lang
-// indrukken op de rij opent dit in plaats daarvan (screen_appstore_lang_indruk()).
+// Bereikbaar via de INSTELLINGEN-knop in het actiemenu hierboven, en nog
+// steeds via lang indrukken op een geïnstalleerde-app-rij (screen_appstore_lang_indruk()).
 // "Vergrendeld" leeft in een apart bestand dat de app zelf nooit aanraakt
 // (zie app_vergrendeld()/app_zet_vergrendeld(), app_manager.cpp) — de enige
 // manier om dit te zetten is hier, door de gebruiker zelf.
@@ -989,6 +1064,14 @@ static void _apps_desk_tegel_teken(int app_idx, int x, int y, int w, int h, bool
     int tw = strlen(buf) * 6;
     tft.setCursor(x + (w - tw) / 2, y + h - 16);
     tft.print(buf);
+
+    // Update-beschikbaar-badge (overzicht-wens: in één oogopslag zien welke
+    // apps een update hebben) -- negatief-flits-kleuren ook hier gevolgd,
+    // anders verdwijnt het badge onzichtbaar tijdens de directe tik-feedback.
+    if (app_idx >= 0 && _apps_update_beschikbaar(app_idx)) {
+        tft.fillCircle(x + w - 8, y + 8, 5, negatief ? C_BG : C_AMBER);
+        if (negatief) tft.drawCircle(x + w - 8, y + 8, 5, C_AMBER);
+    }
 }
 
 void screen_apps_teken() {
@@ -1098,6 +1181,7 @@ void screen_appstore_teken() {
     _apps_winkel_teken();
 #endif
 
+    if (apps_actie_actief)      _apps_actie_teken();
     if (apps_bevestig_actief)   _apps_bevestig_teken();
     if (apps_inst_actief)       _apps_instellingen_teken();
     if (apps_popup_actief)      _apps_popup_teken();
@@ -1145,7 +1229,7 @@ void screen_appstore_run(int x, int y, bool aanraking) {
     if (!aanraking) return;
 
     // ─── < TERUG (naar het bureaublad) ──────────────────────────────────────────
-    if (!apps_popup_actief && !apps_bevestig_actief && !apps_inst_actief &&
+    if (!apps_popup_actief && !apps_bevestig_actief && !apps_inst_actief && !apps_actie_actief &&
         x >= _apps_terug_x() && x <= _apps_terug_x() + _apps_terug_w() &&
         y >= _apps_terug_y() && y <= _apps_terug_y() + APPSTORE_TERUG_H) {
         actief_scherm = SCREEN_APPS;
@@ -1198,6 +1282,74 @@ void screen_appstore_run(int x, int y, bool aanraking) {
         // Klik buiten popup → annuleer
         if (x < POP_X || x > POP_X + POP_W || y < POP_Y || y > POP_Y + POP_H) {
             apps_popup_actief = false;
+            scherm_bouwen = true;
+        }
+        return;
+    }
+
+    // ─── App-actiemenu ──────────────────────────────────────────────────────────
+    if (apps_actie_actief) {
+        if (apps_actie_idx < 0 || apps_actie_idx >= apps_cnt) {
+            apps_actie_actief = false; scherm_bouwen = true; return;
+        }
+        int bx, by, bw, bh;
+        AppActieRect rij[AACT_RIJEN], sluiten;
+        _apps_actie_layout(&bx, &by, &bw, &bh, rij, &sluiten);
+
+        auto in_rect = [&](const AppActieRect& r) {
+            return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+        };
+
+        if (in_rect(rij[0])) {   // OPEN
+            if (apps[apps_actie_idx].actief && LUA_BESCHIKBAAR) {
+                apps_actie_actief = false;
+#if LUA_BESCHIKBAAR
+                lua_forceer_app = apps_actie_idx;
+                actief_scherm   = SCREEN_LUA_APP;
+#endif
+                scherm_bouwen = true;
+            }
+            return;
+        }
+        if (in_rect(rij[1])) {   // BIJWERKEN
+            if (_apps_update_beschikbaar(apps_actie_idx)) {
+                for (int w = 0; w < winkel_cnt; w++) {
+                    if (strcmp(winkel[w].id, apps[apps_actie_idx].id) == 0) {
+                        apps_popup_idx = w; apps_popup_actief = true;
+                        apps_actie_actief = false;
+                        scherm_bouwen = true;
+                        break;
+                    }
+                }
+            }
+            return;
+        }
+        if (in_rect(rij[2])) {   // INSTELLINGEN
+            apps_inst_idx = apps_actie_idx; apps_inst_actief = true;
+            apps_actie_actief = false;
+            scherm_bouwen = true;
+            return;
+        }
+        if (in_rect(rij[3])) {   // IN-/UITSCHAKELEN
+            app_zet_actief(apps_actie_idx, !apps[apps_actie_idx].actief);
+            lua_app_sluiten(); lua_setup();
+            scherm_bouwen = true;
+            return;
+        }
+        if (in_rect(rij[4])) {   // VERWIJDEREN
+            apps_bevestig_idx = apps_actie_idx; apps_bevestig_actief = true;
+            apps_actie_actief = false;
+            scherm_bouwen = true;
+            return;
+        }
+        if (in_rect(sluiten)) {
+            apps_actie_actief = false; apps_actie_idx = -1;
+            scherm_bouwen = true;
+            return;
+        }
+        // Buiten het menu getikt -> sluiten (zelfde patroon als apps_popup_actief)
+        if (x < bx || x > bx + bw || y < by || y > by + bh) {
+            apps_actie_actief = false; apps_actie_idx = -1;
             scherm_bouwen = true;
         }
         return;
@@ -1332,59 +1484,15 @@ void screen_appstore_run(int x, int y, bool aanraking) {
             return;
         }
 
-        // App-rij aangeraakt
+        // App-rij aangeraakt -- de hele rij is nu de tikzone, opent het
+        // actiemenu (geen losse mini-knopjes meer, zie _apps_rij_links()).
         int rijen = _apps_rijen_zichtbaar();
         int rij   = (y - APPS_LIST_Y) / APPS_RIJ_H;
         if (rij >= rijen) return;
         int idx = apps_scroll + rij;
         if (idx < 0 || idx >= apps_cnt) return;
-        int rij_y = APPS_LIST_Y + rij * APPS_RIJ_H;
-        int btn_h = APPS_RIJ_H - 16;  // knop hoogte in portret rij
-
-        // Portret knop x-grenzen (zie _apps_rij_links portret layout)
-        int row_w   = TFT_W - 1 - UI_SB_W;  // zelfde als in _apps_rij_links
-        int btn_area = 108;
-        int bx = row_w - btn_area + 2;  // SET start
-        int set_x0 = bx, set_x1 = bx + 19;
-        int upd_x0 = bx + 21, upd_x1 = bx + 21 + 19;
-        bx += 42;
-        int sw_x0 = bx, sw_x1 = bx + 36;
-        bx += 38;
-        int del_x0 = bx, del_x1 = bx + 26;
-        int btn_y0 = rij_y + 7, btn_y1 = rij_y + 7 + btn_h;
-
-        // X verwijder
-        if (x >= del_x0 && x <= del_x1 && y >= btn_y0 && y <= btn_y1) {
-            apps_bevestig_idx = idx; apps_bevestig_actief = true;
-            scherm_bouwen = true;
-            return;
-        }
-        // Schakelaar
-        if (x >= sw_x0 && x <= sw_x1 && y >= btn_y0 && y <= btn_y1) {
-            app_zet_actief(idx, !apps[idx].actief);
-            lua_app_sluiten(); lua_setup();
-            scherm_bouwen = true;
-            return;
-        }
-        // SET (instellingen)
-        if (x >= set_x0 && x <= set_x1 && y >= btn_y0 && y <= btn_y1) {
-            apps_inst_idx = idx; apps_inst_actief = true;
-            scherm_bouwen = true;
-            return;
-        }
-        // UPD (bijwerken, alleen als daadwerkelijk beschikbaar)
-        if (x >= upd_x0 && x <= upd_x1 && y >= btn_y0 && y <= btn_y1) {
-            if (_apps_update_beschikbaar(idx)) {
-                for (int w = 0; w < winkel_cnt; w++) {
-                    if (strcmp(winkel[w].id, apps[idx].id) == 0) {
-                        apps_popup_idx = w; apps_popup_actief = true;
-                        scherm_bouwen = true;
-                        break;
-                    }
-                }
-            }
-            return;
-        }
+        apps_actie_idx = idx; apps_actie_actief = true;
+        scherm_bouwen = true;
         return;
     }
 
@@ -1481,40 +1589,15 @@ void screen_appstore_run(int x, int y, bool aanraking) {
             if (y >= ky && y <= ky + 28) {
                 apps_toewijzing_modus = true; scherm_bouwen = true; return;
             }
+            // App-rij aangeraakt -- de hele rij is nu de tikzone, opent het
+            // actiemenu (geen losse mini-knopjes meer, zie _apps_rij_links()).
             int rijen = _apps_rijen_zichtbaar();
             int rij   = (y - APPS_LIST_Y) / APPS_RIJ_H;
             if (rij >= rijen) return;
             int idx = apps_scroll + rij;
             if (idx < 0 || idx >= apps_cnt) return;
-            int rij_y = APPS_LIST_Y + rij * APPS_RIJ_H;
-            int rw = APPS_PNL_W - 1 - UI_SB_W;
-
-            if (x >= rw - 50 && x <= rw - 12 && y >= rij_y + 15 && y <= rij_y + 41) {
-                apps_bevestig_idx = idx; apps_bevestig_actief = true;
-                scherm_bouwen = true; return;
-            }
-            if (x >= rw - 110 && x <= rw - 58 && y >= rij_y + 16 && y <= rij_y + 42) {
-                app_zet_actief(idx, !apps[idx].actief);
-                lua_app_sluiten(); lua_setup(); scherm_bouwen = true; return;
-            }
-            // SET (instellingen)
-            if (x >= rw - 170 && x <= rw - 145 && y >= rij_y + 15 && y <= rij_y + 41) {
-                apps_inst_idx = idx; apps_inst_actief = true;
-                scherm_bouwen = true; return;
-            }
-            // UPD (bijwerken, alleen als daadwerkelijk beschikbaar)
-            if (x >= rw - 143 && x <= rw - 118 && y >= rij_y + 15 && y <= rij_y + 41) {
-                if (_apps_update_beschikbaar(idx)) {
-                    for (int w = 0; w < winkel_cnt; w++) {
-                        if (strcmp(winkel[w].id, apps[idx].id) == 0) {
-                            apps_popup_idx = w; apps_popup_actief = true;
-                            scherm_bouwen = true;
-                            break;
-                        }
-                    }
-                }
-                return;
-            }
+            apps_actie_idx = idx; apps_actie_actief = true;
+            scherm_bouwen = true; return;
         }
         return;
     }
@@ -1571,12 +1654,13 @@ void screen_appstore_run(int x, int y, bool aanraking) {
 }
 
 // Lang indrukken ergens op een geïnstalleerde-app-rij (linker paneel/lijst,
-// niet de winkel) opent de app-instellingen overlay — een korte tik op
-// dezelfde plek raakt gewoon OPEN/AAN-UIT/X zoals altijd, alleen een
-// aanhoudende druk activeert dit. Geen overlay actief en geen andere modus
-// (toewijzing/keyboard/winkel) — dan simpelweg genegeerd.
+// niet de winkel) opent -- net als een korte tik -- het app-actiemenu. Sinds
+// dat menu een korte tik op de hele rij al opent (zie _apps_rij_links()) is
+// dit strikt genomen een duplicaat entry point, maar bewust niet verwijderd
+// (geen reden om bestaande spiergewoonte van "lang indrukken = instellingen"
+// te breken; het actiemenu bevat INSTELLINGEN toch als eigen knop).
 void screen_appstore_lang_indruk(int x, int y) {
-    if (apps_bevestig_actief || apps_inst_actief || apps_popup_actief ||
+    if (apps_actie_actief || apps_bevestig_actief || apps_inst_actief || apps_popup_actief ||
         apps_voortgang_actief || apps_toewijzing_modus || winkel_kb_actief) return;
 #if SCREEN_SMALL
     if (apps_tab != 0) return;  // alleen de "geïnstalleerd"-tab, niet de winkel-tab
@@ -1592,6 +1676,6 @@ void screen_appstore_lang_indruk(int x, int y) {
     int idx = apps_scroll + rij;
 #endif
     if (idx < 0 || idx >= apps_cnt) return;
-    apps_inst_idx = idx; apps_inst_actief = true;
+    apps_actie_idx = idx; apps_actie_actief = true;
     scherm_bouwen = true;
 }

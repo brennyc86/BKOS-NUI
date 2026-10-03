@@ -4,76 +4,223 @@
 -- aan via bkos.io.write()/bkos.io.read() (0-gebaseerd intern, 1-gebaseerd in
 -- beeld). De firmware's eigen veiligheidsgrens (io_drijf_hoog()) blijft
 -- hierdoor gewoon van kracht: een poort die al als INGANG geconfigureerd is
--- kan deze app niet aandrijven en test daardoor terecht als "FOUT" -- dat is
--- geen hardwaredefect, dat is de bestaande veiligheidslaag die werkt.
+-- kan deze app niet aandrijven.
 --
--- LET OP (ook getoond in de app zelf): dit schakelt echt aangesloten
--- apparaten/relais mee tijdens de test. Bedoeld voor een module op de
--- testbank, of met het volle besef dat alles op de getoetste poorten
--- fysiek aan/uit gaat.
+-- LET OP: dit schakelt echt aangesloten apparaten/relais mee. Bedoeld voor
+-- een module op de testbank.
 --
--- Testvolgorde per poort (zie ook de uitleg in het scherm zelf):
---   1) Alle te testen poorten eerst uit (nulstand).
---   2) Poort 1 aan -> wacht tot zijn eigen terugkoppeling AAN meldt (max 3s,
---      anders "FOUT" en toch door naar de volgende stap).
---   3) 3 extra controle-cycli: bevestigt dat de poort AAN blijft en dat geen
---      ANDERE poort ongevraagd ook AAN gaat (mogelijke kortsluiting).
---   4) Poort N uit + poort N+1 aan, gecombineerd gemeten (dezelfde 3s-regel
---      en dezelfde 3 controle-cycli), net zo lang tot de laatste poort.
---   5) De laatste poort krijgt nog een losse "uit"-stap zonder gecombineerde
---      "aan" van een volgende poort.
+-- ─── Testvolgorde ────────────────────────────────────────────────────────────
+-- 1) SNELTEST (alle poorten tegelijk): UIT,AAN,UIT,AAN,UIT. Na elke omschakeling
+--    eerst meteen een meting (de snel volgende IO-cyclus), dan nog 4 metingen
+--    elk een halve seconde later. Per poort wordt dit geclassificeerd:
+--      groen bolletje  = snel EN stabiel elke stap
+--      geel bolletje   = trager, maar uiteindelijk altijd stabiel AAN/UIT
+--      oranje !        = schakelde wel, maar wisselvallig (niet stabiel)
+--      rood kruis      = nooit AAN gemeten (dode/niet-aangesloten uitgang)
+--      gele bliksem    = nooit UIT gemeten (waarschijnlijk een ingang die
+--                        altijd actief is -- kan niet aangestuurd worden)
+--    Rood/bliksem-poorten slaan de detailtest over (zinloos/onmogelijk).
+-- 2) DETAILTEST (zoals voorheen) voor de overige poorten: poort aan -> wacht
+--    op eigen terugkoppeling (max 3s) -> 3 controlecycli (stabiliteit +
+--    kortsluiting met een ANDERE poort) -> gecombineerd volgende-poort-uit +
+--    daaropvolgende-poort-aan, tot de laatste. Bliksem-poorten tellen nooit
+--    als kortsluitpartner (die staan toch al altijd aan, dat is al verklaard).
+-- 3) RAPPORT: samenvatting (goed/kapot/mogelijk ingang/onderling verbonden),
+--    te bekijken op het scherm of te versturen als bericht aan de eigenaar.
 --
--- "IO-pogingen" in de tabel is het aantal eigen polling-ticks (bkos.update(),
--- ~elke 50ms) tijdens het wachten -- de app heeft geen zicht op de werkelijke
--- hardware-IO-cyclusteller van de firmware zelf, dus dit is een benadering,
--- geen exacte hardwaretelling.
+-- "IO-pogingen" = aantal eigen polling-ticks (bkos.update(), ~elke 50ms) --
+-- de app heeft geen zicht op de werkelijke hardware-IO-cyclusteller.
 
-local TIMEOUT_MS      = 3000
-local CONFIRM_CYCLI   = 3
-local INIT_SETTLE_MS  = 300
-local RIJ_H           = 27
-local TABEL_TOP       = 92
-local ZICHTBARE_RIJEN = 13
+local TIMEOUT_MS       = 3000
+local CONFIRM_CYCLI    = 3
+local INIT_SETTLE_MS   = 300
+local RIJ_H            = 24
+local TABEL_TOP        = 70
+local ZICHTBARE_RIJEN  = 15
 local SLUIT_W, SLUIT_H = 70, 34
 
+local SNEL_SAMPLE_GAP_MS    = 500
+local SNEL_SAMPLES_PER_STAP = 5
+local SNEL_STAPPEN = {
+    { staat = false, label = "UIT" },
+    { staat = true,  label = "AAN" },
+    { staat = false, label = "UIT" },
+    { staat = true,  label = "AAN" },
+    { staat = false, label = "UIT" },
+}
+
+local KOL_L_X, KOL_R_X, KOL_W = 16, 406, 378
+
 -- ─── Algemene staat ───────────────────────────────────────────────────────────
-local scherm            = "keuze"     -- "keuze" | "scan"
-local modus              = "auto"      -- "auto" | "handmatig"
-local handmatig_aantal   = 8
-local aantal             = 0
-local scroll_offset      = 0
+local scherm            = "keuze"     -- "keuze" | "scan" | "rapport" | "detail"
+local scherm_voor_detail = "scan"
+local detail_poort      = nil
 
--- ─── Scan-staat ────────────────────────────────────────────────────────────────
-local fase            = "idle"   -- "idle" | "init" | "wachten" | "bevestig" | "klaar"
-local fase_start      = 0
-local poll_teller      = 0
-local confirm_teller   = 0
-local kort_set         = {}
+local modus             = "auto"      -- "auto" | "handmatig"
+local handmatig_aantal  = 8
+local aantal            = 0
+local scroll_offset     = 0
 
-local uit_poort        = nil     -- poort die deze stap UIT moet (of nil)
-local aan_poort         = nil     -- poort die deze stap AAN moet (of nil)
+local heeft_resultaat   = false       -- true zodra ooit gestart -> "TERUG NAAR TEST"-knop in keuze
+
+local bericht_status    = ""          -- tijdelijke terugkoppeling na "APP NAAR EIGENAAR"
+local bericht_status_ms = 0
+
+-- ─── Sneltest-staat ───────────────────────────────────────────────────────────
+local snel_stap_idx     = 1
+local snel_sample_idx   = 0
+local snel_volgende_ms  = 0
+local snel_samples      = {}   -- snel_samples[p][stapidx] = { [0]=bool, ... [4]=bool }
+local snel_concl        = {}   -- "rood" | "bliksem" | "groen" | "geel" | "oranje" (permanent)
+local te_testen         = {}   -- lijst poortnummers voor de detailtest
+
+-- ─── Detailtest-staat (over `te_testen`, niet 1..aantal) ─────────────────────
+local fase              = "idle"  -- "idle"|"sneltest"|"init"|"wachten"|"bevestig"|"klaar"
+local fase_start        = 0
+local poll_teller       = 0
+local confirm_teller    = 0
+local kort_set          = {}
+
+local uit_poort         = nil
+local aan_poort         = nil
 local uit_bevestigd     = false
 local aan_bevestigd     = false
+local huidige_idx       = 0       -- index van aan_poort in `te_testen`
 
 -- resultaten, 1-gebaseerd per poort
 local ms_aan, pog_aan   = {}, {}
 local ms_uit, pog_uit   = {}, {}
-local conclusie         = {}     -- "" | "ok" | "fout" | "kort"
-local kort_poorten      = {}     -- lijst met botsende poortnummers per poort
+local conclusie         = {}     -- weergavestatus: "rood"|"bliksem"|"wacht_groen"|"wacht_geel"|"wacht_oranje"|"ok"|"fout"|"kort"
+local kort_poorten      = {}
 
--- ─── Forward declarations (onderlinge afhankelijkheden) ──────────────────────
-local nieuwe_stap, start_volgende_na, ga_bevestigen, scan_update
+-- ─── Forward declarations ────────────────────────────────────────────────────
+local nieuwe_stap, detail_volgende_na, ga_bevestigen, detail_update
 local conclusie_zet, verwachte_uit_set, controleer_kortsluiting
 local poort_bezig, status_tekst
-local teken_keuze, teken_scan, raak_keuze, raak_scan
+local snel_classificeer_poort, snel_classificeren, snel_update
+local teken_keuze, teken_scan, teken_rapport, teken_detail
+local raak_keuze, raak_scan, raak_rapport, raak_detail
+local categorieen_bepalen, rapport_tekst_kort
 
 -- ───────────────────────────────────────────────────────────────────────────────
--- Scan-logica
+-- Kleuren (orange bestaat niet in bkos.colors.*, los samengesteld)
+-- ───────────────────────────────────────────────────────────────────────────────
+local KLEUR_ORANJE = bkos.color565(255, 110, 0)
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Sneltest-logica
 -- ───────────────────────────────────────────────────────────────────────────────
 
-nieuwe_stap = function(u, a)
-    uit_poort    = u
-    aan_poort    = a
+local function snel_stap_starten(idx)
+    snel_stap_idx = idx
+    local st = SNEL_STAPPEN[idx]
+    for p = 1, aantal do
+        bkos.io.write(p - 1, st.staat and bkos.HIGH or bkos.LOW)
+        snel_samples[p][idx] = {}
+    end
+    snel_sample_idx  = 0
+    snel_volgende_ms = bkos.sys.millis()   -- sample 0: meteen bij de volgende tick
+end
+
+local function snel_sample_nemen()
+    local idx = snel_stap_idx
+    for p = 1, aantal do
+        snel_samples[p][idx][snel_sample_idx] = bkos.io.read(p - 1)
+    end
+    snel_sample_idx  = snel_sample_idx + 1
+    snel_volgende_ms = bkos.sys.millis() + SNEL_SAMPLE_GAP_MS
+end
+
+snel_classificeer_poort = function(p)
+    local reeks = snel_samples[p]
+
+    local ooit_aan = false
+    for _, si in ipairs({2, 4}) do
+        for s = 0, 4 do
+            if reeks[si][s] then ooit_aan = true end
+        end
+    end
+    if not ooit_aan then return "rood" end
+
+    local ooit_uit = false
+    for _, si in ipairs({1, 3, 5}) do
+        for s = 0, 4 do
+            if not reeks[si][s] then ooit_uit = true end
+        end
+    end
+    if not ooit_uit then return "bliksem" end
+
+    local alle_snel    = true
+    local alle_stabiel = true
+    for si = 1, 5 do
+        local verwacht = SNEL_STAPPEN[si].staat
+        local r = reeks[si]
+        if r[0] ~= verwacht then alle_snel = false end
+
+        local stabiel = false
+        for k = 0, 4 do
+            local ok = true
+            for s = k, 4 do
+                if r[s] ~= verwacht then ok = false; break end
+            end
+            if ok then stabiel = true; break end
+        end
+        if not stabiel then alle_stabiel = false end
+    end
+
+    if alle_snel then return "groen"
+    elseif alle_stabiel then return "geel"
+    else return "oranje" end
+end
+
+snel_classificeren = function()
+    te_testen = {}
+    for p = 1, aantal do
+        local c = snel_classificeer_poort(p)
+        snel_concl[p] = c
+        conclusie[p]  = "wacht_" .. c   -- "wacht_rood"/"wacht_bliksem" worden hieronder teruggezet
+        if c == "rood" or c == "bliksem" then
+            conclusie[p] = c           -- deze zijn meteen DEFINITIEF (geen detailtest)
+        else
+            te_testen[#te_testen + 1] = p
+        end
+    end
+    for p = 1, aantal do
+        bkos.io.write(p - 1, bkos.LOW)   -- iedereen uit vóór de detailtest begint
+    end
+end
+
+-- Geeft true terug als deze tick iets veranderde (hertekenwaardig).
+snel_update = function()
+    if snel_sample_idx >= SNEL_SAMPLES_PER_STAP then
+        if snel_stap_idx >= #SNEL_STAPPEN then
+            snel_classificeren()
+            if #te_testen > 0 then
+                fase       = "init"
+                fase_start = bkos.sys.millis()
+            else
+                fase = "klaar"
+            end
+            return true
+        end
+        snel_stap_starten(snel_stap_idx + 1)
+        return true
+    end
+    if bkos.sys.millis() >= snel_volgende_ms then
+        snel_sample_nemen()
+        return true
+    end
+    return false
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Detailtest-logica (over `te_testen`)
+-- ───────────────────────────────────────────────────────────────────────────────
+
+nieuwe_stap = function(u, a, idx)
+    uit_poort     = u
+    aan_poort     = a
+    huidige_idx   = idx
     uit_bevestigd = (u == nil)
     aan_bevestigd = (a == nil)
     fase          = "wachten"
@@ -83,16 +230,18 @@ end
 
 conclusie_zet = function(poort, nieuw)
     local huidig = conclusie[poort] or ""
-    if huidig == "fout" then return end                      -- fout wint altijd
+    if huidig == "fout" then return end
     if nieuw == "fout" then conclusie[poort] = "fout"; return end
-    if huidig == "kort" and nieuw == "ok" then return end     -- kort wint over ok
+    if huidig == "kort" and nieuw == "ok" then return end
     conclusie[poort] = nieuw
 end
 
+-- Alle poorten die tijdens deze stap NIET AAN mogen zijn -- bliksem-poorten
+-- (altijd aan, al verklaard) tellen nooit als kortsluitpartner.
 verwachte_uit_set = function()
     local t = {}
     for p = 1, aantal do
-        if p ~= aan_poort then t[p] = true end
+        if p ~= aan_poort and snel_concl[p] ~= "bliksem" then t[p] = true end
     end
     return t
 end
@@ -110,24 +259,25 @@ ga_bevestigen = function()
     kort_set       = {}
 end
 
-start_volgende_na = function(klaar_poort)
-    if klaar_poort < aantal then
-        bkos.io.write(klaar_poort - 1, bkos.LOW)
-        bkos.io.write(klaar_poort,     bkos.HIGH)   -- (klaar_poort+1) - 1 == klaar_poort
-        nieuwe_stap(klaar_poort, klaar_poort + 1)
+detail_volgende_na = function(klaar_idx)
+    local p_klaar = te_testen[klaar_idx]
+    if klaar_idx < #te_testen then
+        local p_volgend = te_testen[klaar_idx + 1]
+        bkos.io.write(p_klaar - 1, bkos.LOW)
+        bkos.io.write(p_volgend - 1, bkos.HIGH)
+        nieuwe_stap(p_klaar, p_volgend, klaar_idx + 1)
     else
-        bkos.io.write(klaar_poort - 1, bkos.LOW)
-        nieuwe_stap(klaar_poort, nil)
+        bkos.io.write(p_klaar - 1, bkos.LOW)
+        nieuwe_stap(p_klaar, nil, klaar_idx)
     end
 end
 
--- Geeft true terug als er deze tick iets veranderd is dat een hertekening
--- rechtvaardigt.
-scan_update = function()
+detail_update = function()
     if fase == "init" then
         if bkos.sys.millis() - fase_start >= INIT_SETTLE_MS then
-            bkos.io.write(0, bkos.HIGH)
-            nieuwe_stap(nil, 1)
+            local p1 = te_testen[1]
+            bkos.io.write(p1 - 1, bkos.HIGH)
+            nieuwe_stap(nil, p1, 1)
         end
         return true
     end
@@ -164,7 +314,7 @@ scan_update = function()
                 ms_aan[aan_poort]  = -1
                 pog_aan[aan_poort] = poll_teller
                 conclusie_zet(aan_poort, "fout")
-                bkos.io.write(aan_poort - 1, bkos.LOW)   -- niet laten hangen
+                bkos.io.write(aan_poort - 1, bkos.LOW)
             end
             ga_bevestigen()
             return true
@@ -194,7 +344,7 @@ scan_update = function()
             if aan_poort == nil then
                 fase = "klaar"
             else
-                start_volgende_na(aan_poort)
+                detail_volgende_na(huidige_idx)
             end
         end
         return true
@@ -204,11 +354,120 @@ scan_update = function()
 end
 
 poort_bezig = function(poort)
+    if fase == "sneltest" then return true end   -- sneltest raakt alle poorten gelijk
     return (fase == "wachten" or fase == "bevestig") and (poort == uit_poort or poort == aan_poort)
 end
 
 -- ───────────────────────────────────────────────────────────────────────────────
--- Helpers: knoppen / lay-out
+-- Start / stop
+-- ───────────────────────────────────────────────────────────────────────────────
+
+local function start_scan()
+    aantal = (modus == "auto") and bkos.io.count() or handmatig_aantal
+    if aantal < 1 then aantal = 1 end
+    if aantal > 240 then aantal = 240 end
+
+    for p = 1, aantal do
+        ms_aan[p] = nil; pog_aan[p] = nil
+        ms_uit[p] = nil; pog_uit[p] = nil
+        conclusie[p] = ""
+        kort_poorten[p] = nil
+        snel_concl[p] = nil
+        snel_samples[p] = {}
+    end
+    for p = 1, aantal do
+        bkos.io.write(p - 1, bkos.LOW)
+    end
+
+    uit_poort, aan_poort = nil, nil
+    te_testen = {}
+    fase          = "sneltest"
+    heeft_resultaat = true
+    scherm        = "scan"
+    scroll_offset = 0
+    bericht_status = ""
+    snel_stap_starten(1)
+end
+
+local function stop_scan_en_veiligstellen()
+    for p = 1, aantal do
+        bkos.io.write(p - 1, bkos.LOW)
+    end
+    fase   = "idle"
+    scherm = "keuze"
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Rapport
+-- ───────────────────────────────────────────────────────────────────────────────
+
+categorieen_bepalen = function()
+    local goed, kapot, ingang = {}, {}, {}
+    local kort_gezien = {}   -- "p<->q,r" strings, elke combinatie 1x
+    for p = 1, aantal do
+        local c = conclusie[p]
+        if c == "ok" then goed[#goed + 1] = p
+        elseif c == "rood" or c == "fout" then kapot[#kapot + 1] = p
+        elseif c == "bliksem" then ingang[#ingang + 1] = p
+        elseif c == "kort" and kort_poorten[p] then
+            local partners = {}
+            for _, q in ipairs(kort_poorten[p]) do partners[#partners + 1] = tostring(q) end
+            kort_gezien[#kort_gezien + 1] = p .. "<->" .. table.concat(partners, ",")
+        end
+    end
+    return goed, kapot, ingang, kort_gezien
+end
+
+local function lijst_tekst(t)
+    if #t == 0 then return "geen" end
+    local s = {}
+    for _, v in ipairs(t) do s[#s + 1] = tostring(v) end
+    return table.concat(s, ",")
+end
+
+rapport_tekst_kort = function()
+    local goed, kapot, ingang, kort = categorieen_bepalen()
+    local tekst = "Poorttest (" .. aantal .. "p): OK=" .. #goed
+        .. " KAPOT=" .. lijst_tekst(kapot)
+        .. " INGANG=" .. lijst_tekst(ingang)
+        .. " KORT=" .. (#kort > 0 and table.concat(kort, ";") or "geen")
+    if #tekst > 139 then
+        tekst = tekst:sub(1, 136) .. "..."
+    end
+    return tekst
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Tekst-wrap helper (eenvoudig, vaste tekengrootte 1 = 6px/char)
+-- ───────────────────────────────────────────────────────────────────────────────
+
+local function teken_regels(x, y, label, inhoud, kleur, breedte_chars)
+    bkos.drawText(x, y, label, 1, bkos.colors.textDim)
+    if inhoud == "" or inhoud == "geen" then
+        bkos.drawText(x + 110, y, "geen", 1, bkos.colors.textDim)
+        return y + 16
+    end
+    local regel = ""
+    local yy = y
+    for woord in inhoud:gmatch("[^,]+") do
+        local kandidaat = (regel == "") and woord or (regel .. "," .. woord)
+        if #kandidaat > breedte_chars then
+            bkos.drawText(x + 110, yy, regel, 1, kleur)
+            yy = yy + 16
+            regel = woord
+        else
+            regel = kandidaat
+        end
+    end
+    if regel ~= "" then
+        bkos.drawText(x + 110, yy, regel, 1, kleur)
+        yy = yy + 16
+    end
+    return yy
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Gemeenschappelijke knoppen
 -- ───────────────────────────────────────────────────────────────────────────────
 
 local function teken_titelbalk(titel)
@@ -229,36 +488,6 @@ end
 local function sluitknop_geraakt(x, y)
     local bx, by, bw, bh = sluitknop_rect()
     return x >= bx and x <= bx + bw and y >= by and y <= by + bh
-end
-
-local function start_scan()
-    aantal = (modus == "auto") and bkos.io.count() or handmatig_aantal
-    if aantal < 1 then aantal = 1 end
-    if aantal > 240 then aantal = 240 end
-
-    for p = 1, aantal do
-        ms_aan[p] = nil; pog_aan[p] = nil
-        ms_uit[p] = nil; pog_uit[p] = nil
-        conclusie[p] = ""
-        kort_poorten[p] = nil
-    end
-    for p = 1, aantal do
-        bkos.io.write(p - 1, bkos.LOW)
-    end
-
-    uit_poort, aan_poort = nil, nil
-    fase       = "init"
-    fase_start = bkos.sys.millis()
-    scherm      = "scan"
-    scroll_offset = 0
-end
-
-local function stop_scan_en_veiligstellen()
-    for p = 1, aantal do
-        bkos.io.write(p - 1, bkos.LOW)
-    end
-    fase   = "idle"
-    scherm = "keuze"
 end
 
 -- ───────────────────────────────────────────────────────────────────────────────
@@ -294,10 +523,16 @@ teken_keuze = function()
     end
 
     local start_mag = (modus == "handmatig") or (n > 0)
-    bkos.fillRoundRect(30, 400, 300, 60, 8, start_mag and bkos.colors.green or bkos.colors.surface)
-    bkos.drawText(60, 420, "START TEST", 2, start_mag and bkos.color565(10, 20, 10) or bkos.colors.textDim)
+    bkos.fillRoundRect(30, 390, 260, 56, 8, start_mag and bkos.colors.green or bkos.colors.surface)
+    bkos.drawText(50, 408, "START TEST", 2, start_mag and bkos.color565(10, 20, 10) or bkos.colors.textDim)
     if not start_mag then
-        bkos.drawText(30, 465, "Geen hardware gedetecteerd bij opstarten -- herstart het apparaat", 1, bkos.colors.amber)
+        bkos.drawText(30, 460, "Geen hardware gedetecteerd bij opstarten -- herstart het apparaat", 1, bkos.colors.amber)
+    end
+
+    if heeft_resultaat then
+        bkos.fillRoundRect(310, 390, 300, 56, 8, bkos.color565(30, 50, 70))
+        bkos.drawText(330, 402, "TERUG NAAR", 1, bkos.colors.cyan)
+        bkos.drawText(330, 416, "LAATSTE TEST", 2, bkos.colors.cyan)
     end
 end
 
@@ -318,19 +553,29 @@ raak_keuze = function(x, y)
 
     local n = bkos.io.count()
     local start_mag = (modus == "handmatig") or (n > 0)
-    if start_mag and x >= 30 and x <= 330 and y >= 400 and y <= 460 then
+    if start_mag and x >= 30 and x <= 290 and y >= 390 and y <= 446 then
         start_scan()
+        bkos.draw()
+        return
+    end
+
+    if heeft_resultaat and x >= 310 and x <= 610 and y >= 390 and y <= 446 then
+        scherm = "scan"
         bkos.draw()
     end
 end
 
 -- ───────────────────────────────────────────────────────────────────────────────
--- Scherm: SCAN
+-- Scherm: SCAN (sneltest + detailtest, 2 kolomgroepen)
 -- ───────────────────────────────────────────────────────────────────────────────
 
 status_tekst = function()
     if fase == "klaar" then return "Test klaar." end
-    if fase == "init" then return "Voorbereiden -- alle testpoorten worden uitgezet..." end
+    if fase == "sneltest" then
+        return "Sneltest stap " .. snel_stap_idx .. "/5 (" .. SNEL_STAPPEN[snel_stap_idx].label
+            .. ") -- meting " .. (snel_sample_idx + 1) .. "/5"
+    end
+    if fase == "init" then return "Detailtest voorbereiden..." end
 
     local delen = {}
     if uit_poort then delen[#delen + 1] = "poort " .. uit_poort .. " UIT" end
@@ -342,6 +587,7 @@ status_tekst = function()
     return ""
 end
 
+-- Tekent een klein conclusie-icoontje gecentreerd op (cx,cy).
 local function conclusie_icoon(cx, cy, poort)
     local c = conclusie[poort] or ""
     if c == "" then
@@ -352,10 +598,11 @@ local function conclusie_icoon(cx, cy, poort)
         end
         return
     end
+
     if c == "ok" then
         bkos.drawLine(cx - 8, cy,     cx - 2, cy + 7, bkos.colors.green)
         bkos.drawLine(cx - 2, cy + 7, cx + 9,  cy - 8, bkos.colors.green)
-    elseif c == "fout" then
+    elseif c == "fout" or c == "rood" then
         bkos.drawLine(cx - 8, cy - 8, cx + 8, cy + 8, bkos.colors.red)
         bkos.drawLine(cx - 8, cy + 8, cx + 8, cy - 8, bkos.colors.red)
     elseif c == "kort" then
@@ -369,81 +616,134 @@ local function conclusie_icoon(cx, cy, poort)
             end
         end
         bkos.drawText(cx, cy - 8, tekst, 1, bkos.colors.amber)
+    elseif c == "bliksem" then
+        -- eenvoudige bliksemschicht (2 lijnstukken, 2x getekend voor dikte)
+        for d = 0, 1 do
+            bkos.drawLine(cx - 2 + d, cy - 9, cx + 4 + d, cy - 1, bkos.colors.amber)
+            bkos.drawLine(cx + 4 + d, cy - 1, cx - 1 + d, cy + 1, bkos.colors.amber)
+            bkos.drawLine(cx - 1 + d, cy + 1, cx + 3 + d, cy + 9, bkos.colors.amber)
+        end
+    elseif c == "wacht_groen" then
+        bkos.fillCircle(cx, cy, 5, bkos.colors.green)
+    elseif c == "wacht_geel" then
+        bkos.fillCircle(cx, cy, 5, bkos.colors.amber)
+    elseif c == "wacht_oranje" then
+        bkos.drawFastVLine(cx, cy - 8, 10, KLEUR_ORANJE)
+        bkos.fillCircle(cx, cy + 6, 2, KLEUR_ORANJE)
     end
 end
 
-local function teken_tabel()
-    bkos.drawText(28,  TABEL_TOP - 20, "POORT",  1, bkos.colors.textDim)
-    bkos.drawText(140, TABEL_TOP - 20, "AAN",    1, bkos.colors.textDim)
-    bkos.drawText(340, TABEL_TOP - 20, "UIT",    1, bkos.colors.textDim)
-    bkos.drawText(540, TABEL_TOP - 20, "STATUS", 1, bkos.colors.textDim)
-    bkos.drawFastHLine(20, TABEL_TOP - 6, bkos.W - 40, bkos.color565(60, 70, 85))
+-- Tekent één kolomgroep (poort/aan/uit/status) voor poorten [van..tot].
+local function teken_kolom(kol_x, van, tot)
+    bkos.drawText(kol_x + 6,   TABEL_TOP - 18, "PRT",    1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 44,  TABEL_TOP - 18, "AAN",    1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 190, TABEL_TOP - 18, "UIT",    1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 330, TABEL_TOP - 18, "STAT",   1, bkos.colors.textDim)
+    bkos.drawFastHLine(kol_x, TABEL_TOP - 6, KOL_W - 8, bkos.color565(60, 70, 85))
 
-    if aantal > ZICHTBARE_RIJEN then
-        bkos.drawText(bkos.W - 170, TABEL_TOP - 20,
-            "rij " .. (scroll_offset + 1) .. "-" .. math.min(aantal, scroll_offset + ZICHTBARE_RIJEN) .. "/" .. aantal,
-            1, bkos.colors.textDim)
-    end
+    local rij_idx = 0
+    for p = van + scroll_offset, math.min(tot, van + scroll_offset + ZICHTBARE_RIJEN - 1) do
+        local y = TABEL_TOP + rij_idx * RIJ_H
+        rij_idx = rij_idx + 1
 
-    local zichtbaar_tot = math.min(aantal, scroll_offset + ZICHTBARE_RIJEN)
-    for p = scroll_offset + 1, zichtbaar_tot do
-        local y = TABEL_TOP + (p - scroll_offset - 1) * RIJ_H
         local bg
         if poort_bezig(p) then
             bg = bkos.color565(25, 40, 55)
-        elseif (p % 2) == 0 then
+        elseif ((p - van) % 2) == 0 then
             bg = bkos.colors.surface
         else
             bg = bkos.colors.bg
         end
-        bkos.fillRect(20, y, bkos.W - 40, RIJ_H - 2, bg)
+        bkos.fillRect(kol_x, y, KOL_W - 8, RIJ_H - 2, bg)
 
-        bkos.drawText(28, y + 6, tostring(p), 1, bkos.colors.text)
+        bkos.drawText(kol_x + 6, y + 5, tostring(p), 1, bkos.colors.text)
 
-        local aan_txt = "-"
-        local aan_kleur = bkos.colors.text
-        if ms_aan[p] == -1 then
-            aan_txt = ">3000ms!"; aan_kleur = bkos.colors.red
-        elseif ms_aan[p] then
-            aan_txt = ms_aan[p] .. "ms (" .. pog_aan[p] .. "x)"
-        end
-        bkos.drawText(140, y + 6, aan_txt, 1, aan_kleur)
+        local aan_txt, aan_kleur = "-", bkos.colors.text
+        if ms_aan[p] == -1 then aan_txt = ">3000!"; aan_kleur = bkos.colors.red
+        elseif ms_aan[p] then aan_txt = ms_aan[p] .. "ms(" .. pog_aan[p] .. "x)" end
+        bkos.drawText(kol_x + 44, y + 5, aan_txt, 1, aan_kleur)
 
-        local uit_txt = "-"
-        local uit_kleur = bkos.colors.text
-        if ms_uit[p] == -1 then
-            uit_txt = ">3000ms!"; uit_kleur = bkos.colors.red
-        elseif ms_uit[p] then
-            uit_txt = ms_uit[p] .. "ms (" .. pog_uit[p] .. "x)"
-        end
-        bkos.drawText(340, y + 6, uit_txt, 1, uit_kleur)
+        local uit_txt, uit_kleur = "-", bkos.colors.text
+        if ms_uit[p] == -1 then uit_txt = ">3000!"; uit_kleur = bkos.colors.red
+        elseif ms_uit[p] then uit_txt = ms_uit[p] .. "ms(" .. pog_uit[p] .. "x)" end
+        bkos.drawText(kol_x + 190, y + 5, uit_txt, 1, uit_kleur)
 
-        conclusie_icoon(560, y + math.floor(RIJ_H / 2), p)
+        conclusie_icoon(kol_x + 345, y + math.floor(RIJ_H / 2), p)
     end
 end
 
+local function helft()
+    return math.ceil(aantal / 2)
+end
+
+local function teken_tabel()
+    local h = helft()
+    teken_kolom(KOL_L_X, 1, h)
+    teken_kolom(KOL_R_X, h + 1, aantal)
+
+    local grootste_helft = math.max(h, aantal - h)
+    if grootste_helft > ZICHTBARE_RIJEN then
+        bkos.drawText(KOL_R_X + KOL_W - 170, TABEL_TOP - 18,
+            "rij " .. (scroll_offset + 1) .. "-" .. math.min(grootste_helft, scroll_offset + ZICHTBARE_RIJEN) .. "/" .. grootste_helft,
+            1, bkos.colors.textDim)
+    end
+end
+
+-- Naast elkaar (niet gestapeld) in de koprij, zodat ze nooit overlappen met
+-- de SLUIT-knop rechtsboven (die eindigt bij y=40) -- TABEL_TOP-18 ligt daar
+-- ruim onder.
 local function scroll_knop_rects()
-    local x = bkos.W - 36
-    return x, TABEL_TOP - 34, x, TABEL_TOP - 16
+    local y = TABEL_TOP - 18
+    return bkos.W - 62, y, bkos.W - 30, y   -- omhoog-x, y, omlaag-x, y
 end
 
 local function teken_scroll_knoppen()
-    if aantal <= ZICHTBARE_RIJEN then return end
-    local x, up_y, _, dn_y = scroll_knop_rects()
-    bkos.fillTriangle(x, up_y + 10, x + 14, up_y + 10, x + 7, up_y,      bkos.colors.cyan)
-    bkos.fillTriangle(x, dn_y,      x + 14, dn_y,      x + 7, dn_y + 10, bkos.colors.cyan)
+    if math.max(helft(), aantal - helft()) <= ZICHTBARE_RIJEN then return end
+    local ux, y, dx, _ = scroll_knop_rects()
+    bkos.fillTriangle(ux, y + 10, ux + 14, y + 10, ux + 7, y,      bkos.colors.cyan)
+    bkos.fillTriangle(dx, y,      dx + 14, y,      dx + 7, y + 10, bkos.colors.cyan)
+end
+
+local function voetknoppen_rects()
+    -- Tijdens het lopen: alleen STOP. Klaar: OPNIEUW + RAPPORT + APP.
+    if fase ~= "klaar" then
+        return { stop = { bkos.W - 160, bkos.H - 46, 140, 36 } }
+    end
+    return {
+        opnieuw = { bkos.W - 156, bkos.H - 46, 140, 36 },
+        rapport = { bkos.W - 312, bkos.H - 46, 148, 36 },
+        app     = { bkos.W - 476, bkos.H - 46, 156, 36 },
+    }
 end
 
 local function teken_voet()
     bkos.fillRect(0, bkos.H - 50, bkos.W, 50, bkos.color565(18, 28, 40))
-    bkos.drawText(16, bkos.H - 34, status_tekst(), 1, bkos.colors.text)
+    bkos.drawText(16, bkos.H - 36, status_tekst(), 1, bkos.colors.text)
 
-    if fase == "klaar" then
-        bkos.fillRoundRect(bkos.W - 200, bkos.H - 46, 180, 36, 6, bkos.colors.green)
-        bkos.drawText(bkos.W - 180, bkos.H - 36, "OPNIEUW", 1, bkos.color565(10, 20, 10))
-    else
-        bkos.fillRoundRect(bkos.W - 160, bkos.H - 46, 140, 36, 6, bkos.color565(60, 30, 30))
-        bkos.drawText(bkos.W - 136, bkos.H - 36, "STOP", 1, bkos.colors.red)
+    local knoppen = voetknoppen_rects()
+    if knoppen.stop then
+        local x, y, w, h = table.unpack(knoppen.stop)
+        bkos.fillRoundRect(x, y, w, h, 6, bkos.color565(60, 30, 30))
+        bkos.drawText(x + 24, y + 10, "STOP", 1, bkos.colors.red)
+    end
+    if knoppen.opnieuw then
+        local x, y, w, h = table.unpack(knoppen.opnieuw)
+        bkos.fillRoundRect(x, y, w, h, 6, bkos.colors.green)
+        bkos.drawText(x + 24, y + 10, "OPNIEUW", 1, bkos.color565(10, 20, 10))
+    end
+    if knoppen.rapport then
+        local x, y, w, h = table.unpack(knoppen.rapport)
+        bkos.fillRoundRect(x, y, w, h, 6, bkos.color565(30, 60, 80))
+        bkos.drawText(x + 14, y + 10, "RAPPORT", 1, bkos.colors.cyan)
+    end
+    if knoppen.app then
+        local x, y, w, h = table.unpack(knoppen.app)
+        bkos.fillRoundRect(x, y, w, h, 6, bkos.color565(30, 60, 80))
+        bkos.drawText(x + 10, y + 10, "APP EIGENAAR", 1, bkos.colors.cyan)
+    end
+
+    if bericht_status ~= "" and bkos.sys.millis() - bericht_status_ms < 4000 then
+        bkos.drawText(16, bkos.H - 20, bericht_status, 1, bkos.colors.amber)
     end
 end
 
@@ -456,33 +756,186 @@ teken_scan = function()
     teken_voet()
 end
 
+-- Vertaalt een scherm-coordinaat naar een poortnummer (of nil), rekening
+-- houdend met beide kolomgroepen en de huidige scroll.
+local function poort_bij_coordinaat(x, y)
+    if y < TABEL_TOP or y >= TABEL_TOP + ZICHTBARE_RIJEN * RIJ_H then return nil end
+    local rij_idx = math.floor((y - TABEL_TOP) / RIJ_H)
+    local h = helft()
+    if x >= KOL_L_X and x < KOL_L_X + KOL_W then
+        local p = 1 + scroll_offset + rij_idx
+        if p <= h then return p end
+    elseif x >= KOL_R_X and x < KOL_R_X + KOL_W then
+        local p = h + 1 + scroll_offset + rij_idx
+        if p <= aantal then return p end
+    end
+    return nil
+end
+
 raak_scan = function(x, y)
     if sluitknop_geraakt(x, y) then bkos.app.sluiten(); return end
 
-    if fase == "klaar" then
-        if x >= bkos.W - 200 and x <= bkos.W - 20 and y >= bkos.H - 46 and y <= bkos.H - 10 then
-            scherm = "keuze"
-            bkos.draw()
-            return
-        end
-    else
-        if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= bkos.H - 46 and y <= bkos.H - 10 then
-            stop_scan_en_veiligstellen()
-            bkos.draw()
-            return
+    local knoppen = voetknoppen_rects()
+    for naam, r in pairs(knoppen) do
+        local bx, by, bw, bh = table.unpack(r)
+        if x >= bx and x <= bx + bw and y >= by and y <= by + bh then
+            if naam == "stop" then
+                stop_scan_en_veiligstellen(); bkos.draw(); return
+            elseif naam == "opnieuw" then
+                scherm = "keuze"; bkos.draw(); return
+            elseif naam == "rapport" then
+                scherm = "rapport"; bkos.draw(); return
+            elseif naam == "app" then
+                bkos.melding.stuur(rapport_tekst_kort())
+                bericht_status    = "Bericht in wachtrij gezet voor de eigenaar."
+                bericht_status_ms = bkos.sys.millis()
+                bkos.draw(); return
+            end
         end
     end
 
-    if aantal > ZICHTBARE_RIJEN then
-        local sx, up_y, _, dn_y = scroll_knop_rects()
-        if x >= sx - 4 and x <= sx + 18 then
-            if y >= up_y - 4 and y <= up_y + 16 then
+    if math.max(helft(), aantal - helft()) > ZICHTBARE_RIJEN then
+        local ux, ky, dx, _ = scroll_knop_rects()
+        if y >= ky - 4 and y <= ky + 16 then
+            local maxscroll = math.max(helft(), aantal - helft()) - ZICHTBARE_RIJEN
+            if x >= ux - 4 and x <= ux + 18 then
                 scroll_offset = math.max(0, scroll_offset - 1); bkos.draw(); return
             end
-            if y >= dn_y - 4 and y <= dn_y + 16 then
-                scroll_offset = math.min(aantal - ZICHTBARE_RIJEN, scroll_offset + 1); bkos.draw(); return
+            if x >= dx - 4 and x <= dx + 18 then
+                scroll_offset = math.min(maxscroll, scroll_offset + 1); bkos.draw(); return
             end
         end
+    end
+
+    local p = poort_bij_coordinaat(x, y)
+    if p and (conclusie[p] or "") ~= "" then
+        detail_poort = p
+        scherm_voor_detail = "scan"
+        scherm = "detail"
+        bkos.draw()
+    end
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Scherm: RAPPORT
+-- ───────────────────────────────────────────────────────────────────────────────
+
+teken_rapport = function()
+    bkos.fillScreen(bkos.colors.bg)
+    teken_titelbalk("IO POORTTEST -- rapport")
+    teken_sluitknop()
+
+    local goed, kapot, ingang, kort = categorieen_bepalen()
+
+    local y = 64
+    bkos.drawText(20, y, aantal .. " poorten getest  --  " .. #goed .. " goed, " .. #kapot
+        .. " kapot, " .. #ingang .. " mogelijk ingang, " .. #kort .. " kort(e)verbinding(en)",
+        1, bkos.colors.textDim)
+    y = y + 26
+
+    y = teken_regels(20, y, "Goed:",            lijst_tekst(goed),   bkos.colors.green, 78) + 10
+    y = teken_regels(20, y, "Kapot:",           lijst_tekst(kapot),  bkos.colors.red,   78) + 10
+    y = teken_regels(20, y, "Mogelijk ingang:", lijst_tekst(ingang), bkos.colors.amber, 78) + 10
+
+    bkos.drawText(20, y, "Verbonden:", 1, bkos.colors.textDim)
+    if #kort == 0 then
+        bkos.drawText(130, y, "geen", 1, bkos.colors.textDim)
+        y = y + 16
+    else
+        for _, regel in ipairs(kort) do
+            bkos.drawText(130, y, regel, 1, KLEUR_ORANJE)
+            y = y + 16
+        end
+    end
+
+    bkos.fillRoundRect(bkos.W - 320, bkos.H - 46, 150, 36, 6, bkos.color565(30, 60, 80))
+    bkos.drawText(bkos.W - 300, bkos.H - 36, "NAAR SCAN", 1, bkos.colors.cyan)
+    bkos.fillRoundRect(bkos.W - 160, bkos.H - 46, 140, 36, 6, bkos.color565(30, 60, 80))
+    bkos.drawText(bkos.W - 148, bkos.H - 36, "APP EIGENAAR", 1, bkos.colors.cyan)
+
+    if bericht_status ~= "" and bkos.sys.millis() - bericht_status_ms < 4000 then
+        bkos.drawText(20, bkos.H - 20, bericht_status, 1, bkos.colors.amber)
+    end
+end
+
+raak_rapport = function(x, y)
+    if sluitknop_geraakt(x, y) then bkos.app.sluiten(); return end
+    if x >= bkos.W - 320 and x <= bkos.W - 170 and y >= bkos.H - 46 and y <= bkos.H - 10 then
+        scherm = "scan"; bkos.draw(); return
+    end
+    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= bkos.H - 46 and y <= bkos.H - 10 then
+        bkos.melding.stuur(rapport_tekst_kort())
+        bericht_status    = "Bericht in wachtrij gezet voor de eigenaar."
+        bericht_status_ms = bkos.sys.millis()
+        bkos.draw(); return
+    end
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Scherm: DETAIL (één poort)
+-- ───────────────────────────────────────────────────────────────────────────────
+
+local SNEL_LABEL = {
+    groen  = "Snel en stabiel elke stap.",
+    geel   = "Trager, maar uiteindelijk altijd stabiel.",
+    oranje = "Schakelde, maar wisselvallige meting.",
+    rood   = "Nooit AAN gemeten -- lijkt dood of niet aangesloten.",
+    bliksem = "Nooit UIT gemeten -- mogelijk een ingang die actief is.",
+}
+
+teken_detail = function()
+    bkos.fillScreen(bkos.colors.bg)
+    teken_titelbalk("IO POORTTEST -- poort " .. tostring(detail_poort))
+    teken_sluitknop()
+
+    local p = detail_poort
+    local y = 70
+
+    bkos.drawText(20, y, "Sneltest:", 1, bkos.colors.textDim); y = y + 16
+    local sc = snel_concl[p] or "?"
+    bkos.drawText(20, y, SNEL_LABEL[sc] or "-", 1, bkos.colors.text); y = y + 30
+
+    if sc == "rood" or sc == "bliksem" then
+        bkos.drawText(20, y, "Geen detailtest uitgevoerd (zie boven).", 1, bkos.colors.textDim)
+    else
+        bkos.drawText(20, y, "Detailtest:", 1, bkos.colors.textDim); y = y + 16
+
+        local aan_txt = "nog niet bereikt"
+        if ms_aan[p] == -1 then aan_txt = "timeout (>3000ms)"
+        elseif ms_aan[p] then aan_txt = ms_aan[p] .. "ms, " .. pog_aan[p] .. " poging(en)" end
+        bkos.drawText(20, y, "AAN-tijd: " .. aan_txt, 1, bkos.colors.text); y = y + 18
+
+        local uit_txt = "nog niet bereikt"
+        if ms_uit[p] == -1 then uit_txt = "timeout (>3000ms)"
+        elseif ms_uit[p] then uit_txt = ms_uit[p] .. "ms, " .. pog_uit[p] .. " poging(en)" end
+        bkos.drawText(20, y, "UIT-tijd: " .. uit_txt, 1, bkos.colors.text); y = y + 26
+
+        local c = conclusie[p] or ""
+        local concl_txt = "nog bezig / niet getest"
+        local concl_kleur = bkos.colors.textDim
+        if c == "ok" then concl_txt = "GOED"; concl_kleur = bkos.colors.green
+        elseif c == "fout" then concl_txt = "KAPOT (geen terugkoppeling)"; concl_kleur = bkos.colors.red
+        elseif c == "kort" then
+            local partners = kort_poorten[p]
+            local s = ""
+            if partners then
+                for i, q in ipairs(partners) do s = s .. (i > 1 and "," or "") .. tostring(q) end
+            end
+            concl_txt = "MOGELIJK VERBONDEN met poort " .. s
+            concl_kleur = KLEUR_ORANJE
+        end
+        bkos.drawText(20, y, "Conclusie: " .. concl_txt, 1, concl_kleur)
+    end
+
+    bkos.fillRoundRect(bkos.W - 160, bkos.H - 46, 140, 36, 6, bkos.color565(30, 60, 80))
+    bkos.drawText(bkos.W - 140, bkos.H - 36, "TERUG", 1, bkos.colors.cyan)
+end
+
+raak_detail = function(x, y)
+    if sluitknop_geraakt(x, y) then bkos.app.sluiten(); return end
+    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= bkos.H - 46 and y <= bkos.H - 10 then
+        scherm = scherm_voor_detail
+        bkos.draw()
     end
 end
 
@@ -492,11 +945,15 @@ end
 
 function bkos.draw()
     if scherm == "keuze" then teken_keuze()
+    elseif scherm == "rapport" then teken_rapport()
+    elseif scherm == "detail" then teken_detail()
     else teken_scan() end
 end
 
 function bkos.touch(x, y)
     if scherm == "keuze" then raak_keuze(x, y)
+    elseif scherm == "rapport" then raak_rapport(x, y)
+    elseif scherm == "detail" then raak_detail(x, y)
     else raak_scan(x, y) end
 end
 
@@ -504,18 +961,28 @@ function bkos.update()
     if scherm ~= "scan" then return end
     if fase == "idle" or fase == "klaar" then return end
 
-    local gewijzigd = scan_update()
+    local gewijzigd
+    if fase == "sneltest" then
+        gewijzigd = snel_update()
+    else
+        gewijzigd = detail_update()
+    end
     if not gewijzigd then return end
 
-    -- Auto-scroll: houd de actieve poort(en) in beeld.
+    -- Auto-scroll: houd de actieve poort(en) in beeld binnen hun kolom.
     local doel = aan_poort or uit_poort
-    if doel and aantal > ZICHTBARE_RIJEN then
-        if doel - 1 < scroll_offset then
-            scroll_offset = doel - 1
-        elseif doel - 1 >= scroll_offset + ZICHTBARE_RIJEN then
-            scroll_offset = doel - ZICHTBARE_RIJEN
+    if fase ~= "sneltest" and doel then
+        local h = helft()
+        local lokaal = (doel <= h) and doel or (doel - h)
+        local grootste_helft = math.max(h, aantal - h)
+        if grootste_helft > ZICHTBARE_RIJEN then
+            if lokaal - 1 < scroll_offset then
+                scroll_offset = lokaal - 1
+            elseif lokaal - 1 >= scroll_offset + ZICHTBARE_RIJEN then
+                scroll_offset = lokaal - ZICHTBARE_RIJEN
+            end
+            scroll_offset = math.max(0, math.min(scroll_offset, grootste_helft - ZICHTBARE_RIJEN))
         end
-        scroll_offset = math.max(0, math.min(scroll_offset, math.max(0, aantal - ZICHTBARE_RIJEN)))
     end
 
     bkos.draw()

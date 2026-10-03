@@ -1,5 +1,5 @@
 # BKOS App Handleiding
-**Versie:** 1.4 — BKOS-NUI v0.2.260916.3+
+**Versie:** 1.5 — BKOS-NUI v0.2.261003.1+
 
 Deze handleiding beschrijft hoe je een BKOS app schrijft, test en publiceert.  
 BKOS apps zijn Lua 5.4 scripts die draaien op het ESP32-S3 boordcomputer scherm.
@@ -20,6 +20,7 @@ BKOS apps zijn Lua 5.4 scripts die draaien op het ESP32-S3 boordcomputer scherm.
    - [Systeem](#55-systeem)
    - [Achtergrondfoto's](#57-achtergrondfotos)
    - [App sluiten](#58-app-sluiten)
+   - [Melding naar eigenaar](#59-melding-naar-eigenaar)
 6. [App callbacks](#6-app-callbacks)
 7. [Schermresolutie en schalen](#7-schermresolutie-en-schalen)
 8. [Volledig scherm (fullscreen-apps)](#8-volledig-scherm-fullscreen-apps)
@@ -547,6 +548,25 @@ end
 
 ---
 
+### 5.9 Melding naar eigenaar
+
+#### `bkos.melding.stuur(tekst)`
+Zet `tekst` in de bestaande meldingen-wachtrij (CallMeBot Signal/WhatsApp), categorie "eigenaar" — dezelfde die het webapp-berichtformulier ook gebruikt. Schrijfalleen: geen manier om meldingen te lezen, te annuleren of een andere categorie te kiezen.
+
+Dit stuurt niets als de gebruiker meldingen niet heeft ingeschakeld (CONFIG → MELDINGEN) — in dat geval gebeurt er stilletjes niets, geen foutmelding. Er is ook geen bevestiging van daadwerkelijke aflevering: dit zet het bericht alleen in de wachtrij (6 plekken), de achtergrondtaak verstuurt 'm zodra WiFi beschikbaar is.
+
+**Houd `tekst` kort.** De wachtrij bewaart elk bericht in een vast buffer van 140 tekens (SMS/tweet-achtige lengte) — langere tekst wordt afgekapt. Bouw dus een compacte samenvatting, niet een volledig rapport.
+
+```lua
+function bkos.touch(x, y)
+    if x > bkos.W - 160 and y > bkos.H - 46 then
+        bkos.melding.stuur("App X: 3 problemen gevonden, zie het scherm voor details")
+    end
+end
+```
+
+---
+
 ## 6. App Callbacks
 
 Jouw app registreert functies die door het systeem aangeroepen worden.
@@ -1031,6 +1051,13 @@ bkos.app.sluiten()              — close this standalone app (same path as long
                                    or via the device PIN if the user has locked the app).
                                    No-op unless this app is running standalone (opened via
                                    APPS, or as boot app).
+
+--- NOTIFICATIONS (write-only) ---
+bkos.melding.stuur(tekst)       — queue tekst as an "owner" notification (same CallMeBot
+                                   Signal/WhatsApp pipeline as the webapp message form).
+                                   Silent no-op if the user has notifications disabled.
+                                   No delivery confirmation -- only queues it (6 slots).
+                                   Keep tekst short: truncated at 140 chars.
 
 --- CALLBACKS (register as functions) ---
 bkos.draw   = function()        — redraw full screen

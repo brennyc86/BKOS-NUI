@@ -8,6 +8,7 @@
 #include "platform_fs.h"
 #include "bkos_net.h"
 #include "haven_achtergrond.h"
+#include "melding.h"
 
 bool  lua_fout_actief   = false;
 char  lua_fout_tekst[LUA_FOUT_LEN] = "";
@@ -474,6 +475,20 @@ static int l_app_sluiten(lua_State* ls) {
     return 0;
 }
 
+// ─── bkos.melding ────────────────────────────────────────────────────────────
+// Eén smalle, expliciete ingang naar de bestaande meldingen-wachtrij (CallMeBot
+// Signal/WhatsApp) — geen generieke "stuur overal heen"-API, uitsluitend de
+// EIGENAAR-categorie (MELDING_CAT_EIGENAAR), dezelfde die het webapp-
+// berichtformulier ook gebruikt. melding_stuur() is zelf al veilig: no-op als
+// de hoofdschakelaar uit staat, en de wachtrij (6 slots) beschermt tegen een
+// overijverige app. Geen bevestiging van daadwerkelijke aflevering — dit zet
+// het bericht alleen in de wachtrij.
+static int l_melding_stuur(lua_State* ls) {
+    const char* tekst = luaL_checkstring(ls, 1);
+    melding_stuur(String(tekst), MELDING_CAT_EIGENAAR);
+    return 0;
+}
+
 // ─── bkos tabel opbouwen ─────────────────────────────────────────────────────
 static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);  // bkos
@@ -588,6 +603,11 @@ static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);
     lua_pushcfunction(ls, l_app_sluiten); lua_setfield(ls, -2, "sluiten");
     lua_setfield(ls, -2, "app");
+
+    // melding tabel
+    lua_newtable(ls);
+    lua_pushcfunction(ls, l_melding_stuur); lua_setfield(ls, -2, "stuur");
+    lua_setfield(ls, -2, "melding");
 
     lua_setglobal(ls, "bkos");
 }

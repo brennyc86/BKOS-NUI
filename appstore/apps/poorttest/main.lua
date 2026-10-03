@@ -75,6 +75,10 @@ local scroll_offset     = 0
 
 local heeft_resultaat   = false       -- true zodra ooit gestart -> "TERUG NAAR TEST"-knop in keuze
 
+local herscan_gedaan    = false       -- true zodra AUTOMATISCH handmatig herscand is (i.p.v. alleen bij opstarten)
+local keypad_actief     = false       -- numeriek toetsenbord-overlay (handmatig aantal invoeren)
+local keypad_invoer     = ""
+
 local bericht_status    = ""          -- tijdelijke terugkoppeling na "APP NAAR EIGENAAR"
 local bericht_status_ms = 0
 
@@ -479,6 +483,96 @@ local function teken_regels(x, y, label, inhoud, kleur, breedte_chars)
 end
 
 -- ───────────────────────────────────────────────────────────────────────────────
+-- Numeriek toetsenbord (overlay) -- handmatig aantal poorten intikken
+-- ───────────────────────────────────────────────────────────────────────────────
+
+local KEYPAD_W, KEYPAD_H = 360, 300
+local KEYPAD_TOETSEN = {
+    "1", "2", "3",
+    "4", "5", "6",
+    "7", "8", "9",
+    "CLR", "0", "OK",
+}
+
+local function keypad_x()
+    return math.floor((bkos.W - KEYPAD_W) / 2)
+end
+local function keypad_y()
+    return math.max(0, math.floor((bkos.H - KEYPAD_H) / 2))
+end
+
+local function keypad_openen()
+    keypad_invoer = tostring(handmatig_aantal)
+    keypad_actief = true
+end
+
+local function teken_keypad()
+    local px, py = keypad_x(), keypad_y()
+    bkos.fillRoundRect(px, py, KEYPAD_W, KEYPAD_H, 10, bkos.colors.surface)
+    bkos.drawRoundRect(px, py, KEYPAD_W, KEYPAD_H, 10, bkos.colors.cyan)
+
+    bkos.drawText(px + 16, py + 12, "Aantal poorten (1-240):", 1, bkos.colors.textDim)
+    bkos.fillRoundRect(px + 16, py + 28, KEYPAD_W - 32, 36, 6, bkos.colors.bg)
+    bkos.drawText(px + 28, py + 36, (keypad_invoer == "" and "0" or keypad_invoer), 2, bkos.colors.text)
+
+    local gx, gy = px + 16, py + 76
+    local bw, bh, gap = (KEYPAD_W - 32 - 2 * 8) / 3, 48, 8
+    for i, t in ipairs(KEYPAD_TOETSEN) do
+        local col = (i - 1) % 3
+        local row = math.floor((i - 1) / 3)
+        local bx  = gx + col * (bw + gap)
+        local by  = gy + row * (bh + gap)
+        local kleur = bkos.colors.bg
+        local tkleur = bkos.colors.text
+        if t == "OK" then kleur = bkos.colors.green; tkleur = bkos.color565(10, 20, 10)
+        elseif t == "CLR" then kleur = bkos.color565(60, 30, 30); tkleur = bkos.colors.red end
+        bkos.fillRoundRect(bx, by, bw, bh, 6, kleur)
+        bkos.drawText(bx + bw / 2 - (#t > 1 and 14 or 5), by + bh / 2 - 8, t, 2, tkleur)
+    end
+end
+
+local function raak_keypad(x, y)
+    local px, py = keypad_x(), keypad_y()
+    local gx, gy = px + 16, py + 76
+    local bw, bh, gap = (KEYPAD_W - 32 - 2 * 8) / 3, 48, 8
+    for i, t in ipairs(KEYPAD_TOETSEN) do
+        local col = (i - 1) % 3
+        local row = math.floor((i - 1) / 3)
+        local bx  = gx + col * (bw + gap)
+        local by  = gy + row * (bh + gap)
+        if x >= bx and x <= bx + bw and y >= by and y <= by + bh then
+            if t == "CLR" then
+                keypad_invoer = ""
+            elseif t == "OK" then
+                local waarde = tonumber(keypad_invoer) or handmatig_aantal
+                handmatig_aantal = math.max(1, math.min(240, math.floor(waarde)))
+                keypad_actief = false
+            else
+                if #keypad_invoer < 3 then keypad_invoer = keypad_invoer .. t end
+            end
+            bkos.draw()
+            return
+        end
+    end
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- AUTOMATISCH: gevonden modules weergeven
+-- ───────────────────────────────────────────────────────────────────────────────
+
+local function module_info_tekst()
+    local mc = bkos.io.moduleCount()
+    if mc == 0 then return "geen modules gevonden" end
+    local types = {}
+    for i = 0, mc - 1 do
+        types[#types + 1] = bkos.io.moduleType(i) or "?"
+    end
+    local tekst = mc .. " module(s): " .. table.concat(types, ", ")
+    if #tekst > 58 then tekst = tekst:sub(1, 55) .. "..." end
+    return tekst
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
 -- Scherm: KEUZE
 -- ───────────────────────────────────────────────────────────────────────────────
 
@@ -492,20 +586,27 @@ teken_keuze = function()
     local n = bkos.io.count()
     bkos.fillRoundRect(16, 40, 360, 48, 8, auto_actief and bkos.color565(20, 60, 50) or bkos.colors.surface)
     bkos.drawText(36, 52, "AUTOMATISCH", 2, auto_actief and bkos.colors.green or bkos.colors.text)
-    bkos.drawText(36, 74, n .. " poorten gedetecteerd bij opstarten", 1, bkos.colors.textDim)
+    bkos.drawText(36, 74, n .. " poorten (" .. (herscan_gedaan and "net herscand" or "bij opstarten") .. ")", 1, bkos.colors.textDim)
 
     local hand_actief = (modus == "handmatig")
     bkos.fillRoundRect(406, 40, 360, 48, 8, hand_actief and bkos.color565(20, 60, 50) or bkos.colors.surface)
     bkos.drawText(426, 52, "HANDMATIG", 2, hand_actief and bkos.colors.green or bkos.colors.text)
     bkos.drawText(426, 74, "zelf een aantal opgeven", 1, bkos.colors.textDim)
 
-    if modus == "handmatig" then
-        bkos.drawText(16, 98, "Aantal poorten:", 1, bkos.colors.textDim)
+    if modus == "auto" then
+        bkos.drawText(16, 98, module_info_tekst(), 1, bkos.colors.textDim)
+        bkos.fillRoundRect(16, 114, 130, 42, 8, bkos.colors.surface)
+        bkos.drawText(34, 126, "HERSCAN", 1, bkos.colors.cyan)
+        bkos.drawText(156, 126, "handig als je nu een module", 1, bkos.colors.textDim)
+        bkos.drawText(156, 140, "bijsteekt of loskoppelt", 1, bkos.colors.textDim)
+    elseif modus == "handmatig" then
+        bkos.drawText(16, 98, "Aantal poorten (tik op het getal voor een toetsenbord):", 1, bkos.colors.textDim)
         bkos.fillRoundRect(16,  114, 46, 46, 8, bkos.colors.surface)
         bkos.drawText(32,  128, "-", 3, bkos.colors.cyan)
+        bkos.fillRoundRect(70, 114, 112, 46, 8, bkos.color565(20, 40, 55))
         bkos.drawText(82, 124, tostring(handmatig_aantal), 3, bkos.colors.text)
-        bkos.fillRoundRect(182, 114, 46, 46, 8, bkos.colors.surface)
-        bkos.drawText(198, 128, "+", 3, bkos.colors.cyan)
+        bkos.fillRoundRect(190, 114, 46, 46, 8, bkos.colors.surface)
+        bkos.drawText(206, 128, "+", 3, bkos.colors.cyan)
     end
 
     local start_mag = (modus == "handmatig") or (n > 0)
@@ -521,18 +622,31 @@ teken_keuze = function()
         bkos.drawText(304, start_y + 4,  "TERUG NAAR", 1, bkos.colors.cyan)
         bkos.drawText(304, start_y + 18, "LAATSTE TEST", 2, bkos.colors.cyan)
     end
+
+    if keypad_actief then teken_keypad() end
 end
 
 raak_keuze = function(x, y)
+    if keypad_actief then raak_keypad(x, y); return end
+
     if x >= 16 and x <= 376 and y >= 40 and y <= 88 then modus = "auto"; bkos.draw(); return end
     if x >= 406 and x <= 766 and y >= 40 and y <= 88 then modus = "handmatig"; bkos.draw(); return end
 
-    if modus == "handmatig" then
+    if modus == "auto" then
+        if x >= 16 and x <= 146 and y >= 114 and y <= 156 then
+            bkos.io.rescan()
+            herscan_gedaan = true
+            bkos.draw(); return
+        end
+    elseif modus == "handmatig" then
         if x >= 16 and x <= 62 and y >= 114 and y <= 160 then
             handmatig_aantal = math.max(1, handmatig_aantal - 1); bkos.draw(); return
         end
-        if x >= 182 and x <= 228 and y >= 114 and y <= 160 then
+        if x >= 190 and x <= 236 and y >= 114 and y <= 160 then
             handmatig_aantal = math.min(240, handmatig_aantal + 1); bkos.draw(); return
+        end
+        if x >= 70 and x <= 182 and y >= 114 and y <= 160 then
+            keypad_openen(); bkos.draw(); return
         end
     end
 

@@ -374,6 +374,34 @@ for i = 0, n - 1 do
 end
 ```
 
+#### `bkos.io.rescan()` → int
+
+Scant de aangesloten IO-modules opnieuw (ATtiny-handshake, ~0,5s, **blokkerend**) en geeft het nieuwe aantal kanalen terug — zelfde waarde als een volgende `bkos.io.count()`. Bedoeld voor een testbank-scenario waarin tijdens het testen zelf een module bijgestoken of losgekoppeld wordt, zonder het apparaat te herstarten. Gebruik dit niet in `bkos.update()` (elke 50ms) — alleen als reactie op een expliciete tik.
+
+```lua
+function bkos.touch(x, y)
+    if x < 100 and y < 40 then  -- "HERSCAN"-knop
+        local n = bkos.io.rescan()
+        bkos.drawText(10, 50, n .. " kanalen gevonden", 1, bkos.colors.text)
+    end
+end
+```
+
+#### `bkos.io.moduleCount()` → int
+
+Aantal gedetecteerde IO-modules (niet kanalen — één module heeft meestal 8 of 16 kanalen). Weerspiegelt de laatste detectie bij opstarten, of het resultaat van `bkos.io.rescan()`.
+
+#### `bkos.io.moduleType(moduleNr)` → string of nil
+
+Typenaam van module `moduleNr` (0-gebaseerd), bv. `"LOGICA8"`, `"HUB8"`, `"SCHAKEL16"`. `nil` als `moduleNr` buiten bereik valt.
+
+```lua
+local mc = bkos.io.moduleCount()
+for i = 0, mc - 1 do
+    bkos.drawText(10, 20 + i * 16, "Module " .. i .. ": " .. bkos.io.moduleType(i), 1, bkos.colors.text)
+end
+```
+
 ---
 
 #### Arduino-stijl IO aliassen
@@ -1000,6 +1028,13 @@ bkos.io.writeName(name, state)                — set output by name
 bkos.io.toggleName(name)                      — toggle all channels with name
 bkos.io.name(channelNr)          → string|nil  — name of channel by number
 bkos.io.count()                  → integer     — total number of channels
+bkos.io.rescan()                 → integer     — re-run module detection (ATtiny
+                                                  handshake, ~0.5s BLOCKING), returns
+                                                  new channel count. Call only on touch,
+                                                  never from bkos.update().
+bkos.io.moduleCount()            → integer     — number of detected IO modules
+bkos.io.moduleType(moduleNr)     → string|nil  — module type name, e.g. "LOGICA8",
+                                                  "HUB8", "SCHAKEL16" (0-based)
 
 -- Arduino-style aliases (in bkos table directly):
 bkos.digitalRead(port)           → boolean

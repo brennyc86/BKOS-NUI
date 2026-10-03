@@ -328,6 +328,31 @@ static int l_io_count(lua_State* ls) {
     return 1;
 }
 
+// Herscant de aangesloten IO-modules (ATtiny-handshake, ~0,5s, blokkerend) en
+// geeft het NIEUWE kanaalaantal terug — handig op een testbank waar iemand
+// tijdens het testen zelf een module bijsteekt of loskoppelt. Veilig tegen de
+// achtergrond-IO-taak (zie io_handmatige_herscan()); geeft het ONGEWIJZIGDE
+// aantal terug als de bus niet binnen 1s vrijkwam (zeer onwaarschijnlijk).
+static int l_io_rescan(lua_State* ls) {
+    io_handmatige_herscan();
+    lua_pushinteger(ls, io_zichtbaar());
+    return 1;
+}
+
+static int l_io_moduleCount(lua_State* ls) {
+    lua_pushinteger(ls, io_aparaten_cnt);
+    return 1;
+}
+
+static int l_io_moduleType(lua_State* ls) {
+    int i = (int)luaL_checkinteger(ls, 1);
+    if (i >= 0 && i < io_aparaten_cnt)
+        lua_pushstring(ls, io_module_naam(io_aparaten[i]));
+    else
+        lua_pushnil(ls);
+    return 1;
+}
+
 // ─── bkos.data ───────────────────────────────────────────────────────────────
 static int l_data_read(lua_State* ls) {
     const char* k = luaL_checkstring(ls, 1);
@@ -562,6 +587,9 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_toggleName); lua_setfield(ls, -2, "toggleName");
     lua_pushcfunction(ls, l_io_name);       lua_setfield(ls, -2, "name");
     lua_pushcfunction(ls, l_io_count);      lua_setfield(ls, -2, "count");
+    lua_pushcfunction(ls, l_io_rescan);      lua_setfield(ls, -2, "rescan");
+    lua_pushcfunction(ls, l_io_moduleCount); lua_setfield(ls, -2, "moduleCount");
+    lua_pushcfunction(ls, l_io_moduleType);  lua_setfield(ls, -2, "moduleType");
     lua_setfield(ls, -2, "io");
 
     // data tabel

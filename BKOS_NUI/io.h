@@ -26,6 +26,12 @@ void io_boot();
 void io_setup_taak();
 void io_bkoss_check();
 void io_detect();
+// Handmatige herscan tijdens bedrijf (bv. vanuit de Lua-sandbox, zie
+// bkos.io.rescan()) -- claimt io_actief net als io_cyclus() zelf, zodat de
+// gedeelde IO_SERIAL-bus niet tegelijk door de achtergrond-IO-taak gebruikt
+// wordt. Geeft false als de bus niet binnen 1s vrijkomt (dan is niets
+// aangepast). Zie io.ino voor de volledige toelichting.
+bool io_handmatige_herscan();
 // stil=true: input-array bijwerken zonder io_actie_uitvoeren/meldingen te
 // vuren — gebruikt voor de allereerste, "stille" inlezing vlak na opstarten
 // (zie io_boot_vaarmodus_bepalen()), zodat niets al netwerk/scherm aanraakt

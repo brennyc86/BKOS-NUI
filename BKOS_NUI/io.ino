@@ -105,6 +105,23 @@ void io_boot() {
     if (io_kanalen_cnt > 0) bkoss_actief = true;
 }
 
+// Zelfde als io_detect(), maar veilig aan te roepen terwijl het systeem al
+// normaal draait (de achtergrond-IO-taak op Core 0 kan op elk moment een
+// io_cyclus() starten die dezelfde gedeelde IO_SERIAL-bus gebruikt). Claimt
+// io_actief — exact de vlag die io_cyclus() zelf als reentrancy-guard
+// gebruikt — zodat de twee elkaar nooit interleaven. Wacht tot 1s op een
+// vrije bus; geeft daarna op (false) i.p.v. voor altijd te blokkeren.
+bool io_handmatige_herscan() {
+    unsigned long t0 = millis();
+    while (io_actief && millis() - t0 < 1000) vTaskDelay(pdMS_TO_TICKS(2));
+    if (io_actief) return false;
+    io_actief = true;
+    io_detect();
+    if (io_kanalen_cnt > 0) bkoss_actief = true;
+    io_actief = false;
+    return true;
+}
+
 // Opstart-vaarmodus a.d.h.v. actief ingangskanalen (zie io.h). Wordt in
 // hardware.ino aangeroepen ná een "stille" io_cyclus(true) — die heeft de
 // actuele ingangsstand net in io_input[] gezet zonder er al iets mee te doen

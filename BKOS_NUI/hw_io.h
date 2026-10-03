@@ -34,6 +34,27 @@ extern bool bkoss_actief;
 extern uint16_t io_heartbeat_aan;  // seconden, instelbaar
 extern uint16_t io_heartbeat_uit;  // seconden, instelbaar
 
+// IO-protocol-timing richting de ATtiny (BKOSS), alleen zinvol op S3/CYD
+// (IO_SERIAL/UART-brug) — op WROOM/Pico (eigen HC-shiftregisters) bestaan
+// deze niet, zie io_tune_punten() die daar 0 teruggeeft. Runtime instelbaar
+// en persistent (zie hw_io_cfg_laden/opslaan), bedoeld om vanuit de
+// poorttest-app (bkos.io.*Timing*, zie lua_runtime.cpp) stap voor stap
+// omlaag/omhoog getest te kunnen worden i.p.v. telkens een nieuwe firmware-
+// build nodig te hebben.
+#define IO_TUNE_PCK_STD 60  // ms, initiele wachttijd vóór de outputbits-burst
+#define IO_TUNE_SCK_STD 16  // ms, pacing tussen elk verzonden outputbit
+extern uint16_t io_tune_pck_ms;
+extern uint16_t io_tune_sck_ms;
+int  io_tune_punten();                    // 2 op S3/CYD, 0 elders
+const char* io_tune_label(int punt);      // 1-gebaseerd; nullptr buiten bereik
+uint16_t io_tune_lees(int punt);
+void io_tune_zet(int punt, uint16_t ms);  // klemt + persisteert (hw_io_cfg_opslaan)
+// Zelfde klem/toepas-logica maar ZONDER te persisteren -- voor de delay-test
+// in de poorttest-app, die tijdens het zoeken naar een stabiele waarde
+// honderden tussenstappen kan doorlopen (elke stap persisteren zou de flash
+// onnodig slijten); alleen de uiteindelijk gekozen waarde gaat via io_tune_zet().
+void io_tune_zet_tijdelijk(int punt, uint16_t ms);
+
 // Kanaal namen conventies
 #define NAAM_PREFIX_LICHT   "**L_"    // extern licht
 #define NAAM_PREFIX_INT_WIT "**IL_wit"

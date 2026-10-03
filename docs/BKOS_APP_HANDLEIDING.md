@@ -415,6 +415,31 @@ for i = 0, bkos.io.count() - 1 do
 end
 ```
 
+#### IO-protocoltiming (laag-niveau, alleen voor een delay-calibratie-app)
+
+Deze API is specifiek gebouwd voor de "IO Poorttest"-app se delay-test en is voor
+bijna geen andere app relevant. Alleen zinvol op S3/CYD (ATtiny-UART-brug) —
+op WROOM/Pico (eigen HC-shiftregisters) bestaan deze instelbare punten niet en
+geeft `timingPoints()` `0` terug.
+
+- `bkos.io.timingPoints()` → int — aantal instelbare timingpunten (2 op S3/CYD, 0 elders).
+- `bkos.io.timingLabel(punt)` → string of nil — mensleesbare naam van punt `1`/`2` (1-gebaseerd).
+- `bkos.io.getTiming(punt)` → int — huidige waarde in ms.
+- `bkos.io.setTiming(punt, ms)` — zet EN persisteert (schrijft naar flash). Gebruik dit
+  alleen voor de uiteindelijk gekozen waarde, niet voor tussenstappen tijdens een test.
+- `bkos.io.setTimingTijdelijk(punt, ms)` — zet ZONDER te persisteren. Bedoeld voor een
+  calibratielus die veel tussenwaarden uitprobeert (persisteren bij elke stap zou de
+  flash onnodig slijten); de waarde geldt meteen voor de lopende IO-cyclus, maar is na
+  een herstart weer de laatst persistente stand.
+
+```lua
+if bkos.io.timingPoints() > 0 then
+    bkos.io.setTimingTijdelijk(1, 10)   -- tussenstap tijdens een test, niet persistent
+    -- ... na het vinden van een betrouwbare waarde:
+    bkos.io.setTiming(1, 10)            -- definitief, persistent
+end
+```
+
 ---
 
 #### Arduino-stijl IO aliassen
@@ -1050,6 +1075,13 @@ bkos.io.moduleType(moduleNr)     → string|nil  — module type name, e.g. "LOG
                                                   "HUB8", "SCHAKEL16" (0-based)
 bkos.io.moduleOf(channelNr)      → integer|nil  — 0-based module index containing
                                                   this channel
+bkos.io.timingPoints()           → integer     — tunable IO-protocol timing points
+                                                  (2 on S3/CYD, 0 elsewhere)
+bkos.io.timingLabel(point)       → string|nil  — human label for point (1-based)
+bkos.io.getTiming(point)         → integer     — current value in ms
+bkos.io.setTiming(point, ms)                  — set AND persist (flash write)
+bkos.io.setTimingTijdelijk(point, ms)         — set WITHOUT persisting (for
+                                                  calibration-loop intermediate steps)
 
 -- Arduino-style aliases (in bkos table directly):
 bkos.digitalRead(port)           → boolean

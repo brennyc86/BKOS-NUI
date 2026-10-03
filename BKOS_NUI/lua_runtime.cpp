@@ -365,6 +365,46 @@ static int l_io_moduleOf(lua_State* ls) {
     return 1;
 }
 
+// IO-protocol-timing (alleen zinvol op S3/CYD, zie io_tune_punten()) --
+// bedoeld voor een zelf-calibrerende "delay test" in de poorttest-app: 1
+// (initiele wacht, parallelle-klok-equivalent) en 2 (per-bit pacing,
+// seriele-klok-equivalent). setTiming() klemt en persisteert meteen.
+static int l_io_timingPoints(lua_State* ls) {
+    lua_pushinteger(ls, io_tune_punten());
+    return 1;
+}
+
+static int l_io_timingLabel(lua_State* ls) {
+    int punt = (int)luaL_checkinteger(ls, 1);
+    const char* lbl = io_tune_label(punt);
+    if (lbl) lua_pushstring(ls, lbl);
+    else     lua_pushnil(ls);
+    return 1;
+}
+
+static int l_io_getTiming(lua_State* ls) {
+    int punt = (int)luaL_checkinteger(ls, 1);
+    lua_pushinteger(ls, io_tune_lees(punt));
+    return 1;
+}
+
+static int l_io_setTiming(lua_State* ls) {
+    int punt = (int)luaL_checkinteger(ls, 1);
+    int ms   = (int)luaL_checkinteger(ls, 2);
+    io_tune_zet(punt, (uint16_t)max(0, ms));
+    return 0;
+}
+
+// Niet-persisterende variant -- voor de delay-test-tussenstappen (zie
+// io_tune_zet_tijdelijk() in hw_io.ino); de uiteindelijk gekozen waarde gaat
+// via het gewone setTiming() (bkos.io.setTiming), dat wel persisteert.
+static int l_io_setTimingTijdelijk(lua_State* ls) {
+    int punt = (int)luaL_checkinteger(ls, 1);
+    int ms   = (int)luaL_checkinteger(ls, 2);
+    io_tune_zet_tijdelijk(punt, (uint16_t)max(0, ms));
+    return 0;
+}
+
 // ─── bkos.data ───────────────────────────────────────────────────────────────
 static int l_data_read(lua_State* ls) {
     const char* k = luaL_checkstring(ls, 1);
@@ -603,6 +643,11 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_moduleCount); lua_setfield(ls, -2, "moduleCount");
     lua_pushcfunction(ls, l_io_moduleType);  lua_setfield(ls, -2, "moduleType");
     lua_pushcfunction(ls, l_io_moduleOf);    lua_setfield(ls, -2, "moduleOf");
+    lua_pushcfunction(ls, l_io_timingPoints); lua_setfield(ls, -2, "timingPoints");
+    lua_pushcfunction(ls, l_io_timingLabel);  lua_setfield(ls, -2, "timingLabel");
+    lua_pushcfunction(ls, l_io_getTiming);    lua_setfield(ls, -2, "getTiming");
+    lua_pushcfunction(ls, l_io_setTiming);    lua_setfield(ls, -2, "setTiming");
+    lua_pushcfunction(ls, l_io_setTimingTijdelijk); lua_setfield(ls, -2, "setTimingTijdelijk");
     lua_setfield(ls, -2, "io");
 
     // data tabel

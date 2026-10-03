@@ -14,20 +14,12 @@
 byte licht_cfg_idx = 0;
 bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=rood, wit anders) — voor UI
 
-// Pacing tussen elk verzonden output-bit-teken naar de ATtiny (BKOSS) over
-// IO_SERIAL — zie io_cyclus() voor de volledige analyse. De ATtiny verwerkt
-// elk teken via een pollinglus (~7ms/teken); zonder deze pacing verstuurt de
-// ESP32 sneller dan de ATtiny's kleine UART-ontvangbuffer kan afvoeren, wat
-// bij genoeg kanalen bytes laat verdwijnen/verschuiven — zichtbaar als een
-// kort knipperend kanaal dat de volgende cyclus zichzelf herstelt. Opnieuw
-// toegepast op uitdrukkelijk verzoek van Brendan (2026-10-03): een eerdere
-// poging (0.2.260927.1) werd teruggedraaid omdat **IL_wit toen erger leek te
-// knipperen, maar een los, zwaarder symptoom (module 3 — TV + lampen, kabels
-// van 10m, bevestigd dat het aan BKOS-NUI ligt door de stroom eraf te halen)
-// bleek bij hem vroeger juist WEL stabiel met een grotere ESP32-kant delay.
-// Verder opgehoogd (2026-10-04, 8ms->16ms) op Brendans verzoek: "nog wat meer
-// delay invoegen" na het testen van 0.2.261003.3/.4.
-#define IO_BIT_PACE_MS 16
+// IO-protocol-timing richting de ATtiny (BKOSS) — zie io_tune_pck_ms/
+// io_tune_sck_ms (hw_io.h/.ino), nu runtime instelbaar en persistent i.p.v.
+// hardcoded, zodat de poorttest-app (bkos.io.*Timing*) stap voor stap een
+// betrouwbare waarde kan opzoeken zonder telkens een nieuwe firmwarebuild.
+// Zie io_cyclus() hieronder voor de volledige analyse van WAAROM dit nodig
+// is (ATtiny's eigen ~30ms parallelle-klok-puls + ~7ms/teken pollinglus).
 
 volatile bool io_direct_aanvraag = false;
 volatile bool io_staat_gewijzigd = false;
@@ -372,24 +364,22 @@ void io_cyclus(bool stil) {
     IO_SERIAL.print("IO\n");
     IO_SERIAL.flush();
     // De ATtiny (BKOSS) doet vóór hij ook maar één bit leest eerst een eigen
-    // parallelle-klok-puls (3× p_delay=10ms ≈ 30ms) — deze wachttijd moet dat
-    // ruim overtreffen, anders begint onze burst al te versturen vóórdat de
-    // ATtiny start met lezen (zie IO_BIT_PACE_MS hieronder voor het vervolg
-    // van deze analyse). Verder opgehoogd (2026-10-04, 40ms->60ms) samen met
-    // IO_BIT_PACE_MS, op Brendans verzoek.
-    delay(60);
+    // parallelle-klok-puls (3× p_delay=10ms ≈ 30ms) — deze wachttijd
+    // (io_tune_pck_ms) moet dat ruim overtreffen, anders begint onze burst al
+    // te versturen vóórdat de ATtiny start met lezen.
+    delay(io_tune_pck_ms);
     while (IO_SERIAL.available()) IO_SERIAL.read();
 
     // Stuur ALLE outputs in één keer (omgekeerde volgorde voor shift registers).
     // De ATtiny verwerkt pas per volledige module (8 bits) en stuurt dan de inputs
     // terug — bit-voor-bit interleaven geeft een 1-positie verschuiving.
-    // Gepaced via IO_BIT_PACE_MS (zie boven) om de ATtiny's UART-ontvangbuffer
-    // niet te laten overlopen.
+    // Gepaced via io_tune_sck_ms om de ATtiny's UART-ontvangbuffer niet te
+    // laten overlopen.
     for (int i = 0; i < n; i++) {
         // Ingangskanalen worden nooit aangestuurd (altijd '0')
         IO_SERIAL.print(io_drijf_hoog(n - 1 - i) ? '1' : '0');
         IO_SERIAL.flush();
-        delay(IO_BIT_PACE_MS);
+        delay(io_tune_sck_ms);
     }
 
     // Lees ALLE inputs nadat de ATtiny alle outputs heeft verwerkt
@@ -419,7 +409,7 @@ void io_cyclus(bool stil) {
     }
 
     IO_SERIAL.print('\n');
-    delay(60);
+    delay(io_tune_pck_ms);  // de ATtiny's afsluitende slag_pck() heeft dezelfde settle-tijd nodig
     while (IO_SERIAL.available()) IO_SERIAL.read();
 
     io_runned = true;

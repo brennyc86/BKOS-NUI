@@ -109,6 +109,39 @@ local ms_uit, pog_uit   = {}, {}
 local conclusie         = {}     -- weergavestatus: "rood"|"bliksem"|"wacht_groen"|"wacht_geel"|"wacht_oranje"|"ok"|"fout"  (kortsluiting staat los, zie kort_poorten[])
 local kort_poorten      = {}
 
+-- ─── Delaytest-staat ──────────────────────────────────────────────────────────
+-- Zelf-calibrerende timing-test (bkos.io.*Timing*, zie hw_io.h/.ino). Alleen
+-- zinvol op S3/CYD (ATtiny-UART-brug, 2 instelbare punten): 1 = initiele wacht
+-- vóór de outputbit-burst (ook de afsluitende settle-tijd vóór de parallelle-
+-- klok-latch -- blijft daarom in fase B vast) en 2 = per-bit pacing tussen elk
+-- verzonden outputbit (seriele-klok-equivalent). WROOM/Pico (eigen HC-
+-- shiftregisters) hebben hier 3 losse punten voor, maar bkos.io.timingPoints()
+-- geeft daar 0 terug -- de DELAY TEST-knop wordt dan al niet getoond.
+local DT_CYCLI_FILTER = 3     -- veiligheidsfilter: cycli alles-uit vóór de test
+local DT_CYCLI_TEST   = 5     -- bevestigingscycli per geteste delaywaarde
+local DT_STEP_MS      = 1
+local DT_MAX_MS       = 200   -- veiligheidsplafond fase A (voorkomt oneindig opbouwen)
+local DT_TIMEOUT_MS   = 4000  -- max wachttijd tot het patroon voor het eerst klopt
+
+local dt_fase          = "idle"    -- "idle"|"filter"|"fase_a"|"fase_b"|"klaar"
+local dt_sub           = "wachten" -- "wachten"|"bevestig" (gedeelde test-sub-machine)
+local dt_sub_start     = 0
+local dt_sub_confirm   = 0
+local dt_aantal        = 0
+local dt_kandidaten    = {}        -- poortnummers (1-based) die aangestuurd mogen worden
+local dt_uitgesloten   = {}        -- poortnummers herkend als ingang (nog AAN na de filter)
+local dt_filter_teller = 0
+local dt_omgekeerd     = false     -- patroon wisselt elke nieuwe poging
+local dt_huidige_ms    = 0
+local dt_basis_ms      = 0         -- fase A-resultaat: stabiele waarde voor beide punten
+local dt_laatste_stabiele_sck = 0
+local dt_resultaat_pck = 0
+local dt_resultaat_sck = 0
+local dt_orig_pck      = 0
+local dt_orig_sck      = 0
+local dt_melding       = ""
+local dt_toegepast     = ""        -- bv. "+25%" na een tik op een TOEPASSEN-knop
+
 -- ─── Forward declarations ────────────────────────────────────────────────────
 local nieuwe_stap, detail_volgende_na, ga_bevestigen, detail_update
 local conclusie_zet, verwachte_uit_set, controleer_kortsluiting
@@ -117,6 +150,7 @@ local snel_classificeer_poort, snel_classificeren, snel_update
 local teken_keuze, teken_scan, teken_rapport, teken_detail
 local raak_keuze, raak_scan, raak_rapport, raak_detail
 local categorieen_bepalen, rapport_tekst_kort
+local teken_delaytest, raak_delaytest, dt_update, dt_start
 
 -- ───────────────────────────────────────────────────────────────────────────────
 -- Kleuren (orange bestaat niet in bkos.colors.*, los samengesteld)
@@ -642,10 +676,16 @@ teken_keuze = function()
         bkos.drawText(16, start_y - 16, "Geen hardware gedetecteerd -- herstart het apparaat", 1, bkos.colors.amber)
     end
 
+    if bkos.io.timingPoints() > 0 then
+        bkos.fillRoundRect(286, start_y, 250, 50, 8, bkos.color565(60, 45, 20))
+        bkos.drawText(306, start_y + 8,  "DELAY TEST", 2, bkos.colors.amber)
+        bkos.drawText(306, start_y + 30, "IO-protocoltiming calibreren", 1, bkos.colors.textDim)
+    end
+
     if heeft_resultaat then
-        bkos.fillRoundRect(286, start_y, 280, 50, 8, bkos.color565(30, 50, 70))
-        bkos.drawText(304, start_y + 4,  "TERUG NAAR", 1, bkos.colors.cyan)
-        bkos.drawText(304, start_y + 18, "LAATSTE TEST", 2, bkos.colors.cyan)
+        bkos.fillRoundRect(556, start_y, 228, 50, 8, bkos.color565(30, 50, 70))
+        bkos.drawText(572, start_y + 4,  "TERUG NAAR", 1, bkos.colors.cyan)
+        bkos.drawText(572, start_y + 18, "LAATSTE TEST", 2, bkos.colors.cyan)
     end
 
     if keypad_actief then teken_keypad() end
@@ -684,7 +724,13 @@ raak_keuze = function(x, y)
         return
     end
 
-    if heeft_resultaat and x >= 286 and x <= 566 and y >= start_y and y <= start_y + 50 then
+    if bkos.io.timingPoints() > 0 and x >= 286 and x <= 536 and y >= start_y and y <= start_y + 50 then
+        dt_start()
+        bkos.draw()
+        return
+    end
+
+    if heeft_resultaat and x >= 556 and x <= 784 and y >= start_y and y <= start_y + 50 then
         scherm = "scan"
         bkos.draw()
     end
@@ -1060,6 +1106,330 @@ raak_detail = function(x, y)
 end
 
 -- ───────────────────────────────────────────────────────────────────────────────
+-- Scherm: DELAY TEST (zelf-calibrerende IO-protocoltiming)
+-- ───────────────────────────────────────────────────────────────────────────────
+
+local function dt_patroon_aan(poort, omgekeerd)
+    local even = (poort % 2 == 0)
+    if omgekeerd then even = not even end
+    return even
+end
+
+local function dt_patroon_schrijven(omgekeerd)
+    for _, p in ipairs(dt_kandidaten) do
+        bkos.io.write(p - 1, dt_patroon_aan(p, omgekeerd) and bkos.HIGH or bkos.LOW)
+    end
+end
+
+local function dt_patroon_klopt(omgekeerd)
+    for _, p in ipairs(dt_kandidaten) do
+        if bkos.io.read(p - 1) ~= dt_patroon_aan(p, omgekeerd) then return false end
+    end
+    return true
+end
+
+-- Start een test-poging op dt_huidige_ms. `punten` = welke timingpunten deze
+-- poging zet (fase A: {1,2} samen omhoog; fase B: {2} alleen -- punt 1 blijft
+-- op dt_basis_ms staan, zie dt_fase_b_start()). Niet-persisterend
+-- (setTimingTijdelijk) -- pas de uiteindelijke TOEPASSEN-knop persisteert.
+local function dt_test_start(ms, punten)
+    for _, punt in ipairs(punten) do
+        bkos.io.setTimingTijdelijk(punt, ms)
+    end
+    dt_omgekeerd = not dt_omgekeerd
+    dt_patroon_schrijven(dt_omgekeerd)
+    dt_sub         = "wachten"
+    dt_sub_start   = bkos.sys.millis()
+    dt_sub_confirm = 0
+end
+
+-- Eén poll-tick van de gedeelde test-sub-machine. Retourneert "stable",
+-- "unreliable" of nil (nog bezig).
+local function dt_test_poll()
+    local klopt = dt_patroon_klopt(dt_omgekeerd)
+    if dt_sub == "wachten" then
+        if klopt then
+            dt_sub = "bevestig"
+            dt_sub_confirm = 1
+            if dt_sub_confirm >= DT_CYCLI_TEST then return "stable" end
+        elseif bkos.sys.millis() - dt_sub_start > DT_TIMEOUT_MS then
+            return "unreliable"
+        end
+    elseif dt_sub == "bevestig" then
+        if klopt then
+            dt_sub_confirm = dt_sub_confirm + 1
+            if dt_sub_confirm >= DT_CYCLI_TEST then return "stable" end
+        else
+            return "unreliable"
+        end
+    end
+    return nil
+end
+
+local function dt_fase_a_update()
+    local resultaat = dt_test_poll()
+    if resultaat == nil then return end
+
+    if resultaat == "stable" then
+        dt_basis_ms = dt_huidige_ms
+        dt_laatste_stabiele_sck = dt_huidige_ms
+        dt_fase = "fase_b"
+        dt_test_start(dt_huidige_ms, {2})
+        return
+    end
+
+    -- onbetrouwbaar: ALLE punten uniform 1ms omhoog, opnieuw proberen
+    dt_huidige_ms = dt_huidige_ms + DT_STEP_MS
+    if dt_huidige_ms > DT_MAX_MS then
+        dt_melding = "Geen stabiele waarde gevonden tot " .. DT_MAX_MS .. "ms -- controleer de bedrading."
+        dt_fase = "klaar"
+        return
+    end
+    dt_test_start(dt_huidige_ms, {1, 2})
+end
+
+local function dt_fase_b_update()
+    local resultaat = dt_test_poll()
+    if resultaat == nil then return end
+
+    if resultaat == "stable" then
+        dt_laatste_stabiele_sck = dt_huidige_ms
+        if dt_huidige_ms <= 0 then
+            dt_resultaat_pck = dt_basis_ms
+            dt_resultaat_sck = 0
+            dt_fase = "klaar"
+            return
+        end
+        dt_huidige_ms = dt_huidige_ms - DT_STEP_MS
+        dt_test_start(dt_huidige_ms, {2})
+        return
+    end
+
+    -- onbetrouwbaar: 2 stappen terug vanaf de laatst bevestigde waarde (nooit
+    -- hoger dan de fase-A-basis), punt 1 blijft op de fase-A-basis staan
+    dt_resultaat_pck = dt_basis_ms
+    dt_resultaat_sck = math.min(dt_basis_ms, dt_laatste_stabiele_sck + 2 * DT_STEP_MS)
+    bkos.io.setTimingTijdelijk(1, dt_resultaat_pck)
+    bkos.io.setTimingTijdelijk(2, dt_resultaat_sck)
+    dt_fase = "klaar"
+end
+
+local function dt_filter_update()
+    dt_filter_teller = dt_filter_teller + 1
+    if dt_filter_teller < DT_CYCLI_FILTER then return end
+
+    local overgebleven = {}
+    for _, p in ipairs(dt_kandidaten) do
+        if bkos.io.read(p - 1) then
+            dt_uitgesloten[#dt_uitgesloten + 1] = p
+        else
+            overgebleven[#overgebleven + 1] = p
+        end
+    end
+    dt_kandidaten = overgebleven
+
+    if #dt_kandidaten == 0 then
+        dt_melding = "Geen enkele poort kon worden getest (allemaal als ingang herkend)."
+        dt_fase = "klaar"
+        return
+    end
+
+    dt_huidige_ms = 0
+    dt_fase = "fase_a"
+    dt_test_start(dt_huidige_ms, {1, 2})
+end
+
+dt_start = function()
+    dt_orig_pck = bkos.io.getTiming(1)
+    dt_orig_sck = bkos.io.getTiming(2)
+
+    dt_aantal = (modus == "handmatig") and handmatig_aantal or bkos.io.count()
+    if dt_aantal < 1 then dt_aantal = 1 end
+    if dt_aantal > 240 then dt_aantal = 240 end
+
+    dt_kandidaten  = {}
+    dt_uitgesloten = {}
+    for p = 1, dt_aantal do
+        dt_kandidaten[#dt_kandidaten + 1] = p
+        bkos.io.write(p - 1, bkos.LOW)
+    end
+    dt_filter_teller = 0
+    dt_melding       = ""
+    dt_toegepast     = ""
+    dt_omgekeerd     = false
+    dt_fase          = "filter"
+    scherm           = "delaytest"
+end
+
+local function dt_stoppen(herstel_timing)
+    for p = 1, dt_aantal do
+        bkos.io.write(p - 1, bkos.LOW)
+    end
+    if herstel_timing then
+        bkos.io.setTimingTijdelijk(1, dt_orig_pck)
+        bkos.io.setTimingTijdelijk(2, dt_orig_sck)
+    end
+    dt_fase = "idle"
+    scherm  = "keuze"
+end
+
+local function dt_lijst_tekst(t)
+    if #t == 0 then return "geen" end
+    local s = {}
+    for _, v in ipairs(t) do s[#s + 1] = tostring(v) end
+    return table.concat(s, ",")
+end
+
+local function dt_status_tekst()
+    if dt_fase == "filter" then
+        return "Veiligheidsfilter: cyclus " .. math.min(dt_filter_teller + 1, DT_CYCLI_FILTER) .. "/" .. DT_CYCLI_FILTER
+    end
+    if dt_fase == "fase_a" or dt_fase == "fase_b" then
+        local wat = (dt_sub == "wachten") and "Wachten op patroon..."
+            or ("Bevestigen (" .. dt_sub_confirm .. "/" .. DT_CYCLI_TEST .. ")")
+        return wat
+    end
+    return ""
+end
+
+-- Gedeeld tussen teken_delaytest() en raak_delaytest() -- voorkomt een
+-- "getekend hier, hittest daar"-mismatch (dit project is daar al meermaals
+-- door geraakt, zie CLAUDE.md-taakoverzicht). Alleen zinvol/aangeroepen in
+-- dt_fase == "klaar". `labels` ontbreekt (dus de buffer-knoppen) zodra er al
+-- getoepast is, of zodra er geen resultaat was (bv. de veiligheidsfilter liet
+-- niets over).
+local function dt_klaar_rects()
+    local y = 36
+    if dt_melding ~= "" then y = y + 20 end
+    y = y + 24  -- "Kandidaten: ..."-regel
+
+    local heeft_resultaat = (dt_resultaat_sck > 0 or dt_resultaat_pck > 0)
+    local rects = { labels = nil }
+    if heeft_resultaat then
+        y = y + 24  -- "Gevonden: ..."-regel
+        if dt_toegepast == "" then
+            y = y + 22  -- "Kies hoeveel buffer..."-regel
+            local bw, gap = 120, 12
+            local labels = { "0%", "+25%", "+50%", "+100%" }
+            rects.labels = labels
+            rects.knoppen = {}
+            for i, lbl in ipairs(labels) do
+                rects.knoppen[i] = { 16 + (i - 1) * (bw + gap), y, bw, 44, lbl }
+            end
+            y = y + 44 + 16
+        else
+            y = y + 24  -- "Toegepast en opgeslagen..."-regel
+        end
+    end
+    rects.terug = { 16, y, 160, 40 }
+    return rects
+end
+
+teken_delaytest = function()
+    bkos.fillScreen(bkos.colors.bg)
+    bkos.drawText(16, 2, "DELAY TEST -- IO-protocoltiming calibreren", 2, bkos.colors.amber)
+
+    bkos.fillRoundRect(bkos.W - 110, 0, 94, 30, 6, bkos.color565(60, 30, 30))
+    bkos.drawText(bkos.W - 96, 8, "ANNULEER", 1, bkos.colors.red)
+
+    local y = 36
+    if dt_melding ~= "" then
+        bkos.drawText(16, y, dt_melding, 1, bkos.colors.amber)
+        y = y + 20
+    end
+
+    bkos.drawText(16, y, "Kandidaten: " .. #dt_kandidaten .. "/" .. dt_aantal
+        .. " -- uitgesloten (ingang): " .. dt_lijst_tekst(dt_uitgesloten), 1, bkos.colors.textDim)
+    y = y + 24
+
+    if dt_fase == "filter" then
+        bkos.drawText(16, y, "Stap 1: alles uit zetten en controleren welke poort als ingang moet "
+            .. "worden behandeld.", 1, bkos.colors.text)
+        y = y + 20
+        bkos.drawText(16, y, dt_status_tekst(), 1, bkos.colors.cyan)
+
+    elseif dt_fase == "fase_a" then
+        bkos.drawText(16, y, "Fase A: uniform opbouwen (initiele wacht + per-bit pacing samen)", 1, bkos.colors.text)
+        y = y + 20
+        bkos.drawText(16, y, "Huidige waarde: " .. dt_huidige_ms .. "ms", 1, bkos.colors.cyan)
+        y = y + 18
+        bkos.drawText(16, y, dt_status_tekst(), 1, bkos.colors.textDim)
+
+    elseif dt_fase == "fase_b" then
+        bkos.drawText(16, y, "Fase B: verfijnen (per-bit pacing alleen -- initiele wacht blijft op "
+            .. dt_basis_ms .. "ms staan)", 1, bkos.colors.text)
+        y = y + 20
+        bkos.drawText(16, y, "Huidige waarde: " .. dt_huidige_ms .. "ms -- laatst bevestigd stabiel: "
+            .. dt_laatste_stabiele_sck .. "ms", 1, bkos.colors.cyan)
+        y = y + 18
+        bkos.drawText(16, y, dt_status_tekst(), 1, bkos.colors.textDim)
+
+    elseif dt_fase == "klaar" then
+        local r = dt_klaar_rects()
+        local heeft_resultaat = (dt_resultaat_sck > 0 or dt_resultaat_pck > 0)
+        if heeft_resultaat then
+            bkos.drawText(16, y, "Gevonden: initiele wacht = " .. dt_resultaat_pck
+                .. "ms, per-bit pacing = " .. dt_resultaat_sck .. "ms", 1, bkos.colors.green)
+            y = y + 24
+            if dt_toegepast ~= "" then
+                bkos.drawText(16, y, "Toegepast en opgeslagen (" .. dt_toegepast .. ").", 1, bkos.colors.green)
+            else
+                bkos.drawText(16, y, "Kies hoeveel buffer je erbovenop wilt -- dit persisteert direct:", 1, bkos.colors.textDim)
+                for _, k in ipairs(r.knoppen) do
+                    local bx, by, bw, bh, lbl = k[1], k[2], k[3], k[4], k[5]
+                    bkos.fillRoundRect(bx, by, bw, bh, 8, bkos.colors.green)
+                    bkos.drawText(bx + bw / 2 - 20, by + bh / 2 - 8, lbl, 2, bkos.color565(10, 20, 10))
+                end
+            end
+        end
+        local tx, ty, tw, th = r.terug[1], r.terug[2], r.terug[3], r.terug[4]
+        bkos.fillRoundRect(tx, ty, tw, th, 8, bkos.color565(30, 60, 80))
+        bkos.drawText(tx + 20, ty + 12, "TERUG", 1, bkos.colors.cyan)
+    end
+end
+
+raak_delaytest = function(x, y)
+    if x >= bkos.W - 110 and x <= bkos.W - 16 and y >= 0 and y <= 30 then
+        dt_stoppen(true)
+        bkos.draw()
+        return
+    end
+
+    if dt_fase ~= "klaar" then return end
+    local r = dt_klaar_rects()
+
+    if r.knoppen then
+        local pct = { 0, 0.25, 0.5, 1.0 }
+        for i, k in ipairs(r.knoppen) do
+            local bx, by, bw, bh = k[1], k[2], k[3], k[4]
+            if x >= bx and x <= bx + bw and y >= by and y <= by + bh then
+                local finale_pck = math.floor(dt_resultaat_pck * (1 + pct[i]) + 0.5)
+                local finale_sck = math.floor(dt_resultaat_sck * (1 + pct[i]) + 0.5)
+                bkos.io.setTiming(1, finale_pck)
+                bkos.io.setTiming(2, finale_sck)
+                dt_toegepast = r.labels[i] .. " (" .. finale_pck .. "/" .. finale_sck .. "ms)"
+                bkos.draw()
+                return
+            end
+        end
+    end
+
+    local tx, ty, tw, th = r.terug[1], r.terug[2], r.terug[3], r.terug[4]
+    if x >= tx and x <= tx + tw and y >= ty and y <= ty + th then
+        dt_stoppen(false)
+        bkos.draw()
+    end
+end
+
+dt_update = function()
+    if dt_fase == "filter" then dt_filter_update()
+    elseif dt_fase == "fase_a" then dt_fase_a_update()
+    elseif dt_fase == "fase_b" then dt_fase_b_update()
+    end
+    return true
+end
+
+-- ───────────────────────────────────────────────────────────────────────────────
 -- App callbacks
 -- ───────────────────────────────────────────────────────────────────────────────
 
@@ -1067,6 +1437,7 @@ function bkos.draw()
     if scherm == "keuze" then teken_keuze()
     elseif scherm == "rapport" then teken_rapport()
     elseif scherm == "detail" then teken_detail()
+    elseif scherm == "delaytest" then teken_delaytest()
     else teken_scan() end
 end
 
@@ -1074,10 +1445,15 @@ function bkos.touch(x, y)
     if scherm == "keuze" then raak_keuze(x, y)
     elseif scherm == "rapport" then raak_rapport(x, y)
     elseif scherm == "detail" then raak_detail(x, y)
+    elseif scherm == "delaytest" then raak_delaytest(x, y)
     else raak_scan(x, y) end
 end
 
 function bkos.update()
+    if scherm == "delaytest" then
+        if dt_update() then bkos.draw() end
+        return
+    end
     if scherm ~= "scan" then return end
     if fase == "idle" or fase == "klaar" then return end
 

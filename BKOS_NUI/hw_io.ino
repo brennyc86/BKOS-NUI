@@ -19,6 +19,40 @@ unsigned long io_gecheckt = 0;
 uint16_t io_heartbeat_aan = IO_HEARTBEAT_AAN_STD;
 uint16_t io_heartbeat_uit = IO_HEARTBEAT_UIT_STD;
 
+uint16_t io_tune_pck_ms = IO_TUNE_PCK_STD;
+uint16_t io_tune_sck_ms = IO_TUNE_SCK_STD;
+
+int io_tune_punten() {
+#if PLATFORM_PICO || PLATFORM_WROOM
+    return 0;  // eigen HC-shiftregisters, geen ATtiny-protocoltiming hier
+#else
+    return 2;
+#endif
+}
+
+const char* io_tune_label(int punt) {
+    if (punt == 1) return "Initiele wacht (parallelle klok)";
+    if (punt == 2) return "Per-bit pacing (seriele klok)";
+    return nullptr;
+}
+
+uint16_t io_tune_lees(int punt) {
+    if (punt == 1) return io_tune_pck_ms;
+    if (punt == 2) return io_tune_sck_ms;
+    return 0;
+}
+
+void io_tune_zet_tijdelijk(int punt, uint16_t ms) {
+    ms = (uint16_t)constrain(ms, 0, 2000);
+    if (punt == 1) io_tune_pck_ms = ms;
+    else if (punt == 2) io_tune_sck_ms = ms;
+}
+
+void io_tune_zet(int punt, uint16_t ms) {
+    io_tune_zet_tijdelijk(punt, ms);
+    hw_io_cfg_opslaan();
+}
+
 uint8_t io_richting[MAX_IO_KANALEN];
 uint8_t io_alert[MAX_IO_KANALEN];
 uint8_t io_actie_aan[MAX_IO_KANALEN];
@@ -115,6 +149,8 @@ void hw_io_cfg_laden() {
         if (lijn.startsWith("cfg:"))    { io_kanalen_cfg  = lijn.substring(4).toInt(); continue; }
         if (lijn.startsWith("hb_aan:")) { io_heartbeat_aan = (uint16_t)constrain(lijn.substring(7).toInt(), 10, 600); continue; }
         if (lijn.startsWith("hb_uit:")) { io_heartbeat_uit = (uint16_t)constrain(lijn.substring(7).toInt(), 30, 600); continue; }
+        if (lijn.startsWith("io_pck:")) { io_tune_pck_ms = (uint16_t)constrain(lijn.substring(7).toInt(), 0, 2000); continue; }
+        if (lijn.startsWith("io_sck:")) { io_tune_sck_ms = (uint16_t)constrain(lijn.substring(7).toInt(), 0, 2000); continue; }
         // formaat: idx:richting:alert:actie_aan:actie_uit:param:boot_gedrag:boot_waarde:min_niveau:huis:vaar
         // (ontbrekende velden in oudere bestanden — v[] blijft dan 0, wat na
         // de constrain()/default hieronder netjes uitkomt op IO_BOOT_UIT resp.
@@ -173,6 +209,8 @@ void hw_io_cfg_opslaan() {
     if (io_kanalen_cfg > 0) f.printf("cfg:%d\n", io_kanalen_cfg);
     f.printf("hb_aan:%d\n", io_heartbeat_aan);
     f.printf("hb_uit:%d\n", io_heartbeat_uit);
+    f.printf("io_pck:%d\n", io_tune_pck_ms);
+    f.printf("io_sck:%d\n", io_tune_sck_ms);
     for (int i = 0; i < MAX_IO_KANALEN; i++) {
         uint8_t niveau_i = io_min_niveau ? io_min_niveau[i] : NIVEAU_GAST;
         bool huis_i = io_huispaneel && io_huispaneel[i];

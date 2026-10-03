@@ -114,17 +114,17 @@
   {
     "id": "poorttest",
     "naam": "IO Poorttest",
-    "versie": "1.1.0",
+    "versie": "1.2.0",
     "auteur": "Claude",
     "beschrijving": "Test fysieke IO-poorten rechtstreeks, los van namen/richting-configuratie.",
     "scherm_b": 800,
     "scherm_h": 480,
     "vervangt": -1,
     "api_versie": 1,
-    "grootte_kb": 42,
+    "grootte_kb": 41,
     "actief": true,
-    "volledig_scherm": true,
-    "toon_header": false,
-    "icoon": ""
+    "volledig_scherm": false,
+    "toon_header": true,
+    "icoon": "poorttest"
   }
 ]

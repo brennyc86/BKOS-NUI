@@ -25,7 +25,9 @@ bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=roo
 // knipperen, maar een los, zwaarder symptoom (module 3 — TV + lampen, kabels
 // van 10m, bevestigd dat het aan BKOS-NUI ligt door de stroom eraf te halen)
 // bleek bij hem vroeger juist WEL stabiel met een grotere ESP32-kant delay.
-#define IO_BIT_PACE_MS 8
+// Verder opgehoogd (2026-10-04, 8ms->16ms) op Brendans verzoek: "nog wat meer
+// delay invoegen" na het testen van 0.2.261003.3/.4.
+#define IO_BIT_PACE_MS 16
 
 volatile bool io_direct_aanvraag = false;
 volatile bool io_staat_gewijzigd = false;
@@ -373,8 +375,9 @@ void io_cyclus(bool stil) {
     // parallelle-klok-puls (3× p_delay=10ms ≈ 30ms) — deze wachttijd moet dat
     // ruim overtreffen, anders begint onze burst al te versturen vóórdat de
     // ATtiny start met lezen (zie IO_BIT_PACE_MS hieronder voor het vervolg
-    // van deze analyse).
-    delay(40);
+    // van deze analyse). Verder opgehoogd (2026-10-04, 40ms->60ms) samen met
+    // IO_BIT_PACE_MS, op Brendans verzoek.
+    delay(60);
     while (IO_SERIAL.available()) IO_SERIAL.read();
 
     // Stuur ALLE outputs in één keer (omgekeerde volgorde voor shift registers).
@@ -1384,13 +1387,11 @@ static void _module_letter(int idx, char* buf, size_t buflen) {
     buf[w] = '\0';
 }
 
-// Weergavelabel voor een kanaal: letter per module (A, B, C...) + nummer
-// binnen de module vanaf 1 (A1..A8, B1..B8, ...; A1..A16 bij een 16-kanaals
-// module). Kanalen die alleen via io_kanalen_cfg (handmatige override) zichtbaar
-// zijn — dus voorbij de laatst gedetecteerde module — worden als opeenvolgende
-// virtuele 8-kanaals modules genummerd; dat is de gebruikelijke modulegrootte.
-void io_kanaal_label(int kanaal, char* buf, size_t buflen) {
-    if (kanaal < 0) { if (buflen) buf[0] = '\0'; return; }
+// Geeft de module-index (0-gebaseerd) terug waarin `kanaal` valt, en zet
+// (indien niet-nullptr) *rest_uit op de positie binnen die module (0-gebaseerd).
+// Zelfde virtuele-8-kanaals-modules-fallback als io_kanaal_label() voorbij de
+// laatst gedetecteerde module.
+static int _io_kanaal_module_intern(int kanaal, int* rest_uit) {
     int rest       = kanaal;
     int module_idx = 0;
     for (;;) {
@@ -1403,6 +1404,28 @@ void io_kanaal_label(int kanaal, char* buf, size_t buflen) {
         rest -= grootte;
         module_idx++;
     }
+    if (rest_uit) *rest_uit = rest;
+    return module_idx;
+}
+
+// Publieke versie — ook gebruikt door de Lua-binding bkos.io.moduleOf() (zie
+// task "IO-controle alleen binnen 1 module relevant"): de kortsluitingscheck
+// in de poorttest-app moet alleen poorten binnen dezelfde module als kandidaat
+// zien, niet overal op het hele systeem.
+int io_kanaal_module(int kanaal) {
+    if (kanaal < 0) return -1;
+    return _io_kanaal_module_intern(kanaal, nullptr);
+}
+
+// Weergavelabel voor een kanaal: letter per module (A, B, C...) + nummer
+// binnen de module vanaf 1 (A1..A8, B1..B8, ...; A1..A16 bij een 16-kanaals
+// module). Kanalen die alleen via io_kanalen_cfg (handmatige override) zichtbaar
+// zijn — dus voorbij de laatst gedetecteerde module — worden als opeenvolgende
+// virtuele 8-kanaals modules genummerd; dat is de gebruikelijke modulegrootte.
+void io_kanaal_label(int kanaal, char* buf, size_t buflen) {
+    if (kanaal < 0) { if (buflen) buf[0] = '\0'; return; }
+    int rest;
+    int module_idx = _io_kanaal_module_intern(kanaal, &rest);
     char letter[6];
     _module_letter(module_idx, letter, sizeof(letter));
     snprintf(buf, buflen, "%s%d", letter, rest + 1);

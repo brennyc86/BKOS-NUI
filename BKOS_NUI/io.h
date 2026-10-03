@@ -120,3 +120,4 @@ bool  io_attiny_slaap_ondersteund();   // true als de gedetecteerde ATtiny-firmw
 int         io_zichtbaar();
 const char* io_module_naam(byte id);
 void        io_kanaal_label(int kanaal, char* buf, size_t buflen);  // "A1", "B16", ...
+int         io_kanaal_module(int kanaal);  // 0-gebaseerde module-index, of -1

@@ -402,6 +402,19 @@ for i = 0, mc - 1 do
 end
 ```
 
+#### `bkos.io.moduleOf(channelNr)` → int of nil
+
+Geeft de 0-gebaseerde module-index terug waarin kanaal `channelNr` (0-gebaseerd) valt — `nil` als `channelNr` ongeldig is. Handig om een check te beperken tot kanalen binnen dezelfde fysieke module (bv. een kortsluitingscheck: op het hele systeem controleren geeft valse positieven als de IO-timing zelf al instabiel is).
+
+```lua
+local mijn_module = bkos.io.moduleOf(5)
+for i = 0, bkos.io.count() - 1 do
+    if i ~= 5 and bkos.io.moduleOf(i) == mijn_module and bkos.io.read(i) then
+        -- kanaal i zit in dezelfde module als 5 en staat aan
+    end
+end
+```
+
 ---
 
 #### Arduino-stijl IO aliassen
@@ -1035,6 +1048,8 @@ bkos.io.rescan()                 → integer     — re-run module detection (AT
 bkos.io.moduleCount()            → integer     — number of detected IO modules
 bkos.io.moduleType(moduleNr)     → string|nil  — module type name, e.g. "LOGICA8",
                                                   "HUB8", "SCHAKEL16" (0-based)
+bkos.io.moduleOf(channelNr)      → integer|nil  — 0-based module index containing
+                                                  this channel
 
 -- Arduino-style aliases (in bkos table directly):
 bkos.digitalRead(port)           → boolean

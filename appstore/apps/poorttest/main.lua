@@ -106,7 +106,7 @@ local huidige_idx       = 0       -- index van aan_poort in `te_testen`
 -- resultaten, 1-gebaseerd per poort
 local ms_aan, pog_aan   = {}, {}
 local ms_uit, pog_uit   = {}, {}
-local conclusie         = {}     -- weergavestatus: "rood"|"bliksem"|"wacht_groen"|"wacht_geel"|"wacht_oranje"|"ok"|"fout"|"kort"
+local conclusie         = {}     -- weergavestatus: "rood"|"bliksem"|"wacht_groen"|"wacht_geel"|"wacht_oranje"|"ok"|"fout"  (kortsluiting staat los, zie kort_poorten[])
 local kort_poorten      = {}
 
 -- ─── Forward declarations ────────────────────────────────────────────────────
@@ -246,18 +246,37 @@ end
 
 conclusie_zet = function(poort, nieuw)
     local huidig = conclusie[poort] or ""
-    if huidig == "fout" then return end
-    if nieuw == "fout" then conclusie[poort] = "fout"; return end
-    if huidig == "kort" and nieuw == "ok" then return end
+    if huidig == "fout" then return end  -- fout wint altijd
     conclusie[poort] = nieuw
 end
 
--- Alle poorten die tijdens deze stap NIET AAN mogen zijn -- bliksem-poorten
+-- Alle poorten die tijdens deze stap NIET AAN mogen zijn, BEPERKT tot
+-- dezelfde module(s) als de poort(en) die nu actief getest worden -- een
+-- kortsluiting is per definitie iets binnen één module (gedeelde
+-- schuifregisterketen); op het hele systeem controleren gaf valse
+-- positieven die eigenlijk de IO-timinginstabiliteit zelf waren (zie
+-- project_dram_overflow... nee: zie de module-3-TV-klacht). Bliksem-poorten
 -- (altijd aan, al verklaard) tellen nooit als kortsluitpartner.
 verwachte_uit_set = function()
+    local mod_uit = uit_poort and bkos.io.moduleOf(uit_poort - 1) or nil
+    local mod_aan = aan_poort and bkos.io.moduleOf(aan_poort - 1) or nil
+
+    -- Grensstap tussen 2 modules (uit_poort en aan_poort zitten elk in een
+    -- andere module, gebeurt precies 1x per moduleovergang): een eventuele
+    -- vondst kan dan niet eenduidig aan ÉÉN module toegeschreven worden --
+    -- liever helemaal geen kortsluitingscheck deze stap dan een foutieve
+    -- (mogelijk cross-module) toeschrijving. Diezelfde poorten komen in een
+    -- andere stap binnen hun eigen module nog aan de beurt.
+    if mod_uit and mod_aan and mod_uit ~= mod_aan then
+        return {}
+    end
+    local mod = mod_uit or mod_aan
+
     local t = {}
     for p = 1, aantal do
-        if p ~= aan_poort and snel_concl[p] ~= "bliksem" then t[p] = true end
+        if p ~= aan_poort and snel_concl[p] ~= "bliksem" and bkos.io.moduleOf(p - 1) == mod then
+            t[p] = true
+        end
     end
     return t
 end
@@ -342,6 +361,9 @@ detail_update = function()
         controleer_kortsluiting()
         confirm_teller = confirm_teller + 1
         if confirm_teller >= CONFIRM_CYCLI then
+            -- Kortsluiting staat los van de timing-conclusie (ok/fout) -- een
+            -- eigen kolom, zie teken_kolom() -- zodat beide resultaten
+            -- apart te zien zijn i.p.v. het één het ander te laten overschrijven.
             local lijst = nil
             if next(kort_set) ~= nil then
                 lijst = {}
@@ -349,12 +371,12 @@ detail_update = function()
                 table.sort(lijst)
             end
             if uit_poort then
-                if lijst then kort_poorten[uit_poort] = lijst; conclusie_zet(uit_poort, "kort")
-                else conclusie_zet(uit_poort, "ok") end
+                conclusie_zet(uit_poort, "ok")
+                if lijst then kort_poorten[uit_poort] = lijst end
             end
             if aan_poort then
-                if lijst then kort_poorten[aan_poort] = lijst; conclusie_zet(aan_poort, "kort")
-                else conclusie_zet(aan_poort, "ok") end
+                conclusie_zet(aan_poort, "ok")
+                if lijst then kort_poorten[aan_poort] = lijst end
             end
 
             if aan_poort == nil then
@@ -417,6 +439,8 @@ end
 -- Rapport
 -- ───────────────────────────────────────────────────────────────────────────────
 
+-- Kortsluiting staat los van de hoofdconclusie (ok/fout/rood/bliksem) -- een
+-- poort kan prima "ok" zijn EN toch een kortsluitpartner hebben.
 categorieen_bepalen = function()
     local goed, kapot, ingang = {}, {}, {}
     local kort_gezien = {}   -- "p<->q,r" strings, elke combinatie 1x
@@ -425,7 +449,8 @@ categorieen_bepalen = function()
         if c == "ok" then goed[#goed + 1] = p
         elseif c == "rood" or c == "fout" then kapot[#kapot + 1] = p
         elseif c == "bliksem" then ingang[#ingang + 1] = p
-        elseif c == "kort" and kort_poorten[p] then
+        end
+        if kort_poorten[p] then
             local partners = {}
             for _, q in ipairs(kort_poorten[p]) do partners[#partners + 1] = tostring(q) end
             kort_gezien[#kort_gezien + 1] = p .. "<->" .. table.concat(partners, ",")
@@ -687,7 +712,9 @@ status_tekst = function()
     return ""
 end
 
--- Tekent een klein conclusie-icoontje gecentreerd op (cx,cy).
+-- Tekent een klein conclusie-icoontje gecentreerd op (cx,cy). Zuiver de
+-- timing-classificatie (ok/fout/rood/bliksem/wacht_*) -- kortsluiting staat
+-- los, zie de eigen KORT-kolom in teken_kolom().
 local function conclusie_icoon(cx, cy, poort)
     local c = conclusie[poort] or ""
     if c == "" then
@@ -705,17 +732,6 @@ local function conclusie_icoon(cx, cy, poort)
     elseif c == "fout" or c == "rood" then
         bkos.drawLine(cx - 8, cy - 8, cx + 8, cy + 8, bkos.colors.red)
         bkos.drawLine(cx - 8, cy + 8, cx + 8, cy - 8, bkos.colors.red)
-    elseif c == "kort" then
-        bkos.drawFastVLine(cx - 10, cy - 9, 11, bkos.colors.amber)
-        bkos.fillCircle(cx - 10, cy + 6, 2, bkos.colors.amber)
-        local lijst = kort_poorten[poort]
-        local tekst = ""
-        if lijst then
-            for i, q in ipairs(lijst) do
-                tekst = tekst .. (i > 1 and "," or "") .. tostring(q)
-            end
-        end
-        bkos.drawText(cx, cy - 8, tekst, 1, bkos.colors.amber)
     elseif c == "bliksem" then
         -- eenvoudige bliksemschicht (2 lijnstukken, 2x getekend voor dikte)
         for d = 0, 1 do
@@ -733,12 +749,13 @@ local function conclusie_icoon(cx, cy, poort)
     end
 end
 
--- Tekent één kolomgroep (poort/aan/uit/status) voor poorten [van..tot].
+-- Tekent één kolomgroep (poort/aan/uit/status/kort) voor poorten [van..tot].
 local function teken_kolom(kol_x, van, tot)
-    bkos.drawText(kol_x + 6,   KOP_Y, "PRT",    1, bkos.colors.textDim)
-    bkos.drawText(kol_x + 44,  KOP_Y, "AAN",    1, bkos.colors.textDim)
-    bkos.drawText(kol_x + 190, KOP_Y, "UIT",    1, bkos.colors.textDim)
-    bkos.drawText(kol_x + 318, KOP_Y, "STAT",   1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 6,   KOP_Y, "PRT",  1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 34,  KOP_Y, "AAN",  1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 108, KOP_Y, "UIT",  1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 182, KOP_Y, "STAT", 1, bkos.colors.textDim)
+    bkos.drawText(kol_x + 210, KOP_Y, "KORT", 1, bkos.colors.textDim)
     bkos.drawFastHLine(kol_x, LIJN_Y, KOL_W - 8, bkos.color565(60, 70, 85))
 
     local rij_idx = 0
@@ -760,15 +777,24 @@ local function teken_kolom(kol_x, van, tot)
 
         local aan_txt, aan_kleur = "-", bkos.colors.text
         if ms_aan[p] == -1 then aan_txt = ">3000!"; aan_kleur = bkos.colors.red
-        elseif ms_aan[p] then aan_txt = ms_aan[p] .. "ms(" .. pog_aan[p] .. "x)" end
-        bkos.drawText(kol_x + 44, y + 5, aan_txt, 1, aan_kleur)
+        elseif ms_aan[p] then aan_txt = ms_aan[p] .. "ms" end
+        bkos.drawText(kol_x + 34, y + 5, aan_txt, 1, aan_kleur)
 
         local uit_txt, uit_kleur = "-", bkos.colors.text
         if ms_uit[p] == -1 then uit_txt = ">3000!"; uit_kleur = bkos.colors.red
-        elseif ms_uit[p] then uit_txt = ms_uit[p] .. "ms(" .. pog_uit[p] .. "x)" end
-        bkos.drawText(kol_x + 190, y + 5, uit_txt, 1, uit_kleur)
+        elseif ms_uit[p] then uit_txt = ms_uit[p] .. "ms" end
+        bkos.drawText(kol_x + 108, y + 5, uit_txt, 1, uit_kleur)
 
-        conclusie_icoon(kol_x + 318, y + math.floor(RIJ_H / 2), p)
+        conclusie_icoon(kol_x + 192, y + math.floor(RIJ_H / 2), p)
+
+        local kort_txt, kort_kleur = "-", bkos.colors.textDim
+        if kort_poorten[p] then
+            local delen = {}
+            for _, q in ipairs(kort_poorten[p]) do delen[#delen + 1] = tostring(q) end
+            kort_txt = table.concat(delen, ",")
+            kort_kleur = KLEUR_ORANJE
+        end
+        bkos.drawText(kol_x + 210, y + 5, kort_txt, 1, kort_kleur)
     end
 end
 
@@ -1004,16 +1030,20 @@ teken_detail = function()
         local concl_kleur = bkos.colors.textDim
         if c == "ok" then concl_txt = "GOED"; concl_kleur = bkos.colors.green
         elseif c == "fout" then concl_txt = "KAPOT (geen terugkoppeling)"; concl_kleur = bkos.colors.red
-        elseif c == "kort" then
-            local partners = kort_poorten[p]
-            local s = ""
-            if partners then
-                for i, q in ipairs(partners) do s = s .. (i > 1 and "," or "") .. tostring(q) end
-            end
-            concl_txt = "MOGELIJK VERBONDEN met poort " .. s
-            concl_kleur = KLEUR_ORANJE
         end
-        bkos.drawText(20, y, "Conclusie: " .. concl_txt, 1, concl_kleur)
+        bkos.drawText(20, y, "Conclusie: " .. concl_txt, 1, concl_kleur); y = y + 18
+
+        -- Kortsluiting staat los van de conclusie hierboven (binnen dezelfde
+        -- module, zie verwachte_uit_set()) -- een poort kan prima GOED zijn
+        -- en toch een kortsluitpartner hebben.
+        if kort_poorten[p] then
+            local partners = {}
+            for i, q in ipairs(kort_poorten[p]) do partners[#partners + 1] = tostring(q) end
+            bkos.drawText(20, y, "Kortsluiting: mogelijk verbonden met poort " .. table.concat(partners, ","),
+                1, KLEUR_ORANJE)
+        else
+            bkos.drawText(20, y, "Kortsluiting: geen gevonden (binnen dezelfde module)", 1, bkos.colors.textDim)
+        end
     end
 
     local voet_y = bkos.H - FOOTER_H

@@ -353,6 +353,18 @@ static int l_io_moduleType(lua_State* ls) {
     return 1;
 }
 
+// Welke module (0-gebaseerd) bevat kanaal `channelNr`? Nodig om een
+// kortsluitingscheck te kunnen beperken tot kanalen binnen DEZELFDE module
+// (zie bkos.io.moduleOf() in de handleiding) — op het hele systeem controleren
+// leverde valse positieven op door de IO-timinginstabiliteit zelf.
+static int l_io_moduleOf(lua_State* ls) {
+    int nr = (int)luaL_checkinteger(ls, 1);
+    int m  = io_kanaal_module(nr);
+    if (m < 0) lua_pushnil(ls);
+    else       lua_pushinteger(ls, m);
+    return 1;
+}
+
 // ─── bkos.data ───────────────────────────────────────────────────────────────
 static int l_data_read(lua_State* ls) {
     const char* k = luaL_checkstring(ls, 1);
@@ -590,6 +602,7 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_rescan);      lua_setfield(ls, -2, "rescan");
     lua_pushcfunction(ls, l_io_moduleCount); lua_setfield(ls, -2, "moduleCount");
     lua_pushcfunction(ls, l_io_moduleType);  lua_setfield(ls, -2, "moduleType");
+    lua_pushcfunction(ls, l_io_moduleOf);    lua_setfield(ls, -2, "moduleOf");
     lua_setfield(ls, -2, "io");
 
     // data tabel

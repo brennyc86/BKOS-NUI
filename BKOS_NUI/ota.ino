@@ -259,43 +259,66 @@ static void _ota_hotspot_hervatten() {
     if (_ota_hotspot_gepauzeerd) { _ota_hotspot_gepauzeerd = false; wifi_hotspot_starten(); }
 }
 
+// Zie _naar_jsdelivr() in app_manager.cpp voor dezelfde toelichting: een
+// blijvende "GitHub fout -1" ondanks bevestigd werkend WiFi/HTTPS (een
+// telefoon op hetzelfde netwerk kon de URL gewoon openen) wijst op iets
+// specifiek tussen dit apparaat se (bewust vastgezette, oudere) mbedTLS en
+// GitHub/Fastly se huidige TLS-configuratie -- jsdelivr spiegelt dezelfde
+// publieke repo via een andere CDN, als kosteloze fallback-poging.
+static String _naar_jsdelivr(const String& raw_url) {
+    const char* prefix = "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/";
+    if (!raw_url.startsWith(prefix)) return "";
+    String rest = raw_url.substring(strlen(prefix));
+    int slash = rest.indexOf('/');
+    if (slash < 0) return "";
+    String ref = rest.substring(0, slash);
+    String pad = rest.substring(slash);
+    return String("https://cdn.jsdelivr.net/gh/brennyc86/BKOS-NUI@") + ref + pad;
+}
+
 void ota_git_check() {
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
     _ota_hotspot_pauzeren();
     _ota_hotspot_settle();
-    const char* url = ota_beta_kanal ? OTA_GITHUB_VERSIE_URL : OTA_GITHUB_STABLE_VERSIE_URL;
+    String url_std = ota_beta_kanal ? OTA_GITHUB_VERSIE_URL : OTA_GITHUB_STABLE_VERSIE_URL;
 
     // Eigen WiFiClientSecure + setInsecure(), net als meteo http_get(). De
     // enkelvoudige http.begin(url) zette intern een TLS-client op die op dit
     // toestel "GitHub fout -1" (handshake mislukt) gaf, terwijl HTTPS naar
-    // open-meteo via dit patroon wél werkt. Eén retry bij een verbindingsfout.
+    // open-meteo via dit patroon wél werkt. Eén retry bij een verbindingsfout,
+    // en bij een blijvende verbindingsfout nog een poging via jsdelivr.
     int code = 0;
-    for (int poging = 0; poging < 2; poging++) {
-        WiFiClientSecure sc;
-        sc.setInsecure();
-        HTTPClient http;
+    bool geef_op = false;
+    String bronnen[2] = { url_std, _naar_jsdelivr(url_std) };
+    for (int bron = 0; bron < 2 && !geef_op; bron++) {
+        if (bronnen[bron].length() == 0) continue;
+        for (int poging = 0; poging < 2; poging++) {
+            WiFiClientSecure sc;
+            sc.setInsecure();
+            HTTPClient http;
 #if PLATFORM_ESP32
-        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+            http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 #endif
-        http.setTimeout(15000);
-        http.begin(sc, url);
-        http.useHTTP10(true);   // chunked transfer vermijden
-        code = http.GET();
-        if (code == HTTP_CODE_OK) {
-            ota_versie_github = http.getString();
-            ota_versie_github.trim();
+            http.setTimeout(15000);
+            http.begin(sc, bronnen[bron]);
+            http.useHTTP10(true);   // chunked transfer vermijden
+            code = http.GET();
+            if (code == HTTP_CODE_OK) {
+                ota_versie_github = http.getString();
+                ota_versie_github.trim();
+                http.end();
+                if (ota_versie_github == BKOS_NUI_VERSIE)
+                    ota_status_tekst = "Up to date (" + ota_versie_github + ")";
+                else
+                    ota_status_tekst = "Update beschikbaar: " + ota_versie_github;
+                _ota_hotspot_hervatten();
+                return;
+            }
             http.end();
-            if (ota_versie_github == BKOS_NUI_VERSIE)
-                ota_status_tekst = "Up to date (" + ota_versie_github + ")";
-            else
-                ota_status_tekst = "Update beschikbaar: " + ota_versie_github;
-            _ota_hotspot_hervatten();
-            return;
+            if (code > 0) { geef_op = true; break; }  // echte HTTP-fout (bv. 404): niet opnieuw proberen
+            delay(300);             // verbindingsfout (<0): nog één poging
         }
-        http.end();
-        if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
-        delay(300);             // verbindingsfout (<0): nog één poging
     }
     ota_status_tekst = "GitHub fout " + String(code);
     _ota_hotspot_hervatten();
@@ -336,18 +359,23 @@ void ota_laad_releases() {
     if (!wifi_verbonden) return;
     _ota_hotspot_pauzeren();
     _ota_hotspot_settle();
-    WiFiClientSecure sc;
-    sc.setInsecure();
-    HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(15000);
-    http.begin(sc, OTA_GITHUB_RELEASES_URL);
-    http.useHTTP10(true);
-    int code = http.GET();
-    if (code != HTTP_CODE_OK) { http.end(); _ota_hotspot_hervatten(); return; }
-    String json = http.getString();
-    http.end();
+    String json;
+    String bronnen[2] = { OTA_GITHUB_RELEASES_URL, _naar_jsdelivr(OTA_GITHUB_RELEASES_URL) };
+    for (int bron = 0; bron < 2 && json.length() == 0; bron++) {
+        if (bronnen[bron].length() == 0) continue;
+        WiFiClientSecure sc;
+        sc.setInsecure();
+        HTTPClient http;
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        http.setTimeout(15000);
+        http.begin(sc, bronnen[bron]);
+        http.useHTTP10(true);
+        int code = http.GET();
+        if (code == HTTP_CODE_OK) json = http.getString();
+        http.end();
+    }
     _ota_hotspot_hervatten();
+    if (json.length() == 0) return;
 
     int pos = 0;
     while (ota_releases_cnt < OTA_RELEASES_MAX) {

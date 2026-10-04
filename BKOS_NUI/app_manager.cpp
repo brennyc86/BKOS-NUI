@@ -285,6 +285,29 @@ static void _app_hotspot_settle() {
     delay(_app_hotspot_had_client ? 900 : 250);
 }
 
+// Brendan bleef "HTTP fout -1" krijgen bij zowel het laden van de winkelindex
+// als het downloaden van main.lua, ook na een herstart en met een bevestigd
+// werkend netwerk (een telefoon op hetzelfde netwerk kon raw.githubusercontent.com
+// gewoon openen; andere HTTPS vanaf dit apparaat, zoals meteo, werkte ook
+// prima) — wijst op iets specifiek tussen DIT apparaat se (oudere, bewust
+// vastgezette) mbedTLS en GitHub/Fastly se huidige TLS-configuratie, niet op
+// het netwerk of een timing-/geheugenprobleem. jsdelivr spiegelt elke
+// publieke GitHub-repo via een ANDERE CDN (vaak andere TLS-afhandeling) onder
+// exact hetzelfde pad — een kosteloze fallback-poging als de directe GitHub-
+// aanroep blijft falen. Kanttekening: jsdelivr cachet een branch-ref
+// (`@main`) enige tijd, dus een zojuist gepushte wijziging kan hier een paar
+// uur vertraagd doorkomen — alleen relevant als fallback, nooit de eerste poging.
+static String _naar_jsdelivr(const String& raw_url) {
+    const char* prefix = "https://raw.githubusercontent.com/brennyc86/BKOS-NUI/";
+    if (!raw_url.startsWith(prefix)) return "";
+    String rest = raw_url.substring(strlen(prefix));  // "<ref>/<pad...>"
+    int slash = rest.indexOf('/');
+    if (slash < 0) return "";
+    String ref = rest.substring(0, slash);
+    String pad = rest.substring(slash);               // begint met '/'
+    return String("https://cdn.jsdelivr.net/gh/brennyc86/BKOS-NUI@") + ref + pad;
+}
+
 void app_winkel_laden() {
     winkel_cnt    = 0;
     winkel_geladen = false;
@@ -309,26 +332,32 @@ void app_winkel_laden() {
     _app_hotspot_settle();
 
     // Retry-patroon als ota_git_check(): 2 herkansingen (3 pogingen totaal)
-    // bij een verbindingsfout (code<=0).
+    // bij een verbindingsfout (code<=0) -- en bij een blijvende
+    // verbindingsfout nog eens 3 pogingen via jsdelivr (zie _naar_jsdelivr()).
     int code = 0;
     JsonDocument doc;
     bool json_ok = false;
-    for (int poging = 0; poging < 3; poging++) {
-        WiFiClientSecure sc;
-        sc.setInsecure();
-        HTTPClient http;
-        http.begin(sc, APPSTORE_INDEX_URL);
-        http.useHTTP10(true);
-        http.setTimeout(15000);
-        code = http.GET();
-        if (code == 200) {
-            json_ok = (deserializeJson(doc, http.getStream()) == DeserializationError::Ok);
+    bool geef_op = false;
+    String bronnen[2] = { APPSTORE_INDEX_URL, _naar_jsdelivr(APPSTORE_INDEX_URL) };
+    for (int bron = 0; bron < 2 && !json_ok && !geef_op; bron++) {
+        if (bronnen[bron].length() == 0) continue;
+        for (int poging = 0; poging < 3; poging++) {
+            WiFiClientSecure sc;
+            sc.setInsecure();
+            HTTPClient http;
+            http.begin(sc, bronnen[bron]);
+            http.useHTTP10(true);
+            http.setTimeout(15000);
+            code = http.GET();
+            if (code == 200) {
+                json_ok = (deserializeJson(doc, http.getStream()) == DeserializationError::Ok);
+                http.end();
+                break;
+            }
             http.end();
-            break;
+            if (code > 0) { geef_op = true; break; }  // echte HTTP-fout (bv. 404): niet opnieuw proberen
+            delay(300);             // verbindingsfout (<0): nog een poging
         }
-        http.end();
-        if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
-        delay(300);             // verbindingsfout (<0): nog een poging
     }
     wifi_ota_modus = false;
     _app_hotspot_hervatten();
@@ -412,27 +441,33 @@ static void _installeer_taak(void* param) {
     _app_hotspot_settle();  // zie app_winkel_laden() / _app_hotspot_had_client
 
     // Zelfde retry-patroon als ota_git_check()/app_winkel_laden(): 2
-    // herkansingen (3 pogingen totaal) bij een verbindingsfout (code<=0).
+    // herkansingen (3 pogingen totaal) bij een verbindingsfout (code<=0) --
+    // en bij een blijvende verbindingsfout nog eens 3 pogingen via jsdelivr.
     int code = 0;
     String inhoud;
-    for (int poging = 0; poging < 3; poging++) {
-        WiFiClientSecure sc;
-        sc.setInsecure();
-        HTTPClient http;
-        http.begin(sc, lua_url);
-        http.useHTTP10(true);
-        http.setTimeout(20000);
-        code = http.GET();
-        if (code == 200) {
-            // getString() buffert het volledige antwoord — veilig voor kleine Lua-scripts
-            inhoud = http.getString();
+    bool geef_op = false;
+    String bronnen[2] = { lua_url, _naar_jsdelivr(lua_url) };
+    for (int bron = 0; bron < 2 && inhoud.length() == 0 && !geef_op; bron++) {
+        if (bronnen[bron].length() == 0) continue;
+        for (int poging = 0; poging < 3; poging++) {
+            WiFiClientSecure sc;
+            sc.setInsecure();
+            HTTPClient http;
+            http.begin(sc, bronnen[bron]);
+            http.useHTTP10(true);
+            http.setTimeout(20000);
+            code = http.GET();
+            if (code == 200) {
+                // getString() buffert het volledige antwoord — veilig voor kleine Lua-scripts
+                inhoud = http.getString();
+                http.end();
+                break;
+            }
             http.end();
-            break;
+            if (code > 0) { geef_op = true; break; }  // echte HTTP-fout (bv. 404): niet opnieuw proberen
+            if (_ins_geannuleerd_afhandelen(true)) { vTaskDelete(NULL); return; }
+            delay(300);             // verbindingsfout (<0): nog één poging
         }
-        http.end();
-        if (code > 0) break;    // echte HTTP-fout (bv. 404): niet opnieuw proberen
-        if (_ins_geannuleerd_afhandelen(true)) { vTaskDelete(NULL); return; }
-        delay(300);             // verbindingsfout (<0): nog één poging
     }
     wifi_ota_modus = false;  // download klaar, netwerk_taak mag weer beheren
     _app_hotspot_hervatten();

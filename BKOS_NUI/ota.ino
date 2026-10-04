@@ -235,8 +235,25 @@ static void _ota_wacht_wifi() {
 // is een lage-risico manier om dit te toetsen zonder de hotspot's
 // standaard-aan-gedrag verder te veranderen.
 static bool _ota_hotspot_gepauzeerd = false;
+// Had de hotspot een verbonden station (telefoon/laptop op de webapp) op het
+// moment van pauzeren? Dat kost de radio duidelijk meer tijd om tot rust te
+// komen dan een kale AP zonder stations (deauth + eigen reassociatiepogingen
+// van die client) — ontbrak hier tot nu toe volledig (zie
+// _ota_hotspot_settle(); app_manager.cpp's appstore-downloads hadden al een
+// vaste 250ms-wachttijd, bevestigd te kort gebleken bij een verbonden
+// station tijdens een mislukte app-update — exact dezelfde oorzaak geldt hier).
+static bool _ota_hotspot_had_client = false;
 static void _ota_hotspot_pauzeren() {
-    if (wifi_hotspot_actief()) { _ota_hotspot_gepauzeerd = true; wifi_hotspot_stoppen(); }
+    if (wifi_hotspot_actief()) {
+        _ota_hotspot_had_client = (WiFi.softAPgetStationNum() > 0);
+        _ota_hotspot_gepauzeerd = true;
+        wifi_hotspot_stoppen();
+    } else {
+        _ota_hotspot_had_client = false;
+    }
+}
+static void _ota_hotspot_settle() {
+    delay(_ota_hotspot_had_client ? 900 : 250);
 }
 static void _ota_hotspot_hervatten() {
     if (_ota_hotspot_gepauzeerd) { _ota_hotspot_gepauzeerd = false; wifi_hotspot_starten(); }
@@ -246,6 +263,7 @@ void ota_git_check() {
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
     _ota_hotspot_pauzeren();
+    _ota_hotspot_settle();
     const char* url = ota_beta_kanal ? OTA_GITHUB_VERSIE_URL : OTA_GITHUB_STABLE_VERSIE_URL;
 
     // Eigen WiFiClientSecure + setInsecure(), net als meteo http_get(). De
@@ -317,6 +335,7 @@ void ota_laad_releases() {
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
     _ota_hotspot_pauzeren();
+    _ota_hotspot_settle();
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;
@@ -375,6 +394,7 @@ bool ota_download_toepassen(String url) {
     return false;
 #else
     _ota_hotspot_pauzeren();
+    _ota_hotspot_settle();
     // Eigen WiFiClientSecure (zoals meteo) — blijft in scope tijdens de hele
     // streaming-download. Lost "fout -1" (TLS-handshake) bij OTA op.
     WiFiClientSecure sc;

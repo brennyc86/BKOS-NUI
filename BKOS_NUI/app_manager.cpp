@@ -260,11 +260,29 @@ void app_master_lijst_verwerken(const uint8_t* data, int len) {
 // voortgangsscherm bleven hangen — willekeurig welke, afhankelijk van of de
 // hotspot's radio net op dat moment de handshake verstoorde.
 static bool _app_hotspot_gepauzeerd = false;
+// Had de hotspot op het moment van pauzeren een verbonden station (telefoon/
+// laptop op de webapp)? Brendan bevestigde dit tijdens een mislukte update
+// (fout -1) — het afbreken van een ACTIEVE verbinding (deauth + de client die
+// zelf nog reassociatiepogingen doet) kost de radio aanzienlijk meer tijd om
+// tot rust te komen dan een kale AP zonder stations, waardoor de vaste 250ms-
+// wachttijd dan structureel te kort was. Zie _app_hotspot_settle().
+static bool _app_hotspot_had_client = false;
 static void _app_hotspot_pauzeren() {
-    if (wifi_hotspot_actief()) { _app_hotspot_gepauzeerd = true; wifi_hotspot_stoppen(); }
+    if (wifi_hotspot_actief()) {
+        _app_hotspot_had_client = (WiFi.softAPgetStationNum() > 0);
+        _app_hotspot_gepauzeerd = true;
+        wifi_hotspot_stoppen();
+    } else {
+        _app_hotspot_had_client = false;
+    }
 }
 static void _app_hotspot_hervatten() {
     if (_app_hotspot_gepauzeerd) { _app_hotspot_gepauzeerd = false; wifi_hotspot_starten(); }
+}
+// Settle-tijd ná het pauzeren, vóór de eerste HTTPS-poging — langer als er
+// een station verbonden was (zie toelichting bij _app_hotspot_had_client).
+static void _app_hotspot_settle() {
+    delay(_app_hotspot_had_client ? 900 : 250);
 }
 
 void app_winkel_laden() {
@@ -286,8 +304,9 @@ void app_winkel_laden() {
     // Settle-tijd: WiFi.mode() (in wifi_hotspot_stoppen()) schakelt de radio
     // van AP_STA naar STA, en die overgang is niet gegarandeerd al voltooid
     // op het moment dat de aanroep terugkeert. Zonder deze pauze faalde de
-    // allereerste HTTPS-poging na een hotspot-pauze soms nog steeds.
-    delay(250);
+    // allereerste HTTPS-poging na een hotspot-pauze soms nog steeds — en nog
+    // vaker/langer als er net een station verbonden was (_app_hotspot_settle()).
+    _app_hotspot_settle();
 
     // Retry-patroon als ota_git_check(): 2 herkansingen (3 pogingen totaal)
     // bij een verbindingsfout (code<=0).
@@ -390,7 +409,7 @@ static void _installeer_taak(void* param) {
     String lua_url = String("https://raw.githubusercontent.com/brennyc86/BKOS-NUI/main/appstore/apps/")
                      + wm.id + "/main.lua";
     _app_hotspot_pauzeren();
-    delay(250);  // settle-tijd AP_STA->STA-overgang, zie app_winkel_laden()
+    _app_hotspot_settle();  // zie app_winkel_laden() / _app_hotspot_had_client
 
     // Zelfde retry-patroon als ota_git_check()/app_winkel_laden(): 2
     // herkansingen (3 pogingen totaal) bij een verbindingsfout (code<=0).

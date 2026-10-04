@@ -746,6 +746,7 @@ static void _callback(const char* naam, int argc, ...) {
     if (lua_pcall(L, argc, 0, 0) != LUA_OK) {
         const char* err = lua_tostring(L, -1);
         strncpy(lua_fout_tekst, err ? err : "unknown error", LUA_FOUT_LEN - 1);
+        lua_fout_tekst[LUA_FOUT_LEN - 1] = '\0';  // strncpy() terminator niet gegarandeerd als err >= buffer
         lua_fout_actief = true;
         lua_pop(L, 1);
     }
@@ -865,6 +866,7 @@ bool lua_app_laden(int app_idx, bool sandbox) {
         lua_pcall(L, 0, 0, 0) != LUA_OK) {
         const char* err = lua_tostring(L, -1);
         strncpy(lua_fout_tekst, err ? err : "syntax error", LUA_FOUT_LEN - 1);
+        lua_fout_tekst[LUA_FOUT_LEN - 1] = '\0';
         lua_fout_actief = true;
         lua_pop(L, 1);
         return false;
@@ -958,6 +960,7 @@ void lua_app_run(int app_idx, int x, int y, bool aanraking) {
                 if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
                     const char* err = lua_tostring(L, -1);
                     strncpy(lua_fout_tekst, err ? err : "net callback error", LUA_FOUT_LEN - 1);
+                    lua_fout_tekst[LUA_FOUT_LEN - 1] = '\0';
                     lua_fout_actief = true;
                     lua_pop(L, 1);
                 }

@@ -518,14 +518,38 @@ static void _installeer_taak(void* param) {
     strncpy(app_ins_bericht, "Opslaan op SPIFFS...", sizeof(app_ins_bericht) - 1);
 
     _app_migreer_indien_nodig(wm.id);
-    File lf = SPIFFS.open(_lua_pad(wm.id), "w");
-    if (!lf) {
-        strncpy(app_ins_bericht, "SPIFFS: bestand niet te openen", sizeof(app_ins_bericht) - 1);
+    String lua_pad = _lua_pad(wm.id);
+
+    // Schrijf + direct terugleesverificatie, met één herkansing bij een
+    // mismatch. Dit project heeft al vaker gezien dat een SPIFFS-schrijving
+    // "slaagt" (geen fout van de API) maar de data op flash toch niet klopt
+    // (zie paneel_opslaan()/lamp_opslaan(), taak 213, hetzelfde patroon) --
+    // de lengte- en Lua-syntaxcontroles hiervoor valideren alleen de
+    // DOWNLOAD (het in-memory antwoord), niet of het wegschrijven naar flash
+    // zelf foutloos verloopt. Verklaart een gemeld, verder onverklaarbaar
+    // "unexpected symbol"-foutje op een kanttekening-regel die normaal
+    // nooit door Lua geparsed wordt: zo'n fout duidt op een handvol
+    // omgevallen bytes, niet op een echte inhoudelijke downloadfout.
+    bool schrijf_ok = false;
+    for (int poging = 0; poging < 2 && !schrijf_ok; poging++) {
+        File lf = SPIFFS.open(lua_pad, "w");
+        if (!lf) continue;
+        lf.print(inhoud);
+        lf.close();
+
+        File controle = SPIFFS.open(lua_pad, "r");
+        if (controle) {
+            String terug = controle.readString();
+            controle.close();
+            schrijf_ok = (terug == inhoud);
+        }
+    }
+    if (!schrijf_ok) {
+        SPIFFS.remove(lua_pad);  // halfbakken/corrupt bestand niet laten staan
+        strncpy(app_ins_bericht, "SPIFFS: schrijffout (terugleescontrole kwam niet overeen)", sizeof(app_ins_bericht) - 1);
         app_ins_status = APP_INS_MISLUKT;
         vTaskDelete(NULL); return;
     }
-    lf.print(inhoud);
-    lf.close();
 
     // Stap 4: Manifest opslaan
     int bestaand = app_vindt(wm.id);

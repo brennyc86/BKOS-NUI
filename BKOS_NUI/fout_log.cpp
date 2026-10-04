@@ -2,6 +2,7 @@
 #include "platform.h"
 #include "app_state.h"
 #include "ota.h"
+#include "screen_info.h"   // info_boot_naam() — "op naam van de boot", zie Lua bkos.fout.rapport()
 #include <Preferences.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -14,11 +15,21 @@ static unsigned long _laatste_ms = 0;
 static volatile bool _bezig      = false;
 
 #define FLOG_COOLDOWN 60000UL   // max 1 issue per minuut
+// Ruim bemeten voor een "compleet rapport" (bv. de IO-poorttest-app se
+// diagnosetekst) i.p.v. de oorspronkelijke korte eenregelige foutmeldingen —
+// heap-gealloceerd (zie _FlogPakket), dus dit kost alleen geheugen op het
+// moment dat er daadwerkelijk iets verstuurd wordt, niet permanent in BSS.
+#define FLOG_BERICHT_MAX 1536
+#define FLOG_CONTEXT_MAX 96
+// Grootst denkbare JSON-body: beide velden volledig geëscaped (worst-case 2x)
+// + het sjabloon/labels — zie _flog_taak(), nooit afhankelijk van de actuele
+// (kortere) strlen zodat snprintf() daar nooit tegenaan kan lopen.
+#define FLOG_BODY_MAX (FLOG_BERICHT_MAX * 2 + FLOG_CONTEXT_MAX * 2 + 800)
 
 struct _FlogPakket {
     FoutType type;
-    char     bericht[80];
-    char     context[80];
+    char*    bericht;   // heap, vrijgegeven aan het eind van _flog_taak()
+    char*    context;   // heap, idem
 };
 static _FlogPakket _pakket;
 
@@ -71,6 +82,31 @@ static const char* _type_naam(FoutType t) {
     }
 }
 
+// JSON-string-escape (dubbele quote, backslash, en de gebruikelijke
+// control-chars) — essentieel zodra `bericht` meerdere regels bevat (zoals
+// een IO-poorttest-diagnoserapport), wat de oorspronkelijke kale snprintf
+// ("%s" zonder escaping) stilletjes tot een ongeldige JSON-body zou maken.
+// Schrijft maximaal dst_len-1 bytes + terminator; kapt netjes af i.p.v. te
+// overschrijven als de geëscapete tekst niet past.
+static void _json_escape(const char* src, char* dst, size_t dst_len) {
+    if (dst_len == 0) return;
+    size_t o = 0;
+    for (size_t i = 0; src[i] != '\0' && o + 2 < dst_len; i++) {
+        unsigned char c = (unsigned char)src[i];
+        switch (c) {
+            case '"':  dst[o++] = '\\'; dst[o++] = '"';  break;
+            case '\\': dst[o++] = '\\'; dst[o++] = '\\'; break;
+            case '\n': dst[o++] = '\\'; dst[o++] = 'n';  break;
+            case '\r': break;  // genegeerd, \n alleen volstaat voor GitHub-markdown
+            case '\t': dst[o++] = '\\'; dst[o++] = 't';  break;
+            default:
+                if (c < 0x20) break;  // overige control-chars overslaan
+                dst[o++] = (char)c;
+        }
+    }
+    dst[o] = '\0';
+}
+
 static void _flog_taak(void* param) {
     _FlogPakket* p = (_FlogPakket*)param;
 
@@ -78,12 +114,18 @@ static void _flog_taak(void* param) {
     for (int i = 0; i < 30 && !wifi_verbonden; i++) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
-    if (!wifi_verbonden) { _bezig = false; vTaskDelete(NULL); return; }
+    if (!wifi_verbonden) {
+        free(p->bericht); free(p->context);
+        _bezig = false; vTaskDelete(NULL); return;
+    }
 
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;
-    if (!http.begin(sc, FOUT_LOG_API)) { _bezig = false; vTaskDelete(NULL); return; }
+    if (!http.begin(sc, FOUT_LOG_API)) {
+        free(p->bericht); free(p->context);
+        _bezig = false; vTaskDelete(NULL); return;
+    }
 
     http.setTimeout(15000);
     http.addHeader("Authorization",        String("Bearer ") + _token);
@@ -91,14 +133,32 @@ static void _flog_taak(void* param) {
     http.addHeader("Content-Type",         "application/json");
     http.addHeader("X-GitHub-Api-Version", "2022-11-28");
 
-    const char* tnaam  = _type_naam(p->type);
-    String      dev_id = _device_id();
+    const char* tnaam    = _type_naam(p->type);
+    String      dev_id   = _device_id();
+    const char* bootnaam = info_boot_naam();
+    if (!bootnaam || !bootnaam[0]) bootnaam = "(naam niet ingesteld)";
 
-    char body[1400];
-    snprintf(body, sizeof(body),
+    // Geëscapete kopieën (2x de bronlengte + marge: elk teken kan in het
+    // slechtste geval 2 bytes worden, zie _json_escape()).
+    char* bericht_esc = (char*)malloc(strlen(p->bericht) * 2 + 8);
+    char* context_esc = (char*)malloc(strlen(p->context) * 2 + 8);
+    char* titel_esc    = (char*)malloc(strlen(bootnaam) * 2 + 8);
+    char* body         = (char*)malloc(FLOG_BODY_MAX);
+    if (!bericht_esc || !context_esc || !titel_esc || !body) {
+        free(bericht_esc); free(context_esc); free(titel_esc); free(body);
+        free(p->bericht); free(p->context);
+        http.end();
+        _bezig = false; vTaskDelete(NULL); return;
+    }
+    _json_escape(p->bericht, bericht_esc, strlen(p->bericht) * 2 + 8);
+    _json_escape(p->context, context_esc, strlen(p->context) * 2 + 8);
+    _json_escape(bootnaam,   titel_esc,   strlen(bootnaam) * 2 + 8);
+
+    snprintf(body, FLOG_BODY_MAX,
         "{"
-          "\"title\":\"[BKOS] %s | v%s\","
-          "\"body\":\"## Fouttype\\n%s\\n\\n"
+          "\"title\":\"[BKOS] %s - %s | v%s\","
+          "\"body\":\"## Boot\\n%s\\n\\n"
+                    "## Fouttype\\n%s\\n\\n"
                     "## Bericht\\n%s\\n\\n"
                     "## Context\\n%s\\n\\n"
                     "## Apparaatinformatie\\n"
@@ -111,10 +171,11 @@ static void _flog_taak(void* param) {
                     "| Device ID | %s |\","
           "\"labels\":[\"automatisch\",\"onbeoordeeld\"]"
         "}",
-        tnaam, BKOS_NUI_VERSIE,
+        titel_esc, tnaam, BKOS_NUI_VERSIE,
+        titel_esc,
         tnaam,
-        p->bericht[0] ? p->bericht : "(geen)",
-        p->context[0] ? p->context : "(geen)",
+        bericht_esc[0] ? bericht_esc : "(geen)",
+        context_esc[0] ? context_esc : "(geen)",
         BKOS_NUI_VERSIE,
         millis() / 1000,
         (unsigned)PLATFORM_FREE_HEAP(),
@@ -125,23 +186,32 @@ static void _flog_taak(void* param) {
     http.POST(body);
     http.end();
 
+    free(bericht_esc); free(context_esc); free(titel_esc); free(body);
+    free(p->bericht); free(p->context);
     _bezig = false;
     vTaskDelete(NULL);
 }
 
-void fout_log_stuur(FoutType type, const char* bericht, const char* context) {
-    if (!fout_rapportage)           return;
-    if (!fout_log_token_aanwezig()) return;
-    if (_bezig)                     return;
-    if (millis() - _laatste_ms < FLOG_COOLDOWN) return;
+bool fout_log_stuur(FoutType type, const char* bericht, const char* context) {
+    if (!fout_rapportage)           return false;
+    if (!fout_log_token_aanwezig()) return false;
+    if (_bezig)                     return false;
+    if (millis() - _laatste_ms < FLOG_COOLDOWN) return false;
 
-    _laatste_ms  = millis();
-    _pakket.type = type;
-    strncpy(_pakket.bericht, bericht ? bericht : "", sizeof(_pakket.bericht) - 1);
-    _pakket.bericht[sizeof(_pakket.bericht) - 1] = '\0';
-    strncpy(_pakket.context, context ? context : "", sizeof(_pakket.context) - 1);
-    _pakket.context[sizeof(_pakket.context) - 1] = '\0';
+    size_t blen = bericht ? strnlen(bericht, FLOG_BERICHT_MAX - 1) : 0;
+    size_t clen = context ? strnlen(context, FLOG_CONTEXT_MAX - 1) : 0;
+    char* b = (char*)malloc(blen + 1);
+    char* c = (char*)malloc(clen + 1);
+    if (!b || !c) { free(b); free(c); return false; }
+    memcpy(b, bericht ? bericht : "", blen); b[blen] = '\0';
+    memcpy(c, context ? context : "", clen); c[clen] = '\0';
+
+    _laatste_ms    = millis();
+    _pakket.type    = type;
+    _pakket.bericht = b;
+    _pakket.context = c;
 
     _bezig = true;
     PLATFORM_TASK_CREATE(_flog_taak, "fout_log", 12288, &_pakket, 1, NULL);
+    return true;
 }

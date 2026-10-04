@@ -21,6 +21,12 @@ enum FoutType {
 extern bool fout_rapportage;   // privacy-schakelaar (opgeslagen in config)
 
 void fout_log_setup();         // laad token uit Preferences bij opstart
-void fout_log_stuur(FoutType type, const char* bericht, const char* context = "");
+// Retourneert true als het bericht daadwerkelijk in de wachtrij is gezet
+// (fire-and-forget — geen garantie dat de HTTP-POST ook slaagt). false als
+// foutrapportage uit staat, geen token is ingesteld, er al een verzending
+// loopt, of de cooldown (FLOG_COOLDOWN) nog niet verstreken is — handig voor
+// een aanroeper (bv. een Lua-app) om daarop een duidelijke melding te tonen
+// i.p.v. stil niets te laten gebeuren.
+bool fout_log_stuur(FoutType type, const char* bericht, const char* context = "");
 void fout_log_token_zet(const char* token);   // sla PAT op in Preferences
 bool fout_log_token_aanwezig();

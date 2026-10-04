@@ -9,6 +9,7 @@
 #include "bkos_net.h"
 #include "haven_achtergrond.h"
 #include "melding.h"
+#include "fout_log.h"
 
 bool  lua_fout_actief   = false;
 char  lua_fout_tekst[LUA_FOUT_LEN] = "";
@@ -566,6 +567,29 @@ static int l_melding_stuur(lua_State* ls) {
     return 0;
 }
 
+// ─── bkos.fout ───────────────────────────────────────────────────────────────
+// Diagnoserapport naar GitHub-issues (brennyc86/BKOS-NUI-logs) — bedoeld voor
+// een app (bv. de poorttest-app se "compleet rapport") om zonder enige
+// handmatige overtyperij ergens terecht te laten komen dat buiten het
+// apparaat zelf leesbaar is, op naam van de boot (fout_log.cpp voegt
+// info_boot_naam() + device-info er zelf aan toe). Twee voorwaarden-checks
+// apart beschikbaar zodat een app vooraf een duidelijke eigen melding kan
+// tonen i.p.v. een stille no-op bij een niet-geconfigureerd apparaat.
+static int l_fout_rapportageAan(lua_State* ls) {
+    lua_pushboolean(ls, fout_rapportage);
+    return 1;
+}
+static int l_fout_tokenAanwezig(lua_State* ls) {
+    lua_pushboolean(ls, fout_log_token_aanwezig());
+    return 1;
+}
+static int l_fout_rapport(lua_State* ls) {
+    const char* tekst   = luaL_checkstring(ls, 1);
+    const char* context = luaL_optstring(ls, 2, "");
+    lua_pushboolean(ls, fout_log_stuur(FOUT_IO, tekst, context));
+    return 1;
+}
+
 // ─── bkos tabel opbouwen ─────────────────────────────────────────────────────
 static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);  // bkos
@@ -694,6 +718,13 @@ static void lua_registreer_api(lua_State* ls) {
     lua_newtable(ls);
     lua_pushcfunction(ls, l_melding_stuur); lua_setfield(ls, -2, "stuur");
     lua_setfield(ls, -2, "melding");
+
+    // fout tabel
+    lua_newtable(ls);
+    lua_pushcfunction(ls, l_fout_rapportageAan); lua_setfield(ls, -2, "rapportageAan");
+    lua_pushcfunction(ls, l_fout_tokenAanwezig);  lua_setfield(ls, -2, "tokenAanwezig");
+    lua_pushcfunction(ls, l_fout_rapport);        lua_setfield(ls, -2, "rapport");
+    lua_setfield(ls, -2, "fout");
 
     lua_setglobal(ls, "bkos");
 }

@@ -631,6 +631,44 @@ function bkos.touch(x, y)
 end
 ```
 
+### 5.10 Diagnoserapport naar GitHub
+
+Bedoeld voor een "compleet rapport" dat de ontwikkelaar/beheerder kan lezen zonder
+dat de boot-eigenaar iets hoeft over te typen — het apparaat zelf post een GitHub-
+issue op `brennyc86/BKOS-NUI-logs`. De firmware voegt zelf bootnaam, firmwareversie,
+uptime, vrij geheugen en tijd toe (zie `fout_log.cpp`) — jouw tekst is alleen de
+app-specifieke inhoud.
+
+#### `bkos.fout.rapportageAan()` → bool
+Geeft terug of de gebruiker foutrapportage heeft ingeschakeld (CONFIG → WEERGAVE
+& ENERGIE → FOUTRAP). Check dit (en `tokenAanwezig()`) vóórdat je `rapport()`
+aanroept, zodat je een duidelijke eigen melding kunt tonen in plaats van een
+stille no-op.
+
+#### `bkos.fout.tokenAanwezig()` → bool
+Geeft terug of er een GitHub-token is ingesteld (CONFIG → TOKEN INSTELLEN).
+
+#### `bkos.fout.rapport(tekst, context)` → bool
+Zet `tekst` in de wachtrij als GitHub-issue (categorie IO). `context` is optioneel
+(bv. je app-naam of een subcategorie). Retourneert `true` als het bericht
+daadwerkelijk in de wachtrij is gezet — `false` als foutrapportage uit staat, geen
+token is ingesteld, er al een verzending loopt, of de cooldown (1 per minuut) nog
+niet verstreken is. Net als `bkos.melding.stuur()` is dit fire-and-forget: geen
+bevestiging van daadwerkelijke aflevering.
+
+**`tekst` mag hier wél meerdere regels lang zijn** (tot zo'n 1500 tekens) — dit is
+GEEN SMS-achtig kanaal zoals `bkos.melding.stuur()`, de firmware escaped `tekst`
+zelf correct voor de GitHub-API (inclusief newlines).
+
+```lua
+if bkos.fout.rapportageAan() and bkos.fout.tokenAanwezig() then
+    local tekst = "App X diagnose:\nKanaal 3: geen terugkoppeling\nKanaal 7: kortsluiting met 8"
+    local gelukt = bkos.fout.rapport(tekst, "App X")
+else
+    -- toon een eigen melding: "Zet FOUTRAP aan + stel een token in (CONFIG > WEERGAVE & ENERGIE)"
+end
+```
+
 ---
 
 ## 6. App Callbacks
@@ -1140,6 +1178,15 @@ bkos.melding.stuur(tekst)       — queue tekst as an "owner" notification (same
                                    Silent no-op if the user has notifications disabled.
                                    No delivery confirmation -- only queues it (6 slots).
                                    Keep tekst short: truncated at 140 chars.
+
+--- DIAGNOSTIC REPORTS (GitHub issues, write-only) ---
+bkos.fout.rapportageAan()      → boolean     — has the user enabled error reporting?
+bkos.fout.tokenAanwezig()      → boolean     — is a GitHub token configured?
+bkos.fout.rapport(tekst, ctx)  → boolean     — queue tekst (multi-line OK, ~1500 chars)
+                                   as a GitHub issue on brennyc86/BKOS-NUI-logs; ctx is
+                                   optional context (e.g. app name). Firmware appends
+                                   boat name + device info itself. Returns false if
+                                   reporting is disabled/no token/cooldown active.
 
 --- CALLBACKS (register as functions) ---
 bkos.draw   = function()        — redraw full screen

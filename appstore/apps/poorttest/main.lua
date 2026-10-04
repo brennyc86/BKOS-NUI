@@ -69,6 +69,11 @@ local scherm_voor_detail = "scan"
 local detail_poort      = nil
 
 local modus             = "auto"      -- "auto" | "handmatig"
+-- HANDMATIG werkt in 8-bit modules (Brendans wens: "2 modules" = 16 poorten),
+-- niet in losse poorten -- handmatig_aantal blijft de daadwerkelijk gebruikte
+-- waarde (overal elders ongewijzigd gelezen), telkens herberekend zodra
+-- handmatig_modules verandert, zie _handmatig_modules_toepassen().
+local handmatig_modules = 1
 local handmatig_aantal  = 8
 local aantal            = 0
 local scroll_offset     = 0
@@ -76,11 +81,17 @@ local scroll_offset     = 0
 local heeft_resultaat   = false       -- true zodra ooit gestart -> "TERUG NAAR TEST"-knop in keuze
 
 local herscan_gedaan    = false       -- true zodra AUTOMATISCH handmatig herscand is (i.p.v. alleen bij opstarten)
-local keypad_actief     = false       -- numeriek toetsenbord-overlay (handmatig aantal invoeren)
+local keypad_actief     = false       -- numeriek toetsenbord-overlay (handmatig modules / max-ms invoeren)
+local keypad_doel       = "modules"   -- "modules" | "maxms" -- welk veld dit keer bewerkt wordt
 local keypad_invoer     = ""
 
 local bericht_status    = ""          -- tijdelijke terugkoppeling na "APP NAAR EIGENAAR"
 local bericht_status_ms = 0
+
+local function handmatig_modules_toepassen()
+    handmatig_modules = math.max(1, math.min(30, handmatig_modules))
+    handmatig_aantal  = handmatig_modules * 8
+end
 
 -- ─── Sneltest-staat ───────────────────────────────────────────────────────────
 local snel_stap_idx     = 1
@@ -113,34 +124,63 @@ local kort_poorten      = {}
 -- Zelf-calibrerende timing-test (bkos.io.*Timing*, zie hw_io.h/.ino). Alleen
 -- zinvol op S3/CYD (ATtiny-UART-brug, 2 instelbare punten): 1 = initiele wacht
 -- vóór de outputbit-burst (ook de afsluitende settle-tijd vóór de parallelle-
--- klok-latch -- blijft daarom in fase B vast) en 2 = per-bit pacing tussen elk
--- verzonden outputbit (seriele-klok-equivalent). WROOM/Pico (eigen HC-
--- shiftregisters) hebben hier 3 losse punten voor, maar bkos.io.timingPoints()
--- geeft daar 0 terug -- de DELAY TEST-knop wordt dan al niet getoond.
-local DT_CYCLI_FILTER = 3     -- veiligheidsfilter: cycli alles-uit vóór de test
-local DT_CYCLI_TEST   = 5     -- bevestigingscycli per geteste delaywaarde
-local DT_STEP_MS      = 1
-local DT_MAX_MS       = 200   -- veiligheidsplafond fase A (voorkomt oneindig opbouwen)
-local DT_TIMEOUT_MS   = 4000  -- max wachttijd tot het patroon voor het eerst klopt
+-- klok-latch -- blijft daarom tijdens verfijnen vast) en 2 = per-bit pacing
+-- tussen elk verzonden outputbit (seriele-klok-equivalent). WROOM/Pico (eigen
+-- HC-shiftregisters) hebben hier 3 losse punten voor, maar
+-- bkos.io.timingPoints() geeft daar 0 terug -- de DELAY TEST-knop wordt dan
+-- al niet getoond.
+--
+-- Per-module voortgang (Brendans expliciete wens): een module die al
+-- bevestigd stabiel is bij de huidige/hogere waarde hoeft niet steeds opnieuw
+-- geschakeld te worden -- alleen de nog-niet-bevestigde modules blijven
+-- actief getest. Zodra er weer LAGER getest wordt dan een module se eigen
+-- laagst-bevestigde waarde, doet die module gewoon weer mee (kan niet zomaar
+-- aangenomen worden dat lager ook goed blijft). Na het verfijnen volgt
+-- altijd nog een losse eindcontrole met ALLE modules samen, ongeacht welke
+-- module de uiteindelijke bottleneck was.
+local DT_CYCLI_FILTER   = 3     -- veiligheidsfilter: cycli alles-uit vóór de test
+local DT_CYCLI_TEST     = 5     -- bevestigingscycli per geteste delaywaarde
+local DT_STEP_MS        = 1
+local DT_MAX_MS_STD     = 175   -- standaard veiligheidsplafond (zelf aan te passen)
+local DT_TIMEOUT_MS     = 4000  -- max wachttijd tot het patroon voor het eerst klopt
+local DT_EINDCTRL_MAX_POGINGEN = 5
 
-local dt_fase          = "idle"    -- "idle"|"filter"|"fase_a"|"fase_b"|"klaar"
-local dt_sub           = "wachten" -- "wachten"|"bevestig" (gedeelde test-sub-machine)
-local dt_sub_start     = 0
-local dt_sub_confirm   = 0
-local dt_aantal        = 0
-local dt_kandidaten    = {}        -- poortnummers (1-based) die aangestuurd mogen worden
-local dt_uitgesloten   = {}        -- poortnummers herkend als ingang (nog AAN na de filter)
-local dt_filter_teller = 0
-local dt_omgekeerd     = false     -- patroon wisselt elke nieuwe poging
-local dt_huidige_ms    = 0
-local dt_basis_ms      = 0         -- fase A-resultaat: stabiele waarde voor beide punten
+local dt_max_ms         = DT_MAX_MS_STD  -- geladen/opgeslagen via bkos.data, zie dt_start()
+
+local dt_fase           = "idle"    -- "idle"|"filter"|"klim"|"verfijn"|"eindcontrole"|"klaar"
+local dt_aantal         = 0
+local dt_kandidaten     = {}        -- poortnummers (1-based) die aangestuurd mogen worden
+local dt_uitgesloten    = {}        -- poortnummers herkend als ingang (nog AAN na de filter)
+local dt_filter_teller  = 0
+
+local dt_modules        = {}        -- gesorteerde unieke module-indices onder dt_kandidaten
+local dt_module_poorten = {}        -- module-index -> lijst van poortnummers
+local dt_module_vloer   = {}        -- module-index -> laagste ms waarbij ooit bevestigd stabiel (nil = nooit)
+
+-- Ronde-staat (gedeelde test-sub-machine, ziet er maar 1 per tick uit maar
+-- bestuurt alle nog-actieve modules gelijktijdig, zie dt_ronde_*())
+local dt_ronde_actief   = {}        -- module-index -> bool, nog actief DEZE ronde
+local dt_ronde_sub      = {}        -- module-index -> "wachten"|"bevestigen"
+local dt_ronde_confirm  = {}        -- module-index -> teller binnen "bevestigen"
+local dt_ronde_omgekeerd = false    -- patroon wisselt elke nieuwe ronde
+local dt_ronde_start_ms  = 0        -- bkos.sys.millis() bij de start van deze ronde
+
+local dt_huidige_sck    = 0         -- "actuele" drijvende waarde (klimmend/verfijnend)
+local dt_pck_offset     = 0         -- verschil pck-sck zoals aangetroffen bij het starten
+local dt_basis_pck      = 0         -- vastgezet zodra klimmen klaar is; blijft zo tijdens verfijnen
+local dt_basis_sck      = 0
 local dt_laatste_stabiele_sck = 0
-local dt_resultaat_pck = 0
-local dt_resultaat_sck = 0
-local dt_orig_pck      = 0
-local dt_orig_sck      = 0
-local dt_melding       = ""
-local dt_toegepast     = ""        -- bv. "+25%" na een tik op een TOEPASSEN-knop
+local dt_eindctrl_pogingen   = 0
+local dt_resultaat_pck  = 0
+local dt_resultaat_sck  = 0
+local dt_orig_pck       = 0
+local dt_orig_sck       = 0
+local dt_melding        = ""
+local dt_toegepast      = ""        -- bv. "+25%" na een tik op een TOEPASSEN-knop
+
+-- Direct bij het laden van de app (niet pas bij dt_start()) zodat de KEUZE-
+-- schermlabel "Max Xms" meteen klopt, ook vóór de eerste DELAY TEST-tik.
+dt_max_ms = bkos.data.readFloat("poorttest.max_ms", DT_MAX_MS_STD)
 
 -- ─── Forward declarations ────────────────────────────────────────────────────
 local nieuwe_stap, detail_volgende_na, ga_bevestigen, detail_update
@@ -149,7 +189,7 @@ local poort_bezig, status_tekst
 local snel_classificeer_poort, snel_classificeren, snel_update
 local teken_keuze, teken_scan, teken_rapport, teken_detail
 local raak_keuze, raak_scan, raak_rapport, raak_detail
-local categorieen_bepalen, rapport_tekst_kort
+local categorieen_bepalen, rapport_tekst_kort, rapport_tekst_compleet
 local teken_delaytest, raak_delaytest, dt_update, dt_start
 
 -- ───────────────────────────────────────────────────────────────────────────────
@@ -560,9 +600,19 @@ local function keypad_y()
     return math.max(0, math.floor((bkos.H - KEYPAD_H) / 2))
 end
 
-local function keypad_openen()
-    keypad_invoer = tostring(handmatig_aantal)
+local function keypad_openen(doel)
+    keypad_doel = doel
+    if doel == "maxms" then
+        keypad_invoer = tostring(math.floor(dt_max_ms))
+    else
+        keypad_invoer = tostring(handmatig_modules)
+    end
     keypad_actief = true
+end
+
+local function keypad_label()
+    if keypad_doel == "maxms" then return "Veiligheidsplafond in ms (10-2000):" end
+    return "Aantal 8-bit modules (1-30):"
 end
 
 local function teken_keypad()
@@ -570,7 +620,7 @@ local function teken_keypad()
     bkos.fillRoundRect(px, py, KEYPAD_W, KEYPAD_H, 10, bkos.colors.surface)
     bkos.drawRoundRect(px, py, KEYPAD_W, KEYPAD_H, 10, bkos.colors.cyan)
 
-    bkos.drawText(px + 16, py + 12, "Aantal poorten (1-240):", 1, bkos.colors.textDim)
+    bkos.drawText(px + 16, py + 12, keypad_label(), 1, bkos.colors.textDim)
     bkos.fillRoundRect(px + 16, py + 28, KEYPAD_W - 32, 36, 6, bkos.colors.bg)
     bkos.drawText(px + 28, py + 36, (keypad_invoer == "" and "0" or keypad_invoer), 2, bkos.colors.text)
 
@@ -603,11 +653,19 @@ local function raak_keypad(x, y)
             if t == "CLR" then
                 keypad_invoer = ""
             elseif t == "OK" then
-                local waarde = tonumber(keypad_invoer) or handmatig_aantal
-                handmatig_aantal = math.max(1, math.min(240, math.floor(waarde)))
+                if keypad_doel == "maxms" then
+                    local waarde = tonumber(keypad_invoer) or dt_max_ms
+                    dt_max_ms = math.max(10, math.min(2000, math.floor(waarde)))
+                    bkos.data.writeFloat("poorttest.max_ms", dt_max_ms)
+                else
+                    local waarde = tonumber(keypad_invoer) or handmatig_modules
+                    handmatig_modules = math.floor(waarde)
+                    handmatig_modules_toepassen()
+                end
                 keypad_actief = false
             else
-                if #keypad_invoer < 3 then keypad_invoer = keypad_invoer .. t end
+                local max_chars = (keypad_doel == "maxms") and 4 or 2
+                if #keypad_invoer < max_chars then keypad_invoer = keypad_invoer .. t end
             end
             bkos.draw()
             return
@@ -628,6 +686,34 @@ local function module_info_tekst()
     end
     local tekst = mc .. " module(s): " .. table.concat(types, ", ")
     if #tekst > 58 then tekst = tekst:sub(1, 55) .. "..." end
+    return tekst
+end
+
+-- Volledig diagnoserapport (voor bkos.fout.rapport() -- GitHub, geen SMS-
+-- lengtebeperking zoals rapport_tekst_kort(), dus iets uitgebreider: inclusief
+-- delay-testresultaat indien beschikbaar. De firmware voegt zelf nog
+-- bootnaam/device-info/tijd toe (zie fout_log.cpp) -- dit is alleen de
+-- app-specifieke inhoud.
+rapport_tekst_compleet = function()
+    local goed, kapot, ingang, kort = categorieen_bepalen()
+    local regels = {}
+    regels[#regels + 1] = "IO Poorttest -- " .. aantal .. " poorten getest ("
+        .. (modus == "auto" and "automatisch" or "handmatig") .. ")"
+    regels[#regels + 1] = "Modules: " .. module_info_tekst()
+    regels[#regels + 1] = "Goed: " .. lijst_tekst(goed)
+    regels[#regels + 1] = "Kapot: " .. lijst_tekst(kapot)
+    regels[#regels + 1] = "Mogelijk ingang: " .. lijst_tekst(ingang)
+    regels[#regels + 1] = "Kortsluiting: " .. (#kort > 0 and table.concat(kort, "; ") or "geen gevonden")
+
+    if dt_toegepast ~= "" then
+        regels[#regels + 1] = "Delay-test: toegepast " .. dt_toegepast
+    elseif dt_resultaat_pck > 0 or dt_resultaat_sck > 0 then
+        regels[#regels + 1] = "Delay-test: initiele wacht=" .. dt_resultaat_pck
+            .. "ms, per-bit=" .. dt_resultaat_sck .. "ms (nog niet toegepast)"
+    end
+
+    local tekst = table.concat(regels, "\n")
+    if #tekst > 1400 then tekst = tekst:sub(1, 1397) .. "..." end
     return tekst
 end
 
@@ -659,13 +745,14 @@ teken_keuze = function()
         bkos.drawText(156, 126, "handig als je nu een module", 1, bkos.colors.textDim)
         bkos.drawText(156, 140, "bijsteekt of loskoppelt", 1, bkos.colors.textDim)
     elseif modus == "handmatig" then
-        bkos.drawText(16, 98, "Aantal poorten (tik op het getal voor een toetsenbord):", 1, bkos.colors.textDim)
+        bkos.drawText(16, 98, "Aantal 8-bit modules (tik op het getal voor een toetsenbord):", 1, bkos.colors.textDim)
         bkos.fillRoundRect(16,  114, 46, 46, 8, bkos.colors.surface)
         bkos.drawText(32,  128, "-", 3, bkos.colors.cyan)
         bkos.fillRoundRect(70, 114, 112, 46, 8, bkos.color565(20, 40, 55))
-        bkos.drawText(82, 124, tostring(handmatig_aantal), 3, bkos.colors.text)
+        bkos.drawText(82, 122, tostring(handmatig_modules), 3, bkos.colors.text)
         bkos.fillRoundRect(190, 114, 46, 46, 8, bkos.colors.surface)
         bkos.drawText(206, 128, "+", 3, bkos.colors.cyan)
+        bkos.drawText(246, 128, "= " .. handmatig_aantal .. " poorten", 1, bkos.colors.textDim)
     end
 
     local start_mag = (modus == "handmatig") or (n > 0)
@@ -680,6 +767,9 @@ teken_keuze = function()
         bkos.fillRoundRect(286, start_y, 250, 50, 8, bkos.color565(60, 45, 20))
         bkos.drawText(306, start_y + 8,  "DELAY TEST", 2, bkos.colors.amber)
         bkos.drawText(306, start_y + 30, "IO-protocoltiming calibreren", 1, bkos.colors.textDim)
+
+        bkos.drawText(286, start_y - 16,
+            "Max " .. math.floor(dt_max_ms) .. "ms (tik om te wijzigen)", 1, bkos.colors.textDim)
     end
 
     if heeft_resultaat then
@@ -705,19 +795,26 @@ raak_keuze = function(x, y)
         end
     elseif modus == "handmatig" then
         if x >= 16 and x <= 62 and y >= 114 and y <= 160 then
-            handmatig_aantal = math.max(1, handmatig_aantal - 1); bkos.draw(); return
+            handmatig_modules = handmatig_modules - 1
+            handmatig_modules_toepassen(); bkos.draw(); return
         end
         if x >= 190 and x <= 236 and y >= 114 and y <= 160 then
-            handmatig_aantal = math.min(240, handmatig_aantal + 1); bkos.draw(); return
+            handmatig_modules = handmatig_modules + 1
+            handmatig_modules_toepassen(); bkos.draw(); return
         end
         if x >= 70 and x <= 182 and y >= 114 and y <= 160 then
-            keypad_openen(); bkos.draw(); return
+            keypad_openen("modules"); bkos.draw(); return
         end
     end
 
     local n = bkos.io.count()
     local start_mag = (modus == "handmatig") or (n > 0)
     local start_y = bkos.H - 58
+
+    if bkos.io.timingPoints() > 0 and x >= 286 and x <= 536 and y >= start_y - 20 and y <= start_y - 4 then
+        keypad_openen("maxms"); bkos.draw(); return
+    end
+
     if start_mag and x >= 16 and x <= 266 and y >= start_y and y <= start_y + 50 then
         start_scan()
         bkos.draw()
@@ -1010,24 +1107,42 @@ teken_rapport = function()
     end
 
     local voet_y = bkos.H - FOOTER_H
+    bkos.fillRoundRect(bkos.W - 480, voet_y + 4, 150, 32, 6, bkos.color565(30, 60, 80))
+    bkos.drawText(bkos.W - 460, voet_y + 14, "NAAR SCAN", 1, bkos.colors.cyan)
     bkos.fillRoundRect(bkos.W - 320, voet_y + 4, 150, 32, 6, bkos.color565(30, 60, 80))
-    bkos.drawText(bkos.W - 300, voet_y + 14, "NAAR SCAN", 1, bkos.colors.cyan)
-    bkos.fillRoundRect(bkos.W - 160, voet_y + 4, 140, 32, 6, bkos.color565(30, 60, 80))
-    bkos.drawText(bkos.W - 148, voet_y + 14, "APP EIGENAAR", 1, bkos.colors.cyan)
+    bkos.drawText(bkos.W - 300, voet_y + 14, "APP EIGENAAR", 1, bkos.colors.cyan)
+    bkos.fillRoundRect(bkos.W - 160, voet_y + 4, 140, 32, 6, bkos.color565(45, 35, 20))
+    bkos.drawText(bkos.W - 148, voet_y + 10, "DIAGNOSE", 1, bkos.colors.amber)
+    bkos.drawText(bkos.W - 148, voet_y + 20, "NAAR GITHUB", 1, bkos.colors.amber)
 
-    if bericht_status ~= "" and bkos.sys.millis() - bericht_status_ms < 4000 then
+    if bericht_status ~= "" and bkos.sys.millis() - bericht_status_ms < 5000 then
         bkos.drawText(16, bkos.H - 12, bericht_status, 1, bkos.colors.amber)
     end
 end
 
 raak_rapport = function(x, y)
     local voet_y = bkos.H - FOOTER_H
-    if x >= bkos.W - 320 and x <= bkos.W - 170 and y >= voet_y + 4 and y <= voet_y + 36 then
+    if x >= bkos.W - 480 and x <= bkos.W - 330 and y >= voet_y + 4 and y <= voet_y + 36 then
         scherm = "scan"; bkos.draw(); return
     end
-    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= voet_y + 4 and y <= voet_y + 36 then
+    if x >= bkos.W - 320 and x <= bkos.W - 170 and y >= voet_y + 4 and y <= voet_y + 36 then
         bkos.melding.stuur(rapport_tekst_kort())
         bericht_status    = "Bericht in wachtrij gezet voor de eigenaar."
+        bericht_status_ms = bkos.sys.millis()
+        bkos.draw(); return
+    end
+    -- DIAGNOSE NAAR GITHUB: een compleet rapport als GitHub-issue (brennyc86/
+    -- BKOS-NUI-logs), op naam van de boot, zonder dat er iets overgetypt moet
+    -- worden -- zie bkos.fout.rapport() (lua_runtime.cpp -> fout_log.cpp).
+    if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= voet_y + 4 and y <= voet_y + 36 then
+        if not bkos.fout.rapportageAan() or not bkos.fout.tokenAanwezig() then
+            bericht_status = "Zet FOUTRAP aan + stel een token in (CONFIG > WEERGAVE & ENERGIE)."
+        else
+            local gelukt = bkos.fout.rapport(rapport_tekst_compleet(), "IO Poorttest diagnoserapport")
+            bericht_status = gelukt
+                and "Rapport in de wachtrij gezet (verschijnt als GitHub-issue)."
+                or  "Nog niet verstuurd -- wacht een minuut (max. 1 rapport/minuut) en probeer opnieuw."
+        end
         bericht_status_ms = bkos.sys.millis()
         bkos.draw(); return
     end
@@ -1115,103 +1230,248 @@ local function dt_patroon_aan(poort, omgekeerd)
     return even
 end
 
-local function dt_patroon_schrijven(omgekeerd)
+-- Verdeelt dt_kandidaten over modules (bkos.io.moduleOf, 0-based) -- de kern
+-- van Brendans per-module-optimalisatie: een module die al bevestigd stabiel
+-- is hoeft niet elke ronde opnieuw geschakeld te worden. `-1` = onbekende
+-- module (zou niet moeten voorkomen, maar dan tenminste niet crashen).
+local function dt_modules_bepalen()
+    dt_modules, dt_module_poorten = {}, {}
     for _, p in ipairs(dt_kandidaten) do
-        bkos.io.write(p - 1, dt_patroon_aan(p, omgekeerd) and bkos.HIGH or bkos.LOW)
+        local m = bkos.io.moduleOf(p - 1)
+        if m == nil then m = -1 end
+        if not dt_module_poorten[m] then
+            dt_module_poorten[m] = {}
+            dt_modules[#dt_modules + 1] = m
+        end
+        dt_module_poorten[m][#dt_module_poorten[m] + 1] = p
+    end
+    table.sort(dt_modules)
+end
+
+local function dt_module_naam(m)
+    if m < 0 then return "Overig" end
+    return "Module " .. (m + 1)
+end
+
+-- Schrijft het afwisselende patroon naar de ACTIEVE modules; modules die niet
+-- (meer) actief zijn (al bevestigd stabiel, "rustend") worden simpelweg uit
+-- gezet -- dat is de enige praktische invulling van "ingesteld op wat de
+-- boordcomputer wil" die deze app kan geven zonder de echte, los
+-- geconfigureerde uitvoerstand te kennen; in elk geval stopt het onnodig
+-- heen-en-weer-schakelen van een module die zijn eigen antwoord al heeft.
+local function dt_patroon_schrijven_actief(actieve, omgekeerd)
+    for _, m in ipairs(dt_modules) do
+        if actieve[m] then
+            for _, p in ipairs(dt_module_poorten[m]) do
+                bkos.io.write(p - 1, dt_patroon_aan(p, omgekeerd) and bkos.HIGH or bkos.LOW)
+            end
+        else
+            for _, p in ipairs(dt_module_poorten[m]) do
+                bkos.io.write(p - 1, bkos.LOW)
+            end
+        end
     end
 end
 
-local function dt_patroon_klopt(omgekeerd)
-    for _, p in ipairs(dt_kandidaten) do
+local function dt_module_klopt(m, omgekeerd)
+    for _, p in ipairs(dt_module_poorten[m]) do
         if bkos.io.read(p - 1) ~= dt_patroon_aan(p, omgekeerd) then return false end
     end
     return true
 end
 
--- Start een test-poging op dt_huidige_ms. `punten` = welke timingpunten deze
--- poging zet (fase A: {1,2} samen omhoog; fase B: {2} alleen -- punt 1 blijft
--- op dt_basis_ms staan, zie dt_fase_b_start()). Niet-persisterend
--- (setTimingTijdelijk) -- pas de uiteindelijke TOEPASSEN-knop persisteert.
-local function dt_test_start(ms, punten)
-    for _, punt in ipairs(punten) do
+-- ─── Gedeelde "ronde" -- test een set modules gelijktijdig op (eventueel
+-- deels) nieuwe timingwaarden ────────────────────────────────────────────────
+-- `waarden` = { [1]=pck_ms, [2]=sck_ms } -- alleen de opgegeven punten worden
+-- gezet (klimmen zet beide, verfijnen/eindcontrole alleen wat nodig is).
+-- `actieve` = module-index -> true voor modules die deze ronde daadwerkelijk
+-- geschakeld/getest worden; de rest rust (zie dt_patroon_schrijven_actief()).
+local function dt_ronde_start(waarden, actieve)
+    for punt, ms in pairs(waarden) do
         bkos.io.setTimingTijdelijk(punt, ms)
     end
-    dt_omgekeerd = not dt_omgekeerd
-    dt_patroon_schrijven(dt_omgekeerd)
-    dt_sub         = "wachten"
-    dt_sub_start   = bkos.sys.millis()
-    dt_sub_confirm = 0
-end
-
--- Eén poll-tick van de gedeelde test-sub-machine. Retourneert "stable",
--- "unreliable" of nil (nog bezig).
-local function dt_test_poll()
-    local klopt = dt_patroon_klopt(dt_omgekeerd)
-    if dt_sub == "wachten" then
-        if klopt then
-            dt_sub = "bevestig"
-            dt_sub_confirm = 1
-            if dt_sub_confirm >= DT_CYCLI_TEST then return "stable" end
-        elseif bkos.sys.millis() - dt_sub_start > DT_TIMEOUT_MS then
-            return "unreliable"
-        end
-    elseif dt_sub == "bevestig" then
-        if klopt then
-            dt_sub_confirm = dt_sub_confirm + 1
-            if dt_sub_confirm >= DT_CYCLI_TEST then return "stable" end
-        else
-            return "unreliable"
+    dt_ronde_omgekeerd = not dt_ronde_omgekeerd
+    dt_ronde_actief, dt_ronde_sub, dt_ronde_confirm = {}, {}, {}
+    for _, m in ipairs(dt_modules) do
+        if actieve[m] then
+            dt_ronde_actief[m]  = true
+            dt_ronde_sub[m]     = "wachten"
+            dt_ronde_confirm[m] = 0
         end
     end
-    return nil
+    dt_patroon_schrijven_actief(dt_ronde_actief, dt_ronde_omgekeerd)
+    dt_ronde_start_ms = bkos.sys.millis()
 end
 
-local function dt_fase_a_update()
-    local resultaat = dt_test_poll()
-    if resultaat == nil then return end
-
-    if resultaat == "stable" then
-        dt_basis_ms = dt_huidige_ms
-        dt_laatste_stabiele_sck = dt_huidige_ms
-        dt_fase = "fase_b"
-        dt_test_start(dt_huidige_ms, {2})
-        return
+-- Eén poll-tick. Retourneert (klaar_nu, mislukte_module, alles_klaar):
+--   klaar_nu       = lijst modules die DEZE tick voor het eerst bevestigd zijn
+--   mislukte_module = module-index met een harde fout (nil = geen)
+--   alles_klaar    = true als er geen enkele actieve module meer over is
+-- Een harde fout (timeout tijdens wachten, of een mismatch tijdens
+-- bevestigen) stopt de ronde meteen -- geen zin om op de rest te wachten,
+-- de aanroeper weet al dat deze kandidaatwaarde niet deugt.
+local function dt_ronde_poll()
+    local klaar_nu = {}
+    local alles_klaar = true
+    for _, m in ipairs(dt_modules) do
+        if dt_ronde_actief[m] then
+            local klopt = dt_module_klopt(m, dt_ronde_omgekeerd)
+            if dt_ronde_sub[m] == "wachten" then
+                if klopt then
+                    dt_ronde_sub[m] = "bevestigen"
+                    dt_ronde_confirm[m] = 1
+                    if dt_ronde_confirm[m] >= DT_CYCLI_TEST then
+                        dt_ronde_actief[m] = false
+                        klaar_nu[#klaar_nu + 1] = m
+                        for _, p in ipairs(dt_module_poorten[m]) do bkos.io.write(p - 1, bkos.LOW) end
+                    else
+                        alles_klaar = false
+                    end
+                elseif bkos.sys.millis() - dt_ronde_start_ms > DT_TIMEOUT_MS then
+                    return klaar_nu, m, false
+                else
+                    alles_klaar = false
+                end
+            else -- "bevestigen"
+                if klopt then
+                    dt_ronde_confirm[m] = dt_ronde_confirm[m] + 1
+                    if dt_ronde_confirm[m] >= DT_CYCLI_TEST then
+                        dt_ronde_actief[m] = false
+                        klaar_nu[#klaar_nu + 1] = m
+                        for _, p in ipairs(dt_module_poorten[m]) do bkos.io.write(p - 1, bkos.LOW) end
+                    else
+                        alles_klaar = false
+                    end
+                else
+                    return klaar_nu, m, false
+                end
+            end
+        end
     end
-
-    -- onbetrouwbaar: ALLE punten uniform 1ms omhoog, opnieuw proberen
-    dt_huidige_ms = dt_huidige_ms + DT_STEP_MS
-    if dt_huidige_ms > DT_MAX_MS then
-        dt_melding = "Geen stabiele waarde gevonden tot " .. DT_MAX_MS .. "ms -- controleer de bedrading."
-        dt_fase = "klaar"
-        return
-    end
-    dt_test_start(dt_huidige_ms, {1, 2})
+    return klaar_nu, nil, alles_klaar
 end
 
-local function dt_fase_b_update()
-    local resultaat = dt_test_poll()
-    if resultaat == nil then return end
+-- ─── Fase: EINDCONTROLE -- alle modules samen, op de uiteindelijk gekozen
+-- waarde, los van welke modules tijdens het verfijnen al vroeg rustten ──────
+local function dt_eindcontrole_start_ronde()
+    local alle = {}
+    for _, m in ipairs(dt_modules) do alle[m] = true end
+    dt_ronde_start({ [1] = dt_resultaat_pck, [2] = dt_resultaat_sck }, alle)
+end
 
-    if resultaat == "stable" then
-        dt_laatste_stabiele_sck = dt_huidige_ms
-        if dt_huidige_ms <= 0 then
-            dt_resultaat_pck = dt_basis_ms
-            dt_resultaat_sck = 0
+local function dt_eindcontrole_starten()
+    dt_resultaat_pck = dt_basis_pck
+    dt_resultaat_sck = math.min(dt_basis_sck, dt_laatste_stabiele_sck + 2 * DT_STEP_MS)
+    dt_eindctrl_pogingen = 0
+    dt_fase = "eindcontrole"
+    dt_eindcontrole_start_ronde()
+end
+
+local function dt_fase_eindcontrole_update()
+    local _, mislukte, alles_klaar = dt_ronde_poll()
+    if mislukte then
+        dt_eindctrl_pogingen = dt_eindctrl_pogingen + 1
+        if dt_eindctrl_pogingen >= DT_EINDCTRL_MAX_POGINGEN or dt_resultaat_sck >= dt_basis_sck then
+            dt_melding = "Kon de gekozen waarde niet eenduidig bevestigen voor alle modules samen -- "
+                .. "wees voorzichtig, of start de test opnieuw."
             dt_fase = "klaar"
             return
         end
-        dt_huidige_ms = dt_huidige_ms - DT_STEP_MS
-        dt_test_start(dt_huidige_ms, {2})
+        dt_resultaat_sck = math.min(dt_basis_sck, dt_resultaat_sck + DT_STEP_MS)
+        dt_eindcontrole_start_ronde()
+        return
+    end
+    if alles_klaar then
+        dt_fase = "klaar"
+    end
+end
+
+-- ─── Fase: VERFIJNEN -- per-bit pacing omlaag vanaf de klim-basis, initiele
+-- wacht blijft vast. Een module rust alleen zolang de huidige kandidaat nog
+-- binnen haar eigen, al eerder bevestigde bereik valt (dt_module_vloer) --
+-- zodra er lager getest wordt dan waar die module ooit voor bevestigd is,
+-- doet ze gewoon weer mee (exact Brendans "module 1 ook even goed testen"). ─
+local function dt_verfijn_actieve_set()
+    local actief = {}
+    for _, m in ipairs(dt_modules) do
+        if dt_module_vloer[m] == nil or dt_module_vloer[m] > dt_huidige_sck then
+            actief[m] = true
+        end
+    end
+    return actief
+end
+
+local function dt_verfijn_start_ronde()
+    dt_ronde_start({ [2] = dt_huidige_sck }, dt_verfijn_actieve_set())
+end
+
+local function dt_fase_verfijn_update()
+    local klaar_nu, mislukte, alles_klaar = dt_ronde_poll()
+    for _, m in ipairs(klaar_nu) do dt_module_vloer[m] = dt_huidige_sck end
+
+    if mislukte then
+        dt_eindcontrole_starten()
         return
     end
 
-    -- onbetrouwbaar: 2 stappen terug vanaf de laatst bevestigde waarde (nooit
-    -- hoger dan de fase-A-basis), punt 1 blijft op de fase-A-basis staan
-    dt_resultaat_pck = dt_basis_ms
-    dt_resultaat_sck = math.min(dt_basis_ms, dt_laatste_stabiele_sck + 2 * DT_STEP_MS)
-    bkos.io.setTimingTijdelijk(1, dt_resultaat_pck)
-    bkos.io.setTimingTijdelijk(2, dt_resultaat_sck)
-    dt_fase = "klaar"
+    if alles_klaar then
+        dt_laatste_stabiele_sck = dt_huidige_sck
+        if dt_huidige_sck <= 0 then
+            dt_eindcontrole_starten()
+            return
+        end
+        dt_huidige_sck = dt_huidige_sck - DT_STEP_MS
+        dt_verfijn_start_ronde()
+    end
+end
+
+-- ─── Fase: KLIMMEN -- vanaf de ACTUELE waarde (niet vanaf 0, zie dt_start()),
+-- beide punten samen omhoog (met het bij het starten aangetroffen onderlinge
+-- verschil behouden, dt_pck_offset). Een module die al bevestigd is doet
+-- niet meer mee zolang we blijven klimmen (hoger is altijd minstens zo goed).
+local function dt_klim_actieve_set()
+    local actief = {}
+    for _, m in ipairs(dt_modules) do
+        if dt_module_vloer[m] == nil then actief[m] = true end
+    end
+    return actief
+end
+
+local function dt_klim_start_ronde()
+    local pck = math.max(0, dt_huidige_sck + dt_pck_offset)
+    dt_ronde_start({ [1] = pck, [2] = dt_huidige_sck }, dt_klim_actieve_set())
+end
+
+local function dt_fase_klim_update()
+    local klaar_nu, mislukte, alles_klaar = dt_ronde_poll()
+    for _, m in ipairs(klaar_nu) do dt_module_vloer[m] = dt_huidige_sck end
+
+    if alles_klaar then
+        -- Iedereen (ooit, bij deze of een lagere waarde) bevestigd -> basis gevonden.
+        dt_basis_sck = dt_huidige_sck
+        dt_basis_pck = math.max(0, dt_huidige_sck + dt_pck_offset)
+        dt_laatste_stabiele_sck = dt_basis_sck
+        dt_fase = "verfijn"
+        dt_huidige_sck = dt_basis_sck - DT_STEP_MS
+        if dt_huidige_sck < 0 then
+            dt_eindcontrole_starten()
+        else
+            dt_verfijn_start_ronde()
+        end
+        return
+    end
+
+    if mislukte then
+        dt_huidige_sck = dt_huidige_sck + DT_STEP_MS
+        if dt_huidige_sck > dt_max_ms then
+            dt_melding = "Geen stabiele waarde gevonden tot " .. math.floor(dt_max_ms)
+                .. "ms -- controleer de bedrading."
+            dt_fase = "klaar"
+            return
+        end
+        dt_klim_start_ronde()
+    end
+    -- anders: deze ronde loopt nog, gewoon verder pollen volgende tick
 end
 
 local function dt_filter_update()
@@ -1234,9 +1494,21 @@ local function dt_filter_update()
         return
     end
 
-    dt_huidige_ms = 0
-    dt_fase = "fase_a"
-    dt_test_start(dt_huidige_ms, {1, 2})
+    dt_modules_bepalen()
+    dt_module_vloer = {}
+
+    -- Beginnen bij de ACTUELE waarde (Brendans wens) i.p.v. vanaf 0 --
+    -- is alles al goed, dan is klimmen in 1 ronde klaar en wordt meteen
+    -- geprobeerd of het korter kan (verfijnen); is het niet goed, dan klimt
+    -- de test vanaf hier omhoog i.p.v. de boel eerst nog onnodig instabieler
+    -- te maken door naar 0 te gaan.
+    local sck_cur = bkos.io.getTiming(2)
+    local pck_cur = bkos.io.getTiming(1)
+    dt_pck_offset  = pck_cur - sck_cur
+    dt_huidige_sck = sck_cur
+
+    dt_fase = "klim"
+    dt_klim_start_ronde()
 end
 
 dt_start = function()
@@ -1253,12 +1525,12 @@ dt_start = function()
         dt_kandidaten[#dt_kandidaten + 1] = p
         bkos.io.write(p - 1, bkos.LOW)
     end
-    dt_filter_teller = 0
-    dt_melding       = ""
-    dt_toegepast     = ""
-    dt_omgekeerd     = false
-    dt_fase          = "filter"
-    scherm           = "delaytest"
+    dt_filter_teller   = 0
+    dt_melding         = ""
+    dt_toegepast       = ""
+    dt_ronde_omgekeerd = false
+    dt_fase            = "filter"
+    scherm             = "delaytest"
 end
 
 local function dt_stoppen(herstel_timing)
@@ -1280,16 +1552,17 @@ local function dt_lijst_tekst(t)
     return table.concat(s, ",")
 end
 
-local function dt_status_tekst()
-    if dt_fase == "filter" then
-        return "Veiligheidsfilter: cyclus " .. math.min(dt_filter_teller + 1, DT_CYCLI_FILTER) .. "/" .. DT_CYCLI_FILTER
+-- Statusregel per module voor de klim-/verfijnschermen.
+local function dt_module_status_tekst(m)
+    if dt_ronde_actief[m] then
+        if dt_ronde_sub[m] == "bevestigen" then
+            return "bezig (" .. dt_ronde_confirm[m] .. "/" .. DT_CYCLI_TEST .. ")"
+        end
+        return "wachten op patroon..."
     end
-    if dt_fase == "fase_a" or dt_fase == "fase_b" then
-        local wat = (dt_sub == "wachten") and "Wachten op patroon..."
-            or ("Bevestigen (" .. dt_sub_confirm .. "/" .. DT_CYCLI_TEST .. ")")
-        return wat
-    end
-    return ""
+    local vloer = dt_module_vloer[m]
+    if vloer then return "stabiel vanaf " .. vloer .. "ms (rust)" end
+    return "-"
 end
 
 -- Gedeeld tussen teken_delaytest() en raak_delaytest() -- voorkomt een
@@ -1340,29 +1613,52 @@ teken_delaytest = function()
 
     bkos.drawText(16, y, "Kandidaten: " .. #dt_kandidaten .. "/" .. dt_aantal
         .. " -- uitgesloten (ingang): " .. dt_lijst_tekst(dt_uitgesloten), 1, bkos.colors.textDim)
-    y = y + 24
+    y = y + 18
+    bkos.drawText(16, y, "Veiligheidsplafond: " .. math.floor(dt_max_ms) .. "ms", 1, bkos.colors.textDim)
+    y = y + 22
 
     if dt_fase == "filter" then
         bkos.drawText(16, y, "Stap 1: alles uit zetten en controleren welke poort als ingang moet "
             .. "worden behandeld.", 1, bkos.colors.text)
         y = y + 20
-        bkos.drawText(16, y, dt_status_tekst(), 1, bkos.colors.cyan)
+        bkos.drawText(16, y, "Veiligheidsfilter: cyclus " .. math.min(dt_filter_teller + 1, DT_CYCLI_FILTER)
+            .. "/" .. DT_CYCLI_FILTER, 1, bkos.colors.cyan)
 
-    elseif dt_fase == "fase_a" then
-        bkos.drawText(16, y, "Fase A: uniform opbouwen (initiele wacht + per-bit pacing samen)", 1, bkos.colors.text)
-        y = y + 20
-        bkos.drawText(16, y, "Huidige waarde: " .. dt_huidige_ms .. "ms", 1, bkos.colors.cyan)
+    elseif dt_fase == "klim" then
+        bkos.drawText(16, y, "Klimmen vanaf de actuele waarde (" .. dt_huidige_sck
+            .. "ms) -- een module stopt met schakelen zodra die stabiel is.", 1, bkos.colors.text)
+        y = y + 22
+        for _, m in ipairs(dt_modules) do
+            bkos.drawText(16, y, dt_module_naam(m) .. ": " .. dt_module_status_tekst(m), 1,
+                dt_ronde_actief[m] and bkos.colors.cyan or bkos.colors.green)
+            y = y + 16
+            if y > bkos.H - FOOTER_H - 20 then break end
+        end
+
+    elseif dt_fase == "verfijn" then
+        bkos.drawText(16, y, "Verfijnen (per-bit pacing omlaag vanaf " .. dt_basis_sck
+            .. "ms) -- initiele wacht blijft op " .. dt_basis_pck .. "ms staan.", 1, bkos.colors.text)
         y = y + 18
-        bkos.drawText(16, y, dt_status_tekst(), 1, bkos.colors.textDim)
-
-    elseif dt_fase == "fase_b" then
-        bkos.drawText(16, y, "Fase B: verfijnen (per-bit pacing alleen -- initiele wacht blijft op "
-            .. dt_basis_ms .. "ms staan)", 1, bkos.colors.text)
-        y = y + 20
-        bkos.drawText(16, y, "Huidige waarde: " .. dt_huidige_ms .. "ms -- laatst bevestigd stabiel: "
+        bkos.drawText(16, y, "Huidige waarde: " .. dt_huidige_sck .. "ms -- laatst bevestigd stabiel: "
             .. dt_laatste_stabiele_sck .. "ms", 1, bkos.colors.cyan)
-        y = y + 18
-        bkos.drawText(16, y, dt_status_tekst(), 1, bkos.colors.textDim)
+        y = y + 20
+        for _, m in ipairs(dt_modules) do
+            bkos.drawText(16, y, dt_module_naam(m) .. ": " .. dt_module_status_tekst(m), 1,
+                dt_ronde_actief[m] and bkos.colors.cyan or bkos.colors.green)
+            y = y + 16
+            if y > bkos.H - FOOTER_H - 20 then break end
+        end
+
+    elseif dt_fase == "eindcontrole" then
+        bkos.drawText(16, y, "Eindcontrole: alle modules samen op initiele wacht=" .. dt_resultaat_pck
+            .. "ms, per-bit=" .. dt_resultaat_sck .. "ms", 1, bkos.colors.text)
+        y = y + 20
+        for _, m in ipairs(dt_modules) do
+            bkos.drawText(16, y, dt_module_naam(m) .. ": " .. dt_module_status_tekst(m), 1,
+                dt_ronde_actief[m] and bkos.colors.cyan or bkos.colors.green)
+            y = y + 16
+            if y > bkos.H - FOOTER_H - 20 then break end
+        end
 
     elseif dt_fase == "klaar" then
         local r = dt_klaar_rects()
@@ -1423,8 +1719,9 @@ end
 
 dt_update = function()
     if dt_fase == "filter" then dt_filter_update()
-    elseif dt_fase == "fase_a" then dt_fase_a_update()
-    elseif dt_fase == "fase_b" then dt_fase_b_update()
+    elseif dt_fase == "klim" then dt_fase_klim_update()
+    elseif dt_fase == "verfijn" then dt_fase_verfijn_update()
+    elseif dt_fase == "eindcontrole" then dt_fase_eindcontrole_update()
     end
     return true
 end

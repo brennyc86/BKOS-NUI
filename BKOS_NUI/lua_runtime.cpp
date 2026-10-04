@@ -766,7 +766,9 @@ bool lua_syntax_check(const char* src, char* fout_uit, size_t fout_len) {
     }
     if (!check_L) { if (fout_uit && fout_len) fout_uit[0] = '\0'; return true; }
 
-    bool ok = (luaL_loadstring(check_L, src) == LUA_OK);
+    // "=app" i.p.v. luaL_loadstring() se standaard (hele broncode als
+    // chunk-naam) -- zie dezelfde toelichting bij lua_app_laden().
+    bool ok = (luaL_loadbuffer(check_L, src, strlen(src), "=app") == LUA_OK);
     if (!ok && fout_uit && fout_len) {
         const char* err = lua_tostring(check_L, -1);
         strncpy(fout_uit, err ? err : "syntax error", fout_len - 1);
@@ -851,7 +853,16 @@ bool lua_app_laden(int app_idx, bool sandbox) {
     String src = f.readString();
     f.close();
 
-    if (luaL_dostring(L, src.c_str()) != LUA_OK) {
+    // Expliciete, KORTE chunk-naam (app.id, "=" voorvoegsel) i.p.v.
+    // luaL_dostring() se standaardgedrag, dat de HELE broncode als chunk-naam
+    // gebruikt -- Lua toont zo'n naam dan als "[string "<eerste ~60 tekens
+    // van de bron>..."]:regel: bericht", wat de LUA_FOUT_LEN=128-buffer
+    // grotendeels opslokt vóórdat het nuttige regelnummer+bericht aan de
+    // beurt komen. Met "=app_id" als naam toont Lua "app_id:regel: bericht"
+    // -- kort, leesbaar, en Brendan kan het regelnummer gewoon doorgeven.
+    String chunk_naam = "=" + String(app.id);
+    if (luaL_loadbuffer(L, src.c_str(), src.length(), chunk_naam.c_str()) != LUA_OK ||
+        lua_pcall(L, 0, 0, 0) != LUA_OK) {
         const char* err = lua_tostring(L, -1);
         strncpy(lua_fout_tekst, err ? err : "syntax error", LUA_FOUT_LEN - 1);
         lua_fout_actief = true;
@@ -866,11 +877,51 @@ void lua_app_teken(int app_idx) {
         int ey = lua_sandbox_modus ? SB_H : 0;
         int eh = lua_sandbox_modus ? CONTENT_H : TFT_H;
         tft.fillRect(0, ey, TFT_W, eh, C_BG);
-        tft.setTextSize(1);
+        tft.setTextSize(2);  // was 1 -- Brendan kon 0/8 niet goed uit elkaar houden
         tft.setTextColor(C_RED_BRIGHT);
         tft.setCursor(10, ey + 10);
         tft.print("Lua error: ");
-        tft.println(lua_fout_tekst);
+
+        // Het regelnummer (dankzij de korte chunk-naam, zie lua_app_laden(),
+        // staat dat er nu als "app_id:REGEL: bericht" uit) is specifiek het
+        // stukje dat Brendan moet doorgeven -- apart in amber getekend, en
+        // "vetgedrukt" door het twee keer 1px verschoven over elkaar te
+        // tekenen (deze GFX-library/het ingebouwde bitmap-font heeft geen
+        // echte vetgedrukte variant).
+        const char* tekst     = lua_fout_tekst;
+        const char* dubbelpunt = strchr(tekst, ':');
+        const char* num_start  = nullptr;
+        const char* num_eind   = nullptr;
+        if (dubbelpunt) {
+            const char* p = dubbelpunt + 1;
+            if (*p >= '0' && *p <= '9') {
+                num_start = p;
+                while (*p >= '0' && *p <= '9') p++;
+                if (*p == ':') num_eind = p;  // alleen bij een echt ":REGEL:"-patroon
+            }
+        }
+
+        if (num_start && num_eind) {
+            char voor[40];
+            size_t voor_len = min((size_t)(num_start - tekst), sizeof(voor) - 1);
+            strncpy(voor, tekst, voor_len); voor[voor_len] = '\0';
+            tft.print(voor);
+
+            char nummer[16];
+            size_t num_len = min((size_t)(num_eind - num_start), sizeof(nummer) - 1);
+            strncpy(nummer, num_start, num_len); nummer[num_len] = '\0';
+
+            tft.setTextColor(C_AMBER);
+            int16_t nx = tft.getCursorX(), ny = tft.getCursorY();
+            tft.print(nummer);
+            tft.setCursor(nx + 1, ny);
+            tft.print(nummer);
+
+            tft.setTextColor(C_RED_BRIGHT);
+            tft.print(num_eind);
+        } else {
+            tft.print(tekst);
+        }
         return;
     }
     if (!L) return;

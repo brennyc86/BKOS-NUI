@@ -1081,7 +1081,6 @@ static void _apps_desk_tegel_teken(int app_idx, int x, int y, int w, int h, bool
 
 void screen_apps_teken() {
     tft.fillScreen(C_BG);
-    sb_scherm_teken("APPS", C_CYAN);
 
     int lijst[APP_MAX];
     int n       = _apps_desk_lijst(lijst, APP_MAX);
@@ -1096,8 +1095,14 @@ void screen_apps_teken() {
     // Achtergrondfoto (zelfde bron/mechanisme als het HAVEN-dashboard) i.p.v.
     // een vlakke kleur -- Brendans wens. Tekent het volledige content-gebied
     // (CONTENT_Y..NAV_Y, zie haven_achtergrond_teken()), dus geen losse
-    // fillRect meer nodig om dat gebied eerst te wissen.
+    // fillRect meer nodig om dat gebied eerst te wissen. VÓÓR sb_scherm_teken()
+    // -- zelfde volgorde als screen_haven_teken(): de foto tekent (deels)
+    // rechtstreeks naar het echte scherm (buiten de dubbele-buffering-canvas
+    // om), dus de statusbalk moet er NA komen, anders verdwijnt die weer
+    // zodra de canvas straks geflusht wordt (precies wat hier gebeurde).
     haven_achtergrond_teken();
+    sb_scherm_teken("APPS", C_CYAN);
+
     for (int slot = 0; slot < totaal; slot++) {
         int x, y, w, h;
         _apps_desk_rect(slot, cols, &x, &y, &w, &h);

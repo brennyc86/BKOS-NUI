@@ -18,6 +18,13 @@ extern char  lua_fout_tekst[];
 
 void lua_setup();
 bool lua_app_laden(int app_idx, bool sandbox = false);
+// Compileert (NIET uitvoeren) `src` om te controleren of het geldige Lua is,
+// zonder de huidige app-staat aan te raken -- bedoeld voor app_manager.cpp om
+// een net gedownloade main.lua te verifiëren vóórdat 'm als "geïnstalleerd"
+// wegschrijft (voorkomt dat een halverwege afgebroken download later, bij het
+// OPSTARTEN van de app, als een cryptische Lua-syntaxfout eindigt). fout_uit
+// mag nullptr zijn. Retourneert true als LUA_BESCHIKBAAR==0 (niets te checken).
+bool lua_syntax_check(const char* src, char* fout_uit, size_t fout_len);
 void lua_app_teken(int app_idx);
 void lua_app_run(int app_idx, int x, int y, bool aanraking);
 void lua_app_sluiten();

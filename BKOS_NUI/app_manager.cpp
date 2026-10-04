@@ -458,15 +458,29 @@ static void _installeer_taak(void* param) {
             http.setTimeout(20000);
             code = http.GET();
             if (code == 200) {
-                // getString() buffert het volledige antwoord — veilig voor kleine Lua-scripts
+                // getSize() (Content-Length) vóór getString() opvragen -- een
+                // verbinding die halverwege wegvalt (precies het soort hik dat
+                // deze retry-lus zelf al bestrijdt) kan getString() een
+                // ONVOLLEDIGE string laten teruggeven terwijl code toch 200
+                // bleef; zonder deze check werd zo'n afgekapt bestand alsnog
+                // als "geïnstalleerd" wegschreven -- een main.lua die letterlijk
+                // middenin stopt faalt vervolgens met een cryptische Lua-
+                // syntaxfout bij het OPSTARTEN van de app, lang na deze download.
+                int verwacht_len = http.getSize();  // -1 = onbekend/chunked
                 inhoud = http.getString();
                 http.end();
-                break;
+                if (verwacht_len > 0 && inhoud.length() != (size_t)verwacht_len) {
+                    inhoud = "";  // onvolledig -- telt als mislukte poging, niet als "leeg"
+                    code = -1;
+                } else {
+                    break;
+                }
+            } else {
+                http.end();
+                if (code > 0) { geef_op = true; break; }  // echte HTTP-fout (bv. 404): niet opnieuw proberen
             }
-            http.end();
-            if (code > 0) { geef_op = true; break; }  // echte HTTP-fout (bv. 404): niet opnieuw proberen
             if (_ins_geannuleerd_afhandelen(true)) { vTaskDelete(NULL); return; }
-            delay(300);             // verbindingsfout (<0): nog één poging
+            delay(300);             // verbindingsfout of onvolledige download: nog één poging
         }
     }
     wifi_ota_modus = false;  // download klaar, netwerk_taak mag weer beheren
@@ -483,6 +497,20 @@ static void _installeer_taak(void* param) {
         strncpy(app_ins_bericht, "Leeg antwoord van server", sizeof(app_ins_bericht) - 1);
         app_ins_status = APP_INS_MISLUKT;
         vTaskDelete(NULL); return;
+    }
+
+    // Lua-syntax-check vóórdat we 'm als "geïnstalleerd" wegschrijven -- de
+    // Content-Length-check hierboven vangt een afgekapte download alleen als
+    // de server een lengte opgaf (jsdelivr doet dat NIET, zie _naar_jsdelivr()-
+    // toelichting); dit vangt ELKE vorm van corruptie, ongeacht de bron, vóórdat
+    // 'm pas bij het OPSTARTEN van de app als een cryptische Lua-fout opduikt.
+    {
+        char lua_fout[96];
+        if (!lua_syntax_check(inhoud.c_str(), lua_fout, sizeof(lua_fout))) {
+            snprintf(app_ins_bericht, sizeof(app_ins_bericht), "Ongeldig script: %s", lua_fout);
+            app_ins_status = APP_INS_MISLUKT;
+            vTaskDelete(NULL); return;
+        }
     }
 
     // Stap 3: Schrijven naar SPIFFS

@@ -751,6 +751,32 @@ static void _callback(const char* naam, int argc, ...) {
     }
 }
 
+bool lua_syntax_check(const char* src, char* fout_uit, size_t fout_len) {
+    // Hergebruikt de levende L als die er al is (compileren raakt geen
+    // globals/state aan, dus veilig naast een actieve app) -- anders een
+    // wegwerp-State met dezelfde (PSRAM-bewuste) allocator, zonder
+    // luaL_openlibs() (niet nodig: de compiler heeft geen bibliotheken nodig
+    // om syntaxfouten te herkennen, alleen om een chunk daadwerkelijk UIT te
+    // voeren, wat hier bewust nooit gebeurt).
+    lua_State* tijdelijke_L = nullptr;
+    lua_State* check_L = L;
+    if (!check_L) {
+        tijdelijke_L = lua_newstate(lua_bkos_alloc, nullptr);
+        check_L = tijdelijke_L;
+    }
+    if (!check_L) { if (fout_uit && fout_len) fout_uit[0] = '\0'; return true; }
+
+    bool ok = (luaL_loadstring(check_L, src) == LUA_OK);
+    if (!ok && fout_uit && fout_len) {
+        const char* err = lua_tostring(check_L, -1);
+        strncpy(fout_uit, err ? err : "syntax error", fout_len - 1);
+        fout_uit[fout_len - 1] = '\0';
+    }
+    lua_pop(check_L, 1);
+    if (tijdelijke_L) lua_close(tijdelijke_L);
+    return ok;
+}
+
 // ─── Publieke API ─────────────────────────────────────────────────────────────
 void lua_setup() {
     if (L) { lua_close(L); L = nullptr; }
@@ -911,6 +937,10 @@ void lua_app_sluiten() {
 
 void lua_setup()                                          { }
 bool lua_app_laden(int, bool)                             { return false; }
+bool lua_syntax_check(const char*, char* fout_uit, size_t fout_len) {
+    if (fout_uit && fout_len) fout_uit[0] = '\0';
+    return true;
+}
 void lua_app_teken(int)                                   {
     tft.fillScreen(C_BG);
     tft.setTextSize(2);

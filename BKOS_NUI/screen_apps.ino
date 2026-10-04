@@ -2,6 +2,7 @@
 #include "lua_runtime.h"
 #include "bkos_net.h"
 #include "screen_main.h"  // teken_icoon()/I_* — bureaublad-icoontjes
+#include "haven_achtergrond.h"  // achtergrondfoto, zelfde als het HAVEN-dashboard (Brendans wens)
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 #define APPS_HDR_H    UI_SCY(32)
@@ -1048,8 +1049,14 @@ static void _apps_desk_rect(int slot, int cols, int* x, int* y, int* w, int* h) 
 // app_idx >= 0: geïnstalleerde app; -1: de vaste APPSTORE-tegel. 'negatief'
 // keert de kleuren om — directe tik-feedback (zie screen_apps_run()), ook als
 // het daadwerkelijk starten van de app traag blijkt.
+// Tegelachtergrond: bij een gewone (niet-negatieve) tegel de achtergrondfoto
+// op die plek opgelicht i.p.v. een vlakke kleur -- Brendans wens voor
+// dezelfde look als het HAVEN-dashboard. Eén sample per tegel (geen volledig
+// mozaïek zoals HAVEN na zijn eigen iteraties kreeg) -- simpel gehouden tot
+// Brendan vraagt om het verder te verfijnen.
 static void _apps_desk_tegel_teken(int app_idx, int x, int y, int w, int h, bool negatief) {
-    uint16_t bg        = negatief ? C_CYAN : C_SURFACE;
+    uint16_t bg        = negatief ? C_CYAN
+                        : haven_kleur_meng(haven_achtergrond_pixel_klem(x + w / 2, y + h / 2), 31, 63, 31, 128);
     uint16_t fg        = negatief ? C_BG   : C_CYAN;
     uint16_t tekst_kl  = negatief ? C_BG   : C_TEXT;
     tft.fillRoundRect(x, y, w, h, 8, bg);
@@ -1088,7 +1095,11 @@ void screen_apps_teken() {
     int max_scroll = max(0, inhoud_h - venster_h);
     apps_desk_scroll = constrain(apps_desk_scroll, 0, max_scroll);
 
-    tft.fillRect(0, APPS_DESK_TOP, TFT_W - UI_SB_W, venster_h, C_BG);
+    // Achtergrondfoto (zelfde bron/mechanisme als het HAVEN-dashboard) i.p.v.
+    // een vlakke kleur -- Brendans wens. Tekent het volledige content-gebied
+    // (CONTENT_Y..NAV_Y, zie haven_achtergrond_teken()), dus geen losse
+    // fillRect meer nodig om dat gebied eerst te wissen.
+    haven_achtergrond_teken();
     for (int slot = 0; slot < totaal; slot++) {
         int x, y, w, h;
         _apps_desk_rect(slot, cols, &x, &y, &w, &h);

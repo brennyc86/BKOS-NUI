@@ -1049,14 +1049,12 @@ static void _apps_desk_rect(int slot, int cols, int* x, int* y, int* w, int* h) 
 // app_idx >= 0: geïnstalleerde app; -1: de vaste APPSTORE-tegel. 'negatief'
 // keert de kleuren om — directe tik-feedback (zie screen_apps_run()), ook als
 // het daadwerkelijk starten van de app traag blijkt.
-// Tegelachtergrond: bij een gewone (niet-negatieve) tegel de achtergrondfoto
-// op die plek opgelicht i.p.v. een vlakke kleur -- Brendans wens voor
-// dezelfde look als het HAVEN-dashboard. Eén sample per tegel (geen volledig
-// mozaïek zoals HAVEN na zijn eigen iteraties kreeg) -- simpel gehouden tot
-// Brendan vraagt om het verder te verfijnen.
+// Tegelachtergrond bewust VLAK (geen foto-doorschijnendheid) -- Brendan vond
+// de iconen te minimaal om tegen een doorschijnende/foto-tegel nog duidelijk
+// af te steken. De achtergrondfoto (screen_apps_teken(), haven_achtergrond_teken())
+// blijft wel gewoon zichtbaar in de kieren tussen de tegels.
 static void _apps_desk_tegel_teken(int app_idx, int x, int y, int w, int h, bool negatief) {
-    uint16_t bg        = negatief ? C_CYAN
-                        : haven_kleur_meng(haven_achtergrond_pixel_klem(x + w / 2, y + h / 2), 31, 63, 31, 128);
+    uint16_t bg        = negatief ? C_CYAN : C_SURFACE;
     uint16_t fg        = negatief ? C_BG   : C_CYAN;
     uint16_t tekst_kl  = negatief ? C_BG   : C_TEXT;
     tft.fillRoundRect(x, y, w, h, 8, bg);

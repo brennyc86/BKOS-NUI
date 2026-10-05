@@ -24,6 +24,37 @@ bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=roo
 volatile bool io_direct_aanvraag = false;
 volatile bool io_staat_gewijzigd = false;
 
+// io_actief is een gewone (niet-volatile, niet-atomaire) bool, maar wordt
+// vanuit TWEE verschillende FreeRTOS-taken als reentrancy-guard gebruikt:
+// io_cyclus() zelf (draait op Core 0 in _io_achtergrond_taak()) en
+// io_handmatige_herscan() (aangeroepen vanuit de GUI-taak op Core 1, o.a.
+// bkos.io.rescan()). Beide deden tot nu toe een kale "if (io_actief) return;
+// io_actief = true;" — een klassieke check-then-act-race: als beide taken
+// de check tegelijk (op de andere core, dus écht gelijktijdig, geen
+// preemption-giswerk) doorlopen vóór een van beide io_actief al op true kon
+// zetten, claimen ze allebei de "exclusieve" IO_SERIAL-bus en interleaven
+// hun UART-verkeer naar de ATtiny — precies wat deze vlag moest voorkomen.
+// _io_actief_claim() maakt het check+set atomair via een portMUX-kritieke
+// sectie (zelfde patroon als melding.ino's _q_mux), zonder io_actief zelf
+// van type te veranderen — alle overige (niet-racy, puur informatieve)
+// leesplekken van io_actief blijven ongewijzigd werken.
+#if PLATFORM_ESP32
+static portMUX_TYPE _io_actief_mux = portMUX_INITIALIZER_UNLOCKED;
+#define IO_ACTIEF_LOCK()    portENTER_CRITICAL(&_io_actief_mux)
+#define IO_ACTIEF_UNLOCK()  portEXIT_CRITICAL(&_io_actief_mux)
+#else
+#define IO_ACTIEF_LOCK()
+#define IO_ACTIEF_UNLOCK()
+#endif
+
+static inline bool _io_actief_claim() {
+    bool gelukt = false;
+    IO_ACTIEF_LOCK();
+    if (!io_actief) { io_actief = true; gelukt = true; }
+    IO_ACTIEF_UNLOCK();
+    return gelukt;
+}
+
 // ─── HC GPIO helpers (Pico + WROOM) ──────────────────────────────────────
 #if PLATFORM_PICO || PLATFORM_WROOM
 
@@ -107,9 +138,10 @@ void io_boot() {
 // vrije bus; geeft daarna op (false) i.p.v. voor altijd te blokkeren.
 bool io_handmatige_herscan() {
     unsigned long t0 = millis();
-    while (io_actief && millis() - t0 < 1000) vTaskDelay(pdMS_TO_TICKS(2));
-    if (io_actief) return false;
-    io_actief = true;
+    while (!_io_actief_claim()) {
+        if (millis() - t0 >= 1000) return false;
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
     io_detect();
     if (io_kanalen_cnt > 0) bkoss_actief = true;
     io_actief = false;
@@ -307,8 +339,7 @@ static inline bool io_drijf_hoog(int kanaal) {
 }
 
 void io_cyclus(bool stil) {
-    if (io_actief) return;
-    io_actief = true;
+    if (!_io_actief_claim()) return;
 
     int n = io_zichtbaar();   // Respecteert io_kanalen_cfg override
     if (n == 0) { io_actief = false; return; }

@@ -526,10 +526,15 @@ static void _installeer_taak(void* param) {
     // (zie paneel_opslaan()/lamp_opslaan(), taak 213, hetzelfde patroon) --
     // de lengte- en Lua-syntaxcontroles hiervoor valideren alleen de
     // DOWNLOAD (het in-memory antwoord), niet of het wegschrijven naar flash
-    // zelf foutloos verloopt. Verklaart een gemeld, verder onverklaarbaar
-    // "unexpected symbol"-foutje op een kanttekening-regel die normaal
-    // nooit door Lua geparsed wordt: zo'n fout duidt op een handvol
-    // omgevallen bytes, niet op een echte inhoudelijke downloadfout.
+    // zelf foutloos verloopt.
+    //
+    // De terugleescontrole zelf gebruikt BEWUST GEEN File::readString() --
+    // die leest byte voor byte en herallokeert de stringbuffer met exact 1
+    // byte per keer (zie dezelfde toelichting bij lua_app_laden() in
+    // lua_runtime.cpp), wat bij deze ~75KB-app (de grootste in de store) op
+    // een gefragmenteerde heap een byte kan laten vallen en zo een GOEDE
+    // schrijving als "mismatch" zou afkeuren. Eén bulk f.read() heeft dat
+    // probleem niet.
     bool schrijf_ok = false;
     for (int poging = 0; poging < 2 && !schrijf_ok; poging++) {
         File lf = SPIFFS.open(lua_pad, "w");
@@ -539,9 +544,15 @@ static void _installeer_taak(void* param) {
 
         File controle = SPIFFS.open(lua_pad, "r");
         if (controle) {
-            String terug = controle.readString();
+            size_t grootte = controle.size();
+            if (grootte == inhoud.length()) {
+                char* buf = (char*)PLATFORM_MALLOC(grootte);
+                size_t gelezen = buf ? controle.read((uint8_t*)buf, grootte) : 0;
+                if (buf && gelezen == grootte)
+                    schrijf_ok = (memcmp(buf, inhoud.c_str(), grootte) == 0);
+                if (buf) PLATFORM_FREE(buf);
+            }
             controle.close();
-            schrijf_ok = (terug == inhoud);
         }
     }
     if (!schrijf_ok) {

@@ -851,8 +851,32 @@ bool lua_app_laden(int app_idx, bool sandbox) {
         return false;
     }
 
-    String src = f.readString();
+    // Bulk lezen i.p.v. f.readString() -- die laatste (Stream::readString())
+    // leest BYTE VOOR BYTE en roept voor elke byte String::concat() aan, dat
+    // zonder geometrische buffergroei de stringbuffer met EXACT 1 byte per
+    // keer herallokeert (zie WString.cpp: reserve(len()+1)). Voor een paar
+    // honderd bytes onmerkbaar, maar poorttest is met ~75KB de grootste app
+    // in de store: dat zijn ~75.000 losse realloc()-aanroepen bij elke keer
+    // dat de app geopend wordt. Als zo'n 1-byte-realloc ooit mislukt (een
+    // gefragmenteerde heap op dat moment -- heeft niets te maken met hoe de
+    // installatie zelf verlopen is, dus de syntax-/schrijfcontroles bij het
+    // INSTALLEREN vangen dit niet) laat concat() die ene byte stilletjes
+    // vallen en leest verder, wat precies een "onverklaarbare unexpected
+    // symbol op een willekeurige regel" zou geven bij het OPENEN van de app
+    // -- ongeacht hoe correct het bestand op flash zelf staat. Eén bulk
+    // f.read() van de bekende bestandsgrootte heeft dit probleem niet.
+    size_t grootte = f.size();
+    char*  buf     = (char*)PLATFORM_MALLOC(grootte + 1);
+    size_t gelezen = buf ? f.read((uint8_t*)buf, grootte) : 0;
     f.close();
+    if (!buf || gelezen != grootte) {
+        if (buf) PLATFORM_FREE(buf);
+        snprintf(lua_fout_tekst, LUA_FOUT_LEN, "Leesfout (%u/%u bytes):\n%s",
+                 (unsigned)gelezen, (unsigned)grootte, pad.c_str());
+        lua_fout_actief = true;
+        return false;
+    }
+    buf[grootte] = '\0';
 
     // Expliciete, KORTE chunk-naam (app.id, "=" voorvoegsel) i.p.v.
     // luaL_dostring() se standaardgedrag, dat de HELE broncode als chunk-naam
@@ -862,8 +886,10 @@ bool lua_app_laden(int app_idx, bool sandbox) {
     // beurt komen. Met "=app_id" als naam toont Lua "app_id:regel: bericht"
     // -- kort, leesbaar, en Brendan kan het regelnummer gewoon doorgeven.
     String chunk_naam = "=" + String(app.id);
-    if (luaL_loadbuffer(L, src.c_str(), src.length(), chunk_naam.c_str()) != LUA_OK ||
-        lua_pcall(L, 0, 0, 0) != LUA_OK) {
+    bool fout = (luaL_loadbuffer(L, buf, grootte, chunk_naam.c_str()) != LUA_OK ||
+                 lua_pcall(L, 0, 0, 0) != LUA_OK);
+    PLATFORM_FREE(buf);
+    if (fout) {
         const char* err = lua_tostring(L, -1);
         strncpy(lua_fout_tekst, err ? err : "syntax error", LUA_FOUT_LEN - 1);
         lua_fout_tekst[LUA_FOUT_LEN - 1] = '\0';

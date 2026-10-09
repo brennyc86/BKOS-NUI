@@ -179,7 +179,11 @@ const char* io_stap_start() {
     IO_SERIAL.flush();
     delay(io_tune_pck_ms);                       // ATtiny leest het commando en slaat zijn eerste PCK-puls
     int stale = 0; while (IO_SERIAL.available()) { IO_SERIAL.read(); stale++; }
-    snprintf(_stap_txt, sizeof(_stap_txt), "START ok: IO\\n verstuurd, eerste PCK geslagen (wacht %ums, stale %d)", (unsigned)io_tune_pck_ms, stale);
+    // Patroon dat deze sessie gaat doorschuiven (kanaal k = bit k), als hex per module: dat is wat er "AAN" staat.
+    uint8_t uitb[30] = {0};
+    for (int k = 0; k < _stap_n; k++) if (_stap_patroon[_stap_n - 1 - k] == '1') uitb[k >> 3] |= (uint8_t)(1 << (k & 7));
+    char hx[64]; io_diag_hex(uitb, _stap_n, hx);
+    snprintf(_stap_txt, sizeof(_stap_txt), "START ok: eerste PCK geslagen. Patroon UIT=%s (%d kanalen, bit k = kanaal k)", hx, _stap_n);
     return _stap_txt;
 }
 

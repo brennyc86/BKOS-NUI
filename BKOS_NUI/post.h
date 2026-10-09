@@ -29,6 +29,7 @@ extern int          post_aantal;
 
 void post_setup();                  // laden uit SPIFFS (na SPIFFS_BEGIN)
 void post_loop();                   // periodiek ophalen + nieuwe berichten verwerken (GUI-core)
+bool post_tls_bezig();           // true zolang de pollertaak een verbinding open heeft (appstore wacht hierop)
 int  post_ongelezen_aantal();
 void post_markeer_gelezen(int idx);
 

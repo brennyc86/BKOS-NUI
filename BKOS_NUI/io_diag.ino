@@ -68,11 +68,11 @@ void io_diag_setup() {
     if (!_log) _log = (IoDiagEvent*)PLATFORM_MALLOC(sizeof(IoDiagEvent) * IO_DIAG_LOG_N);
     if (!_cyc) _cyc = (IoCyclusRec*)PLATFORM_MALLOC(IO_DIAG_CYC_N * sizeof(IoCyclusRec));
     if (!_dip) {
-        _dip = (IoDipStaat*)malloc(MAX_IO_KANALEN * sizeof(IoDipStaat));
+        _dip = (IoDipStaat*)PLATFORM_MALLOC(MAX_IO_KANALEN * sizeof(IoDipStaat));   // PSRAM: intern geheugen is nodig voor TLS
         if (_dip) memset(_dip, 0, MAX_IO_KANALEN * sizeof(IoDipStaat));
     }
     if (!_vorige_drive) {
-        _vorige_drive = (bool*)malloc(MAX_IO_KANALEN * sizeof(bool));
+        _vorige_drive = (bool*)PLATFORM_MALLOC(MAX_IO_KANALEN * sizeof(bool));
         if (_vorige_drive) memset(_vorige_drive, 0, MAX_IO_KANALEN * sizeof(bool));
     }
     io_diag_reset();

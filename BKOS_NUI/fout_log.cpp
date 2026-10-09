@@ -140,6 +140,10 @@ static void _flog_taak(void* param) {
         _bezig = false; vTaskDelete(NULL); return;
     }
 
+    // Niet tegelijk met de appstore/OTA een TLS-sessie openen: samen is het interne geheugen te krap
+    // en de appstore kreeg dan "HTTP fout -1". Wachten (max 90 s) tot wifi_ota_modus weer uit is.
+    for (int i = 0; i < 90 && wifi_ota_modus; i++) vTaskDelay(1000 / portTICK_PERIOD_MS);
+
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;
@@ -276,6 +280,7 @@ bool fout_log_stuur(FoutType type, const char* bericht, const char* context, con
     return true;
 }
 
+bool        fout_log_tls_bezig()    { return _bezig; }
 const char* fout_log_reden()       { return _reden; }
 int         fout_log_laatste_http() { return _laatste_http; }
 int         fout_log_cooldown_rest_s() {

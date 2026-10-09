@@ -43,8 +43,9 @@ static void _post_opslaan() {
 }
 
 void post_setup() {
-    if (!post_bericht) post_bericht = (PostBericht*)malloc(POST_MAX * sizeof(PostBericht));
-    if (!_in)          _in          = (PostBericht*)malloc(POST_MAX * sizeof(PostBericht));
+    // PSRAM (PLATFORM_MALLOC): het interne geheugen is nodig voor TLS (appstore/OTA/meldingen).
+    if (!post_bericht) post_bericht = (PostBericht*)PLATFORM_MALLOC(POST_MAX * sizeof(PostBericht));
+    if (!_in)          _in          = (PostBericht*)PLATFORM_MALLOC(POST_MAX * sizeof(PostBericht));
     post_aantal = 0;
     _volgende_ms = millis() + POST_EERSTE_MS;
     if (!post_bericht || !_in || !SPIFFS.exists(POST_BESTAND)) return;
@@ -71,6 +72,8 @@ void post_setup() {
     }
     f.close();
 }
+
+bool post_tls_bezig() { return _bezig; }
 
 int post_ongelezen_aantal() {
     int n = 0;
@@ -247,7 +250,7 @@ void post_loop() {
         }
         _post_opslaan();
     }
-    if (_bezig || !wifi_verbonden || !fout_rapportage) return;
+    if (_bezig || !wifi_verbonden || !fout_rapportage || wifi_ota_modus) return;   // niet tijdens appstore/OTA
     if ((long)(millis() - _volgende_ms) < 0) return;
     _volgende_ms = millis() + POST_INTERVAL_MS;
     _bezig = true;

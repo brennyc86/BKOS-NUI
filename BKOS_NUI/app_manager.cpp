@@ -2,6 +2,11 @@
 #include "lua_runtime.h"
 #include "wifi.h"
 #include "platform_fs.h"
+#include "fout_log.h"   // fout_log_tls_bezig()
+#include "post.h"        // post_tls_bezig()
+#if PLATFORM_ESP32
+  #include <esp_heap_caps.h>
+#endif
 // ESP32-S3 8048S070: SD via SPI op GPIO 10-13 (vrij van RGB-display)
 // CYD/WROOM platforms: geen SD-ondersteuning in deze build
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD28 && !PLATFORM_CYD40H && !PLATFORM_CYD40V
@@ -29,6 +34,8 @@ static SPIClass _spi_sd(FSPI);
 // Oudere platte bestanden (/app_<id>_m.json, /app_<id>_main.lua,
 // /bkos_apps.json) worden bij het inlezen automatisch gemigreerd —
 // zie _app_migreer_indien_nodig().
+
+static void _wacht_op_achtergrond_tls();   // gedefinieerd verderop
 
 AppManifest apps[APP_MAX];
 int         apps_cnt = 0;
@@ -330,6 +337,7 @@ void app_winkel_laden() {
     // allereerste HTTPS-poging na een hotspot-pauze soms nog steeds — en nog
     // vaker/langer als er net een station verbonden was (_app_hotspot_settle()).
     _app_hotspot_settle();
+    _wacht_op_achtergrond_tls();
 
     // Retry-patroon als ota_git_check(): 2 herkansingen (3 pogingen totaal)
     // bij een verbindingsfout (code<=0) -- en bij een blijvende
@@ -376,6 +384,15 @@ void app_winkel_laden() {
 // ─── Asynchrone installatie (FreeRTOS Core 0) ────────────────────────────────
 volatile AppInstallatieStatus app_ins_status = APP_INS_IDLE;
 char app_ins_bericht[80] = "";
+
+// Achtergrondverbindingen (meldingen, post) mogen niet tegelijk met een appstore-download een TLS-sessie
+// hebben: het interne geheugen is daarvoor te krap en dat gaf "HTTP fout -1". Hier max 25 s wachten.
+static void _wacht_op_achtergrond_tls() {
+    unsigned long t = millis();
+    while ((fout_log_tls_bezig() || post_tls_bezig()) && millis() - t < 25000)
+        vTaskDelay(200 / portTICK_PERIOD_MS);
+}
+static char _laatste_tls[40] = "";
 volatile bool app_ins_annuleren = false;
 
 void app_installeer_annuleren() { app_ins_annuleren = true; }
@@ -439,6 +456,7 @@ static void _installeer_taak(void* param) {
                      + wm.id + "/main.lua";
     _app_hotspot_pauzeren();
     _app_hotspot_settle();  // zie app_winkel_laden() / _app_hotspot_had_client
+    _wacht_op_achtergrond_tls();
 
     // Zelfde retry-patroon als ota_git_check()/app_winkel_laden(): 2
     // herkansingen (3 pogingen totaal) bij een verbindingsfout (code<=0) --
@@ -457,6 +475,8 @@ static void _installeer_taak(void* param) {
             http.useHTTP10(true);
             http.setTimeout(20000);
             code = http.GET();
+            _laatste_tls[0] = '\0';
+            if (code <= 0) sc.lastError(_laatste_tls, sizeof(_laatste_tls));   // reden van de TLS-fout (bv. geheugen)
             if (code == 200) {
                 // getSize() (Content-Length) vóór getString() opvragen -- een
                 // verbinding die halverwege wegvalt (precies het soort hik dat
@@ -488,7 +508,13 @@ static void _installeer_taak(void* param) {
     if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
 
     if (code != 200) {
+#if PLATFORM_ESP32
+        snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d %.30s [%uk/%uk]", code, _laatste_tls,
+                 (unsigned)(ESP.getFreeHeap() / 1024),
+                 (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));   // vrij / grootste blok (intern)
+#else
         snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d", code);
+#endif
         app_ins_status = APP_INS_MISLUKT;
         vTaskDelete(NULL); return;
     }

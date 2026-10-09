@@ -28,6 +28,7 @@ void fout_log_setup();         // laad token uit Preferences bij opstart
 // een aanroeper (bv. een Lua-app) om daarop een duidelijke melding te tonen
 // i.p.v. stil niets te laten gebeuren.
 bool fout_log_stuur(FoutType type, const char* bericht, const char* context = "", const char* soort = "fout");
+bool        fout_log_tls_bezig();      // true zolang de verzendtaak een verbinding open heeft (appstore wacht hierop)
 const char* fout_log_reden();          // waarom de laatste fout_log_stuur() weigerde: uit|geen-sleutel|bezig|cooldown|geheugen|taak|ok
 int         fout_log_laatste_http();   // laatste serverantwoord: 200 = aangenomen, 4xx = geweigerd, <0 = geen verbinding (-100 wifi, -101 begin, -102 vastgelopen, -103 taak)
 int         fout_log_cooldown_rest_s();

@@ -411,8 +411,14 @@ static bool _ins_geannuleerd_afhandelen(bool hotspot_gepauzeerd) {
     return true;
 }
 
-static void _installeer_taak(void* param) {
-    int idx = _ins_winkel_idx;
+// Gedownloade main.lua, doorgegeven van fase 1 (download) aan fase 2 (opslaan-taak).
+static String _ins_inhoud;
+
+// FASE 1: WiFi + download. Draait in de AANROEPENDE (GUI-)context en NIET in een eigen taak, net als
+// app_winkel_laden() (de winkelindex laden werkt wel). Reden: de opslaan-taak reserveert 16 KB stack uit
+// het intern geheugen, en dat nam het grootste vrije blok weg waar TLS zijn twee buffers van ruim 16 KB
+// nodig heeft ("SSL - Memory allocation failed [73k/24k]"). Pas NA de download start de taak.
+static bool _ins_download(int idx) {
     app_ins_annuleren = false;
     // Vergrendel WiFi meteen — race met netwerk_taak voorkomen
     wifi_ota_modus = true;
@@ -422,7 +428,7 @@ static void _installeer_taak(void* param) {
                  "Ongeldig index %d (winkel: %d)", idx, winkel_cnt);
         app_ins_status = APP_INS_MISLUKT;
         wifi_ota_modus = false;
-        vTaskDelete(NULL); return;
+        return false;
     }
     // Maak een lokale kopie zodat de winkel-array veilig is
     AppManifest wm = winkel[idx];
@@ -434,19 +440,19 @@ static void _installeer_taak(void* param) {
         wifi_verbind_aanvragen();
         unsigned long t = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - t < 12000) {
-            if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
+            if (_ins_geannuleerd_afhandelen(false)) { return false; }
             vTaskDelay(200 / portTICK_PERIOD_MS);
         }
     }
-    if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
+    if (_ins_geannuleerd_afhandelen(false)) { return false; }
     if (WiFi.status() != WL_CONNECTED) {
         strncpy(app_ins_bericht, "Geen WiFi verbinding", sizeof(app_ins_bericht) - 1);
         app_ins_status = APP_INS_MISLUKT;
         wifi_ota_modus = false;
-        vTaskDelete(NULL); return;
+        return false;
     }
     wifi_verbonden = true;
-    if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
+    if (_ins_geannuleerd_afhandelen(false)) { return false; }
 
     // Stap 2: Download main.lua
     app_ins_status = APP_INS_DOWNLOADEN;
@@ -499,13 +505,13 @@ static void _installeer_taak(void* param) {
                 http.end();
                 if (code > 0) { geef_op = true; break; }  // echte HTTP-fout (bv. 404): niet opnieuw proberen
             }
-            if (_ins_geannuleerd_afhandelen(true)) { vTaskDelete(NULL); return; }
+            if (_ins_geannuleerd_afhandelen(true)) { return false; }
             delay(300);             // verbindingsfout of onvolledige download: nog één poging
         }
     }
     wifi_ota_modus = false;  // download klaar, netwerk_taak mag weer beheren
     _app_hotspot_hervatten();
-    if (_ins_geannuleerd_afhandelen(false)) { vTaskDelete(NULL); return; }
+    if (_ins_geannuleerd_afhandelen(false)) { return false; }
 
     if (code != 200) {
 #if PLATFORM_ESP32
@@ -516,14 +522,24 @@ static void _installeer_taak(void* param) {
         snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d", code);
 #endif
         app_ins_status = APP_INS_MISLUKT;
-        vTaskDelete(NULL); return;
+        return false;
     }
 
     if (inhoud.length() == 0) {
         strncpy(app_ins_bericht, "Leeg antwoord van server", sizeof(app_ins_bericht) - 1);
         app_ins_status = APP_INS_MISLUKT;
-        vTaskDelete(NULL); return;
+        return false;
     }
+    _ins_inhoud = inhoud;
+    return true;
+}
+
+// FASE 2 (eigen taak, 16 KB stack): Lua-controle, opslaan en manifest. Geen netwerk meer.
+static void _installeer_taak(void* param) {
+    int idx = _ins_winkel_idx;
+    AppManifest wm = winkel[idx];
+    String inhoud = _ins_inhoud;
+    _ins_inhoud = "";
 
     // Lua-syntax-check vóórdat we 'm als "geïnstalleerd" wegschrijven -- de
     // Content-Length-check hierboven vangt een afgekapte download alleen als
@@ -612,6 +628,7 @@ void app_installeer_start(int winkel_idx) {
     _ins_winkel_idx = winkel_idx;
     app_ins_status  = APP_INS_VERBINDEN;
     strncpy(app_ins_bericht, "Starten...", sizeof(app_ins_bericht) - 1);
+    if (!_ins_download(winkel_idx)) return;   // fase 1 in deze context; status/bericht staan dan al op MISLUKT
     PLATFORM_TASK_CREATE(_installeer_taak, "app_ins", 16384, NULL, 1, NULL);
 }
 

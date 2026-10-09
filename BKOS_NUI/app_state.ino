@@ -31,7 +31,7 @@ byte  kleurenschema    = 0;
 byte  boot_cat         = 0;
 byte  boot_model       = 0;
 char  zeilnummer[ZEILNR_LEN] = "";
-bool  fout_rapportage       = false;
+bool  fout_rapportage       = true;   // standaard aan (sinds frapv=2); uitzetten kan in CONFIG
 int   lua_forceer_app       = -1;
 int   licht_nav_offset_min  = 0;
 int   licht_int_offset_min  = 15;
@@ -69,6 +69,7 @@ void state_save() {
     f.printf("bmodel=%d\n",  (int)boot_model);
     f.printf("zeilnr=%s\n",  zeilnummer);
     f.printf("foutrap=%d\n",  (int)fout_rapportage);
+    f.printf("frapv=2\n");   // markeert dat foutrap een bewuste keuze is (oudere bestanden: standaard aan)
     f.printf("navoff=%d\n",   licht_nav_offset_min);
     f.printf("intoff=%d\n",   licht_int_offset_min);
     f.printf("onthlicht=%d\n",(int)onthoud_licht_modus);
@@ -109,6 +110,7 @@ void state_load() {
     boot_cat              = 0;
     boot_model            = 0;
     zeilnummer[0]         = '\0';
+    fout_rapportage       = true;
     licht_nav_offset_min  = 0;
     licht_int_offset_min  = 15;
     onthoud_licht_modus   = false;
@@ -132,6 +134,7 @@ void state_load() {
     File f = SPIFFS.open(CONFIG_BESTAND, "r");
     if (!f) return;
 
+    bool frap_v2 = false, frap_opgeslagen = true;
     while (f.available()) {
         String lijn = f.readStringUntil('\n');
         lijn.trim();
@@ -173,7 +176,8 @@ void state_load() {
             strncpy(zeilnummer, val.c_str(), ZEILNR_LEN - 1);
             zeilnummer[ZEILNR_LEN - 1] = '\0';
         }
-        if (key == "foutrap")   fout_rapportage      = (val.toInt() != 0);
+        if (key == "foutrap")   frap_opgeslagen      = (val.toInt() != 0);
+        if (key == "frapv")     frap_v2              = true;
         if (key == "navoff")    licht_nav_offset_min  = val.toInt();
         if (key == "intoff")    licht_int_offset_min  = val.toInt();
         if (key == "onthlicht") onthoud_licht_modus   = (val.toInt() != 0);
@@ -202,6 +206,8 @@ void state_load() {
         if (key == "held_nv")   held_nacht_varend = constrain(val.toInt(), 5, 100);
     }
     f.close();
+    // Oudere config (zonder frapv=2) bewaarde foutrap=0 als onbedoeld standaard: die telt niet mee.
+    if (frap_v2) fout_rapportage = frap_opgeslagen;
 
     tijdzone_toepassen();
 

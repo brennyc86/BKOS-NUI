@@ -4,6 +4,7 @@
 
 struct IoDiagEvent {
     uint32_t t_ms;
+    uint32_t cyclus;
     uint8_t  kanaal;
     uint8_t  vlag;   // bit0 = nieuwe waarde (1=hoog/AAN), bit1 = 1:uitgang 0:ingang
 };
@@ -11,7 +12,8 @@ struct IoDiagEvent {
 static IoDiagEvent* _log          = nullptr;
 static bool*         _vorige_drive = nullptr;  // laatst gelogde gestuurde waarde per kanaal, voor de-dup
 static int           _log_head    = 0;         // volgende schrijfpositie (ring)
-static uint32_t      _log_count   = 0;         // totaal ooit gelogd (voor "hoeveel nog aanwezig")
+static uint32_t      _log_count   = 0;
+static uint32_t      _cyclus      = 0;         // aantal gestarte io_cyclus()-ronden sinds opstart         // totaal ooit gelogd (voor "hoeveel nog aanwezig")
 
 void io_diag_setup() {
     if (!_log) _log = (IoDiagEvent*)PLATFORM_MALLOC(sizeof(IoDiagEvent) * IO_DIAG_LOG_N);
@@ -22,9 +24,15 @@ void io_diag_setup() {
     io_diag_reset();
 }
 
+void io_diag_cyclus_tick() { _cyclus++; }
+
 void io_diag_reset() {
     _log_head  = 0;
     _log_count = 0;
+    // Baseline opnieuw laten loggen: alle nu AAN-gestuurde kanalen krijgen bij de
+    // volgende cyclus weer een uitgang-AAN-event, zodat een analyse na WISSEN weet
+    // welke terugkoppeling "hoort" AAN te zijn.
+    if (_vorige_drive) memset(_vorige_drive, 0, MAX_IO_KANALEN * sizeof(bool));
 }
 
 int io_diag_aantal() {
@@ -36,6 +44,7 @@ static void _io_diag_schrijf(int kanaal, bool is_drive, bool nieuw) {
     if (!_log) return;
     IoDiagEvent& e = _log[_log_head];
     e.t_ms   = millis();
+    e.cyclus = _cyclus;
     e.kanaal = (uint8_t)kanaal;
     e.vlag   = (nieuw ? 0x01 : 0x00) | (is_drive ? 0x02 : 0x00);
     _log_head = (_log_head + 1) % IO_DIAG_LOG_N;
@@ -73,8 +82,8 @@ void io_diag_regel(int i, char* buf, size_t buflen) {
     io_kanaal_label(e.kanaal, label, sizeof(label));
     String naam = io_naam_clean(e.kanaal);
 
-    snprintf(buf, buflen, "+%lums %s %s %s -> %s",
-             (unsigned long)e.t_ms, label, naam.c_str(),
+    snprintf(buf, buflen, "+%lums #%lu %s %s %s -> %s",
+             (unsigned long)e.t_ms, (unsigned long)e.cyclus, label, naam.c_str(),
              is_drive ? "uitgang" : "ingang",
              nieuw ? "AAN" : "UIT");
 }

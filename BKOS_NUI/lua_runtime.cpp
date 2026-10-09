@@ -418,7 +418,7 @@ static int l_io_diagAantal(lua_State* ls) {
 }
 static int l_io_diagRegel(lua_State* ls) {
     int i = (int)luaL_checkinteger(ls, 1);
-    char buf[80];
+    char buf[96];
     io_diag_regel(i, buf, sizeof(buf));
     lua_pushstring(ls, buf);
     return 1;

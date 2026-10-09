@@ -22,11 +22,12 @@
 #define IO_DIAG_LOG_N 400   // ringbuffer-capaciteit (events, niet cycli)
 
 void   io_diag_setup();                 // allocatie — aanroepen vanuit hw_io_setup()
+void   io_diag_cyclus_tick();            // aanroepen bij elke io_cyclus()-start: telt IO-cycli (voor "duur in cycli")
 void   io_diag_reset();                 // log leegmaken (bv. vóór een nieuwe testronde)
 int    io_diag_aantal();                // aantal nog aanwezige events (0..IO_DIAG_LOG_N)
 // Vult 'buf' met een leesbare regel voor event-index i (0 = oudste nog
 // aanwezige, io_diag_aantal()-1 = jongste). Formaat:
-// "+123456ms B5 **IL_wit1 uitgang -> AAN"
+// "+123456ms #789 B5 **IL_wit1 uitgang -> AAN"   (#789 = IO-cyclusnummer)
 void   io_diag_regel(int i, char* buf, size_t buflen);
 
 // Aanroepen vanuit io_cyclus() — logt alleen als de waarde daadwerkelijk

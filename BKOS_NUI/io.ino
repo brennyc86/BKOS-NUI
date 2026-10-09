@@ -344,6 +344,7 @@ void io_cyclus(bool stil) {
 
     int n = io_zichtbaar();   // Respecteert io_kanalen_cfg override
     if (n == 0) { io_actief = false; return; }
+    io_diag_cyclus_tick();
 
 #if PLATFORM_PICO || PLATFORM_WROOM
     // HC shift register cyclus (Pico + WROOM)

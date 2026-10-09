@@ -54,6 +54,16 @@ jobs:
           # nooit en blijven op hun eigen partitieschema.
           cp BKOS_NUI/partitions_s3_16mb.csv BKOS_NUI/partitions.csv
 
+      - name: Foutlog-token inbakken (alleen als secret FOUTLOG_TOKEN bestaat)
+        env:
+          FOUTLOG_TOKEN: ${{ secrets.FOUTLOG_TOKEN }}
+        run: |
+          # Token staat nooit in de broncode/git: alleen als GitHub-secret en in
+          # de gecompileerde firmware. fout_token_default.h is gitignored.
+          if [ -n "$FOUTLOG_TOKEN" ]; then
+            printf '#define FOUTLOG_TOKEN_DEFAULT "%s"\n' "$FOUTLOG_TOKEN" > BKOS_NUI/fout_token_default.h
+          fi
+
       - name: Compile ESP32-S3 firmware
         run: |
           arduino-cli compile \

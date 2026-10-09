@@ -6,6 +6,9 @@
 #include <Preferences.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#if __has_include("fout_token_default.h")
+  #include "fout_token_default.h"   // CI-gegenereerd uit secret FOUTLOG_TOKEN (gitignored)
+#endif
 #if PLATFORM_ESP32
   #include <mbedtls/sha256.h>
 #endif
@@ -40,6 +43,13 @@ void fout_log_setup() {
     prefs.end();
     strncpy(_token, tok.c_str(), sizeof(_token) - 1);
     _token[sizeof(_token) - 1] = '\0';
+#ifdef FOUTLOG_TOKEN_DEFAULT
+    // Ingebakken token als terugval; een via de webapp/CONFIG ingesteld token wint.
+    if (_token[0] == '\0') {
+        strncpy(_token, FOUTLOG_TOKEN_DEFAULT, sizeof(_token) - 1);
+        _token[sizeof(_token) - 1] = '\0';
+    }
+#endif
 }
 
 void fout_log_token_zet(const char* token) {

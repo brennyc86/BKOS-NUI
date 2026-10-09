@@ -605,6 +605,15 @@ static int l_fout_tokenAanwezig(lua_State* ls) {
     lua_pushboolean(ls, fout_log_token_aanwezig());
     return 1;
 }
+static int l_fout_reden(lua_State* ls) {
+    lua_pushstring(ls, fout_log_reden());
+    lua_pushinteger(ls, fout_log_cooldown_rest_s());
+    return 2;
+}
+static int l_fout_laatsteHttp(lua_State* ls) {
+    lua_pushinteger(ls, fout_log_laatste_http());
+    return 1;
+}
 static int l_fout_rapport(lua_State* ls) {
     const char* tekst   = luaL_checkstring(ls, 1);
     const char* context = luaL_optstring(ls, 2, "");
@@ -750,6 +759,8 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_fout_rapportageAan); lua_setfield(ls, -2, "rapportageAan");
     lua_pushcfunction(ls, l_fout_tokenAanwezig);  lua_setfield(ls, -2, "tokenAanwezig");
     lua_pushcfunction(ls, l_fout_rapport);        lua_setfield(ls, -2, "rapport");
+    lua_pushcfunction(ls, l_fout_reden);          lua_setfield(ls, -2, "reden");
+    lua_pushcfunction(ls, l_fout_laatsteHttp);    lua_setfield(ls, -2, "laatsteHttp");
     lua_setfield(ls, -2, "fout");
 
     lua_setglobal(ls, "bkos");

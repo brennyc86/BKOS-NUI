@@ -16,6 +16,10 @@
 static char          _token[120] = "";
 static unsigned long _laatste_ms = 0;
 static volatile bool _bezig      = false;
+static unsigned long _bezig_sinds = 0;                 // voor de watchdog op een vastgelopen verzendtaak
+static volatile int  _laatste_http = 0;                // laatste HTTP-code van de server; <0 = geen verbinding/begin mislukt
+static const char*   _reden       = "ok";              // waarom fout_log_stuur() het laatst weigerde
+#define FLOG_BEZIG_MAX_MS 90000UL                      // een taak langer dan dit bezig = vastgelopen
 
 #define FLOG_COOLDOWN 60000UL   // max 1 issue per minuut
 // Ruim bemeten voor een "compleet rapport" (bv. de IO-poorttest-app se
@@ -131,6 +135,7 @@ static void _flog_taak(void* param) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     if (!wifi_verbonden) {
+        _laatste_http = -100;   // geen wifi
         free(p->bericht); free(p->context);
         _bezig = false; vTaskDelete(NULL); return;
     }
@@ -144,6 +149,7 @@ static void _flog_taak(void* param) {
     const char* api_url = FOUT_LOG_API;         // terugval: GitHub Issues
 #endif
     if (!http.begin(sc, api_url)) {
+        _laatste_http = -101;   // begin mislukt
         free(p->bericht); free(p->context);
         _bezig = false; vTaskDelete(NULL); return;
     }
@@ -218,7 +224,7 @@ static void _flog_taak(void* param) {
     );
 #endif
 
-    http.POST(body);
+    _laatste_http = http.POST(body);   // 200 = server heeft het aangenomen; 4xx = geweigerd; <0 = verbindingsfout
     http.end();
 
     free(bericht_esc); free(context_esc); free(titel_esc); free(body);
@@ -228,16 +234,19 @@ static void _flog_taak(void* param) {
 }
 
 bool fout_log_stuur(FoutType type, const char* bericht, const char* context, const char* soort) {
-    if (!fout_rapportage)           return false;
-    if (!fout_log_token_aanwezig()) return false;
-    if (_bezig)                     return false;
-    if (millis() - _laatste_ms < FLOG_COOLDOWN) return false;
+    if (!fout_rapportage)           { _reden = "uit";          return false; }
+    if (!fout_log_token_aanwezig()) { _reden = "geen-sleutel"; return false; }
+    // Watchdog: een verzendtaak die na FLOG_BEZIG_MAX_MS nog "bezig" is, is vastgelopen
+    // (hangende TLS/verbinding) — anders blijft elke volgende melding voor altijd geweigerd.
+    if (_bezig && millis() - _bezig_sinds > FLOG_BEZIG_MAX_MS) { _bezig = false; _laatste_http = -102; }
+    if (_bezig)                     { _reden = "bezig";        return false; }
+    if (millis() - _laatste_ms < FLOG_COOLDOWN) { _reden = "cooldown"; return false; }
 
     size_t blen = bericht ? strnlen(bericht, FLOG_BERICHT_MAX - 1) : 0;
     size_t clen = context ? strnlen(context, FLOG_CONTEXT_MAX - 1) : 0;
     char* b = (char*)malloc(blen + 1);
     char* c = (char*)malloc(clen + 1);
-    if (!b || !c) { free(b); free(c); return false; }
+    if (!b || !c) { free(b); free(c); _reden = "geheugen"; return false; }
     memcpy(b, bericht ? bericht : "", blen); b[blen] = '\0';
     memcpy(c, context ? context : "", clen); c[clen] = '\0';
 
@@ -252,6 +261,24 @@ bool fout_log_stuur(FoutType type, const char* bericht, const char* context, con
     }
 
     _bezig = true;
+    _bezig_sinds = millis();
+#if PLATFORM_PICO
     PLATFORM_TASK_CREATE(_flog_taak, "fout_log", 12288, &_pakket, 1, NULL);
+#else
+    if (PLATFORM_TASK_CREATE(_flog_taak, "fout_log", 12288, &_pakket, 1, NULL) != pdPASS) {
+        // Taak kon niet starten (te weinig interne heap): niet voor altijd "bezig" blijven.
+        free(b); free(c);
+        _bezig = false; _reden = "taak"; _laatste_http = -103;
+        return false;
+    }
+#endif
+    _reden = "ok";
     return true;
+}
+
+const char* fout_log_reden()       { return _reden; }
+int         fout_log_laatste_http() { return _laatste_http; }
+int         fout_log_cooldown_rest_s() {
+    unsigned long d = millis() - _laatste_ms;
+    return d >= FLOG_COOLDOWN ? 0 : (int)((FLOG_COOLDOWN - d + 999) / 1000);
 }

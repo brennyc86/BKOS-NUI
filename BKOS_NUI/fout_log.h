@@ -28,6 +28,9 @@ void fout_log_setup();         // laad token uit Preferences bij opstart
 // een aanroeper (bv. een Lua-app) om daarop een duidelijke melding te tonen
 // i.p.v. stil niets te laten gebeuren.
 bool fout_log_stuur(FoutType type, const char* bericht, const char* context = "", const char* soort = "fout");
+const char* fout_log_reden();          // waarom de laatste fout_log_stuur() weigerde: uit|geen-sleutel|bezig|cooldown|geheugen|taak|ok
+int         fout_log_laatste_http();   // laatste serverantwoord: 200 = aangenomen, 4xx = geweigerd, <0 = geen verbinding (-100 wifi, -101 begin, -102 vastgelopen, -103 taak)
+int         fout_log_cooldown_rest_s();
 String fout_log_device_id();                   // geanonimiseerd apparaat-ID (ook gebruikt door post.ino)
 void fout_log_token_zet(const char* token);   // sla PAT op in Preferences
 bool fout_log_token_aanwezig();

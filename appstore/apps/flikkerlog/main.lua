@@ -125,8 +125,11 @@ function bkos.draw()
     knop(12, fy, 150, 40, "WISSEN")
     knop(176, fy, 190, 40, "VERSTUUR")
     if status ~= "" and bkos.sys.millis() - status_ms < 8000 then
-        bkos.drawText(380, fy + 12, status, 1, bkos.colors.amber)
+        bkos.drawText(380, fy + 6, status, 1, bkos.colors.amber)
     end
+    local h = bkos.fout.laatsteHttp()
+    local tekst = (h == 200) and "Server: aangenomen (200)" or (h > 0 and ("Server: geweigerd (" .. h .. ")") or (h < 0 and ("Server: geen verbinding (" .. h .. ")") or "Server: nog niets verstuurd"))
+    bkos.drawText(380, fy + 24, tekst, 1, (h == 200) and bkos.colors.green or bkos.colors.textDim)
 end
 
 function bkos.touch(x, y)
@@ -140,15 +143,22 @@ function bkos.touch(x, y)
         elseif not bkos.fout.tokenAanwezig() then
             status = "Deze firmware heeft geen verzendsleutel: update de firmware."
         else
-            status = bkos.fout.rapport(rapport(), "Flikkerlog", "schakellog") and "Verstuurd." or "Wacht 1 min (cooldown)."
+            if bkos.fout.rapport(rapport(), "Flikkerlog", "schakellog") then
+                status = "In wachtrij gezet. Serverantwoord volgt."
+            else
+                local reden, rest = bkos.fout.reden()
+                if reden == "cooldown" then status = "Wacht nog " .. rest .. " s (max 1 per minuut)."
+                elseif reden == "bezig" then status = "Vorige verzending loopt nog."
+                else status = "Niet verstuurd: " .. tostring(reden) .. "." end
+            end
         end
     end
     status_ms = bkos.sys.millis()
     bkos.draw()
 end
 
-local laatste = -1
+local laatste, laatste_http = -1, nil
 function bkos.update()
-    local n = bkos.io.diagAantal()
-    if n ~= laatste then laatste = n; bkos.draw() end
+    local n, h = bkos.io.diagAantal(), bkos.fout.laatsteHttp()
+    if n ~= laatste or h ~= laatste_http then laatste = n; laatste_http = h; bkos.draw() end
 end

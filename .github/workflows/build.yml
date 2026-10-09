@@ -57,11 +57,17 @@ jobs:
       - name: Foutlog-token inbakken (alleen als secret FOUTLOG_TOKEN bestaat)
         env:
           FOUTLOG_TOKEN: ${{ secrets.FOUTLOG_TOKEN }}
+          FOUTLOG_INGEST_KEY: ${{ secrets.FOUTLOG_INGEST_KEY }}
         run: |
           # Token staat nooit in de broncode/git: alleen als GitHub-secret en in
           # de gecompileerde firmware. fout_token_default.h is gitignored.
+          : > BKOS_NUI/fout_token_default.h
           if [ -n "$FOUTLOG_TOKEN" ]; then
-            printf '#define FOUTLOG_TOKEN_DEFAULT "%s"\n' "$FOUTLOG_TOKEN" > BKOS_NUI/fout_token_default.h
+            printf '#define FOUTLOG_TOKEN_DEFAULT "%s"\n' "$FOUTLOG_TOKEN" >> BKOS_NUI/fout_token_default.h
+          fi
+          # Write-only meldingen-Worker (server/meldingen): invoer-sleutel kan alleen toevoegen.
+          if [ -n "$FOUTLOG_INGEST_KEY" ]; then
+            printf '#define FOUTLOG_INGEST_KEY "%s"\n#define FOUTLOG_INGEST_URL "https://bkos-meldingen.brennycc86.workers.dev/ingest"\n' "$FOUTLOG_INGEST_KEY" >> BKOS_NUI/fout_token_default.h
           fi
 
       - name: Compile ESP32-S3 firmware

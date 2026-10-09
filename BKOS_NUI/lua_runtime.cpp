@@ -608,7 +608,8 @@ static int l_fout_tokenAanwezig(lua_State* ls) {
 static int l_fout_rapport(lua_State* ls) {
     const char* tekst   = luaL_checkstring(ls, 1);
     const char* context = luaL_optstring(ls, 2, "");
-    lua_pushboolean(ls, fout_log_stuur(FOUT_IO, tekst, context));
+    const char* soort   = luaL_optstring(ls, 3, "fout");   // fout|feedback|suggestie|schakellog
+    lua_pushboolean(ls, fout_log_stuur(FOUT_IO, tekst, context, soort));
     return 1;
 }
 

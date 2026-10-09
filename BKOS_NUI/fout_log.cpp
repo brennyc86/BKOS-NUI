@@ -22,7 +22,7 @@ static volatile bool _bezig      = false;
 // diagnosetekst) i.p.v. de oorspronkelijke korte eenregelige foutmeldingen —
 // heap-gealloceerd (zie _FlogPakket), dus dit kost alleen geheugen op het
 // moment dat er daadwerkelijk iets verstuurd wordt, niet permanent in BSS.
-#define FLOG_BERICHT_MAX 1536
+#define FLOG_BERICHT_MAX 4000
 #define FLOG_CONTEXT_MAX 96
 // Grootst denkbare JSON-body: beide velden volledig geëscaped (worst-case 2x)
 // + het sjabloon/labels — zie _flog_taak(), nooit afhankelijk van de actuele
@@ -33,6 +33,7 @@ struct _FlogPakket {
     FoutType type;
     char*    bericht;   // heap, vrijgegeven aan het eind van _flog_taak()
     char*    context;   // heap, idem
+    const char* soort;  // "fout"|"feedback"|"suggestie"|"schakellog" (statische literal) — alleen voor de meldingen-Worker
 };
 static _FlogPakket _pakket;
 
@@ -62,6 +63,9 @@ void fout_log_token_zet(const char* token) {
 }
 
 bool fout_log_token_aanwezig() {
+#ifdef FOUTLOG_INGEST_KEY
+    return true;   // meldingen-Worker: invoer-sleutel zit in de firmware, geen GitHub-token nodig
+#endif
     return _token[0] != '\0';
 }
 
@@ -132,16 +136,26 @@ static void _flog_taak(void* param) {
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;
-    if (!http.begin(sc, FOUT_LOG_API)) {
+#ifdef FOUTLOG_INGEST_KEY
+    const char* api_url = FOUTLOG_INGEST_URL;   // write-only meldingen-Worker (server/meldingen)
+#else
+    const char* api_url = FOUT_LOG_API;         // terugval: GitHub Issues
+#endif
+    if (!http.begin(sc, api_url)) {
         free(p->bericht); free(p->context);
         _bezig = false; vTaskDelete(NULL); return;
     }
 
     http.setTimeout(15000);
+#ifdef FOUTLOG_INGEST_KEY
+    http.addHeader("x-ingest-key",         FOUTLOG_INGEST_KEY);
+    http.addHeader("Content-Type",         "application/json");
+#else
     http.addHeader("Authorization",        String("Bearer ") + _token);
     http.addHeader("Accept",               "application/vnd.github+json");
     http.addHeader("Content-Type",         "application/json");
     http.addHeader("X-GitHub-Api-Version", "2022-11-28");
+#endif
 
     const char* tnaam    = _type_naam(p->type);
     String      dev_id   = _device_id();
@@ -164,6 +178,14 @@ static void _flog_taak(void* param) {
     _json_escape(p->context, context_esc, strlen(p->context) * 2 + 8);
     _json_escape(bootnaam,   titel_esc,   strlen(bootnaam) * 2 + 8);
 
+#ifdef FOUTLOG_INGEST_KEY
+    snprintf(body, FLOG_BODY_MAX,
+        "{\"soort\":\"%s\",\"boot\":\"%s\",\"device\":\"%s\",\"versie\":\"%s\","
+         "\"inhoud\":\"[%s] %s\\ncontext: %s\\nuptime %lus, heap %u, tijd %s\"}",
+        p->soort ? p->soort : "fout", titel_esc, dev_id.c_str(), BKOS_NUI_VERSIE,
+        tnaam, bericht_esc, context_esc[0] ? context_esc : "-",
+        millis() / 1000, (unsigned)PLATFORM_FREE_HEAP(), klok_tijd.c_str());
+#else
     snprintf(body, FLOG_BODY_MAX,
         "{"
           "\"title\":\"[BKOS] %s - %s | v%s\","
@@ -192,6 +214,7 @@ static void _flog_taak(void* param) {
         klok_tijd.c_str(),
         dev_id.c_str()
     );
+#endif
 
     http.POST(body);
     http.end();
@@ -202,7 +225,7 @@ static void _flog_taak(void* param) {
     vTaskDelete(NULL);
 }
 
-bool fout_log_stuur(FoutType type, const char* bericht, const char* context) {
+bool fout_log_stuur(FoutType type, const char* bericht, const char* context, const char* soort) {
     if (!fout_rapportage)           return false;
     if (!fout_log_token_aanwezig()) return false;
     if (_bezig)                     return false;
@@ -220,6 +243,11 @@ bool fout_log_stuur(FoutType type, const char* bericht, const char* context) {
     _pakket.type    = type;
     _pakket.bericht = b;
     _pakket.context = c;
+    _pakket.soort   = "fout";
+    if (soort) {
+        static const char* const OK[] = {"fout", "feedback", "suggestie", "schakellog"};
+        for (const char* s : OK) if (strcmp(soort, s) == 0) _pakket.soort = s;
+    }
 
     _bezig = true;
     PLATFORM_TASK_CREATE(_flog_taak, "fout_log", 12288, &_pakket, 1, NULL);

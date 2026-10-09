@@ -105,7 +105,7 @@ function bkos.touch(x, y)
         if not bkos.fout.rapportageAan() or not bkos.fout.tokenAanwezig() then
             status = "Zet FOUTRAP aan + token in CONFIG."
         else
-            status = bkos.fout.rapport(rapport(), "Flikkerlog") and "Verstuurd (GitHub-issue)." or "Wacht 1 min (cooldown)."
+            status = bkos.fout.rapport(rapport(), "Flikkerlog", "schakellog") and "Verstuurd." or "Wacht 1 min (cooldown)."
         end
     end
     status_ms = bkos.sys.millis()

@@ -27,6 +27,6 @@ void fout_log_setup();         // laad token uit Preferences bij opstart
 // loopt, of de cooldown (FLOG_COOLDOWN) nog niet verstreken is — handig voor
 // een aanroeper (bv. een Lua-app) om daarop een duidelijke melding te tonen
 // i.p.v. stil niets te laten gebeuren.
-bool fout_log_stuur(FoutType type, const char* bericht, const char* context = "");
+bool fout_log_stuur(FoutType type, const char* bericht, const char* context = "", const char* soort = "fout");
 void fout_log_token_zet(const char* token);   // sla PAT op in Preferences
 bool fout_log_token_aanwezig();

@@ -1,5 +1,6 @@
 #include "hw_io.h"
-#include "gast.h"  // NIVEAU_GAST/LOGE/DELER/EIGENAAR — io_min_niveau[]-waarden
+#include "gast.h"     // NIVEAU_GAST/LOGE/DELER/EIGENAAR — io_min_niveau[]-waarden
+#include "io_diag.h"  // flikker-diagnoselog — allocatie hier, net als io_min_niveau e.d.
 
 char  bkoss_versie[BKOSS_VERSIE_LEN] = "";
 bool  bkoss_actief     = false;
@@ -97,6 +98,7 @@ void hw_io_setup() {
     if (io_huispaneel) memset(io_huispaneel, 0, MAX_IO_KANALEN * sizeof(bool));
     if (!io_vaarpaneel) io_vaarpaneel = (bool*)malloc(MAX_IO_KANALEN * sizeof(bool));
     if (io_vaarpaneel) memset(io_vaarpaneel, 0, MAX_IO_KANALEN * sizeof(bool));
+    io_diag_setup();
     SPIFFS_BEGIN();
     hw_io_namen_laden();
     hw_io_cfg_laden();

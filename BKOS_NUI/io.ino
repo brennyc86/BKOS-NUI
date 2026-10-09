@@ -8,6 +8,7 @@
 #include "lamp.h"
 #include "wifi.h"   // ntp_synced() — fail-safe "neem donker aan" zolang de tijd niet bekend is
 #include "gast.h"   // NIVEAU_GAST/LOGE/DELER/EIGENAAR — io_min_niveau_voor_naam/_voor_lamp()
+#include "io_diag.h" // flikker-diagnoselog — io_diag_log_drive()/_log_input() hieronder in io_cyclus()
 #include "paneel.h"      // paneel_knop[]/paneel_aantal() — vaarpaneel-vinkje/migratie
 #include "huispaneel.h"  // huispaneel_knop[]/huispaneel_aantal() — huispaneel-vinkje/migratie
 
@@ -356,11 +357,14 @@ void io_cyclus(bool stil) {
         delayMicroseconds(10);
 
         // Uitgang zetten (omgekeerd) — ingangskanalen worden nooit aangestuurd
-        digitalWrite(HC_UIT, io_drijf_hoog(i_uit) ? HIGH : LOW);
+        bool gedreven = io_drijf_hoog(i_uit);
+        digitalWrite(HC_UIT, gedreven ? HIGH : LOW);
+        io_diag_log_drive(i_uit, gedreven);
 
         // Ingang lezen (gewone volgorde)
         bool nieuw = digitalRead(HC_IN);
         if (nieuw != io_input[i]) {
+            io_diag_log_input(i, nieuw);
             // Het dynamokanaal (io_dynamo_bezig) vuurt hier nooit een actie af:
             // tijdens de puls-sequentie is dat onze eigen drive, en in rust
             // moet io_dynamo_bewaking() eerst de 3-op-rij-bevestiging doorlopen.
@@ -408,7 +412,10 @@ void io_cyclus(bool stil) {
     // laten overlopen.
     for (int i = 0; i < n; i++) {
         // Ingangskanalen worden nooit aangestuurd (altijd '0')
-        IO_SERIAL.print(io_drijf_hoog(n - 1 - i) ? '1' : '0');
+        int  kanaal   = n - 1 - i;
+        bool gedreven = io_drijf_hoog(kanaal);
+        io_diag_log_drive(kanaal, gedreven);
+        IO_SERIAL.print(gedreven ? '1' : '0');
         IO_SERIAL.flush();
         delay(io_tune_sck_ms);
     }
@@ -423,6 +430,7 @@ void io_cyclus(bool stil) {
 
         bool nieuw = (c == '1');
         if (nieuw != io_input[i]) {
+            io_diag_log_input(i, nieuw);
             // Het dynamokanaal (io_dynamo_bezig) vuurt hier nooit een actie af:
             // tijdens de puls-sequentie is dat onze eigen drive, en in rust
             // moet io_dynamo_bewaking() eerst de 3-op-rij-bevestiging doorlopen.

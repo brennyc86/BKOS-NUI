@@ -10,6 +10,7 @@
 #include "haven_achtergrond.h"
 #include "melding.h"
 #include "fout_log.h"
+#include "io_diag.h"
 
 bool  lua_fout_actief   = false;
 char  lua_fout_tekst[LUA_FOUT_LEN] = "";
@@ -406,6 +407,27 @@ static int l_io_setTimingTijdelijk(lua_State* ls) {
     return 0;
 }
 
+// Flikker-diagnoselog (io_diag.h/.ino) -- puur uitlezen, geen enkele
+// IO-aansturing. Logt elke verandering van een GESTUURDE uitgang en van een
+// GELEZEN ingang die io_cyclus() al ziet, met een millis()-tijdstempel, zodat
+// een app achteraf kan laten zien of de ESP32 zelf de uitgang liet zakken of
+// dat alleen de terugkoppeling knipperde terwijl de uitgang stabiel bleef.
+static int l_io_diagAantal(lua_State* ls) {
+    lua_pushinteger(ls, io_diag_aantal());
+    return 1;
+}
+static int l_io_diagRegel(lua_State* ls) {
+    int i = (int)luaL_checkinteger(ls, 1);
+    char buf[80];
+    io_diag_regel(i, buf, sizeof(buf));
+    lua_pushstring(ls, buf);
+    return 1;
+}
+static int l_io_diagReset(lua_State* ls) {
+    io_diag_reset();
+    return 0;
+}
+
 // ─── bkos.data ───────────────────────────────────────────────────────────────
 static int l_data_read(lua_State* ls) {
     const char* k = luaL_checkstring(ls, 1);
@@ -672,6 +694,9 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_getTiming);    lua_setfield(ls, -2, "getTiming");
     lua_pushcfunction(ls, l_io_setTiming);    lua_setfield(ls, -2, "setTiming");
     lua_pushcfunction(ls, l_io_setTimingTijdelijk); lua_setfield(ls, -2, "setTimingTijdelijk");
+    lua_pushcfunction(ls, l_io_diagAantal); lua_setfield(ls, -2, "diagAantal");
+    lua_pushcfunction(ls, l_io_diagRegel);  lua_setfield(ls, -2, "diagRegel");
+    lua_pushcfunction(ls, l_io_diagReset);  lua_setfield(ls, -2, "diagReset");
     lua_setfield(ls, -2, "io");
 
     // data tabel

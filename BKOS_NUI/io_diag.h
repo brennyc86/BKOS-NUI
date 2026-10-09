@@ -37,3 +37,13 @@ void   io_diag_log_drive(int kanaal, bool gedreven_hoog);
 // Aanroepen vanuit io_cyclus() uitsluitend wanneer een ingang al gedetecteerd
 // is als gewijzigd (io_cyclus() houdt io_input[] zelf al bij) — logt altijd.
 void   io_diag_log_input(int kanaal, bool nieuw);
+
+// ─── Automatisch rapporteren ──────────────────────────────────────────────────
+// Detecteert in de eigen events een "dip" (kanaal dat AAN gestuurd wordt gaat
+// heel even uit) en stuurt zelf — zonder app of handeling — één rapport
+// (soort "schakellog") via fout_log_stuur(). Aanroepen aan het eind van
+// io_cyclus(), buiten het tijdkritische UART-gedeelte.
+//   FW = uitgang viel zelf weg (<= 2 cycli)       -> ligt aan de ESP32-firmware
+//   TK = uitgang bleef AAN, terugkoppeling viel weg (<= 5 cycli, <= 3 s)
+//        -> ligt in UART/ATtiny/74HC-keten
+void   io_diag_auto_verwerk();

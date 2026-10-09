@@ -391,6 +391,7 @@ void io_cyclus(bool stil) {
     io_runned    = true;
     io_actief    = false;
     io_gecheckt  = millis();
+    io_diag_auto_verwerk();
     return;
 #else
     // Gewijzigd-vlaggen wissen zodat io_loop weet dat outputs verstuurd zijn
@@ -455,6 +456,7 @@ void io_cyclus(bool stil) {
     io_runned = true;
     io_actief = false;
     io_gecheckt = millis();
+    io_diag_auto_verwerk();   // na het UART-gedeelte; stuurt zelf een rapport bij een gedetecteerde dip
 #endif
 }
 

@@ -433,6 +433,15 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
           <p style="font-size:.72rem;color:var(--text-dim);margin-top:8px;">Importeren overschrijft de huidige instellingen en herstart het apparaat automatisch.</p>
           <div id="instBackupMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
         </section>
+        <section>
+          <h2>Foutrapportage (GitHub-token)</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Plak hier het GitHub-token (fine-grained, alleen <i>issues: write</i> op BKOS-NUI-logs). Het token wordt nooit teruggestuurd naar de browser.</p>
+          <div id="frapStatus" style="font-size:.85rem;margin-bottom:8px;"></div>
+          <input id="frapToken" type="password" autocomplete="off" placeholder="github_pat_..." style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <button class="mbtn" onclick="frapOpslaan()">TOKEN OPSLAAN + RAPPORTAGE AAN</button>
+          <button class="mbtn" style="margin-top:8px;" onclick="frapAan(false)">RAPPORTAGE UIT</button>
+          <div id="frapMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -1564,7 +1573,36 @@ function veldRij(label, attr, idx, waarde, numeriek){
          '<input data-' + attr + '="' + idx + '" class="inst' + attr + 'Veld" type="' + (numeriek?'number':'text') +
          '" value="' + escAttr(waarde) + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:10px;">';
 }
-function instellingenLaden(){ send({t:'instellingen_get'}); }
+function frapStatus(){
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  fetch('/foutlog/status?pin=' + encodeURIComponent(pin)).then(function(r){ return r.json(); }).then(function(d){
+    var el = document.getElementById('frapStatus'); if (!el) return;
+    el.textContent = 'Rapportage: ' + (d.aan ? 'AAN' : 'UIT') + '  |  Token: ' + (d.token ? 'aanwezig' : 'niet ingesteld');
+  }).catch(function(){});
+}
+function frapPost(body, okTekst){
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  var el = document.getElementById('frapMelding');
+  fetch('/foutlog/instellen?pin=' + encodeURIComponent(pin), {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body
+  }).then(function(r){ return r.json().then(function(d){ return {s:r.status, d:d}; }); })
+    .then(function(res){
+      if (res.s === 200 && res.d.ok) { el.style.color = 'var(--green)'; el.textContent = okTekst; frapStatus(); }
+      else { el.style.color = 'var(--red)'; el.textContent = 'Mislukt' + (res.d.reden ? ' (' + res.d.reden + ')' : '') + '.'; }
+    }).catch(function(){ el.style.color = 'var(--red)'; el.textContent = 'Mislukt (verbinding).'; });
+}
+function frapOpslaan(){
+  if (needAuth()) return;
+  var t = document.getElementById('frapToken').value.trim();
+  if (!t) { var el = document.getElementById('frapMelding'); el.style.color = 'var(--red)'; el.textContent = 'Plak eerst een token.'; return; }
+  frapPost('token=' + encodeURIComponent(t) + '&aan=1', 'Token opgeslagen, rapportage staat AAN.');
+  document.getElementById('frapToken').value = '';
+}
+function frapAan(aan){
+  if (needAuth()) return;
+  frapPost('aan=' + (aan ? '1' : '0'), aan ? 'Rapportage AAN.' : 'Rapportage UIT.');
+}
+function instellingenLaden(){ send({t:'instellingen_get'}); frapStatus(); }
 function renderInstellingen(){
   var d = instellingenData;
   document.getElementById('instBoot').innerHTML =

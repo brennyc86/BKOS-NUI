@@ -18,6 +18,7 @@
 #include "app_manager.h"    // app_spiffs_vrij/totaal, app_sd_aanwezig/vrij — Bestanden-tab
 #include "mac_record.h"     // MAC-adres-onthouden afzendergegevens + berichtlimiet
 #include "wifi.h"           // wifi_mac_voor_ip()
+#include "fout_log.h"      // fout_log_token_zet/_aanwezig — token plakken via webapp
 #include <WebServer.h>
 
 // SD-kaart is alleen aangesloten op de S3 (zie app_manager.cpp) — zelfde
@@ -591,6 +592,28 @@ void webapp_setup() {
         // response de client nog bereikt vóór de herstart.
         _wa_herstart_ms = millis() + 1200;
         _wa_herstart_gepland = true;
+    });
+
+    // ─── Foutrapportage: token plakken + aan/uit via de webapp (alleen eigenaar) ──
+    // Het token zelf wordt nooit teruggestuurd; status geeft alleen aan/aanwezig.
+    _http.on("/foutlog/status", HTTP_GET, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
+        String s = "{\"ok\":true,\"aan\":"; s += fout_rapportage ? "true" : "false";
+        s += ",\"token\":"; s += fout_log_token_aanwezig() ? "true" : "false"; s += "}";
+        _http.send(200, "application/json", s);
+    });
+    _http.on("/foutlog/instellen", HTTP_POST, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}"); return; }
+        if (_http.hasArg("token")) {
+            String t = _http.arg("token"); t.trim();
+            if (t.length() < 20 || t.length() > 119) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"token-lengte\"}"); return; }
+            fout_log_token_zet(t.c_str());
+        }
+        if (_http.hasArg("aan")) {
+            fout_rapportage = (_http.arg("aan") == "1");
+            state_save();
+        }
+        _http.send(200, "application/json", "{\"ok\":true}");
     });
 
     _http.onNotFound([]() {

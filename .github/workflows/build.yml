@@ -1,6 +1,7 @@
 name: Build Firmware
 
 on:
+  workflow_dispatch:   # handmatig starten via Actions > Run workflow
   push:
     branches: [main]
     paths:

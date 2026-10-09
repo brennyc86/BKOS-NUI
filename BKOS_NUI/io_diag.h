@@ -62,7 +62,7 @@ void   io_diag_cyclus_einde(uint32_t start_ms, uint8_t timeouts, uint8_t extra, 
 int    io_diag_cyclus_aantal();
 void   io_diag_cyclus_regel(int i, char* buf, size_t buflen);   // i = 0 oudste
 void   io_diag_cfg_regel(char* buf, size_t buflen);             // actuele timing/hartslag/versies
-void   io_diag_marker();
+void   io_diag_marker(bool rapporteren = true);   // false = alleen vastleggen (handmatige stappen: de app stuurt zelf het rapport)
 
 // ─── Opname-venster (Flikkerlog-app open) ─────────────────────────────────────
 // Elke io_cyclus() wordt altijd als volledige momentopname (alle uitgangen + alle ingangen +
@@ -71,6 +71,12 @@ void   io_diag_marker();
 // moment tellen, event-log wordt gewist). Sluit de app, dan verloopt het venster vanzelf.
 #define IO_DIAG_SNAP_N 150
 void   io_diag_opname();                                  // keepalive vanuit de app
+void   io_diag_hex(const uint8_t* b, int n, char* out);   // bitset -> hex (2 tekens per 8 kanalen)
+bool   io_diag_opname_actief();                           // app is open (keepalive < 4 s geleden)
+// Reguliere IO-cycli (hartslag/wijziging/controle) pauzeren zolang de app open is, zodat handmatige
+// stappen/cycli zuiver te bekijken zijn. Vervalt vanzelf als de app sluit.
+void   io_diag_pauze(bool aan);
+bool   io_diag_pauze_actief();
 int    io_diag_snap_aantal();                             // cycli sinds het venster opende
 // "cyclus|t_ms|reden(H/W/C)|duur_ms|to|ex|st|n|UIThex|INhex" (hex: 2 tekens per 8 kanalen)
 void   io_diag_snap_regel(int i, char* buf, size_t buflen);  // i = 0 oudste in het venster                                         // gebruiker zag het knipperen: tijdstip vastleggen + rapport

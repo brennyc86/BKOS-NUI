@@ -12,6 +12,16 @@ int  interieur_overrule_kleur();  // -1 = geen overrule actief, 0 = wit, 1 = roo
 
 // Cross-core signalering (Core 0 = io_taak, Core 1 = UI loop)
 extern volatile bool io_direct_aanvraag;  // Core 1 → Core 0: voer io_cyclus direct uit
+extern volatile bool io_handmatig_aanvraag; // idem, maar vanuit de Flikkerlog-app: draait ook als de reguliere cycli gepauzeerd zijn
+
+// ─── Handmatige stappen (Flikkerlog-app) ──────────────────────────────────────
+// De ATtiny kent geen losse PCK-opdracht: de eerste PCK-puls zit in "IO\n", daarna wacht hij op bits en
+// pas bij '\n' volgt de laatste PCK-puls. Zo zijn de fasen van één cyclus los te starten:
+const char* io_stap_start();          // 1) "IO\n"  -> eerste PCK-puls
+const char* io_stap_bits(int modus);  // 2) alle bits in één keer, nog GEEN PCK; modus 0 = huidige uitgangen, 1 = geen bits
+const char* io_stap_latch();          // 3) '\n'     -> laatste PCK-puls
+const char* io_stap_abort();          // sessie afbreken (stuurt '\n' zodat de ATtiny weer vrijkomt)
+bool        io_stap_actief();
 extern volatile bool io_staat_gewijzigd;  // Core 0 → Core 1: IO uitkomst beschikbaar
 
 // Dynamo-bekrachtiging op **motor: zet periodiek kort spanning op het

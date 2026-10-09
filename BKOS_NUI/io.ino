@@ -23,6 +23,7 @@ bool interieur_kleur_rood = false;  // laatst berekende interieurkleur (true=roo
 // is (ATtiny's eigen ~30ms parallelle-klok-puls + ~7ms/teken pollinglus).
 
 volatile bool io_direct_aanvraag = false;
+volatile bool io_handmatig_aanvraag = false;
 volatile bool io_staat_gewijzigd = false;
 
 // io_actief is een gewone (niet-volatile, niet-atomaire) bool, maar wordt
@@ -148,6 +149,74 @@ bool io_handmatige_herscan() {
     io_actief = false;
     return true;
 }
+
+// ─── Handmatige stappen (zie io.h) ────────────────────────────────────────────
+static bool          _stap_sessie = false;
+static unsigned long _stap_t0     = 0;
+static char          _stap_txt[120];
+
+bool io_stap_actief() { return _stap_sessie; }
+
+#if PLATFORM_PICO || PLATFORM_WROOM
+const char* io_stap_start()          { return "niet beschikbaar op dit platform"; }
+const char* io_stap_bits(int)        { return "niet beschikbaar op dit platform"; }
+const char* io_stap_latch()          { return "niet beschikbaar op dit platform"; }
+const char* io_stap_abort()          { return "niet beschikbaar op dit platform"; }
+static void io_stap_watchdog() {}
+#else
+const char* io_stap_start() {
+    if (_stap_sessie) return "Sessie loopt al: eerst LATCH of ABORT";
+    if (!_io_actief_claim()) return "IO is bezig, probeer opnieuw";
+    _stap_sessie = true; _stap_t0 = millis();
+    while (IO_SERIAL.available()) IO_SERIAL.read();
+    IO_SERIAL.print("IO\n");
+    IO_SERIAL.flush();
+    delay(io_tune_pck_ms);                       // ATtiny leest het commando en slaat zijn eerste PCK-puls
+    int stale = 0; while (IO_SERIAL.available()) { IO_SERIAL.read(); stale++; }
+    snprintf(_stap_txt, sizeof(_stap_txt), "START ok: IO\\n verstuurd, eerste PCK geslagen (wacht %ums, stale %d)", (unsigned)io_tune_pck_ms, stale);
+    return _stap_txt;
+}
+
+const char* io_stap_bits(int modus) {
+    if (!_stap_sessie) return "Eerst START";
+    int n = io_zichtbaar();
+    char bits[64]; int nb = 0;
+    if (modus == 0) {
+        if (n > 60) return "Te veel kanalen om in één keer te sturen (ATtiny-buffer)";
+        for (int i = 0; i < n; i++) bits[nb++] = io_drijf_hoog(n - 1 - i) ? '1' : '0';   // veilig: zelfde pad als een gewone cyclus
+        IO_SERIAL.write((const uint8_t*)bits, nb);
+        IO_SERIAL.flush();
+    }
+    uint8_t inb[30] = {0}; int got = 0;
+    unsigned long t = millis(), maxw = (unsigned long)nb * 10UL + 600UL;
+    while (got < nb && millis() - t < maxw) {
+        if (IO_SERIAL.available()) { char ch = IO_SERIAL.read(); if (ch == '1' && got < 240) inb[got >> 3] |= (uint8_t)(1 << (got & 7)); got++; }
+        else vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    char hx[64]; io_diag_hex(inb, nb, hx);
+    snprintf(_stap_txt, sizeof(_stap_txt), "BITS ok: %d bits in 1 keer verstuurd, %d antwoorden in %lums, IN=%s (nog GEEN PCK)",
+             nb, got, (unsigned long)(millis() - t), hx);
+    return _stap_txt;
+}
+
+static const char* _stap_sluit(const char* kop) {
+    IO_SERIAL.print('\n');
+    IO_SERIAL.flush();
+    delay(io_tune_pck_ms);                       // ATtiny slaat zijn laatste PCK-puls
+    int extra = 0; while (IO_SERIAL.available()) { IO_SERIAL.read(); extra++; }
+    _stap_sessie = false;
+    io_actief = false;
+    snprintf(_stap_txt, sizeof(_stap_txt), "%s: laatste PCK geslagen, %d extra bytes terug", kop, extra);
+    return _stap_txt;
+}
+const char* io_stap_latch() { return _stap_sessie ? _stap_sluit("LATCH ok") : "Geen sessie: eerst START"; }
+const char* io_stap_abort() { return _stap_sessie ? _stap_sluit("ABORT") : "Geen sessie"; }
+
+// Veiligheid: een vergeten sessie houdt de IO-bus vast. Sluit af na 30 s of zodra de app dicht is.
+static void io_stap_watchdog() {
+    if (_stap_sessie && (millis() - _stap_t0 > 30000UL || !io_diag_opname_actief())) _stap_sluit("AUTO-AFSLUITING");
+}
+#endif
 
 // Opstart-vaarmodus a.d.h.v. actief ingangskanalen (zie io.h). Wordt in
 // hardware.ino aangeroepen ná een "stille" io_cyclus(true) — die heeft de
@@ -476,8 +545,22 @@ static void _io_achtergrond_taak(void*) {
     static unsigned long bevestig_start  = 0;
 
     for (;;) {
+        io_stap_watchdog();
         if (net_modus == NET_STANDALONE || net_modus == NET_MASTER || !net_gepaard) {
             unsigned long nu = millis();
+
+            if (io_diag_pauze_actief()) {
+                // Flikkerlog-app open met "reguliere cycli gepauzeerd": alleen cycli die de app zelf vraagt.
+                if (io_handmatig_aanvraag) {
+                    io_handmatig_aanvraag = false;
+                    io_diag_reden = 1;
+                    io_cyclus();
+                    io_staat_gewijzigd = true;
+                }
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                continue;
+            }
+            if (io_handmatig_aanvraag) { io_handmatig_aanvraag = false; io_direct_aanvraag = true; }
 
             bool aanvraag  = io_direct_aanvraag;
             bool gewijzigd = false;

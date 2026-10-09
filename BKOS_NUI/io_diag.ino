@@ -28,7 +28,9 @@ static int          _cyc_head  = 0;
 static uint32_t     _cyc_count = 0;
 
 // Bitset (kanaal k = bit k%8 van byte k/8) -> hex, 2 tekens per module van 8 kanalen.
-static void _hex(const uint8_t* b, int n, char* out) {
+void io_diag_hex(const uint8_t* b, int n, char* out);
+static void _hex(const uint8_t* b, int n, char* out) { io_diag_hex(b, n, out); }
+void io_diag_hex(const uint8_t* b, int n, char* out) {
     static const char H[] = "0123456789abcdef";
     int bytes = (n + 7) / 8;
     for (int i = 0; i < bytes; i++) { out[2 * i] = H[b[i] >> 4]; out[2 * i + 1] = H[b[i] & 15]; }
@@ -157,10 +159,15 @@ void io_diag_cfg_regel(char* buf, size_t buflen) {
              bkoss_versie[0] ? bkoss_versie : "?", BKOS_NUI_VERSIE);
 }
 
-void io_diag_marker() {
+void io_diag_marker(bool rapporteren) {
     _io_diag_schrijf(255, false, true);
-    _dip_melden("MK", 255, millis(), 0, 0);   // gebruiker zag het knipperen -> direct rapport
+    if (rapporteren) _dip_melden("MK", 255, millis(), 0, 0);   // gebruiker zag het knipperen -> direct rapport
 }
+
+static volatile bool _pauze_gevraagd = false;
+bool io_diag_opname_actief() { return _opname_laatst && (millis() - _opname_laatst) <= IO_DIAG_OPNAME_VERLOOP_MS; }
+void io_diag_pauze(bool aan) { _pauze_gevraagd = aan; }
+bool io_diag_pauze_actief() { return _pauze_gevraagd && io_diag_opname_actief(); }
 
 void io_diag_reset() {
     _log_head  = 0;

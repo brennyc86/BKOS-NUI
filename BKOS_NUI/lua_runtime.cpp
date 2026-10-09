@@ -427,7 +427,7 @@ static int l_io_diagReset(lua_State* ls) {
     io_diag_reset();
     return 0;
 }
-static int l_io_diagMarker(lua_State* ls) { io_diag_marker(); return 0; }
+static int l_io_diagMarker(lua_State* ls) { io_diag_marker(lua_isnone(ls, 1) ? true : lua_toboolean(ls, 1) != 0); return 0; }
 static int l_io_cyclusAantal(lua_State* ls) { lua_pushinteger(ls, io_diag_cyclus_aantal()); return 1; }
 static int l_io_cyclusRegel(lua_State* ls) {
     char buf[64];
@@ -456,7 +456,14 @@ static int l_io_cfgRegel(lua_State* ls) {
     return 1;
 }
 // Vraagt de IO-taak om direct één cyclus te draaien (voor testreeksen vanuit een app).
-static int l_io_vraagCyclus(lua_State* ls) { io_direct_aanvraag = true; return 0; }
+static int l_io_vraagCyclus(lua_State* ls) { io_handmatig_aanvraag = true; return 0; }
+static int l_io_stapStart(lua_State* ls)  { lua_pushstring(ls, io_stap_start()); return 1; }
+static int l_io_stapBits(lua_State* ls)   { lua_pushstring(ls, io_stap_bits((int)luaL_optinteger(ls, 1, 0))); return 1; }
+static int l_io_stapLatch(lua_State* ls)  { lua_pushstring(ls, io_stap_latch()); return 1; }
+static int l_io_stapAbort(lua_State* ls)  { lua_pushstring(ls, io_stap_abort()); return 1; }
+static int l_io_stapActief(lua_State* ls) { lua_pushboolean(ls, io_stap_actief()); return 1; }
+static int l_io_diagPauze(lua_State* ls)  { io_diag_pauze(lua_toboolean(ls, 1) != 0); return 0; }
+static int l_io_diagPauzeActief(lua_State* ls) { lua_pushboolean(ls, io_diag_pauze_actief()); return 1; }
 
 // ─── bkos.data ───────────────────────────────────────────────────────────────
 static int l_data_read(lua_State* ls) {
@@ -746,6 +753,13 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_snapRegel);    lua_setfield(ls, -2, "snapRegel");
     lua_pushcfunction(ls, l_io_kanaalLabel);  lua_setfield(ls, -2, "kanaalLabel");
     lua_pushcfunction(ls, l_io_vraagCyclus);  lua_setfield(ls, -2, "vraagCyclus");
+    lua_pushcfunction(ls, l_io_stapStart);    lua_setfield(ls, -2, "stapStart");
+    lua_pushcfunction(ls, l_io_stapBits);     lua_setfield(ls, -2, "stapBits");
+    lua_pushcfunction(ls, l_io_stapLatch);    lua_setfield(ls, -2, "stapLatch");
+    lua_pushcfunction(ls, l_io_stapAbort);    lua_setfield(ls, -2, "stapAbort");
+    lua_pushcfunction(ls, l_io_stapActief);   lua_setfield(ls, -2, "stapActief");
+    lua_pushcfunction(ls, l_io_diagPauze);    lua_setfield(ls, -2, "diagPauze");
+    lua_pushcfunction(ls, l_io_diagPauzeActief); lua_setfield(ls, -2, "diagPauzeActief");
     lua_setfield(ls, -2, "io");
 
     // data tabel

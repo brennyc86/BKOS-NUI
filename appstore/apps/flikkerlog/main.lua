@@ -22,8 +22,12 @@ local RIJ_H    = 22
 local FOOTER_H = 52
 local LOG_MAX  = 3600    -- server/fout_log accepteert ~4000 tekens
 local status, status_ms = "", 0
+local test = { aan = false, n = 0, max = 10, volgende = 0 }
+local TEST_GAP_MS = 2500
 
 local function parse(regel)
+    local mt, mc = regel:match("^%+(%d+)ms #(%d+) MARKER")
+    if mt then return { t = tonumber(mt), c = tonumber(mc), marker = true, lab = "-", naam = "", uitgang = false, aan = false } end
     local t, c, lab, naam, soort, nw = regel:match("^%+(%d+)ms #(%d+) (%S+) (.-) (%a+) %-> (%a+)$")
     if not t then return nil end
     return { t = tonumber(t), c = tonumber(c), lab = lab, naam = naam,
@@ -43,6 +47,7 @@ end
 local function dips(lijst)
     local drive_aan, drive_uit, tk_uit, gevonden = {}, {}, {}, {}
     for _, e in ipairs(lijst) do
+        if e.marker then goto volgende end
         if e.uitgang then
             if not e.aan then
                 drive_uit[e.lab] = e
@@ -67,6 +72,7 @@ local function dips(lijst)
                 tk_uit[e.lab] = nil
             end
         end
+        ::volgende::
     end
     return gevonden
 end
@@ -86,11 +92,16 @@ local function rapport()
     for i = math.max(1, #d - 8), #d do
         r[#r + 1] = string.format("DIP-%s %s %s +%dms duur %dms (%d cycli)", d[i].soort, d[i].lab, d[i].naam, d[i].t, d[i].ms, d[i].cycli)
     end
-    local tekst = table.concat(r, "\n") .. "\n--- laatste events: ms #cyclus kanaal U=uitgang/I=ingang 1=AAN ---\n"
+    r[#r + 1] = bkos.io.cfgRegel()
+    r[#r + 1] = "--- laatste cycli: ms #cyclus H/W/C=hartslag/wijziging/controle duur(ms) to=time-outs ex=extra bytes st=stale ---"
+    local ca = bkos.io.cyclusAantal()
+    for i = math.max(0, ca - 10), ca - 1 do r[#r + 1] = bkos.io.cyclusRegel(i) end
+    local tekst = table.concat(r, "\n") .. "\n--- laatste events: ms #cyclus kanaal U=uitgang/I=ingang 1=AAN, MARK=knipper gezien ---\n"
     local rest, lengte = {}, #tekst
     for i = #lijst, 1, -1 do
         local e = lijst[i]
-        local s = string.format("%d #%d %s %s%s\n", e.t, e.c, e.lab, e.uitgang and "U" or "I", e.aan and "1" or "0")
+        local s = e.marker and string.format("%d #%d MARK\n", e.t, e.c)
+                  or string.format("%d #%d %s %s%s\n", e.t, e.c, e.lab, e.uitgang and "U" or "I", e.aan and "1" or "0")
         if lengte + #s > LOG_MAX then break end
         lengte = lengte + #s
         rest[#rest + 1] = s
@@ -112,32 +123,44 @@ function bkos.draw()
     local fw, tk = tel(dips(lijst))
     local kleur = (fw + tk > 0) and bkos.colors.red or bkos.colors.green
     bkos.drawText(12, 4, string.format("%d events | dips FW:%d TK:%d", #lijst, fw, tk), 2, kleur)
-    local rijen = math.floor((bkos.H - FOOTER_H - 30) / RIJ_H)
+    local rijen = math.floor((bkos.H - FOOTER_H - 30 - 16) / RIJ_H)
     local start = math.max(1, #lijst - rijen + 1)
     local y = 30
     for i = start, #lijst do
         local e = lijst[i]
         local k = e.uitgang and bkos.colors.text or bkos.colors.textDim
-        bkos.drawText(12, y, string.format("+%dms #%d  %s  %s  %s %s", e.t, e.c, e.lab, e.naam, e.uitgang and "UITGANG" or "ingang", e.aan and "AAN" or "UIT"), 1, k)
+        if e.marker then
+            bkos.drawText(12, y, string.format("+%dms #%d  *** KNIPPER GEZIEN ***", e.t, e.c), 1, bkos.colors.red)
+        else
+            bkos.drawText(12, y, string.format("+%dms #%d  %s  %s  %s %s", e.t, e.c, e.lab, e.naam, e.uitgang and "UITGANG" or "ingang", e.aan and "AAN" or "UIT"), 1, k)
+        end
         y = y + RIJ_H
     end
     local fy = bkos.H - FOOTER_H + 6
-    knop(12, fy, 150, 40, "WISSEN")
-    knop(176, fy, 190, 40, "VERSTUUR")
-    if status ~= "" and bkos.sys.millis() - status_ms < 8000 then
-        bkos.drawText(380, fy + 6, status, 1, bkos.colors.amber)
-    end
+    knop(12, fy, 130, 40, "WISSEN")
+    knop(150, fy, 170, 40, "VERSTUUR")
+    knop(328, fy, 190, 40, "KNIPPER!")
+    knop(526, fy, 140, 40, test.aan and "STOP" or "TEST")
     local h = bkos.fout.laatsteHttp()
     local tekst = (h == 200) and "Server: aangenomen (200)" or (h > 0 and ("Server: geweigerd (" .. h .. ")") or (h < 0 and ("Server: geen verbinding (" .. h .. ")") or "Server: nog niets verstuurd"))
-    bkos.drawText(380, fy + 24, tekst, 1, (h == 200) and bkos.colors.green or bkos.colors.textDim)
+    bkos.drawText(12, fy - 14, tekst, 1, (h == 200) and bkos.colors.green or bkos.colors.textDim)
+    local regel = test.aan and string.format("TESTREEKS %d/%d: kijk naar de lamp en druk KNIPPER! zodra hij uitvalt", test.n, test.max) or status
+    if regel ~= "" and (test.aan or bkos.sys.millis() - status_ms < 8000) then
+        bkos.drawText(330, fy - 14, regel, 1, bkos.colors.amber)
+    end
 end
 
 function bkos.touch(x, y)
     local fy = bkos.H - FOOTER_H + 6
     if y < fy or y > fy + 40 then return end
-    if x >= 12 and x <= 162 then
+    if x >= 12 and x <= 142 then
         bkos.io.diagReset(); status = "Log gewist."
-    elseif x >= 176 and x <= 366 then
+    elseif x >= 328 and x <= 518 then
+        bkos.io.diagMarker(); status = "Knipperen vastgelegd; rapport wordt automatisch verstuurd."
+    elseif x >= 526 and x <= 666 then
+        test.aan = not test.aan
+        if test.aan then bkos.io.diagReset(); test.n = 0; test.volgende = bkos.sys.millis() + 1000; status = "" else status = "Testreeks gestopt." end
+    elseif x >= 150 and x <= 320 then
         if not bkos.fout.rapportageAan() then
             status = "Foutrapportage staat uit (CONFIG)."
         elseif not bkos.fout.tokenAanwezig() then
@@ -159,6 +182,23 @@ end
 
 local laatste, laatste_http = -1, nil
 function bkos.update()
+    if test.aan and bkos.sys.millis() >= test.volgende then
+        if test.n < test.max then
+            test.n = test.n + 1
+            bkos.io.vraagCyclus()
+            test.volgende = bkos.sys.millis() + TEST_GAP_MS
+            bkos.draw()
+        else
+            test.aan = false
+            if bkos.fout.rapportageAan() and bkos.fout.rapport(rapport(), "Flikkerlog testreeks", "schakellog") then
+                status = "Testreeks klaar; rapport verstuurd."
+            else
+                status = "Testreeks klaar. Druk VERSTUUR."
+            end
+            status_ms = bkos.sys.millis()
+            bkos.draw()
+        end
+    end
     local n, h = bkos.io.diagAantal(), bkos.fout.laatsteHttp()
     if n ~= laatste or h ~= laatste_http then laatste = n; laatste_http = h; bkos.draw() end
 end

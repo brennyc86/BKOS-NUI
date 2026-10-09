@@ -397,7 +397,9 @@ void io_cyclus(bool stil) {
     // Gewijzigd-vlaggen wissen zodat io_loop weet dat outputs verstuurd zijn
     for (int i = 0; i < n; i++) io_gewijzigd[i] = false;
 
-    while (IO_SERIAL.available()) IO_SERIAL.read();
+    uint32_t diag_t0 = millis();
+    uint8_t  diag_tmo = 0, diag_extra = 0, diag_stale = 0;
+    while (IO_SERIAL.available()) { IO_SERIAL.read(); if (diag_stale < 255) diag_stale++; }
     IO_SERIAL.print("IO\n");
     IO_SERIAL.flush();
     // De ATtiny (BKOSS) doet vóór hij ook maar één bit leest eerst een eigen
@@ -405,7 +407,7 @@ void io_cyclus(bool stil) {
     // (io_tune_pck_ms) moet dat ruim overtreffen, anders begint onze burst al
     // te versturen vóórdat de ATtiny start met lezen.
     delay(io_tune_pck_ms);
-    while (IO_SERIAL.available()) IO_SERIAL.read();
+    while (IO_SERIAL.available()) { IO_SERIAL.read(); if (diag_stale < 255) diag_stale++; }
 
     // Stuur ALLE outputs in één keer (omgekeerde volgorde voor shift registers).
     // De ATtiny verwerkt pas per volledige module (8 bits) en stuurt dan de inputs
@@ -429,6 +431,7 @@ void io_cyclus(bool stil) {
 
         char c = '0';
         if (IO_SERIAL.available()) c = IO_SERIAL.read();
+        else if (diag_tmo < 255) diag_tmo++;
 
         bool nieuw = (c == '1');
         if (nieuw != io_input[i]) {
@@ -451,7 +454,8 @@ void io_cyclus(bool stil) {
 
     IO_SERIAL.print('\n');
     delay(io_tune_pck_ms);  // de ATtiny's afsluitende slag_pck() heeft dezelfde settle-tijd nodig
-    while (IO_SERIAL.available()) IO_SERIAL.read();
+    while (IO_SERIAL.available()) { IO_SERIAL.read(); if (diag_extra < 255) diag_extra++; }
+    io_diag_cyclus_einde(diag_t0, diag_tmo, diag_extra, diag_stale);
 
     io_runned = true;
     io_actief = false;
@@ -488,6 +492,7 @@ static void _io_achtergrond_taak(void*) {
             if (aanvraag || (gewijzigd && minimum_ok) || tijd_verlopen) {
                 if (aanvraag) io_direct_aanvraag = false;
                 bool was_wijziging = ((aanvraag || gewijzigd) && !tijd_verlopen);
+                io_diag_reden = (aanvraag || gewijzigd) ? 1 : 0;
                 io_cyclus();
                 io_staat_gewijzigd = true;
                 if (net_modus == NET_MASTER) net_io_sturen();
@@ -498,6 +503,7 @@ static void _io_achtergrond_taak(void*) {
             }
             if (bevestig_actief && (nu - bevestig_start >= 2000UL)) {
                 bevestig_actief = false;
+                io_diag_reden = 2;
                 io_cyclus();
                 io_staat_gewijzigd = true;
                 if (net_modus == NET_MASTER) net_io_sturen();

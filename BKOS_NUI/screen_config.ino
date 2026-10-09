@@ -885,7 +885,7 @@ static void pico_cfg_instellingen_run(int x, int y) {
     y0 += 30;
     // Firmware
     if (y >= y0 && y < y0 + 26) {
-        if (!ontg) { pin_vereist_tonen(); return; }
+        if (!ontg && !update_zonder_pin) { pin_vereist_tonen(); return; }   // instelling "updates zonder pincode"
         actief_scherm = SCREEN_OTA; scherm_bouwen = true; return;
     }
     y0 += 30;

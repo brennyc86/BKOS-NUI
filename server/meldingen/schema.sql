@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS berichten (
   ontvangen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   device    TEXT NOT NULL,   -- device-ID van de boot, of '*' voor alle boten
   titel     TEXT NOT NULL,
-  tekst     TEXT NOT NULL
+  tekst     TEXT NOT NULL,
+  actie     TEXT             -- optioneel JSON: {type:instellingen|update,...}
 );
 CREATE INDEX IF NOT EXISTS idx_berichten_device ON berichten(device, id);
 
@@ -26,3 +27,6 @@ CREATE TABLE IF NOT EXISTS afgewezen (
   ontvangen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   status    INTEGER, reden TEXT, pad TEXT, ua TEXT, lengte INTEGER, extra TEXT
 );
+
+-- Actie bij een bericht (voorstel voor instellingen of een update); ALTER voor bestaande databases:
+--   ALTER TABLE berichten ADD COLUMN actie TEXT;

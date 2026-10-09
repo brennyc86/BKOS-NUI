@@ -602,6 +602,17 @@ void webapp_setup() {
         s += ",\"token\":"; s += fout_log_token_aanwezig() ? "true" : "false"; s += "}";
         _http.send(200, "application/json", s);
     });
+    // ─── Updates zonder pincode (alleen eigenaar) ─────────────────────────────────
+    _http.on("/updpin/status", HTTP_GET, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
+        _http.send(200, "application/json", update_zonder_pin ? "{\"ok\":true,\"aan\":true}" : "{\"ok\":true,\"aan\":false}");
+    });
+    _http.on("/updpin/zet", HTTP_POST, []() {
+        if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}"); return; }
+        update_zonder_pin = (_http.arg("aan") == "1");
+        state_save();
+        _http.send(200, "application/json", "{\"ok\":true}");
+    });
     _http.on("/foutlog/instellen", HTTP_POST, []() {
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}"); return; }
         if (_http.hasArg("token")) {

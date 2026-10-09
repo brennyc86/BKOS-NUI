@@ -71,7 +71,7 @@ export default {
       const device = tekst(url.searchParams.get("device"), 32);
       const na = parseInt(url.searchParams.get("na") || "0", 10) || 0;
       if (!device) return json({ ok: false, reden: "device" }, 400);
-      const r = await env.DB.prepare("SELECT id,ontvangen,titel,tekst FROM berichten WHERE (device=? OR device='*') AND id>? ORDER BY id ASC LIMIT 5").bind(device, na).all();
+      const r = await env.DB.prepare("SELECT id,ontvangen,titel,tekst,actie FROM berichten WHERE (device=? OR device='*') AND id>? ORDER BY id ASC LIMIT 5").bind(device, na).all();
       return json({ ok: true, berichten: r.results });
     }
     // Beheerder (leessleutel) stuurt een bericht naar één boot of '*'.
@@ -81,7 +81,19 @@ export default {
       try { b = await req.json(); } catch { return json({ ok: false, reden: "json" }, 400); }
       const device = tekst(b.device, 32), titel = tekst(b.titel, 60), t = tekst(b.tekst, 600);
       if (!device || !titel || !t) return json({ ok: false, reden: "leeg" }, 400);
-      const r = await env.DB.prepare("INSERT INTO berichten (device,titel,tekst) VALUES (?,?,?)").bind(device, titel, t).run();
+      // Optionele actie: {"type":"instellingen","items":[{"k":"...","v":N}]} of {"type":"update"}.
+      // De boordcomputer past alleen toe wat in zijn eigen whitelist staat, en altijd met pincode
+      // (updates: pincode tenzij de eigenaar "updates zonder pincode" heeft aangezet).
+      let actie = null;
+      if (b.actie != null) {
+        const a = b.actie;
+        if (!a || !["instellingen", "update"].includes(a.type)) return json({ ok: false, reden: "actie-type" }, 400);
+        if (a.type === "instellingen" && (!Array.isArray(a.items) || a.items.length < 1 || a.items.length > 6 ||
+            a.items.some(i => typeof i.k !== "string" || !Number.isFinite(i.v)))) return json({ ok: false, reden: "actie-items" }, 400);
+        actie = JSON.stringify(a);
+        if (actie.length > 260) return json({ ok: false, reden: "actie-lengte" }, 400);
+      }
+      const r = await env.DB.prepare("INSERT INTO berichten (device,titel,tekst,actie) VALUES (?,?,?,?)").bind(device, titel, t, actie).run();
       return json({ ok: true, id: r.meta.last_row_id });
     }
 

@@ -16,6 +16,14 @@ static int           _log_head    = 0;         // volgende schrijfpositie (ring)
 static uint32_t      _log_count   = 0;
 static uint32_t      _cyclus      = 0;
 
+volatile uint8_t io_diag_reden = 0;
+
+struct IoCyclusRec { uint32_t t_ms, cyclus; uint16_t duur; uint8_t reden, tmo, extra, stale; };
+#define IO_DIAG_CYC_N 40
+static IoCyclusRec* _cyc       = nullptr;
+static int          _cyc_head  = 0;
+static uint32_t     _cyc_count = 0;
+
 #define DIAG_DIP_MS        3000UL
 #define DIAG_FW_MAX_CYCLI  2
 #define DIAG_TK_MAX_CYCLI  5
@@ -47,6 +55,7 @@ static void _dip_melden(const char* soort, int kanaal, uint32_t t, uint32_t dur,
 
 void io_diag_setup() {
     if (!_log) _log = (IoDiagEvent*)PLATFORM_MALLOC(sizeof(IoDiagEvent) * IO_DIAG_LOG_N);
+    if (!_cyc) _cyc = (IoCyclusRec*)malloc(IO_DIAG_CYC_N * sizeof(IoCyclusRec));
     if (!_dip) {
         _dip = (IoDipStaat*)malloc(MAX_IO_KANALEN * sizeof(IoDipStaat));
         if (_dip) memset(_dip, 0, MAX_IO_KANALEN * sizeof(IoDipStaat));
@@ -59,6 +68,45 @@ void io_diag_setup() {
 }
 
 void io_diag_cyclus_tick() { _cyclus++; }
+
+void io_diag_cyclus_einde(uint32_t start_ms, uint8_t timeouts, uint8_t extra, uint8_t stale) {
+    if (!_cyc) return;
+    IoCyclusRec& r = _cyc[_cyc_head];
+    r.t_ms = start_ms; r.cyclus = _cyclus;
+    uint32_t d = millis() - start_ms;
+    r.duur = d > 65535 ? 65535 : (uint16_t)d;
+    r.reden = io_diag_reden; r.tmo = timeouts; r.extra = extra; r.stale = stale;
+    _cyc_head = (_cyc_head + 1) % IO_DIAG_CYC_N;
+    _cyc_count++;
+}
+
+int io_diag_cyclus_aantal() { return _cyc ? (int)min(_cyc_count, (uint32_t)IO_DIAG_CYC_N) : 0; }
+
+void io_diag_cyclus_regel(int i, char* buf, size_t buflen) {
+    if (!buf || buflen == 0) return;
+    buf[0] = '\0';
+    int aantal = io_diag_cyclus_aantal();
+    if (i < 0 || i >= aantal) return;
+    int start = (_cyc_count > (uint32_t)IO_DIAG_CYC_N) ? _cyc_head : 0;
+    const IoCyclusRec& r = _cyc[(start + i) % IO_DIAG_CYC_N];
+    snprintf(buf, buflen, "%lu #%lu %s %ums to%u ex%u st%u",
+             (unsigned long)r.t_ms, (unsigned long)r.cyclus,
+             r.reden == 0 ? "H" : (r.reden == 1 ? "W" : "C"),
+             (unsigned)r.duur, (unsigned)r.tmo, (unsigned)r.extra, (unsigned)r.stale);
+}
+
+void io_diag_cfg_regel(char* buf, size_t buflen) {
+    if (!buf || buflen == 0) return;
+    snprintf(buf, buflen, "cfg: pck=%ums sck=%ums hb_aan=%us hb_uit=%us kanalen=%d bkoss=%s fw=%s",
+             (unsigned)io_tune_lees(1), (unsigned)io_tune_lees(2),
+             (unsigned)io_heartbeat_aan, (unsigned)io_heartbeat_uit, io_zichtbaar(),
+             bkoss_versie[0] ? bkoss_versie : "?", BKOS_NUI_VERSIE);
+}
+
+void io_diag_marker() {
+    _io_diag_schrijf(255, false, true);
+    _dip_melden("MK", 255, millis(), 0, 0);   // gebruiker zag het knipperen -> direct rapport
+}
 
 void io_diag_reset() {
     _log_head  = 0;
@@ -81,7 +129,7 @@ static void _io_diag_schrijf(int kanaal, bool is_drive, bool nieuw) {
     e.t_ms   = millis();
     e.cyclus = _cyclus;
     e.kanaal = (uint8_t)kanaal;
-    e.vlag   = (nieuw ? 0x01 : 0x00) | (is_drive ? 0x02 : 0x00);
+    e.vlag   = (nieuw ? 0x01 : 0x00) | (is_drive ? 0x02 : 0x00) | (kanaal == 255 ? 0x04 : 0x00);   // bit2 = marker
     _log_head = (_log_head + 1) % IO_DIAG_LOG_N;
     _log_count++;
 }
@@ -125,7 +173,8 @@ void io_diag_log_input(int kanaal, bool nieuw) {
 void io_diag_auto_verwerk() {
     if (!_auto_open) return;
     unsigned long nu = millis();
-    if (_auto_laatste_verzonden && nu - _auto_laatste_verzonden < DIAG_AUTO_PAUZE_MS) return;
+    unsigned long pauze = (_auto_soort[0] == 'M') ? 60000UL : DIAG_AUTO_PAUZE_MS;   // handmatige knipper-melding: max 1 per minuut
+    if (_auto_laatste_verzonden && nu - _auto_laatste_verzonden < pauze) return;
     if (_auto_volgende_poging && (long)(nu - _auto_volgende_poging) < 0) return;
 
     const size_t CAP = 3600;
@@ -133,15 +182,25 @@ void io_diag_auto_verwerk() {
     if (!tekst) { _auto_volgende_poging = nu + DIAG_AUTO_RETRY_MS; return; }
 
     char label[6];
-    io_kanaal_label(_auto_kanaal, label, sizeof(label));
-    String naam = io_naam_clean(_auto_kanaal);
+    String naam = "";
+    if (_auto_kanaal == 255) { strcpy(label, "-"); naam = "(handmatig gemeld)"; }   // marker: geen kanaal
+    else { io_kanaal_label(_auto_kanaal, label, sizeof(label)); naam = io_naam_clean(_auto_kanaal); }
     size_t o = snprintf(tekst, CAP,
         "Automatisch: %s-dip op %s %s, +%lums, duur %lums (%lu cycli). Dips sinds vorig rapport: %u.\n"
-        "FW = uitgang viel zelf weg (firmware); TK = uitgang bleef AAN, terugkoppeling viel weg (UART/ATtiny/74HC).\n"
-        "--- laatste events ---\n",
+        "FW = uitgang viel zelf weg (firmware); TK = uitgang bleef AAN, terugkoppeling viel weg (UART/ATtiny/74HC); MK = gebruiker zag knipperen.\n",
         _auto_soort, label, naam.c_str(), (unsigned long)_auto_t, (unsigned long)_auto_dur,
         (unsigned long)_auto_cycli, (unsigned)_auto_aantal);
     if (o > CAP) o = CAP;
+    {   // actuele instellingen + laatste cycli (UART-gezondheid: H/W/C=hartslag/wijziging/controle, duur, to=timeouts, ex=extra bytes, st=stale)
+        char cfg[160]; io_diag_cfg_regel(cfg, sizeof(cfg));
+        o += snprintf(tekst + o, CAP - o, "%s\n--- laatste cycli: ms #cyclus reden duur ---\n", cfg);
+        int ca = io_diag_cyclus_aantal();
+        for (int i = max(0, ca - 12); i < ca && o + 60 < CAP; i++) {
+            char r[64]; io_diag_cyclus_regel(i, r, sizeof(r));
+            o += snprintf(tekst + o, CAP - o, "%s\n", r);
+        }
+        o += snprintf(tekst + o, CAP - o, "--- laatste events ---\n");
+    }
 
     // Meest recente events achteraan; eerst zoveel regels als passen, chronologisch.
     int aantal = io_diag_aantal();
@@ -183,6 +242,10 @@ void io_diag_regel(int i, char* buf, size_t buflen) {
     int idx   = (start + i) % IO_DIAG_LOG_N;
     const IoDiagEvent& e = _log[idx];
 
+    if (e.vlag & 0x04) {
+        snprintf(buf, buflen, "+%lums #%lu MARKER knipper-gezien", (unsigned long)e.t_ms, (unsigned long)e.cyclus);
+        return;
+    }
     bool is_drive = (e.vlag & 0x02) != 0;
     bool nieuw    = (e.vlag & 0x01) != 0;
 

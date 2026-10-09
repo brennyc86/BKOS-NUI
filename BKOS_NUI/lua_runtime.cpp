@@ -427,6 +427,22 @@ static int l_io_diagReset(lua_State* ls) {
     io_diag_reset();
     return 0;
 }
+static int l_io_diagMarker(lua_State* ls) { io_diag_marker(); return 0; }
+static int l_io_cyclusAantal(lua_State* ls) { lua_pushinteger(ls, io_diag_cyclus_aantal()); return 1; }
+static int l_io_cyclusRegel(lua_State* ls) {
+    char buf[64];
+    io_diag_cyclus_regel((int)luaL_checkinteger(ls, 1), buf, sizeof(buf));
+    lua_pushstring(ls, buf);
+    return 1;
+}
+static int l_io_cfgRegel(lua_State* ls) {
+    char buf[160];
+    io_diag_cfg_regel(buf, sizeof(buf));
+    lua_pushstring(ls, buf);
+    return 1;
+}
+// Vraagt de IO-taak om direct één cyclus te draaien (voor testreeksen vanuit een app).
+static int l_io_vraagCyclus(lua_State* ls) { io_direct_aanvraag = true; return 0; }
 
 // ─── bkos.data ───────────────────────────────────────────────────────────────
 static int l_data_read(lua_State* ls) {
@@ -707,6 +723,11 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_diagAantal); lua_setfield(ls, -2, "diagAantal");
     lua_pushcfunction(ls, l_io_diagRegel);  lua_setfield(ls, -2, "diagRegel");
     lua_pushcfunction(ls, l_io_diagReset);  lua_setfield(ls, -2, "diagReset");
+    lua_pushcfunction(ls, l_io_diagMarker);   lua_setfield(ls, -2, "diagMarker");
+    lua_pushcfunction(ls, l_io_cyclusAantal); lua_setfield(ls, -2, "cyclusAantal");
+    lua_pushcfunction(ls, l_io_cyclusRegel);  lua_setfield(ls, -2, "cyclusRegel");
+    lua_pushcfunction(ls, l_io_cfgRegel);     lua_setfield(ls, -2, "cfgRegel");
+    lua_pushcfunction(ls, l_io_vraagCyclus);  lua_setfield(ls, -2, "vraagCyclus");
     lua_setfield(ls, -2, "io");
 
     // data tabel

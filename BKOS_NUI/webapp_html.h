@@ -434,6 +434,14 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
           <div id="instBackupMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
         </section>
         <section>
+          <h2>Firmware-updates zonder pincode</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Staat dit <b>uit</b> (standaard), dan vraagt de boordcomputer de pincode voordat een update uit de Post of via CONFIG wordt gestart. Zet dit <b>aan</b> als iedereen aan boord een update mag starten. Voorgestelde <i>instellingen</i> vragen altijd de pincode.</p>
+          <div id="updpinStatus" style="font-size:.85rem;margin-bottom:8px;"></div>
+          <button class="mbtn" onclick="updpinZet(true)">UPDATES ZONDER PINCODE: AAN</button>
+          <button class="mbtn" style="margin-top:8px;" onclick="updpinZet(false)">UPDATES ZONDER PINCODE: UIT</button>
+          <div id="updpinMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+        <section>
           <h2>Foutrapportage (GitHub-token)</h2>
           <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Plak hier het GitHub-token (fine-grained, alleen <i>issues: write</i> op BKOS-NUI-logs). Het token wordt nooit teruggestuurd naar de browser.</p>
           <div id="frapStatus" style="font-size:.85rem;margin-bottom:8px;"></div>
@@ -1602,7 +1610,25 @@ function frapAan(aan){
   if (needAuth()) return;
   frapPost('aan=' + (aan ? '1' : '0'), aan ? 'Rapportage AAN.' : 'Rapportage UIT.');
 }
-function instellingenLaden(){ send({t:'instellingen_get'}); frapStatus(); }
+function updpinStatus(){
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  fetch('/updpin/status?pin=' + encodeURIComponent(pin)).then(function(r){ return r.json(); }).then(function(d){
+    var el = document.getElementById('updpinStatus'); if (!el) return;
+    el.textContent = 'Updates zonder pincode: ' + (d.aan ? 'AAN' : 'UIT');
+  }).catch(function(){});
+}
+function updpinZet(aan){
+  if (needAuth()) return;
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  var el = document.getElementById('updpinMelding');
+  fetch('/updpin/zet?pin=' + encodeURIComponent(pin), {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: 'aan=' + (aan ? '1' : '0')
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.ok) { el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.'; updpinStatus(); }
+    else { el.style.color = 'var(--red)'; el.textContent = 'Mislukt (pincode).'; }
+  }).catch(function(){ el.style.color = 'var(--red)'; el.textContent = 'Mislukt (verbinding).'; });
+}
+function instellingenLaden(){ send({t:'instellingen_get'}); frapStatus(); updpinStatus(); }
 function renderInstellingen(){
   var d = instellingenData;
   document.getElementById('instBoot').innerHTML =

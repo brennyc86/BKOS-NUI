@@ -1,4 +1,7 @@
 #include "hw_io.h"
+#if PLATFORM_ESP32
+  #include <esp_log.h>
+#endif
 #include "gast.h"     // NIVEAU_GAST/LOGE/DELER/EIGENAAR — io_min_niveau[]-waarden
 #include "io_diag.h"  // flikker-diagnoselog — allocatie hier, net als io_min_niveau e.d.
 
@@ -81,6 +84,13 @@ void hw_io_setup() {
     digitalWrite(HC_UIT, LOW);
 #else
     IO_SERIAL_BEGIN();
+  #if PLATFORM_ESP32
+    // UART0 is de IO-bus naar de ATtiny. ESP-IDF-componenten (WiFi, lwIP, ...) schrijven hun
+    // logregels standaard naar diezelfde UART0; elke zo'n regel is ruis op de IO-lijn.
+    // Stil zetten kost niets in productie (logs zijn daar toch onleesbaar).
+    esp_log_level_set("*", ESP_LOG_NONE);
+    Serial.setDebugOutput(false);
+  #endif
 #endif
     memset(io_output,    0, sizeof(io_output));
     memset(io_input,     0, sizeof(io_input));

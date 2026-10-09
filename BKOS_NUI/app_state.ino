@@ -21,6 +21,7 @@ byte  interieur_modus  = INTERIEUR_AUTO;
 bool  ota_push_actief       = false;
 bool  updaten               = false;
 bool  ota_auto_update       = false;
+bool  update_zonder_pin     = false;
 int   ota_check_interval_min = 30;  // standaard 30 minuten
 int   ota_check_tijd_uur     = 3;   // standaard 03:00 voor dagelijkse check
 String klok_tijd       = "--:--";
@@ -79,6 +80,7 @@ void state_save() {
     f.printf("boothvd=%d\n", (int)boot_haven_naar_dashboard);
     f.printf("bootapp=%s\n", boot_app_id);
     f.printf("ota_auto=%d\n", (int)ota_auto_update);
+    f.printf("updpin=%d\n",   (int)update_zonder_pin);
     f.printf("ota_beta=%d\n", (int)ota_beta_kanal);
     f.printf("ota_int=%d\n",  ota_check_interval_min);
     f.printf("ota_tijd=%d\n", ota_check_tijd_uur);
@@ -111,6 +113,7 @@ void state_load() {
     boot_model            = 0;
     zeilnummer[0]         = '\0';
     fout_rapportage       = true;
+    update_zonder_pin     = false;
     licht_nav_offset_min  = 0;
     licht_int_offset_min  = 15;
     onthoud_licht_modus   = false;
@@ -187,6 +190,7 @@ void state_load() {
         if (key == "boothvd")   boot_haven_naar_dashboard = (val.toInt() != 0);
         if (key == "bootapp")   { strncpy(boot_app_id, val.c_str(), sizeof(boot_app_id) - 1); boot_app_id[sizeof(boot_app_id) - 1] = '\0'; }
         if (key == "ota_auto")  ota_auto_update        = (val.toInt() != 0);
+        if (key == "updpin")    update_zonder_pin      = (val.toInt() != 0);
         if (key == "ota_beta")  { ota_beta_kanal = (val.toInt() != 0); ota_beta_kanal_geladen = true; }
         if (key == "ota_int")   ota_check_interval_min = val.toInt();
         if (key == "ota_tijd")  ota_check_tijd_uur     = val.toInt();

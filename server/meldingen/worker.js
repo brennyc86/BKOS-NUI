@@ -12,6 +12,16 @@ async function gelijk(a, b) {
   if (x.length !== y.length || x.length === 0) return false;
   return crypto.subtle.timingSafeEqual(x, y);
 }
+// Geweigerde verzoeken bijhouden (zonder sleutels/inhoud), zodat een boordcomputer die "niets" lijkt te
+// versturen achteraf verklaard kan worden. Beheerder leest via GET /afgewezen.
+async function weiger(env, req, status, reden, extra = "") {
+  try {
+    await env.DB.prepare("INSERT INTO afgewezen (status,reden,pad,ua,lengte,extra) VALUES (?,?,?,?,?,?)")
+      .bind(status, reden, new URL(req.url).pathname, (req.headers.get("user-agent") || "").slice(0, 80), parseInt(req.headers.get("content-length") || "0", 10) || 0, String(extra).slice(0, 120)).run();
+    if (Math.random() < 0.05) await env.DB.prepare("DELETE FROM afgewezen WHERE id < (SELECT MAX(id) FROM afgewezen) - 300").run();
+  } catch {}
+  return json({ ok: false, reden }, status);
+}
 const tekst = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 
 export default {
@@ -19,22 +29,28 @@ export default {
     const url = new URL(req.url);
 
     if (url.pathname === "/ingest" && req.method === "POST") {
-      if (!(await gelijk(req.headers.get("x-ingest-key"), env.INGEST_KEY))) return json({ ok: false }, 401);
-      let b;
-      try { b = await req.json(); } catch { return json({ ok: false, reden: "json" }, 400); }
-      if (!SOORTEN.includes(b.soort)) return json({ ok: false, reden: "soort" }, 400);
+      if (!(await gelijk(req.headers.get("x-ingest-key"), env.INGEST_KEY))) return weiger(env, req, 401, "sleutel", req.headers.has("x-ingest-key") ? "sleutel-fout" : "geen-sleutel");
+      let b, ruw = "";
+      try { ruw = await req.text(); b = JSON.parse(ruw); } catch (e) { return weiger(env, req, 400, "json", ruw.slice(0, 100)); }
+      if (!SOORTEN.includes(b.soort)) return weiger(env, req, 400, "soort", String(b.soort));
       const device = tekst(b.device, 32), inhoud = tekst(b.inhoud, MAX_INHOUD);
-      if (!device || !inhoud) return json({ ok: false, reden: "leeg" }, 400);
+      if (!device || !inhoud) return weiger(env, req, 400, "leeg");
 
       const uur = await env.DB.prepare("SELECT COUNT(*) n FROM meldingen WHERE device=? AND ontvangen > strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 hour')").bind(device).first();
       const dag = await env.DB.prepare("SELECT COUNT(*) n FROM meldingen WHERE device=? AND ontvangen > strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 day')").bind(device).first();
-      if (uur.n >= MAX_UURLIMIET || dag.n >= MAX_DAGLIMIET) return json({ ok: false, reden: "limiet" }, 429);
+      if (uur.n >= MAX_UURLIMIET || dag.n >= MAX_DAGLIMIET) return weiger(env, req, 429, "limiet", device);
 
       await env.DB.prepare("INSERT INTO meldingen (soort,boot,device,versie,inhoud) VALUES (?,?,?,?,?)")
         .bind(b.soort, tekst(b.boot, 64) || "(naam niet ingesteld)", device, tekst(b.versie, 32), inhoud).run();
       if (Math.random() < 0.02) // opschonen: bewaar 365 dagen
         await env.DB.prepare("DELETE FROM meldingen WHERE ontvangen < strftime('%Y-%m-%dT%H:%M:%SZ','now','-365 days')").run();
       return json({ ok: true });
+    }
+
+    if (url.pathname === "/afgewezen" && req.method === "GET") {
+      if (!(await gelijk(req.headers.get("x-read-key"), env.READ_KEY))) return json({ ok: false }, 401);
+      const r = await env.DB.prepare("SELECT * FROM afgewezen ORDER BY id DESC LIMIT 30").all();
+      return json({ ok: true, afgewezen: r.results });
     }
 
     if (url.pathname === "/lees" && req.method === "GET") {

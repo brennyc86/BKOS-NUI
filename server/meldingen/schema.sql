@@ -19,3 +19,10 @@ CREATE TABLE IF NOT EXISTS berichten (
   tekst     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_berichten_device ON berichten(device, id);
+
+-- Geweigerde verzoeken (zonder sleutel of inhoud) voor diagnose.
+CREATE TABLE IF NOT EXISTS afgewezen (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  ontvangen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  status    INTEGER, reden TEXT, pad TEXT, ua TEXT, lengte INTEGER, extra TEXT
+);

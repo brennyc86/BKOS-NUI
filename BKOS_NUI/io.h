@@ -18,7 +18,8 @@ extern volatile bool io_handmatig_aanvraag; // idem, maar vanuit de Flikkerlog-a
 // De ATtiny kent geen losse PCK-opdracht: de eerste PCK-puls zit in "IO\n", daarna wacht hij op bits en
 // pas bij '\n' volgt de laatste PCK-puls. Zo zijn de fasen van één cyclus los te starten:
 const char* io_stap_start();          // 1) "IO\n"  -> eerste PCK-puls
-const char* io_stap_bits(int modus);  // 2) alle bits in één keer, nog GEEN PCK; modus 0 = huidige uitgangen, 1 = geen bits
+const char* io_stap_bits(int aantal); // 2) volgende `aantal` bits van het huidige uitgangspatroon sturen, nog GEEN PCK (0 = alle resterende)
+void        io_stap_voortgang(int* verstuurd, int* totaal);   // bits verstuurd / in totaal in de lopende sessie
 const char* io_stap_latch();          // 3) '\n'     -> laatste PCK-puls
 const char* io_stap_abort();          // sessie afbreken (stuurt '\n' zodat de ATtiny weer vrijkomt)
 bool        io_stap_actief();

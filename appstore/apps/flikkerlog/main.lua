@@ -127,7 +127,7 @@ local function rapport()
                 bkos.io.cfgRegel(),
                 "Reguliere IO-cycli gepauzeerd: " .. (bkos.io.diagPauzeActief() and "ja" or "nee") }
     if #stappen > 0 then
-        r[#r + 1] = "--- handmatige stappen (1=START 'IO' + eerste PCK, 2=BITS in 1 keer zonder PCK, 3=LATCH '\\n' + laatste PCK) ---"
+        r[#r + 1] = "--- handmatige stappen (1=START 'IO' + eerste PCK, 2=BITS (per stukje) zonder PCK, 3=LATCH '\\n' + laatste PCK) ---"
         for k = math.max(1, #stappen - 13), #stappen do r[#r + 1] = stappen[k] end
     end
     for i = math.max(1, #d - 8), #d do
@@ -184,19 +184,28 @@ end
 
 local function teken_stappen(fy)
     local actief = bkos.io.diagPauzeActief()
+    local verstuurd, totaal = bkos.io.stapVoortgang()
     bkos.drawText(12, 4, "HANDMATIGE STAPPEN", 2, bkos.colors.cyan)
     bkos.drawText(300, 8, actief and "reguliere IO-cycli: GEPAUZEERD" or "reguliere IO-cycli: ACTIEF", 1, actief and bkos.colors.amber or bkos.colors.green)
-    knop(12, 32, 188, 40, "1 START")
-    knop(208, 32, 188, 40, "2 BITS")
-    knop(404, 32, 188, 40, "2b GEEN BITS")
-    knop(600, 32, 188, 40, "3 LATCH")
-    knop(12, 80, 150, 40, "ABORT")
-    knop(170, 80, 190, 40, pauze and "PAUZE: AAN" or "PAUZE: UIT", pauze)
-    bkos.drawText(370, 84, "START = 'IO' + eerste PCK-puls.  BITS = alle bits in 1 keer, nog GEEN PCK.", 1, bkos.colors.textDim)
-    bkos.drawText(370, 98, "LATCH = '\\n' + laatste PCK-puls.  2b = START direct gevolgd door LATCH (alleen PCK, geen bits).", 1, bkos.colors.textDim)
-    bkos.drawText(370, 112, (bkos.io.stapActief() and "STAP-SESSIE ACTIEF: de IO-bus staat vast tot LATCH of ABORT (sluit vanzelf na 30 s)." or ""), 1, bkos.colors.amber)
-    bkos.drawText(12, 128, "Kijk bij elke stap naar de lamp. Valt hij uit: druk KNIPPER! (de laatste stap wordt vastgelegd).", 1, bkos.colors.text)
-    local y = 146
+    knop(12, 32, 130, 40, "1 START")
+    knop(150, 32, 110, 40, "+1 BIT")
+    knop(268, 32, 120, 40, "+4 BITS")
+    knop(396, 32, 120, 40, "+8 BITS")
+    knop(524, 32, 130, 40, "REST")
+    knop(662, 32, 126, 40, "3 LATCH")
+    knop(12, 80, 130, 40, "ABORT")
+    knop(150, 80, 190, 40, pauze and "PAUZE: AAN" or "PAUZE: UIT", pauze)
+    knop(348, 80, 190, 40, "PCK + PCK")
+    if bkos.io.stapActief() then
+        bkos.drawText(548, 84, string.format("SESSIE ACTIEF: bits %d/%d verstuurd", verstuurd, totaal), 1, bkos.colors.amber)
+        bkos.drawText(548, 98, "IO-bus staat vast tot LATCH/ABORT (30 s).", 1, bkos.colors.amber)
+    else
+        bkos.drawText(548, 84, "Geen sessie: begin met 1 START.", 1, bkos.colors.textDim)
+    end
+    bkos.drawText(12, 124, "1 START = 'IO' + eerste PCK.  +n BITS = volgende bits, nog GEEN PCK.  3 LATCH = laatste PCK (vult eerst de rest aan).", 1, bkos.colors.textDim)
+    bkos.drawText(12, 138, "PCK + PCK = START direct gevolgd door LATCH zonder bits: toont of de PCK-pulsen zelf iets doen.", 1, bkos.colors.textDim)
+    bkos.drawText(12, 152, "Kijk bij elke stap naar de lamp. Valt hij uit: druk KNIPPER! (bit-aantal en stap worden vastgelegd).", 1, bkos.colors.text)
+    local y = 170
     local rijen = math.floor((fy - 14 - y) / RIJ_H)
     for k = math.max(1, #stappen - rijen + 1), #stappen do
         bkos.drawText(12, y, stappen[k], 1, stappen[k]:find("KNIPPER") and bkos.colors.red or bkos.colors.text)
@@ -276,17 +285,25 @@ function bkos.touch(x, y)
             modus = "stappen"; status = ""
         end
     elseif modus == "stappen" then
-        if in_knop(x, y, 12, 32, 188, 40) then stap("1 START", bkos.io.stapStart)
-        elseif in_knop(x, y, 208, 32, 188, 40) then stap("2 BITS", function() return bkos.io.stapBits(0) end)
-        elseif in_knop(x, y, 404, 32, 188, 40) then
-            stap("2b START", bkos.io.stapStart)
-            stap("2b LATCH (geen bits)", bkos.io.stapLatch)
-        elseif in_knop(x, y, 600, 32, 188, 40) then stap("3 LATCH", bkos.io.stapLatch)
-        elseif in_knop(x, y, 12, 80, 150, 40) then stap("ABORT", bkos.io.stapAbort)
-        elseif in_knop(x, y, 170, 80, 190, 40) then
+        local function bits(n, naam)
+            stap(naam, function() return bkos.io.stapBits(n) end)
+            local v, t = bkos.io.stapVoortgang()
+            laatste_stap = string.format("%s (bits %d/%d)", naam, v, t)
+        end
+        if in_knop(x, y, 12, 32, 130, 40) then stap("1 START", bkos.io.stapStart)
+        elseif in_knop(x, y, 150, 32, 110, 40) then bits(1, "+1 BIT")
+        elseif in_knop(x, y, 268, 32, 120, 40) then bits(4, "+4 BITS")
+        elseif in_knop(x, y, 396, 32, 120, 40) then bits(8, "+8 BITS")
+        elseif in_knop(x, y, 524, 32, 130, 40) then bits(0, "REST")
+        elseif in_knop(x, y, 662, 32, 126, 40) then stap("3 LATCH", bkos.io.stapLatch)
+        elseif in_knop(x, y, 12, 80, 130, 40) then stap("ABORT", bkos.io.stapAbort)
+        elseif in_knop(x, y, 150, 80, 190, 40) then
             pauze = not pauze
             bkos.io.diagPauze(pauze)
             stap_log("Reguliere IO-cycli " .. (pauze and "gepauzeerd" or "hervat"))
+        elseif in_knop(x, y, 348, 80, 190, 40) then
+            stap("PCK+PCK START", bkos.io.stapStart)
+            stap("PCK+PCK LATCH (geen bits)", bkos.io.stapLatch)
         end
     end
     status_ms = bkos.sys.millis()

@@ -153,9 +153,12 @@ bool io_handmatige_herscan() {
 // ─── Handmatige stappen (zie io.h) ────────────────────────────────────────────
 static bool          _stap_sessie = false;
 static unsigned long _stap_t0     = 0;
-static char          _stap_txt[120];
+static char          _stap_txt[140];
+static char          _stap_patroon[240];   // bitstream van deze sessie (gemaakt bij START via io_drijf_hoog: veilig)
+static int           _stap_n = 0, _stap_verstuurd = 0;
 
 bool io_stap_actief() { return _stap_sessie; }
+void io_stap_voortgang(int* v, int* t) { if (v) *v = _stap_verstuurd; if (t) *t = _stap_n; }
 
 #if PLATFORM_PICO || PLATFORM_WROOM
 const char* io_stap_start()          { return "niet beschikbaar op dit platform"; }
@@ -168,6 +171,9 @@ const char* io_stap_start() {
     if (_stap_sessie) return "Sessie loopt al: eerst LATCH of ABORT";
     if (!_io_actief_claim()) return "IO is bezig, probeer opnieuw";
     _stap_sessie = true; _stap_t0 = millis();
+    _stap_n = io_zichtbaar(); if (_stap_n > 240) _stap_n = 240;
+    for (int i = 0; i < _stap_n; i++) _stap_patroon[i] = io_drijf_hoog(_stap_n - 1 - i) ? '1' : '0';   // veilig: zelfde pad als een gewone cyclus
+    _stap_verstuurd = 0;
     while (IO_SERIAL.available()) IO_SERIAL.read();
     IO_SERIAL.print("IO\n");
     IO_SERIAL.flush();
@@ -177,36 +183,52 @@ const char* io_stap_start() {
     return _stap_txt;
 }
 
-const char* io_stap_bits(int modus) {
-    if (!_stap_sessie) return "Eerst START";
-    int n = io_zichtbaar();
-    char bits[64]; int nb = 0;
-    if (modus == 0) {
-        if (n > 60) return "Te veel kanalen om in één keer te sturen (ATtiny-buffer)";
-        for (int i = 0; i < n; i++) bits[nb++] = io_drijf_hoog(n - 1 - i) ? '1' : '0';   // veilig: zelfde pad als een gewone cyclus
-        IO_SERIAL.write((const uint8_t*)bits, nb);
-        IO_SERIAL.flush();
-    }
-    uint8_t inb[30] = {0}; int got = 0;
+// Stuurt `nb` volgende bits van het sessiepatroon (zonder pauze) en verzamelt de antwoorden van de ATtiny.
+static int _stap_stuur(int nb, uint8_t* inb) {
+    if (nb <= 0) return 0;
+    IO_SERIAL.write((const uint8_t*)(_stap_patroon + _stap_verstuurd), nb);
+    IO_SERIAL.flush();
+    _stap_verstuurd += nb;
+    int got = 0;
     unsigned long t = millis(), maxw = (unsigned long)nb * 10UL + 600UL;
     while (got < nb && millis() - t < maxw) {
-        if (IO_SERIAL.available()) { char ch = IO_SERIAL.read(); if (ch == '1' && got < 240) inb[got >> 3] |= (uint8_t)(1 << (got & 7)); got++; }
-        else vTaskDelay(pdMS_TO_TICKS(1));
+        if (IO_SERIAL.available()) {
+            char ch = IO_SERIAL.read();
+            if (inb && ch == '1' && got < 240) inb[got >> 3] |= (uint8_t)(1 << (got & 7));
+            got++;
+        } else vTaskDelay(pdMS_TO_TICKS(1));
     }
+    return got;
+}
+
+const char* io_stap_bits(int aantal) {
+    if (!_stap_sessie) return "Eerst START";
+    int rest = _stap_n - _stap_verstuurd;
+    if (rest <= 0) return "Alle bits zijn al verstuurd: doe nu LATCH";
+    int nb = (aantal <= 0 || aantal > rest) ? rest : aantal;
+    uint8_t inb[30] = {0};
+    unsigned long t0 = millis();
+    int got = _stap_stuur(nb, inb);
     char hx[64]; io_diag_hex(inb, nb, hx);
-    snprintf(_stap_txt, sizeof(_stap_txt), "BITS ok: %d bits in 1 keer verstuurd, %d antwoorden in %lums, IN=%s (nog GEEN PCK)",
-             nb, got, (unsigned long)(millis() - t), hx);
+    snprintf(_stap_txt, sizeof(_stap_txt), "BITS ok: +%d bits (%d/%d verstuurd), %d antwoorden in %lums, IN=%s (nog GEEN PCK)",
+             nb, _stap_verstuurd, _stap_n, got, (unsigned long)(millis() - t0), hx);
     return _stap_txt;
 }
 
 static const char* _stap_sluit(const char* kop) {
+    // Een half doorgeschoven register zou bij de laatste PCK-puls een verkeerd uitgangspatroon vastleggen
+    // (alles opgeschoven). Daarom eerst de resterende bits sturen. Zijn er nog GEEN bits gestuurd, dan is er
+    // niets opgeschoven en is de PCK-puls onschuldig (de uitgangen houden hun huidige stand).
+    int aanvul = 0;
+    if (_stap_verstuurd > 0 && _stap_verstuurd < _stap_n) { aanvul = _stap_n - _stap_verstuurd; _stap_stuur(aanvul, nullptr); }
     IO_SERIAL.print('\n');
     IO_SERIAL.flush();
     delay(io_tune_pck_ms);                       // ATtiny slaat zijn laatste PCK-puls
     int extra = 0; while (IO_SERIAL.available()) { IO_SERIAL.read(); extra++; }
     _stap_sessie = false;
     io_actief = false;
-    snprintf(_stap_txt, sizeof(_stap_txt), "%s: laatste PCK geslagen, %d extra bytes terug", kop, extra);
+    if (aanvul > 0) snprintf(_stap_txt, sizeof(_stap_txt), "%s: eerst %d resterende bits aangevuld, laatste PCK geslagen, %d extra bytes terug", kop, aanvul, extra);
+    else            snprintf(_stap_txt, sizeof(_stap_txt), "%s: laatste PCK geslagen, %d extra bytes terug", kop, extra);
     return _stap_txt;
 }
 const char* io_stap_latch() { return _stap_sessie ? _stap_sluit("LATCH ok") : "Geen sessie: eerst START"; }

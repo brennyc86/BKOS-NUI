@@ -459,6 +459,7 @@ static int l_io_cfgRegel(lua_State* ls) {
 static int l_io_vraagCyclus(lua_State* ls) { io_handmatig_aanvraag = true; return 0; }
 static int l_io_stapStart(lua_State* ls)  { lua_pushstring(ls, io_stap_start()); return 1; }
 static int l_io_stapBits(lua_State* ls)   { lua_pushstring(ls, io_stap_bits((int)luaL_optinteger(ls, 1, 0))); return 1; }
+static int l_io_stapVoortgang(lua_State* ls) { int v = 0, t = 0; io_stap_voortgang(&v, &t); lua_pushinteger(ls, v); lua_pushinteger(ls, t); return 2; }
 static int l_io_stapLatch(lua_State* ls)  { lua_pushstring(ls, io_stap_latch()); return 1; }
 static int l_io_stapAbort(lua_State* ls)  { lua_pushstring(ls, io_stap_abort()); return 1; }
 static int l_io_stapActief(lua_State* ls) { lua_pushboolean(ls, io_stap_actief()); return 1; }
@@ -755,6 +756,7 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_vraagCyclus);  lua_setfield(ls, -2, "vraagCyclus");
     lua_pushcfunction(ls, l_io_stapStart);    lua_setfield(ls, -2, "stapStart");
     lua_pushcfunction(ls, l_io_stapBits);     lua_setfield(ls, -2, "stapBits");
+    lua_pushcfunction(ls, l_io_stapVoortgang); lua_setfield(ls, -2, "stapVoortgang");
     lua_pushcfunction(ls, l_io_stapLatch);    lua_setfield(ls, -2, "stapLatch");
     lua_pushcfunction(ls, l_io_stapAbort);    lua_setfield(ls, -2, "stapAbort");
     lua_pushcfunction(ls, l_io_stapActief);   lua_setfield(ls, -2, "stapActief");

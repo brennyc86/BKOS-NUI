@@ -130,7 +130,7 @@
   {
     "id": "flikkerlog",
     "naam": "Flikkerlog",
-    "versie": "2.1.0",
+    "versie": "2.2.0",
     "auteur": "Claude",
     "beschrijving": "Toont en verstuurt het IO-diagnoselog om knipperende lampen te analyseren.",
     "scherm_b": 800,

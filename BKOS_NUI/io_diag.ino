@@ -153,9 +153,13 @@ void io_diag_snap_regel(int i, char* buf, size_t buflen) {
 
 void io_diag_cfg_regel(char* buf, size_t buflen) {
     if (!buf || buflen == 0) return;
-    snprintf(buf, buflen, "cfg: pck=%ums sck=%ums hb_aan=%us hb_uit=%us kanalen=%d bkoss=%s fw=%s",
+    char mods[48] = ""; size_t mo = 0;
+    for (int m = 0; m < io_aparaten_cnt && m < 12 && mo + 6 < sizeof(mods); m++)
+        mo += snprintf(mods + mo, sizeof(mods) - mo, "%s%u", m ? "," : "", (unsigned)io_aparaten[m]);
+    snprintf(buf, buflen, "cfg: pck=%ums sck=%ums hb_aan=%us hb_uit=%us kanalen=%d (gedetecteerd %d, cfg %d, max %d) modules=[%s] bkoss=%s fw=%s",
              (unsigned)io_tune_lees(1), (unsigned)io_tune_lees(2),
              (unsigned)io_heartbeat_aan, (unsigned)io_heartbeat_uit, io_zichtbaar(),
+             io_kanalen_cnt, io_kanalen_cfg, io_kanalen_max, mods,
              bkoss_versie[0] ? bkoss_versie : "?", BKOS_NUI_VERSIE);
 }
 
@@ -254,7 +258,7 @@ void io_diag_auto_verwerk() {
         (unsigned long)_auto_cycli, (unsigned)_auto_aantal);
     if (o > CAP) o = CAP;
     {   // actuele instellingen + laatste cycli (UART-gezondheid: H/W/C=hartslag/wijziging/controle, duur, to=timeouts, ex=extra bytes, st=stale)
-        char cfg[160]; io_diag_cfg_regel(cfg, sizeof(cfg));
+        char cfg[240]; io_diag_cfg_regel(cfg, sizeof(cfg));
         o += snprintf(tekst + o, CAP - o, "%s\n--- laatste cycli: ms #cyclus reden duur ---\n", cfg);
         int ca = io_diag_cyclus_aantal();
         for (int i = max(0, ca - 12); i < ca && o + 60 < CAP; i++) {

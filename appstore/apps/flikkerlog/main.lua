@@ -24,6 +24,7 @@ local modus  = "cycli"       -- "cycli" | "stappen"
 local pauze  = true          -- reguliere IO-cycli gepauzeerd zolang deze app open is (firmware laat het vanzelf vervallen)
 local stappen = {}           -- logboek van handmatige stappen en knipper-meldingen
 local laatste_stap = "(nog geen stap)"
+local sessie_start = nil     -- ms van de laatste START: elke stap toont de verstreken tijd (de firmware sluit na 120 s zelf af)
 bkos.io.diagPauze(true)
 local function stap_log(t)
     stappen[#stappen + 1] = string.format("+%dms %s", bkos.sys.millis(), t)
@@ -254,9 +255,11 @@ local function verstuur()
 end
 
 local function stap(naam, f)
+    if naam:find("START") then sessie_start = bkos.sys.millis() end
     local res = f()
     laatste_stap = naam
-    stap_log(naam .. ": " .. tostring(res))
+    local sinds = sessie_start and string.format(" [%.1fs na START]", (bkos.sys.millis() - sessie_start) / 1000) or ""
+    stap_log(naam .. sinds .. ": " .. tostring(res))
 end
 
 function bkos.touch(x, y)
@@ -312,6 +315,8 @@ end
 
 local laatste_http
 function bkos.update()
+    local auto = bkos.io.stapAutoTekst()
+    if auto ~= "" then stap_log("!!! " .. auto); laatste_stap = "automatisch afgesloten"; bkos.draw() end
     bkos.io.diagOpname()    -- keepalive: zolang deze app open is, tellen cycli mee en blijft de pauze actief
     if modus == "cycli" and test.aan and bkos.sys.millis() >= test.volgende then
         if test.n < test.max then

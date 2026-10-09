@@ -23,6 +23,7 @@ void        io_stap_voortgang(int* verstuurd, int* totaal);   // bits verstuurd 
 const char* io_stap_latch();          // 3) '\n'     -> laatste PCK-puls
 const char* io_stap_abort();          // sessie afbreken (stuurt '\n' zodat de ATtiny weer vrijkomt)
 bool        io_stap_actief();
+const char* io_stap_auto_tekst();   // "" of de melding dat de watchdog de sessie zelf afsloot (eenmalig)
 extern volatile bool io_staat_gewijzigd;  // Core 0 → Core 1: IO uitkomst beschikbaar
 
 // Dynamo-bekrachtiging op **motor: zet periodiek kort spanning op het

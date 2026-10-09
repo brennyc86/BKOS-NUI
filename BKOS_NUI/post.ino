@@ -136,6 +136,8 @@ static int  _l_sck()  { return io_tune_lees(2); }
 static int  _l_hba()  { return io_heartbeat_aan; }
 static int  _l_hbu()  { return io_heartbeat_uit; }
 static int  _l_ota()  { return ota_check_interval_min; }
+static int  _l_kmax() { return io_kanalen_max; }
+static void _z_kmax(int v) { io_kanalen_max = v; hw_io_cfg_opslaan(); }
 static void _z_pck(int v) { io_tune_zet(1, (uint16_t)v); }
 static void _z_sck(int v) { io_tune_zet(2, (uint16_t)v); }
 static void _z_hba(int v) { io_heartbeat_aan = (uint16_t)v; hw_io_cfg_opslaan(); }
@@ -147,6 +149,7 @@ static const PostInst POST_INST[] = {
     { "io_heartbeat_aan",     "IO hartslag scherm aan (s)", 10, 600, _l_hba, _z_hba },
     { "io_heartbeat_uit",     "IO hartslag scherm uit (s)", 30, 600, _l_hbu, _z_hbu },
     { "ota_check_interval_min", "Update-controle (min)",    5, 1440, _l_ota, _z_ota },
+    { "io_kanalen_max",       "IO max. kanalen (0 = uit)",  0, 240,  _l_kmax, _z_kmax },
 };
 #define POST_INST_N (int)(sizeof(POST_INST) / sizeof(POST_INST[0]))
 

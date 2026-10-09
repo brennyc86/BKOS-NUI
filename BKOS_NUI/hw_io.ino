@@ -10,6 +10,7 @@ bool  bkoss_actief     = false;
 
 int   io_kanalen_cnt   = 0;
 int   io_kanalen_cfg   = 0;
+int   io_kanalen_max   = 0;
 byte  io_output[MAX_IO_KANALEN];
 bool  io_input[MAX_IO_KANALEN];
 bool  io_gewijzigd[MAX_IO_KANALEN];
@@ -159,6 +160,7 @@ void hw_io_cfg_laden() {
         lijn.trim();
         if (lijn.length() == 0) continue;
         if (lijn.startsWith("cfg:"))    { io_kanalen_cfg  = lijn.substring(4).toInt(); continue; }
+        if (lijn.startsWith("max:"))    { io_kanalen_max  = constrain(lijn.substring(4).toInt(), 0, MAX_IO_KANALEN); continue; }
         if (lijn.startsWith("hb_aan:")) { io_heartbeat_aan = (uint16_t)constrain(lijn.substring(7).toInt(), 10, 600); continue; }
         if (lijn.startsWith("hb_uit:")) { io_heartbeat_uit = (uint16_t)constrain(lijn.substring(7).toInt(), 30, 600); continue; }
         if (lijn.startsWith("io_pck:")) { io_tune_pck_ms = (uint16_t)constrain(lijn.substring(7).toInt(), 0, 2000); continue; }
@@ -219,6 +221,7 @@ void hw_io_cfg_opslaan() {
     File f = SPIFFS.open(IO_CFG_BESTAND, "w");
     if (!f) return;
     if (io_kanalen_cfg > 0) f.printf("cfg:%d\n", io_kanalen_cfg);
+    if (io_kanalen_max > 0) f.printf("max:%d\n", io_kanalen_max);
     f.printf("hb_aan:%d\n", io_heartbeat_aan);
     f.printf("hb_uit:%d\n", io_heartbeat_uit);
     f.printf("io_pck:%d\n", io_tune_pck_ms);

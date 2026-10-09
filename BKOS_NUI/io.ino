@@ -156,6 +156,8 @@ static unsigned long _stap_t0     = 0;
 static char          _stap_txt[140];
 static char          _stap_patroon[240];   // bitstream van deze sessie (gemaakt bij START via io_drijf_hoog: veilig)
 static int           _stap_n = 0, _stap_verstuurd = 0;
+static volatile bool _stap_in_gebruik = false;   // een Lua-aanroep is bezig: de watchdog (Core 0) blijft er dan af
+static char          _stap_auto_txt[140] = "";   // melding als de watchdog de sessie zelf afsloot (eenmalig uit te lezen)
 
 bool io_stap_actief() { return _stap_sessie; }
 void io_stap_voortgang(int* v, int* t) { if (v) *v = _stap_verstuurd; if (t) *t = _stap_n; }
@@ -166,8 +168,11 @@ const char* io_stap_bits(int)        { return "niet beschikbaar op dit platform"
 const char* io_stap_latch()          { return "niet beschikbaar op dit platform"; }
 const char* io_stap_abort()          { return "niet beschikbaar op dit platform"; }
 static void io_stap_watchdog() {}
+const char* io_stap_auto_tekst() { return ""; }
 #else
 const char* io_stap_start() {
+    _stap_in_gebruik = true;
+    struct G { ~G() { _stap_in_gebruik = false; } } g_;
     if (_stap_sessie) return "Sessie loopt al: eerst LATCH of ABORT";
     if (!_io_actief_claim()) return "IO is bezig, probeer opnieuw";
     _stap_sessie = true; _stap_t0 = millis();
@@ -206,6 +211,8 @@ static int _stap_stuur(int nb, uint8_t* inb) {
 }
 
 const char* io_stap_bits(int aantal) {
+    _stap_in_gebruik = true;
+    struct G { ~G() { _stap_in_gebruik = false; } } g_;
     if (!_stap_sessie) return "Eerst START";
     int rest = _stap_n - _stap_verstuurd;
     if (rest <= 0) return "Alle bits zijn al verstuurd: doe nu LATCH";
@@ -235,12 +242,25 @@ static const char* _stap_sluit(const char* kop) {
     else            snprintf(_stap_txt, sizeof(_stap_txt), "%s: laatste PCK geslagen, %d extra bytes terug", kop, extra);
     return _stap_txt;
 }
-const char* io_stap_latch() { return _stap_sessie ? _stap_sluit("LATCH ok") : "Geen sessie: eerst START"; }
-const char* io_stap_abort() { return _stap_sessie ? _stap_sluit("ABORT") : "Geen sessie"; }
+const char* io_stap_latch() { _stap_in_gebruik = true; const char* r = _stap_sessie ? _stap_sluit("LATCH ok") : "Geen sessie: eerst START"; _stap_in_gebruik = false; return r; }
+const char* io_stap_abort() { _stap_in_gebruik = true; const char* r = _stap_sessie ? _stap_sluit("ABORT") : "Geen sessie"; _stap_in_gebruik = false; return r; }
 
-// Veiligheid: een vergeten sessie houdt de IO-bus vast. Sluit af na 30 s of zodra de app dicht is.
+// Eenmalig uitleesbaar: tekst als de watchdog de sessie zelf heeft afgesloten ("" = niet gebeurd).
+const char* io_stap_auto_tekst() {
+    static char kopie[140];
+    strlcpy(kopie, _stap_auto_txt, sizeof(kopie));
+    _stap_auto_txt[0] = '\0';
+    return kopie;
+}
+
+// Veiligheid: een vergeten sessie houdt de IO-bus vast. Sluit af na 120 s of zodra de app dicht is (was 30 s: te kort om
+// rustig te kijken tussen de stappen, en de afsluiting stuurt zelf de resterende bits + PCK, dus zichtbaar op de lamp).
 static void io_stap_watchdog() {
-    if (_stap_sessie && (millis() - _stap_t0 > 30000UL || !io_diag_opname_actief())) _stap_sluit("AUTO-AFSLUITING");
+    if (_stap_in_gebruik || !_stap_sessie) return;
+    bool tijd = (millis() - _stap_t0 > 120000UL), app_weg = !io_diag_opname_actief();
+    if (!tijd && !app_weg) return;
+    _stap_sluit(tijd ? "AUTO-AFSLUITING na 120 s" : "AUTO-AFSLUITING (app dicht)");
+    strlcpy(_stap_auto_txt, _stap_txt, sizeof(_stap_auto_txt));
 }
 #endif
 
@@ -1505,6 +1525,7 @@ int io_zichtbaar() {
     int n = (io_kanalen_cfg > 0)
             ? max(io_kanalen_cnt, io_kanalen_cfg)
             : io_kanalen_cnt;
+    if (io_kanalen_max > 0) n = min(n, io_kanalen_max);   // bovengrens: detectie zag meer modules dan er echt zijn
     return min(n, MAX_IO_KANALEN);
 }
 

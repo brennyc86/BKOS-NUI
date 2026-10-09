@@ -90,7 +90,8 @@ void io_tune_zet_tijdelijk(int punt, uint16_t ms);
 #define IO_ACTIE_OUTPUT_UIT    6
 
 extern int   io_kanalen_cnt;
-extern int   io_kanalen_cfg;    // handmatig ingesteld (0 = auto)
+extern int   io_kanalen_cfg;    // handmatig ingesteld (0 = auto); werkt alleen omhoog: max(gedetecteerd, ingesteld)
+extern int   io_kanalen_max;    // bovengrens (0 = uit): wordt gebruikt als de detectie meer modules ziet dan er zijn
 extern byte  io_output[];
 extern bool  io_input[];
 extern bool  io_gewijzigd[];

@@ -450,7 +450,7 @@ static int l_io_kanaalLabel(lua_State* ls) {
     return 1;
 }
 static int l_io_cfgRegel(lua_State* ls) {
-    char buf[160];
+    char buf[240];
     io_diag_cfg_regel(buf, sizeof(buf));
     lua_pushstring(ls, buf);
     return 1;
@@ -463,6 +463,7 @@ static int l_io_stapVoortgang(lua_State* ls) { int v = 0, t = 0; io_stap_voortga
 static int l_io_stapLatch(lua_State* ls)  { lua_pushstring(ls, io_stap_latch()); return 1; }
 static int l_io_stapAbort(lua_State* ls)  { lua_pushstring(ls, io_stap_abort()); return 1; }
 static int l_io_stapActief(lua_State* ls) { lua_pushboolean(ls, io_stap_actief()); return 1; }
+static int l_io_stapAutoTekst(lua_State* ls) { lua_pushstring(ls, io_stap_auto_tekst()); return 1; }
 static int l_io_diagPauze(lua_State* ls)  { io_diag_pauze(lua_toboolean(ls, 1) != 0); return 0; }
 static int l_io_diagPauzeActief(lua_State* ls) { lua_pushboolean(ls, io_diag_pauze_actief()); return 1; }
 
@@ -760,6 +761,7 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_stapLatch);    lua_setfield(ls, -2, "stapLatch");
     lua_pushcfunction(ls, l_io_stapAbort);    lua_setfield(ls, -2, "stapAbort");
     lua_pushcfunction(ls, l_io_stapActief);   lua_setfield(ls, -2, "stapActief");
+    lua_pushcfunction(ls, l_io_stapAutoTekst); lua_setfield(ls, -2, "stapAutoTekst");
     lua_pushcfunction(ls, l_io_diagPauze);    lua_setfield(ls, -2, "diagPauze");
     lua_pushcfunction(ls, l_io_diagPauzeActief); lua_setfield(ls, -2, "diagPauzeActief");
     lua_setfield(ls, -2, "io");

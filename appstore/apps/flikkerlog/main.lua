@@ -1,193 +1,216 @@
 -- BKOS App: Flikkerlog
--- Toont het IO-diagnoselog van de firmware (bkos.io.diagAantal/diagRegel):
--- elke verandering van een GESTUURDE uitgang en van een GELEZEN ingang
--- (terugkoppeling), met tijdstempel en IO-cyclusnummer.
+-- Meekijken met de IO-cycli. Zolang deze app open is, legt de firmware van ELKE IO-cyclus
+-- (de getimede hartslag en de handmatig gestarte) een volledige momentopname vast: alle
+-- uitgangen die gestuurd zijn, alle ingangen die teruggelezen zijn, en de UART-gezondheid
+-- (time-outs / extra bytes / stale bytes). Alleen cycli vanaf het openen van de app tellen.
 --
--- Twee soorten "dips" (een kanaal dat AAN hoort te staan gaat even UIT):
---   FW  = de uitgang zelf viel weg in de firmware (uitgang AAN -> UIT -> AAN):
---         ligt aan de ESP32-firmware.
---   TK  = de aansturing bleef AAN, maar de TERUGKOPPELING van hetzelfde kanaal
---         viel even weg (ingang AAN -> UIT -> AAN): de uitgang is fysiek
---         weggevallen of de terugmelding is verstoord; ligt verderop
---         (UART / ATtiny / 74HC-keten). Dit is het "lamp 1 cyclus uit"-geval.
--- Een gewone schakelaar telt NIET mee: alleen ingang-dips op kanalen die op dat
--- moment door de firmware AAN gestuurd worden.
+-- Dips (een kanaal dat AAN gestuurd wordt valt even uit):
+--   FW = de uitgang zelf viel weg in de firmware (uitgang AAN -> UIT -> AAN).
+--   TK = de uitgang bleef AAN, maar de TERUGKOPPELING van dat kanaal viel even weg.
+--   Een dip BINNEN een cyclus (tussen eerste en laatste klokpuls) is niet te zien in de
+--   terugkoppeling; vandaar KNIPPER!: zodra jij de lamp ziet uitvallen leggen we het tijdstip
+--   en de laatste cycli vast.
 --
--- Gebruik: app open laten; zodra de lamp knippert op VERSTUUR drukken, het
--- rapport gaat als "schakellog" naar de meldingen-server.
--- Na WISSEN legt de firmware de AAN-uitgangen bij de volgende cyclus opnieuw vast.
+-- Knoppen: WISSEN (nieuw venster) | VERSTUUR (rapport) | KNIPPER! (marker + rapport) |
+--          CYCLUS (start nu zelf één IO-cyclus) | TEST (10 cycli om de 2,5 s)
 
-local DIP_MS   = 3000    -- korter dan dit tussen twee AAN's = dip
-local RIJ_H    = 22
-local FOOTER_H = 52
-local LOG_MAX  = 3600    -- server/fout_log accepteert ~4000 tekens
+local RIJ_H, FOOTER_H, LOG_MAX = 18, 52, 3600
+local DIP_CYCLI_TK, DIP_CYCLI_FW = 5, 2
 local status, status_ms = "", 0
 local test = { aan = false, n = 0, max = 10, volgende = 0 }
 local TEST_GAP_MS = 2500
+local snaps, markers, laatste_aantal = {}, {}, -1
 
-local function parse(regel)
-    local mt, mc = regel:match("^%+(%d+)ms #(%d+) MARKER")
-    if mt then return { t = tonumber(mt), c = tonumber(mc), marker = true, lab = "-", naam = "", uitgang = false, aan = false } end
-    local t, c, lab, naam, soort, nw = regel:match("^%+(%d+)ms #(%d+) (%S+) (.-) (%a+) %-> (%a+)$")
-    if not t then return nil end
-    return { t = tonumber(t), c = tonumber(c), lab = lab, naam = naam,
-             uitgang = (soort == "uitgang"), aan = (nw == "AAN") }
+local function hexbyte(s, k)    -- k = 0-gebaseerde bytepositie in de hex-string
+    return tonumber(s:sub(2 * k + 1, 2 * k + 2), 16) or 0
+end
+local function bit(s, c)
+    return (hexbyte(s, c // 8) >> (c % 8)) & 1
 end
 
-local function events()
-    local lijst = {}
-    for i = 0, bkos.io.diagAantal() - 1 do
-        local e = parse(bkos.io.diagRegel(i))
-        if e then lijst[#lijst + 1] = e end
+local function laad()
+    snaps, markers = {}, {}
+    for i = 0, bkos.io.snapAantal() - 1 do
+        local cy, t, r, d, to, ex, st, n, u, ing = bkos.io.snapRegel(i):match("^(%d+)|(%d+)|(%a)|(%d+)|(%d+)|(%d+)|(%d+)|(%d+)|(%x*)|(%x*)$")
+        if cy then
+            snaps[#snaps + 1] = { cy = tonumber(cy), t = tonumber(t), r = r, d = tonumber(d), to = tonumber(to),
+                                  ex = tonumber(ex), st = tonumber(st), n = tonumber(n), u = u, i = ing }
+        end
     end
-    return lijst
+    for i = 0, bkos.io.diagAantal() - 1 do
+        local mc = bkos.io.diagRegel(i):match("^%+%d+ms #(%d+) MARKER")
+        if mc then markers[tonumber(mc)] = true end
+    end
 end
 
--- Geeft lijst dips { soort="FW"|"TK", lab, naam, t, ms, cycli }
-local function dips(lijst)
-    local drive_aan, drive_uit, tk_uit, gevonden = {}, {}, {}, {}
-    for _, e in ipairs(lijst) do
-        if e.marker then goto volgende end
-        if e.uitgang then
-            if not e.aan then
-                drive_uit[e.lab] = e
-                tk_uit[e.lab] = nil          -- normaal uitschakelen: geen dip
-                drive_aan[e.lab] = false
-            else
-                local u = drive_uit[e.lab]
-                if u and e.t - u.t <= DIP_MS then
-                    gevonden[#gevonden + 1] = { soort = "FW", lab = e.lab, naam = e.naam, t = u.t, ms = e.t - u.t, cycli = e.c - u.c }
+local function kanaal(c) return bkos.io.kanaalLabel(c) end
+
+-- Verschillen met de vorige cyclus (uitgang U / ingang I): "U:C4+ I:C4+"
+local function verschil(a, b)
+    if not a then return "" end
+    local d, m = {}, math.min(a.n, b.n)
+    for c = 0, m - 1 do
+        local ua, ub = bit(a.u, c), bit(b.u, c)
+        if ua ~= ub and #d < 5 then d[#d + 1] = "U:" .. kanaal(c) .. (ub == 1 and "+" or "-") end
+    end
+    for c = 0, m - 1 do
+        local ia, ib = bit(a.i, c), bit(b.i, c)
+        if ia ~= ib and #d < 8 then d[#d + 1] = "I:" .. kanaal(c) .. (ib == 1 and "+" or "-") end
+    end
+    return table.concat(d, " ")
+end
+
+-- Dips over de hele reeks. Geeft lijst { soort, c, van, tot, cycli, ms }
+local function dips()
+    local gevonden = {}
+    for c = 0, (snaps[#snaps] and snaps[#snaps].n or 0) - 1 do
+        local fw_start, tk_start
+        for k = 2, #snaps do
+            local a, b = snaps[k - 1], snaps[k]
+            local ua, ub, ia, ib = bit(a.u, c), bit(b.u, c), bit(a.i, c), bit(b.i, c)
+            -- FW: uitgang AAN -> UIT -> AAN
+            if ua == 1 and ub == 0 then fw_start = a end
+            if fw_start and ub == 1 and ua == 0 then
+                if b.cy - fw_start.cy <= DIP_CYCLI_FW + 1 then
+                    gevonden[#gevonden + 1] = { soort = "FW", c = c, van = fw_start.cy, tot = b.cy, cycli = b.cy - fw_start.cy, ms = b.t - fw_start.t }
                 end
-                drive_uit[e.lab] = nil
-                drive_aan[e.lab] = true
+                fw_start = nil
             end
-        else
-            if not e.aan then
-                if drive_aan[e.lab] then tk_uit[e.lab] = e end
-            else
-                local u = tk_uit[e.lab]
-                if u and drive_aan[e.lab] and e.t - u.t <= DIP_MS then
-                    gevonden[#gevonden + 1] = { soort = "TK", lab = e.lab, naam = e.naam, t = u.t, ms = e.t - u.t, cycli = e.c - u.c }
+            -- TK: terugkoppeling AAN -> UIT terwijl uitgang AAN blijft
+            if ia == 1 and ib == 0 and ua == 1 and ub == 1 then tk_start = a end
+            if tk_start and ub == 0 then tk_start = nil end           -- uitgang ging uit: normaal uitschakelen
+            if tk_start and ib == 1 and ia == 0 then
+                if b.cy - tk_start.cy <= DIP_CYCLI_TK + 1 then
+                    gevonden[#gevonden + 1] = { soort = "TK", c = c, van = tk_start.cy, tot = b.cy, cycli = b.cy - tk_start.cy, ms = b.t - tk_start.t }
                 end
-                tk_uit[e.lab] = nil
+                tk_start = nil
             end
         end
-        ::volgende::
     end
     return gevonden
 end
 
-local function tel(d)
+local function afwijkend(s) return s.to > 0 or s.ex > 0 or s.st > 0 end
+
+local function telling(d)
     local fw, tk = 0, 0
     for _, x in ipairs(d) do if x.soort == "FW" then fw = fw + 1 else tk = tk + 1 end end
-    return fw, tk
+    local slecht = 0
+    for _, s in ipairs(snaps) do if afwijkend(s) then slecht = slecht + 1 end end
+    return fw, tk, slecht
+end
+
+local function regel(k, lang)
+    local s, v = snaps[k], verschil(snaps[k - 1], snaps[k])
+    local rd = (s.r == "H") and "hartslag" or (s.r == "W" and "wijziging" or "controle")
+    local uartkleur = afwijkend(s) and string.format(" UART to%d ex%d st%d", s.to, s.ex, s.st) or ""
+    return string.format("#%d %-9s +%6.1fs %4dms U:%s I:%s%s %s%s", s.cy, rd, s.t / 1000, s.d, s.u, s.i, uartkleur, v,
+                         markers[s.cy] and "  *** KNIPPER GEZIEN ***" or ""), (afwijkend(s) or markers[s.cy]) and true or false
 end
 
 local function rapport()
-    local lijst = events()
-    local d = dips(lijst)
-    local fw, tk = tel(d)
-    local r = { string.format("Flikkerlog: %d events, dips FW(firmware)=%d TK(terugkoppeling)=%d (<=%dms)", #lijst, fw, tk, DIP_MS),
-                "FW = uitgang viel zelf weg; TK = uitgang bleef AAN maar terugkoppeling viel even weg" }
+    laad()
+    local d = dips()
+    local fw, tk, slecht = telling(d)
+    local r = { string.format("Flikkerlog: %d cycli, dips FW(firmware)=%d TK(terugkoppeling)=%d, UART-afwijkingen=%d, knipper-markers=%d",
+                              #snaps, fw, tk, slecht, (function() local n = 0 for _ in pairs(markers) do n = n + 1 end return n end)()),
+                "FW = uitgang viel zelf weg; TK = uitgang bleef AAN maar terugkoppeling viel weg; U/I = uitgang/ingang per module (hex, bit k = kanaal)",
+                bkos.io.cfgRegel() }
     for i = math.max(1, #d - 8), #d do
-        r[#r + 1] = string.format("DIP-%s %s %s +%dms duur %dms (%d cycli)", d[i].soort, d[i].lab, d[i].naam, d[i].t, d[i].ms, d[i].cycli)
+        local x = d[i]
+        r[#r + 1] = string.format("DIP-%s %s cyclus #%d-#%d (%d cycli, %d ms)", x.soort, kanaal(x.c), x.van, x.tot, x.cycli, x.ms)
     end
-    r[#r + 1] = bkos.io.cfgRegel()
-    r[#r + 1] = "--- laatste cycli: ms #cyclus H/W/C=hartslag/wijziging/controle duur(ms) to=time-outs ex=extra bytes st=stale ---"
-    local ca = bkos.io.cyclusAantal()
-    for i = math.max(0, ca - 10), ca - 1 do r[#r + 1] = bkos.io.cyclusRegel(i) end
-    local tekst = table.concat(r, "\n") .. "\n--- laatste events: ms #cyclus kanaal U=uitgang/I=ingang 1=AAN, MARK=knipper gezien ---\n"
-    local rest, lengte = {}, #tekst
-    for i = #lijst, 1, -1 do
-        local e = lijst[i]
-        local s = e.marker and string.format("%d #%d MARK\n", e.t, e.c)
-                  or string.format("%d #%d %s %s%s\n", e.t, e.c, e.lab, e.uitgang and "U" or "I", e.aan and "1" or "0")
-        if lengte + #s > LOG_MAX then break end
-        lengte = lengte + #s
-        rest[#rest + 1] = s
+    local tekst = table.concat(r, "\n") .. "\n--- cycli (alleen wijzigingen/afwijkingen/markers + laatste 6) ---\n"
+    local regels, lengte, genomen = {}, #tekst, {}
+    local start6 = math.max(1, #snaps - 5)
+    for k = #snaps, 1, -1 do
+        local tekst_k, bijzonder = regel(k)
+        local verschil_k = verschil(snaps[k - 1], snaps[k])
+        if bijzonder or verschil_k ~= "" or k >= start6 then
+            if lengte + #tekst_k + 1 > LOG_MAX then break end
+            lengte = lengte + #tekst_k + 1
+            regels[#regels + 1] = tekst_k
+        end
     end
-    local out = {}
-    for i = #rest, 1, -1 do out[#out + 1] = rest[i] end
-    return tekst .. table.concat(out)
+    local uit = {}
+    for i = #regels, 1, -1 do uit[#uit + 1] = regels[i] end
+    return tekst .. table.concat(uit, "\n")
 end
 
 local function knop(x, y, w, h, tekst)
     bkos.fillRoundRect(x, y, w, h, 6, bkos.colors.surface)
     bkos.drawRoundRect(x, y, w, h, 6, bkos.colors.cyan)
-    bkos.drawText(x + 12, y + h // 2 - 7, tekst, 2, bkos.colors.text)
+    bkos.drawText(x + 10, y + h // 2 - 7, tekst, 2, bkos.colors.text)
 end
 
 function bkos.draw()
+    laad()
     bkos.fillScreen(bkos.colors.bg)
-    local lijst = events()
-    local fw, tk = tel(dips(lijst))
-    local kleur = (fw + tk > 0) and bkos.colors.red or bkos.colors.green
-    bkos.drawText(12, 4, string.format("%d events | dips FW:%d TK:%d", #lijst, fw, tk), 2, kleur)
+    local d = dips()
+    local fw, tk, slecht = telling(d)
+    local kleur = (fw + tk + slecht > 0) and bkos.colors.red or bkos.colors.green
+    bkos.drawText(12, 4, string.format("%d cycli | dips FW:%d TK:%d | UART-afw:%d", #snaps, fw, tk, slecht), 2, kleur)
     local rijen = math.floor((bkos.H - FOOTER_H - 30 - 16) / RIJ_H)
-    local start = math.max(1, #lijst - rijen + 1)
+    local start = math.max(1, #snaps - rijen + 1)
     local y = 30
-    for i = start, #lijst do
-        local e = lijst[i]
-        local k = e.uitgang and bkos.colors.text or bkos.colors.textDim
-        if e.marker then
-            bkos.drawText(12, y, string.format("+%dms #%d  *** KNIPPER GEZIEN ***", e.t, e.c), 1, bkos.colors.red)
-        else
-            bkos.drawText(12, y, string.format("+%dms #%d  %s  %s  %s %s", e.t, e.c, e.lab, e.naam, e.uitgang and "UITGANG" or "ingang", e.aan and "AAN" or "UIT"), 1, k)
-        end
+    for k = start, #snaps do
+        local tekst, bijzonder = regel(k)
+        bkos.drawText(12, y, tekst, 1, bijzonder and bkos.colors.red or bkos.colors.text)
         y = y + RIJ_H
     end
     local fy = bkos.H - FOOTER_H + 6
-    knop(12, fy, 130, 40, "WISSEN")
-    knop(150, fy, 170, 40, "VERSTUUR")
-    knop(328, fy, 190, 40, "KNIPPER!")
-    knop(526, fy, 140, 40, test.aan and "STOP" or "TEST")
+    knop(12, fy, 110, 40, "WISSEN")
+    knop(130, fy, 140, 40, "VERSTUUR")
+    knop(278, fy, 140, 40, "KNIPPER!")
+    knop(426, fy, 130, 40, "CYCLUS")
+    knop(564, fy, 110, 40, test.aan and "STOP" or "TEST")
     local h = bkos.fout.laatsteHttp()
-    local tekst = (h == 200) and "Server: aangenomen (200)" or (h > 0 and ("Server: geweigerd (" .. h .. ")") or (h < 0 and ("Server: geen verbinding (" .. h .. ")") or "Server: nog niets verstuurd"))
-    bkos.drawText(12, fy - 14, tekst, 1, (h == 200) and bkos.colors.green or bkos.colors.textDim)
-    local regel = test.aan and string.format("TESTREEKS %d/%d: kijk naar de lamp en druk KNIPPER! zodra hij uitvalt", test.n, test.max) or status
-    if regel ~= "" and (test.aan or bkos.sys.millis() - status_ms < 8000) then
-        bkos.drawText(330, fy - 14, regel, 1, bkos.colors.amber)
+    local t = (h == 200) and "Server: aangenomen (200)" or (h > 0 and ("Server: geweigerd (" .. h .. ")") or (h < 0 and ("Server: geen verbinding (" .. h .. ")") or "Server: nog niets verstuurd"))
+    bkos.drawText(12, fy - 14, t, 1, (h == 200) and bkos.colors.green or bkos.colors.textDim)
+    local melding = test.aan and string.format("TESTREEKS %d/%d: druk KNIPPER! zodra de lamp uitvalt", test.n, test.max) or status
+    if melding ~= "" and (test.aan or bkos.sys.millis() - status_ms < 8000) then
+        bkos.drawText(250, fy - 14, melding, 1, bkos.colors.amber)
     end
 end
 
 function bkos.touch(x, y)
     local fy = bkos.H - FOOTER_H + 6
     if y < fy or y > fy + 40 then return end
-    if x >= 12 and x <= 142 then
-        bkos.io.diagReset(); status = "Log gewist."
-    elseif x >= 328 and x <= 518 then
+    if x >= 12 and x <= 122 then
+        bkos.io.diagReset(); status = "Nieuw opname-venster."
+    elseif x >= 278 and x <= 418 then
         bkos.io.diagMarker(); status = "Knipperen vastgelegd; rapport wordt automatisch verstuurd."
-    elseif x >= 526 and x <= 666 then
+    elseif x >= 426 and x <= 556 then
+        bkos.io.vraagCyclus(); status = "IO-cyclus gestart."
+    elseif x >= 564 and x <= 674 then
         test.aan = not test.aan
         if test.aan then bkos.io.diagReset(); test.n = 0; test.volgende = bkos.sys.millis() + 1000; status = "" else status = "Testreeks gestopt." end
-    elseif x >= 150 and x <= 320 then
+    elseif x >= 130 and x <= 270 then
         if not bkos.fout.rapportageAan() then
             status = "Foutrapportage staat uit (CONFIG)."
         elseif not bkos.fout.tokenAanwezig() then
             status = "Deze firmware heeft geen verzendsleutel: update de firmware."
+        elseif bkos.fout.rapport(rapport(), "Flikkerlog", "schakellog") then
+            status = "In wachtrij gezet. Serverantwoord volgt."
         else
-            if bkos.fout.rapport(rapport(), "Flikkerlog", "schakellog") then
-                status = "In wachtrij gezet. Serverantwoord volgt."
-            else
-                local reden, rest = bkos.fout.reden()
-                if reden == "cooldown" then status = "Wacht nog " .. rest .. " s (max 1 per minuut)."
-                elseif reden == "bezig" then status = "Vorige verzending loopt nog."
-                else status = "Niet verstuurd: " .. tostring(reden) .. "." end
-            end
+            local reden, rest = bkos.fout.reden()
+            if reden == "cooldown" then status = "Wacht nog " .. rest .. " s (max 1 per minuut)."
+            elseif reden == "bezig" then status = "Vorige verzending loopt nog."
+            else status = "Niet verstuurd: " .. tostring(reden) .. "." end
         end
     end
     status_ms = bkos.sys.millis()
     bkos.draw()
 end
 
-local laatste, laatste_http = -1, nil
+local laatste_http
 function bkos.update()
+    bkos.io.diagOpname()    -- keepalive: zolang deze app open is, tellen cycli mee in het opname-venster
     if test.aan and bkos.sys.millis() >= test.volgende then
         if test.n < test.max then
             test.n = test.n + 1
             bkos.io.vraagCyclus()
             test.volgende = bkos.sys.millis() + TEST_GAP_MS
-            bkos.draw()
         else
             test.aan = false
             if bkos.fout.rapportageAan() and bkos.fout.rapport(rapport(), "Flikkerlog testreeks", "schakellog") then
@@ -196,9 +219,9 @@ function bkos.update()
                 status = "Testreeks klaar. Druk VERSTUUR."
             end
             status_ms = bkos.sys.millis()
-            bkos.draw()
         end
+        bkos.draw()
     end
-    local n, h = bkos.io.diagAantal(), bkos.fout.laatsteHttp()
-    if n ~= laatste or h ~= laatste_http then laatste = n; laatste_http = h; bkos.draw() end
+    local n, h = bkos.io.snapAantal(), bkos.fout.laatsteHttp()
+    if n ~= laatste_aantal or h ~= laatste_http then laatste_aantal = n; laatste_http = h; bkos.draw() end
 end

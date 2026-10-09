@@ -435,6 +435,20 @@ static int l_io_cyclusRegel(lua_State* ls) {
     lua_pushstring(ls, buf);
     return 1;
 }
+static int l_io_diagOpname(lua_State* ls) { io_diag_opname(); return 0; }
+static int l_io_snapAantal(lua_State* ls) { lua_pushinteger(ls, io_diag_snap_aantal()); return 1; }
+static int l_io_snapRegel(lua_State* ls) {
+    char buf[200];
+    io_diag_snap_regel((int)luaL_checkinteger(ls, 1), buf, sizeof(buf));
+    lua_pushstring(ls, buf);
+    return 1;
+}
+static int l_io_kanaalLabel(lua_State* ls) {
+    char buf[8];
+    io_kanaal_label((int)luaL_checkinteger(ls, 1), buf, sizeof(buf));
+    lua_pushstring(ls, buf);
+    return 1;
+}
 static int l_io_cfgRegel(lua_State* ls) {
     char buf[160];
     io_diag_cfg_regel(buf, sizeof(buf));
@@ -727,6 +741,10 @@ static void lua_registreer_api(lua_State* ls) {
     lua_pushcfunction(ls, l_io_cyclusAantal); lua_setfield(ls, -2, "cyclusAantal");
     lua_pushcfunction(ls, l_io_cyclusRegel);  lua_setfield(ls, -2, "cyclusRegel");
     lua_pushcfunction(ls, l_io_cfgRegel);     lua_setfield(ls, -2, "cfgRegel");
+    lua_pushcfunction(ls, l_io_diagOpname);   lua_setfield(ls, -2, "diagOpname");
+    lua_pushcfunction(ls, l_io_snapAantal);   lua_setfield(ls, -2, "snapAantal");
+    lua_pushcfunction(ls, l_io_snapRegel);    lua_setfield(ls, -2, "snapRegel");
+    lua_pushcfunction(ls, l_io_kanaalLabel);  lua_setfield(ls, -2, "kanaalLabel");
     lua_pushcfunction(ls, l_io_vraagCyclus);  lua_setfield(ls, -2, "vraagCyclus");
     lua_setfield(ls, -2, "io");
 

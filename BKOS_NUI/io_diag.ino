@@ -18,11 +18,22 @@ static uint32_t      _cyclus      = 0;
 
 volatile uint8_t io_diag_reden = 0;
 
-struct IoCyclusRec { uint32_t t_ms, cyclus; uint16_t duur; uint8_t reden, tmo, extra, stale; };
-#define IO_DIAG_CYC_N 40
+struct IoCyclusRec { uint32_t t_ms, cyclus; uint16_t duur; uint8_t reden, tmo, extra, stale; uint8_t n; uint8_t uit[30]; uint8_t in[30]; };
+#define IO_DIAG_CYC_N IO_DIAG_SNAP_N
+static uint32_t     _opname_start = 0;      // eerste cyclusnummer dat bij het huidige venster hoort
+static unsigned long _opname_laatst = 0;    // laatste keepalive van de app
+#define IO_DIAG_OPNAME_VERLOOP_MS 4000UL
 static IoCyclusRec* _cyc       = nullptr;
 static int          _cyc_head  = 0;
 static uint32_t     _cyc_count = 0;
+
+// Bitset (kanaal k = bit k%8 van byte k/8) -> hex, 2 tekens per module van 8 kanalen.
+static void _hex(const uint8_t* b, int n, char* out) {
+    static const char H[] = "0123456789abcdef";
+    int bytes = (n + 7) / 8;
+    for (int i = 0; i < bytes; i++) { out[2 * i] = H[b[i] >> 4]; out[2 * i + 1] = H[b[i] & 15]; }
+    out[2 * bytes] = '\0';
+}
 
 #define DIAG_DIP_MS        3000UL
 #define DIAG_FW_MAX_CYCLI  2
@@ -55,7 +66,7 @@ static void _dip_melden(const char* soort, int kanaal, uint32_t t, uint32_t dur,
 
 void io_diag_setup() {
     if (!_log) _log = (IoDiagEvent*)PLATFORM_MALLOC(sizeof(IoDiagEvent) * IO_DIAG_LOG_N);
-    if (!_cyc) _cyc = (IoCyclusRec*)malloc(IO_DIAG_CYC_N * sizeof(IoCyclusRec));
+    if (!_cyc) _cyc = (IoCyclusRec*)PLATFORM_MALLOC(IO_DIAG_CYC_N * sizeof(IoCyclusRec));
     if (!_dip) {
         _dip = (IoDipStaat*)malloc(MAX_IO_KANALEN * sizeof(IoDipStaat));
         if (_dip) memset(_dip, 0, MAX_IO_KANALEN * sizeof(IoDipStaat));
@@ -69,13 +80,19 @@ void io_diag_setup() {
 
 void io_diag_cyclus_tick() { _cyclus++; }
 
-void io_diag_cyclus_einde(uint32_t start_ms, uint8_t timeouts, uint8_t extra, uint8_t stale) {
+void io_diag_cyclus_einde(uint32_t start_ms, uint8_t timeouts, uint8_t extra, uint8_t stale,
+                          int n, const uint8_t* uit, const uint8_t* in) {
     if (!_cyc) return;
     IoCyclusRec& r = _cyc[_cyc_head];
     r.t_ms = start_ms; r.cyclus = _cyclus;
     uint32_t d = millis() - start_ms;
     r.duur = d > 65535 ? 65535 : (uint16_t)d;
     r.reden = io_diag_reden; r.tmo = timeouts; r.extra = extra; r.stale = stale;
+    r.n = (uint8_t)(n > 240 ? 240 : n);
+    memset(r.uit, 0, sizeof(r.uit)); memset(r.in, 0, sizeof(r.in));
+    int bytes = (r.n + 7) / 8;
+    if (uit) memcpy(r.uit, uit, bytes);
+    if (in)  memcpy(r.in,  in,  bytes);
     _cyc_head = (_cyc_head + 1) % IO_DIAG_CYC_N;
     _cyc_count++;
 }
@@ -89,10 +106,47 @@ void io_diag_cyclus_regel(int i, char* buf, size_t buflen) {
     if (i < 0 || i >= aantal) return;
     int start = (_cyc_count > (uint32_t)IO_DIAG_CYC_N) ? _cyc_head : 0;
     const IoCyclusRec& r = _cyc[(start + i) % IO_DIAG_CYC_N];
-    snprintf(buf, buflen, "%lu #%lu %s %ums to%u ex%u st%u",
+    char hu[64], hi[64]; _hex(r.uit, r.n, hu); _hex(r.in, r.n, hi);
+    snprintf(buf, buflen, "%lu #%lu %s %ums to%u ex%u st%u U%s I%s",
              (unsigned long)r.t_ms, (unsigned long)r.cyclus,
              r.reden == 0 ? "H" : (r.reden == 1 ? "W" : "C"),
-             (unsigned)r.duur, (unsigned)r.tmo, (unsigned)r.extra, (unsigned)r.stale);
+             (unsigned)r.duur, (unsigned)r.tmo, (unsigned)r.extra, (unsigned)r.stale, hu, hi);
+}
+
+void io_diag_opname() {
+    unsigned long nu = millis();
+    if (!_opname_laatst || nu - _opname_laatst > IO_DIAG_OPNAME_VERLOOP_MS) {
+        _opname_start = _cyclus + 1;   // nieuw venster: alleen cycli vanaf nu
+        io_diag_reset();               // event-log leeg; uitgangsbaseline wordt opnieuw gelegd
+    }
+    _opname_laatst = nu;
+}
+
+int io_diag_snap_aantal() {
+    int aantal = io_diag_cyclus_aantal(), k = 0;
+    for (int i = 0; i < aantal; i++) {
+        int start = (_cyc_count > (uint32_t)IO_DIAG_CYC_N) ? _cyc_head : 0;
+        if (_cyc[(start + i) % IO_DIAG_CYC_N].cyclus >= _opname_start) k++;
+    }
+    return k;
+}
+
+void io_diag_snap_regel(int i, char* buf, size_t buflen) {
+    if (!buf || buflen == 0) return;
+    buf[0] = '\0';
+    int aantal = io_diag_cyclus_aantal(), k = 0;
+    int start = (_cyc_count > (uint32_t)IO_DIAG_CYC_N) ? _cyc_head : 0;
+    for (int j = 0; j < aantal; j++) {
+        const IoCyclusRec& r = _cyc[(start + j) % IO_DIAG_CYC_N];
+        if (r.cyclus < _opname_start) continue;
+        if (k++ != i) continue;
+        char hu[64], hi[64]; _hex(r.uit, r.n, hu); _hex(r.in, r.n, hi);
+        snprintf(buf, buflen, "%lu|%lu|%c|%u|%u|%u|%u|%u|%s|%s",
+                 (unsigned long)r.cyclus, (unsigned long)r.t_ms,
+                 r.reden == 0 ? 'H' : (r.reden == 1 ? 'W' : 'C'),
+                 (unsigned)r.duur, (unsigned)r.tmo, (unsigned)r.extra, (unsigned)r.stale, (unsigned)r.n, hu, hi);
+        return;
+    }
 }
 
 void io_diag_cfg_regel(char* buf, size_t buflen) {
@@ -111,6 +165,7 @@ void io_diag_marker() {
 void io_diag_reset() {
     _log_head  = 0;
     _log_count = 0;
+    _opname_start = _cyclus + 1;   // ook een nieuw opname-venster: alleen cycli vanaf nu tellen
     // Baseline opnieuw laten loggen: alle nu AAN-gestuurde kanalen krijgen bij de
     // volgende cyclus weer een uitgang-AAN-event, zodat een analyse na WISSEN weet
     // welke terugkoppeling "hoort" AAN te zijn.

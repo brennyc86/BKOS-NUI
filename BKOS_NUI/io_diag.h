@@ -56,8 +56,21 @@ void   io_diag_auto_verwerk();
 // wijzen wel op een onvolledige overdracht — de verdachte voor een kortstondig uit-gevallen
 // uitgang op een verdere module.
 extern volatile uint8_t io_diag_reden;   // 0 = hartslag, 1 = aanvraag/wijziging, 2 = controlecyclus
-void   io_diag_cyclus_einde(uint32_t start_ms, uint8_t timeouts, uint8_t extra, uint8_t stale);
+// n = aantal kanalen; uit/in = bitsets (bit k van byte k/8 = kanaal k): uit = wat gestuurd is, in = wat teruggelezen is.
+void   io_diag_cyclus_einde(uint32_t start_ms, uint8_t timeouts, uint8_t extra, uint8_t stale,
+                            int n, const uint8_t* uit, const uint8_t* in);
 int    io_diag_cyclus_aantal();
 void   io_diag_cyclus_regel(int i, char* buf, size_t buflen);   // i = 0 oudste
 void   io_diag_cfg_regel(char* buf, size_t buflen);             // actuele timing/hartslag/versies
-void   io_diag_marker();                                         // gebruiker zag het knipperen: tijdstip vastleggen + rapport
+void   io_diag_marker();
+
+// ─── Opname-venster (Flikkerlog-app open) ─────────────────────────────────────
+// Elke io_cyclus() wordt altijd als volledige momentopname (alle uitgangen + alle ingangen +
+// UART-gezondheid) in een ring van IO_DIAG_SNAP_N cycli bewaard. De app roept io_diag_opname()
+// elke tik aan; de eerste aanroep na >4 s stilte opent een nieuw venster (alleen cycli vanaf dat
+// moment tellen, event-log wordt gewist). Sluit de app, dan verloopt het venster vanzelf.
+#define IO_DIAG_SNAP_N 150
+void   io_diag_opname();                                  // keepalive vanuit de app
+int    io_diag_snap_aantal();                             // cycli sinds het venster opende
+// "cyclus|t_ms|reden(H/W/C)|duur_ms|to|ex|st|n|UIThex|INhex" (hex: 2 tekens per 8 kanalen)
+void   io_diag_snap_regel(int i, char* buf, size_t buflen);  // i = 0 oudste in het venster                                         // gebruiker zag het knipperen: tijdstip vastleggen + rapport

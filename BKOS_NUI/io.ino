@@ -399,6 +399,7 @@ void io_cyclus(bool stil) {
 
     uint32_t diag_t0 = millis();
     uint8_t  diag_tmo = 0, diag_extra = 0, diag_stale = 0;
+    uint8_t  diag_uit[30] = {0}, diag_in[30] = {0};   // volledige momentopname: wat gestuurd/teruggelezen is
     while (IO_SERIAL.available()) { IO_SERIAL.read(); if (diag_stale < 255) diag_stale++; }
     IO_SERIAL.print("IO\n");
     IO_SERIAL.flush();
@@ -419,6 +420,7 @@ void io_cyclus(bool stil) {
         int  kanaal   = n - 1 - i;
         bool gedreven = io_drijf_hoog(kanaal);
         io_diag_log_drive(kanaal, gedreven);
+        if (gedreven && kanaal < 240) diag_uit[kanaal >> 3] |= (uint8_t)(1 << (kanaal & 7));
         IO_SERIAL.print(gedreven ? '1' : '0');
         IO_SERIAL.flush();
         delay(io_tune_sck_ms);
@@ -434,6 +436,7 @@ void io_cyclus(bool stil) {
         else if (diag_tmo < 255) diag_tmo++;
 
         bool nieuw = (c == '1');
+        if (nieuw && i < 240) diag_in[i >> 3] |= (uint8_t)(1 << (i & 7));
         if (nieuw != io_input[i]) {
             io_diag_log_input(i, nieuw);
             // Het dynamokanaal (io_dynamo_bezig) vuurt hier nooit een actie af:
@@ -455,7 +458,7 @@ void io_cyclus(bool stil) {
     IO_SERIAL.print('\n');
     delay(io_tune_pck_ms);  // de ATtiny's afsluitende slag_pck() heeft dezelfde settle-tijd nodig
     while (IO_SERIAL.available()) { IO_SERIAL.read(); if (diag_extra < 255) diag_extra++; }
-    io_diag_cyclus_einde(diag_t0, diag_tmo, diag_extra, diag_stale);
+    io_diag_cyclus_einde(diag_t0, diag_tmo, diag_extra, diag_stale, n, diag_uit, diag_in);
 
     io_runned = true;
     io_actief = false;

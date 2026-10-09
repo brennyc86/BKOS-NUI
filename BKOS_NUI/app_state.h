@@ -30,6 +30,7 @@
 #define SCREEN_BESTANDEN  21 // Bestandsbeheer: SPIFFS/SD inzien + verwijderen, via CONFIG
 #define SCREEN_GAST       22 // Gasten-pincodes voor de webapp (HUIS/BOOT-toegang), via CONFIG → BOOT
 #define SCREEN_APPSTORE   23 // Installeren/bijwerken/verwijderen (het oude 2-panelen APPS-scherm) — via knop op SCREEN_APPS (bureaublad)
+#define SCREEN_POST       25 // Post van de ontwikkelaar (belletje in de statusbalk)
 #define SCREEN_HUISPANEEL 24 // Configureerbare HUISPANEEL-knoppen (HAVEN-dashboard), via CONFIG → BOOT
 
 // Vaarmodi

@@ -84,6 +84,8 @@ static String _device_id() {
 #endif
 }
 
+String fout_log_device_id() { return _device_id(); }
+
 static const char* _type_naam(FoutType t) {
     switch (t) {
         case FOUT_LUA_RUNTIME: return "LUA_RUNTIME";

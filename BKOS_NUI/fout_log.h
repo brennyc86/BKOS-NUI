@@ -28,5 +28,6 @@ void fout_log_setup();         // laad token uit Preferences bij opstart
 // een aanroeper (bv. een Lua-app) om daarop een duidelijke melding te tonen
 // i.p.v. stil niets te laten gebeuren.
 bool fout_log_stuur(FoutType type, const char* bericht, const char* context = "", const char* soort = "fout");
+String fout_log_device_id();                   // geanonimiseerd apparaat-ID (ook gebruikt door post.ino)
 void fout_log_token_zet(const char* token);   // sla PAT op in Preferences
 bool fout_log_token_aanwezig();

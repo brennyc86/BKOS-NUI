@@ -89,6 +89,7 @@ void nav_midden_bouwen();
 #define SB_HOTSPOT_W    16          // breedte hotspot-icoon (cirkel r=8, licht asymmetrisch)
 #define SB_HOTSPOT_X    (SB_ICON_X0 + SB_WIFI_W + SB_ICON_GAP + 1)
 #define SB_UPDATE_W     18          // breedte update-beschikbaar-icoon (pijl + bakje)
+#define SB_BEL_W        16          // breedte belletje (ongelezen post)
 #define SB_ALERT_W      14          // breedte alert-icoon
 #define SB_TITEL_GAP    18          // extra ruimte tussen laatste icoon en schermtitel
 

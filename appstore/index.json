@@ -114,7 +114,7 @@
   {
     "id": "poorttest",
     "naam": "IO Poorttest",
-    "versie": "1.6.0",
+    "versie": "1.6.1",
     "auteur": "Claude",
     "beschrijving": "Test fysieke IO-poorten rechtstreeks, los van namen/richting-configuratie.",
     "scherm_b": 800,
@@ -130,7 +130,7 @@
   {
     "id": "flikkerlog",
     "naam": "Flikkerlog",
-    "versie": "1.1.0",
+    "versie": "1.1.1",
     "auteur": "Claude",
     "beschrijving": "Toont en verstuurt het IO-diagnoselog om knipperende lampen te analyseren.",
     "scherm_b": 800,

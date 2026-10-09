@@ -1135,8 +1135,10 @@ raak_rapport = function(x, y)
     -- BKOS-NUI-logs), op naam van de boot, zonder dat er iets overgetypt moet
     -- worden -- zie bkos.fout.rapport() (lua_runtime.cpp -> fout_log.cpp).
     if x >= bkos.W - 160 and x <= bkos.W - 20 and y >= voet_y + 4 and y <= voet_y + 36 then
-        if not bkos.fout.rapportageAan() or not bkos.fout.tokenAanwezig() then
-            bericht_status = "Zet FOUTRAP aan + stel een token in (CONFIG > WEERGAVE & ENERGIE)."
+        if not bkos.fout.rapportageAan() then
+            bericht_status = "Foutrapportage staat uit (CONFIG > WEERGAVE & ENERGIE)."
+        elseif not bkos.fout.tokenAanwezig() then
+            bericht_status = "Deze firmware heeft geen verzendsleutel: update de firmware."
         else
             local gelukt = bkos.fout.rapport(rapport_tekst_compleet(), "IO Poorttest diagnoserapport")
             bericht_status = gelukt

@@ -47,6 +47,28 @@ export default {
       return json({ ok: true, meldingen: r.results });
     }
 
+    // ─── Terugweg: boordcomputer haalt berichten voor zichzelf op ────────────────
+    // Alleen berichten voor dit device-ID (of '*'); device-ID is een afgeleide hash
+    // en niet te raden. Auth: dezelfde invoer-sleutel als /ingest.
+    if (url.pathname === "/post" && req.method === "GET") {
+      if (!(await gelijk(req.headers.get("x-ingest-key"), env.INGEST_KEY))) return json({ ok: false }, 401);
+      const device = tekst(url.searchParams.get("device"), 32);
+      const na = parseInt(url.searchParams.get("na") || "0", 10) || 0;
+      if (!device) return json({ ok: false, reden: "device" }, 400);
+      const r = await env.DB.prepare("SELECT id,ontvangen,titel,tekst FROM berichten WHERE (device=? OR device='*') AND id>? ORDER BY id ASC LIMIT 5").bind(device, na).all();
+      return json({ ok: true, berichten: r.results });
+    }
+    // Beheerder (leessleutel) stuurt een bericht naar één boot of '*'.
+    if (url.pathname === "/post/stuur" && req.method === "POST") {
+      if (!(await gelijk(req.headers.get("x-read-key"), env.READ_KEY))) return json({ ok: false }, 401);
+      let b;
+      try { b = await req.json(); } catch { return json({ ok: false, reden: "json" }, 400); }
+      const device = tekst(b.device, 32), titel = tekst(b.titel, 60), t = tekst(b.tekst, 600);
+      if (!device || !titel || !t) return json({ ok: false, reden: "leeg" }, 400);
+      const r = await env.DB.prepare("INSERT INTO berichten (device,titel,tekst) VALUES (?,?,?)").bind(device, titel, t).run();
+      return json({ ok: true, id: r.meta.last_row_id });
+    }
+
     return json({ ok: false }, 404);
   },
 };

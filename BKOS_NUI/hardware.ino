@@ -1,4 +1,6 @@
 #include "hardware.h"
+#include "post.h"
+#include "screen_post.h"
 #include "boot_log.h"
 #include "slaap.h"
 #include "getijdata.h"
@@ -95,6 +97,7 @@ static void _gui_taak(void*) {
         io_loop();
         ntp_loop();
         ota_loop();
+        post_loop();
 
         // Scherm (her)bouwen
         if (scherm_bouwen) {
@@ -176,6 +179,7 @@ static void _gui_taak(void*) {
                     case SCREEN_BERICHT:    screen_bericht_teken();     break;
                     case SCREEN_BRUG:       screen_brug_teken();        break;
                     case SCREEN_TIJD:       screen_tijd_teken();        break;
+                    case SCREEN_POST:       screen_post_teken();        break;
                     case SCREEN_LUA_APP:
                         lua_forceer_app = -1;
                         actief_scherm   = SCREEN_APPS;
@@ -333,6 +337,7 @@ static void _gui_taak(void*) {
                             case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                                     case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                             case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
+                            case SCREEN_POST:       screen_post_run(ts_x, ts_y, true);      break;
                         }
                     }
                     }
@@ -448,6 +453,7 @@ static void _hw_achtergrond_init_eenmalig() {
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
     ota_setup();        // init OTA (snel)
     fout_log_setup();   // laad foutrapportage token uit Preferences
+    post_setup();       // berichten van de ontwikkelaar (belletje in de statusbalk)
     slaap_reset_reden_verwerken();  // onthoud/meld een eventuele onverwachte herstart
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
@@ -677,8 +683,13 @@ void hw_loop() {
     // toevallig een andere reden voor een volledige herteken kwam; nu
     // forceert de eerste false->true-overgang meteen een herteken.
     static bool vorige_ota_nieuwer = false;
+    static int  vorige_post_ongelezen = 0;
     if (ota_nieuwer_beschikbaar != vorige_ota_nieuwer) {
         vorige_ota_nieuwer = ota_nieuwer_beschikbaar;
+        scherm_bouwen = true;
+    }
+    if (post_ongelezen_aantal() != vorige_post_ongelezen) {   // belletje verschijnt/verdwijnt
+        vorige_post_ongelezen = post_ongelezen_aantal();
         scherm_bouwen = true;
     }
 
@@ -721,6 +732,7 @@ void hw_loop() {
     io_loop();
     ntp_loop();
     ota_loop();
+    post_loop();
     net_loop();
     // bkos_client (WebSocket server + mDNS) is ESP32-only; niet beschikbaar op Pico
     provider_loop();
@@ -787,6 +799,7 @@ void hw_loop() {
                 case SCREEN_BERICHT:    screen_bericht_teken();     break;
                 case SCREEN_BRUG:       screen_brug_teken();        break;
                 case SCREEN_TIJD:       screen_tijd_teken();        break;
+                case SCREEN_POST:       screen_post_teken();        break;
                 case SCREEN_LUA_APP:
                     lua_forceer_app = -1;
                     actief_scherm   = SCREEN_APPS;
@@ -927,6 +940,7 @@ void hw_loop() {
                         case SCREEN_BERICHT:    screen_bericht_run(ts_x, ts_y, true);   break;
                             case SCREEN_BRUG:       screen_brug_run(ts_x, ts_y, true);      break;
                         case SCREEN_TIJD:       screen_tijd_run(ts_x, ts_y, true);      break;
+                        case SCREEN_POST:       screen_post_run(ts_x, ts_y, true);      break;
                     }
                 }
                 }
@@ -991,8 +1005,13 @@ void hw_loop() {
 
     // Zie de identieke check in de ESP32-GUI-taak hierboven in dit bestand.
     static bool vorige_ota_nieuwer = false;
+    static int  vorige_post_ongelezen = 0;
     if (ota_nieuwer_beschikbaar != vorige_ota_nieuwer) {
         vorige_ota_nieuwer = ota_nieuwer_beschikbaar;
+        scherm_bouwen = true;
+    }
+    if (post_ongelezen_aantal() != vorige_post_ongelezen) {   // belletje verschijnt/verdwijnt
+        vorige_post_ongelezen = post_ongelezen_aantal();
         scherm_bouwen = true;
     }
 

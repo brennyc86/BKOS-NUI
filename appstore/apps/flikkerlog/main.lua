@@ -135,8 +135,10 @@ function bkos.touch(x, y)
     if x >= 12 and x <= 162 then
         bkos.io.diagReset(); status = "Log gewist."
     elseif x >= 176 and x <= 366 then
-        if not bkos.fout.rapportageAan() or not bkos.fout.tokenAanwezig() then
-            status = "Zet FOUTRAP aan (CONFIG)."
+        if not bkos.fout.rapportageAan() then
+            status = "Foutrapportage staat uit (CONFIG)."
+        elseif not bkos.fout.tokenAanwezig() then
+            status = "Deze firmware heeft geen verzendsleutel: update de firmware."
         else
             status = bkos.fout.rapport(rapport(), "Flikkerlog", "schakellog") and "Verstuurd." or "Wacht 1 min (cooldown)."
         end

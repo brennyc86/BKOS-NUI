@@ -9,3 +9,13 @@ CREATE TABLE IF NOT EXISTS meldingen (
 );
 CREATE INDEX IF NOT EXISTS idx_meldingen_tijd   ON meldingen(ontvangen);
 CREATE INDEX IF NOT EXISTS idx_meldingen_device ON meldingen(device, ontvangen);
+
+-- Terugweg: berichten van de ontwikkelaar aan één boot (device) of aan iedereen ('*').
+CREATE TABLE IF NOT EXISTS berichten (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  ontvangen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  device    TEXT NOT NULL,   -- device-ID van de boot, of '*' voor alle boten
+  titel     TEXT NOT NULL,
+  tekst     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_berichten_device ON berichten(device, id);

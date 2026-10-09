@@ -1,4 +1,5 @@
 #include "nav_bar.h"
+#include "post.h"
 #include "screen_info.h"
 #include "app_manager.h"
 #include "haven_achtergrond.h"  // haven_achtergrond_pixel_klem/haven_kleur_meng — getinte HAVEN-achtergrond
@@ -199,6 +200,18 @@ static void _update_icon(int x, int cy, float s, uint16_t c) {
     tft.fillRect(cx - max(1, o2 / 2), cy - o2, max(1, o2), o7 + o2, c);         // stam naar beneden
 }
 
+// Belletje — ongelezen post van de ontwikkelaar (post.h). Koepel + rand + klepel.
+static void _bel_icon(int x, int cy, float s, uint16_t c) {
+    int cx = x + _sb_ic_o(7, s);
+    int o2 = max(1, _sb_ic_o(2, s)), o4 = _sb_ic_o(4, s), o5 = _sb_ic_o(5, s),
+        o6 = _sb_ic_o(6, s), o7 = _sb_ic_o(7, s);
+    tft.fillCircle(cx, cy - o2, o5, c);                              // koepel
+    tft.fillRect(cx - o5, cy - o2, 2 * o5 + 1, o5 + o2, c);          // romp
+    tft.fillRect(cx - o7, cy + o4 - o2 / 2, 2 * o7 + 1, o2, c);      // onderrand
+    tft.fillCircle(cx, cy + o6 + o2 / 2, o2, c);                     // klepel
+    tft.fillRect(cx, cy - o2 - o5 - o2, 1, o2, c);                   // knopje bovenop
+}
+
 // ─── Waarschuwing-infrastructuur (nog door niets aangeroepen) ─────────────────
 bool sb_waarschuwing_actief = false;
 char sb_waarschuwing_tekst[SB_WAARSCHUWING_LEN] = "";
@@ -242,6 +255,11 @@ void sb_teken_basis() {
         _wifi_icon(SB_ICON_X0, SB_ICON_CY, 1.0f);
         _hotspot_icon(SB_HOTSPOT_X, SB_ICON_CY, 1.0f);
         int x = SB_HOTSPOT_X + SB_HOTSPOT_W;
+        if (post_ongelezen_aantal() > 0) {
+            x += SB_ICON_GAP;
+            _bel_icon(x, SB_ICON_CY, 1.0f, C_AMBER);
+            x += SB_BEL_W;
+        }
         if (ota_nieuwer_beschikbaar) {
             x += SB_ICON_GAP;
             _update_icon(x, SB_ICON_CY, 1.0f, C_AMBER);
@@ -301,6 +319,7 @@ static int _sb_paneel_rijen(int* types) {
     int n = 0;
     types[n++] = 0;   // wifi
     types[n++] = 1;   // hotspot
+    if (post_ongelezen_aantal() > 0) types[n++] = 4;   // post (belletje)
     if (ota_nieuwer_beschikbaar) types[n++] = 2;   // update
     if (sb_waarschuwing_actief)  types[n++] = 3;   // alert
     return n;
@@ -331,6 +350,12 @@ static void _sb_paneel_rij_teken(int y, int type) {
             kleur = C_AMBER;
             _update_icon(icx, cy, 1.8f, C_AMBER);
             break;
+        case 4:
+            label = "POST VAN DE ONTWIKKELAAR";
+            sub   = String(post_bericht[0].titel);
+            kleur = C_AMBER;
+            _bel_icon(icx, cy, 1.8f, C_AMBER);
+            break;
         default:
             label = "WAARSCHUWING";
             sub   = String(sb_waarschuwing_tekst);
@@ -352,7 +377,7 @@ void sb_paneel_teken() {
     int breedte = (sb_iconen_eind_x + 4) - (SB_ICON_X0 - 4);
     tft.fillRect(SB_ICON_X0 - 4, 0, breedte, SB_H, C_STATUSBAR);
 
-    int types[4];
+    int types[5];
     int n = _sb_paneel_rijen(types);
     int h = 2 * SB_PANEEL_PAD + n * SB_PANEEL_RIJ_H;
     ui_rrect_gevuld_rand(SB_PANEEL_X, SB_PANEEL_Y0, SB_PANEEL_W, h, C_SURFACE, C_CYAN, 2);
@@ -361,7 +386,7 @@ void sb_paneel_teken() {
 }
 
 int sb_paneel_klik(int x, int y) {
-    int types[4];
+    int types[5];
     int n = _sb_paneel_rijen(types);
     int h = 2 * SB_PANEEL_PAD + n * SB_PANEEL_RIJ_H;
     if (x < SB_PANEEL_X || x >= SB_PANEEL_X + SB_PANEEL_W ||
@@ -373,6 +398,7 @@ int sb_paneel_klik(int x, int y) {
         case 0: return SCREEN_WIFI;
         case 1: return SCREEN_BESTANDEN;
         case 2: return SCREEN_OTA;
+        case 4: return SCREEN_POST;
         default: return -1;   // ALERT: toont alleen tekst, navigeert niet
     }
 }

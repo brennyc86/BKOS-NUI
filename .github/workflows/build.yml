@@ -33,8 +33,13 @@ jobs:
           arduino-cli config init
           arduino-cli config add board_manager.additional_urls \
             https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          arduino-cli core update-index
-          arduino-cli core install esp32:esp32@2.0.17
+          # De download van de ESP32-core is af en toe haperig (netwerk/CDN): tot 4 pogingen.
+          for poging in 1 2 3 4; do
+            arduino-cli core update-index && arduino-cli core install esp32:esp32@2.0.17 && exit 0
+            echo "Poging $poging mislukt, opnieuw over $((poging * 20)) s" >&2
+            sleep $((poging * 20))
+          done
+          exit 1
 
       - name: Install libraries
         run: |

@@ -15,6 +15,12 @@ on:
 permissions:
   contents: write
 
+# Builds één voor één: twee overlappende builds botsten op de gecommitte .bin-bestanden en de
+# tweede (bv. .12) raakte dan stilzwijgend zijn firmware kwijt.
+concurrency:
+  group: build-firmware
+  cancel-in-progress: false
+
 jobs:
   build_esp32s3:
     runs-on: ubuntu-latest
@@ -99,6 +105,12 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
+          # Versie van DEZE build, vóór de reset hieronder (die zet ota.h op de nieuwste stand).
+          VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
+          # Laatste stand van main ophalen vóór het kopiëren van de .bin's: zo kan de push nooit
+          # botsen op de .bin's van een eerdere build (untracked bestanden blijven staan).
+          git fetch origin main
+          git reset --hard origin/main
           mkdir -p firmware
           cp build_esp32s3/BKOS_NUI.ino.bin firmware/bkos_esp32s3_8048s070.bin
           # bootloader.bin + partitions*.bin: alleen nodig voor een VOLLEDIGE
@@ -110,16 +122,18 @@ jobs:
           cp build_esp32s3/BKOS_NUI.ino.bootloader.bin firmware/bkos_esp32s3_8048s070.bootloader.bin
           cp build_esp32s3/BKOS_NUI.ino.partitions.bin firmware/bkos_esp32s3_8048s070.partitions.bin
           cp build_esp32s3/BKOS_NUI.ino.partitions_spiffs.bin firmware/bkos_esp32s3_8048s070.partitions_spiffs.bin
-          VERSION=$(sed -n 's/.*BKOS_NUI_VERSIE[[:space:]]*"\(.*\)".*/\1/p' BKOS_NUI/ota.h)
           echo "$VERSION" > firmware/versie_esp32s3.txt
           git add firmware/bkos_esp32s3_8048s070.bin firmware/bkos_esp32s3_8048s070.bootloader.bin firmware/bkos_esp32s3_8048s070.partitions.bin firmware/bkos_esp32s3_8048s070.partitions_spiffs.bin firmware/versie_esp32s3.txt
           git diff --staged --quiet && exit 0
           git commit -m "ci: ESP32-S3 firmware $VERSION"
           for i in 1 2 3 4 5; do
-            git pull --rebase && git push && break
+            git push && exit 0
             echo "Push poging $i mislukt, opnieuw..."
             sleep $((RANDOM % 10 + 5))
+            git pull --rebase || { git rebase --abort; echo "Rebase-conflict" >&2; break; }
           done
+          echo "FIRMWARE NIET GEPUSHT" >&2
+          exit 1
 
   build_wroom:
     runs-on: ubuntu-latest

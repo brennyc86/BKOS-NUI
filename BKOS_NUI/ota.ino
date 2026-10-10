@@ -474,14 +474,23 @@ bool ota_download_toepassen(String url) {
 
     WiFiClient* stream = http.getStreamPtr();
     size_t written = 0;
-    static uint8_t buf[4096];  // statisch: niet op de stack, minder sectorwisselingen
+    // heap i.p.v. static: 4 KB vaste BSS kostte op classic ESP32 het DRAM-segment
+    const size_t buf_len = 4096;
+    uint8_t* buf = (uint8_t*)malloc(buf_len);
+    if (!buf) {
+        Update.abort();
+        ota_status_tekst = "Geen geheugen voor download";
+        http.end();
+        _ota_hotspot_hervatten();
+        return false;
+    }
     unsigned long last_data = millis();
     int laaste_pct = -1;
 
     while (http.connected() || stream->available()) {
         if (len > 0 && written >= (size_t)len) break;
         if (stream->available()) {
-            size_t rd = stream->read(buf, sizeof(buf));
+            size_t rd = stream->read(buf, buf_len);
             if (rd > 0) {
                 Update.write(buf, rd);
                 written += rd;
@@ -494,6 +503,7 @@ bool ota_download_toepassen(String url) {
         if (millis() - last_data > 20000) {
             Update.abort();
             ota_status_tekst = "Timeout tijdens download";
+            free(buf);
             http.end();
             _ota_hotspot_hervatten();
             return false;
@@ -529,6 +539,7 @@ bool ota_download_toepassen(String url) {
         }
         yield();
     }
+    free(buf);
     http.end();
     if (!Update.end()) {
         ota_status_tekst = String("Flash fout: ") + Update.errorString();

@@ -1205,8 +1205,13 @@ void io_verlichting_update() {
     // de buitenverlichting (licht_instelling/nav_licht_ok hierboven). AUTO volgt
     // hetzelfde principe als voorheen de enige optie was: rood behoudt nachtzicht
     // tijdens varen (ZEILEN/MOTOR) na zonsondergang, wit overdag/in de haven.
+    // Rood volgt de navigatieverlichting: staat die uit (instelling UIT, HAVEN/
+    // ANKER, of nog dag), dan is het interieur wit. Enige uitzondering is de
+    // schemerperiode (AUTO): nav-licht al aan, interieur nog even wit tot
+    // licht_int_offset_min verstreken is. Bij LICHT_AAN geen schemeruitzondering.
     bool navigeert = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR);
-    bool auto_rood = navigeert && _int_rood_auto_aan();
+    bool auto_rood = navigeert && nav_licht_ok &&
+                     (licht_instelling == LICHT_AAN || _int_rood_auto_aan());
     if (_int_overrule >= 0) {
         // UIT (hoofdverlichting gewoon uit, bv. via ALLES UIT) mag de overrule
         // NIET ongeldig maken — dat zou een kleurkeuze laten "vergeten" zodra

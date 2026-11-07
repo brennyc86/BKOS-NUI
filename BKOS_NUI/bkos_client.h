@@ -32,5 +32,10 @@ void bkos_client_state_sturen();
 void bkos_client_net_sturen();
 void bkos_client_paneel_sturen();
 
+// BLE-client (ble_app.cpp)
+void bkos_ble_verbonden();
+void bkos_ble_los();
+void bkos_ble_rx(const String& json);
+
 #define BKOS_WS_POORT 8080
 #endif // ESP32

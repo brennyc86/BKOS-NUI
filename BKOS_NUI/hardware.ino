@@ -466,6 +466,7 @@ static void _hw_achtergrond_init_eenmalig() {
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
     mac_record_laden();        // laad MAC-adres-onthouden-login + afzendergegevens
     mac_record_limiet_laden(); // laad instelbare berichtlimieten (default 20/5/24u)
+    ble_app_setup();           // BLE-app: instelling + startgarantie lezen (geen BLE-init hier, die start later in een eigen taak)
 #if BKOS_REMOTE_ENABLED
     bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
     webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)

@@ -1,0 +1,2058 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>BKOS</title>
+<style>
+:root{
+  --bg:#0c1a26; --surface:#152535; --surface2:#1e3347; --surface3:#243d55;
+  --cyan:#00d4ff; --text:#cce4f0; --text-dim:#7a99b0;
+  --green:#00dc64; --amber:#ffb400; --red:#ff3246; --border:#2a4560;
+  --haven:#3c64ff; --zeilen:#00c8aa; --motor:#ff7800; --anker:#8c6428;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  -webkit-user-select:none;user-select:none;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+/* Eigen vaste laag i.p.v. body{background-attachment:fixed} — die CSS-optie
+   wordt door mobiele browsers (vooral iOS Safari) onbetrouwbaar/helemaal niet
+   toegepast op een scrollende pagina. Een los element op position:fixed werkt
+   overal wél: de foto blijft op zijn plek staan, de inhoud scrollt erover
+   heen. background-size:cover + center = zo groot mogelijk en gecentreerd. */
+#bgFixed{
+  position:fixed;inset:0;z-index:-1;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+}
+.wrap{max-width:640px;margin:0 auto;padding:0 14px 40px;}
+a{color:var(--cyan);}
+
+header{
+  position:sticky;top:0;z-index:20;background:var(--bg);
+  padding:calc(env(safe-area-inset-top) + 12px) 14px 10px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+header .dot{width:11px;height:11px;border-radius:50%;background:var(--red);flex:none;transition:background .2s;}
+header .dot.on{background:var(--green);}
+header .titel{flex:1;min-width:0;}
+header .titel b{display:block;font-size:1.02rem;color:var(--cyan);letter-spacing:.5px;}
+header .titel span{display:block;font-size:.72rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+header button.lock{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:8px 12px;font-size:1.1rem;line-height:1;flex:none;
+}
+header button.lock.open{color:var(--green);border-color:var(--green);}
+
+section{margin-top:18px;}
+section h2{
+  font-size:.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);
+  margin-bottom:8px;padding-left:2px;
+}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+@media (max-width:400px){ .grid4{grid-template-columns:repeat(2,1fr);} }
+
+button.mbtn{
+  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
+  border-radius:10px;padding:14px 6px;font-size:.82rem;font-weight:600;letter-spacing:.5px;
+  transition:background .15s,color .15s,border-color .15s;
+}
+button.mbtn.active{background:var(--acc,var(--cyan));color:#04121c;border-color:var(--acc,var(--cyan));}
+button.mbtn.nood{border-color:var(--red);color:var(--red);}
+button.mbtn.nood:active{background:var(--red);color:#fff;}
+.taalRij{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:14px;}
+.taalRij button{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:1.15rem;line-height:1;}
+.taalRij button.actief{border-color:var(--cyan);background:var(--surface3);}
+
+button.pbtn{
+  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
+  border-radius:10px;padding:14px 8px;font-size:.85rem;font-weight:600;
+}
+button.pbtn.mix{background:#3a2a06;color:var(--amber);border-color:var(--amber);}
+button.pbtn.aan{background:#063a1c;color:var(--green);border-color:var(--green);}
+button.pbtn.locked, button.sw:disabled{opacity:.5;}
+/* Vierkante tegels (HUIS-tab: buitenverlichting/apparaten) — mirrort de
+   vierkante 3x3-tegels van het huispaneel op de boordcomputer zelf. Symbool
+   dominant, naam er klein onder; een knop zonder symbool (nog) toont de naam
+   op leesbare grootte in het midden (.tlabelGroot). */
+.tilegrid button.pbtn{
+  aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:8px;gap:4px;
+}
+.tilegrid .ticon{font-size:1.9rem;line-height:1;}
+.tilegrid .ticon svg{width:1.9rem;height:1.9rem;}
+.tilegrid .tlabel{font-size:.68rem;line-height:1.15;font-weight:600;}
+.tilegrid .tlabelGroot{font-size:.85rem;line-height:1.2;font-weight:600;}
+
+.iorow{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;margin-bottom:6px;
+}
+.iorow .lbl{font-size:.68rem;color:var(--text-dim);width:34px;flex:none;font-weight:700;}
+.iorow .naam{flex:1;font-size:.92rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.iorow .badge{
+  flex:none;width:12px;height:12px;border-radius:50%;background:#324a63;
+}
+.iorow .badge.aan{background:var(--green);}
+.iorow button.sw{
+  flex:none;border-radius:20px;padding:7px 16px;font-size:.78rem;font-weight:700;
+  background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);
+}
+.iorow button.sw.aan{background:var(--green);color:#04120a;border-color:var(--green);}
+.iorow.ingang .naam{color:var(--text-dim);}
+
+#netInfo{font-size:.78rem;color:var(--text-dim);line-height:1.6;padding:4px 2px;}
+
+.tabbar{
+  display:flex;gap:6px;margin-top:16px;border-bottom:1px solid var(--border);
+  padding-bottom:0;overflow-x:auto;
+}
+.tabbtn{
+  flex:1;min-width:0;background:transparent;color:var(--text-dim);border:none;
+  border-bottom:2px solid transparent;padding:10px 4px;font-size:.78rem;
+  font-weight:700;letter-spacing:.5px;white-space:nowrap;
+}
+.tabbtn.active{color:var(--cyan);border-bottom-color:var(--cyan);}
+.tabpane section:first-child{margin-top:14px;}
+/* Smalle telefoon (staand): 4-6 gelijk-verdeelde tabs (flex:1) knijpen dan
+   dicht en lopen in elkaar over (bv. "VERBINDINGEN" past niet meer). Onder
+   deze breedte krijgen de knoppen hun natuurlijke breedte terug (flex:0 0
+   auto) — .tabbar's al aanwezige overflow-x:auto zorgt dan vanzelf voor
+   zijwaarts scrollen i.p.v. knijpen. Breder scherm behoudt de gevulde,
+   gelijk-verdeelde balk (ziet er daar juist netter uit). */
+@media (max-width: 480px) {
+  .tabbtn{ flex:0 0 auto; padding-left:12px; padding-right:12px; }
+}
+
+#bfInfo{font-size:.78rem;color:var(--text-dim);line-height:1.6;}
+.filerow{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:9px 12px;margin-bottom:6px;font-size:.85rem;
+}
+.filerow .naam{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.filerow .naam.map{color:var(--cyan);font-weight:700;}
+.filerow .grootte{font-size:.72rem;color:var(--text-dim);flex:none;}
+.filerow button.del{padding:6px 12px;font-size:.78rem;color:var(--red);border-color:var(--red);flex:none;border-radius:8px;background:var(--surface2);border-width:1px;border-style:solid;}
+.pbtn.hoofd{grid-column:1/-1;}
+#netInfo b{color:var(--text);}
+
+#overlay{
+  position:fixed;inset:0;background:rgba(4,10,16,.82);z-index:50;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+#overlay.hidden{display:none;}
+#pinCard{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:26px 22px;width:100%;max-width:320px;text-align:center;
+}
+#pinCard h3{color:var(--cyan);font-size:1rem;margin-bottom:6px;}
+#pinCard p{color:var(--text-dim);font-size:.8rem;margin-bottom:18px;}
+#pinInput{
+  width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+  color:var(--text);font-size:1.6rem;letter-spacing:.6em;text-align:center;padding:12px 0 12px 0.6em;
+  margin-bottom:14px;
+}
+#pinErr{color:var(--red);font-size:.78rem;min-height:1.1em;margin-bottom:10px;}
+#pinCard .row{display:flex;gap:8px;}
+#pinCard button{
+  flex:1;border-radius:10px;padding:12px;font-size:.9rem;font-weight:600;border:1px solid var(--border);
+}
+#pinCard button.ok{background:var(--cyan);color:#04121c;border-color:var(--cyan);}
+#pinCard button.cancel{background:var(--surface2);color:var(--text-dim);}
+
+#cropModal{
+  position:fixed;inset:0;background:rgba(4,10,16,.94);z-index:60;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:20px;
+}
+#cropModal.hidden{display:none;}
+#cropViewport{
+  width:min(88vw,420px);position:relative;overflow:hidden;
+  border-radius:8px;border:2px solid var(--cyan);background:#000;touch-action:none;
+}
+#cropImg{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;max-width:none;}
+#cropZoom{width:min(88vw,420px);margin-top:16px;accent-color:var(--cyan);}
+#cropModal .row{display:flex;gap:8px;width:min(88vw,420px);}
+#cropModal .row button{
+  flex:1;border-radius:10px;padding:12px;font-size:.9rem;font-weight:600;border:1px solid var(--border);
+}
+#cropModal .row button.ok{background:var(--cyan);color:#04121c;border-color:var(--cyan);}
+#cropModal .row button.cancel{background:var(--surface2);color:var(--text-dim);}
+</style>
+
+<style>
+#bkosStart{position:fixed;inset:0;z-index:9999;background:#06131f;color:#e6f1f7;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+#bkosStart .kaart{width:100%;max-width:420px}
+#bkosStart h1{margin:0 0 4px;font-size:28px;letter-spacing:.5px}
+#bkosStart p{margin:0 0 18px;color:#8fb3c7;font-size:14px;line-height:1.4}
+#bkosStart button,#bkosStart a.knop{display:block;width:100%;box-sizing:border-box;margin:0 0 10px;padding:16px;border:0;border-radius:12px;background:#0e3a55;color:#7fe3ff;font-size:17px;font-weight:600;text-align:center;text-decoration:none;cursor:pointer}
+#bkosStart button.sec,#bkosStart a.sec{background:#0b2233;color:#9ec3d6}
+#bkosStart .melding{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#2a1a12;color:#ffb27a;font-size:13px;display:none}
+#bkosStart .hint{margin-top:16px;font-size:12px;color:#5f8399}
+#bkosBanner{display:none;position:sticky;top:0;z-index:50;background:#1b2a35;color:#ffd58a;font-size:12px;padding:6px 10px;text-align:center}
+#bkosBanner a{color:#7fe3ff}
+</style>
+
+<script>
+(function(){
+  var SVC='b4b05a01-5d3e-4c6b-9a77-0c4b05000001',
+      RX ='b4b05a01-5d3e-4c6b-9a77-0c4b05000002',
+      TX ='b4b05a01-5d3e-4c6b-9a77-0c4b05000003',
+      INF='b4b05a01-5d3e-4c6b-9a77-0c4b05000004';
+  var LS='bkos_app_laatste';
+  var device=null, info=null, geannuleerd=false;
+  function $(i){return document.getElementById(i);}
+  function melding(t){var e=$('bkosMelding'); e.textContent=t; e.style.display=t?'block':'none';}
+  function lsGet(){try{return JSON.parse(localStorage.getItem(LS)||'null');}catch(e){return null;}}
+  function lsSet(o){try{localStorage.setItem(LS,JSON.stringify(o));}catch(e){}}
+
+  // WebSocket-achtig object zodat de bestaande pagina ongewijzigd werkt.
+  function BleSocket(dev){
+    var s=this; s.readyState=0; s.onopen=s.onclose=s.onmessage=s.onerror=null;
+    var rx=null, txc=null, buf=[], schrijfKetting=Promise.resolve(), dec=new TextDecoder('utf-8');
+    function sluit(){ if(s.readyState===3) return; s.readyState=3; if(s.onclose) s.onclose({}); }
+    s.close=function(){ try{ if(dev.gatt.connected) dev.gatt.disconnect(); }catch(e){} sluit(); };
+    s.send=function(tekst){
+      var b=new TextEncoder().encode(tekst), delen=[], N=19;       // 19+1 byte past in elke MTU
+      for(var i=0;i<b.length;i+=N){ var d=new Uint8Array(Math.min(N,b.length-i)+1); d[0]=(i+N<b.length)?1:0; d.set(b.subarray(i,i+N),1); delen.push(d); }
+      delen.forEach(function(d){ schrijfKetting=schrijfKetting.then(function(){ return rx.writeValueWithResponse(d); }).catch(function(){}); });
+    };
+    function ontvang(ev){
+      var v=new Uint8Array(ev.target.value.buffer); if(!v.length) return;
+      for(var i=1;i<v.length;i++) buf.push(v[i]);
+      if(v[0]===0){ var tekst=dec.decode(new Uint8Array(buf)); buf=[]; if(s.onmessage) s.onmessage({data:tekst}); }
+    }
+    dev.addEventListener('gattserverdisconnected', sluit);
+    dev.gatt.connect().then(function(srv){ return srv.getPrimaryService(SVC); }).then(function(svc){
+      return Promise.all([svc.getCharacteristic(RX), svc.getCharacteristic(TX), svc.getCharacteristic(INF)]);
+    }).then(function(c){
+      rx=c[0]; txc=c[1];
+      c[2].readValue().then(function(v){ try{ info=JSON.parse(new TextDecoder().decode(v)); lsSet({naam:info.naam,boot:info.boot,ip:info.ip,ap:info.ap}); banner(); }catch(e){} }).catch(function(){});
+      txc.addEventListener('characteristicvaluechanged', ontvang);
+      return txc.startNotifications();
+    }).then(function(){
+      s.readyState=1; $('bkosStart').style.display='none'; if(s.onopen) s.onopen({});
+    }).catch(function(e){ if(s.onerror) s.onerror(e); sluit(); });
+  }
+
+  function banner(){
+    var b=$('bkosBanner'), t='Bluetooth-modus: berichten, bestanden en foto’s werken alleen via WiFi.';
+    var adr=info&&(info.ip||info.ap);
+    if(adr) t+=' <a href="http://'+adr+'/">Open via WiFi ('+adr+')</a>';
+    b.innerHTML=t; b.style.display='block';
+  }
+
+  // Zonder netwerk-endpoints (alleen WiFi): netjes falen i.p.v. 404's van github.io
+  function fetchUit(){ window.fetch=function(){ return Promise.reject(new Error('Alleen via WiFi')); }; }
+
+  window.BKOS_TRANSPORT={ maak:function(){ return device? new BleSocket(device) : null; } };
+
+  window.BKOS_UI={
+    bluetooth:function(){
+      melding('');
+      if(!navigator.bluetooth){ melding(uitleg()); return; }
+      navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]}).then(function(d){
+        device=d; geannuleerd=false; fetchUit(); connect();
+      }).catch(function(e){ if(e&&e.name!=='NotFoundError') melding('Bluetooth: '+(e.message||e)); else melding('Geen boordcomputer (master) gevonden. Staat Bluetooth-app aan in CONFIG → VERBINDINGEN?'); });
+    },
+    laatste:function(){
+      var l=lsGet(); if(!l) return;
+      var adr=l.ip||l.ap; if(adr) location.href='http://'+adr+'/';
+    },
+    wifi:function(){
+      var l=lsGet(), adr=prompt('Adres van de boordcomputer:\n(hotspot van de boordcomputer: 192.168.4.1)', (l&&(l.ip||l.ap))||'192.168.4.1');
+      if(adr){ location.href='http://'+adr.replace(/^https?:\/\//,'').replace(/\/.*$/,'')+'/'; }
+      return false;
+    }
+  };
+
+  function uitleg(){
+    var ua=navigator.userAgent;
+    if(/iPhone|iPad|iPod/.test(ua)) return 'Safari ondersteunt geen Bluetooth. Open deze pagina in de browser Bluefy.';
+    if(/Firefox/.test(ua)) return 'Firefox ondersteunt geen Bluetooth. Gebruik Chrome of Edge.';
+    if(/Safari/.test(ua)&&!/Chrome|Chromium|Edg/.test(ua)) return 'Safari ondersteunt geen Bluetooth. Gebruik Chrome op je Mac.';
+    return 'Deze browser ondersteunt geen Web Bluetooth. Gebruik Chrome of Edge (of Bluefy op iPhone).';
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    var l=lsGet();
+    if(l&&(l.ip||l.ap)){ var b=$('bkosBtnLaatste'); b.style.display='block'; b.textContent='Open via WiFi: '+(l.boot||l.naam||'laatste')+' ('+(l.ip||l.ap)+')'; }
+    $('bkosHint').textContent = navigator.bluetooth ? 'Bluetooth vindt alleen boordcomputers in master-modus.' : uitleg();
+  });
+})();
+</script>
+</head>
+<body>
+<div id="bkosBanner"></div>
+<div id="bkosStart"><div class="kaart">
+  <h1>BKOS</h1>
+  <p>Bedien je boordcomputer. Kies hoe je verbindt.</p>
+  <button id="bkosBtnBle" onclick="BKOS_UI.bluetooth()">Verbind via Bluetooth</button>
+  <button class="sec" id="bkosBtnLaatste" style="display:none" onclick="BKOS_UI.laatste()"></button>
+  <a class="knop sec" id="bkosBtnWifi" href="#" onclick="return BKOS_UI.wifi()">Verbind via WiFi</a>
+  <div class="melding" id="bkosMelding"></div>
+  <div class="hint" id="bkosHint"></div>
+</div></div>
+
+
+<div id="bgFixed"></div>
+
+<header>
+  <div class="dot" id="connDot"></div>
+  <div class="titel">
+    <b>BKOS</b>
+    <span id="hdrSub">verbinden…</span>
+  </div>
+  <button class="lock" id="lockBtn" onclick="lockClick()">&#128274;</button>
+</header>
+
+<div class="wrap">
+  <div class="tabbar">
+    <button class="tabbtn active" data-tab="info" onclick="setTab('info')">INFO</button>
+    <button class="tabbtn" id="tabBtnHuis" data-tab="huis" onclick="setTab('huis')" style="display:none;">HUIS</button>
+    <button class="tabbtn" id="tabBtnBoot" data-tab="boot" onclick="setTab('boot')" style="display:none;">BOOT</button>
+    <button class="tabbtn" id="tabBtnIo" data-tab="io" onclick="setTab('io')" style="display:none;">IO</button>
+    <button class="tabbtn" id="tabBtnFotos" data-tab="fotos" onclick="setTab('fotos')" style="display:none;">FOTOS</button>
+    <button class="tabbtn" id="tabBtnInstellingen" data-tab="instellingen" onclick="setTab('instellingen')" style="display:none;">INSTELL.</button>
+  </div>
+
+  <div id="tabInfo" class="tabpane">
+    <div class="taalRij">
+      <button onclick="taalZet('nl')" data-taal="nl" title="Nederlands">🇳🇱</button>
+      <button onclick="taalZet('en')" data-taal="en" title="English">🇬🇧</button>
+      <button onclick="taalZet('de')" data-taal="de" title="Deutsch">🇩🇪</button>
+      <button onclick="taalZet('fr')" data-taal="fr" title="Français">🇫🇷</button>
+      <button onclick="taalZet('es')" data-taal="es" title="Español">🇪🇸</button>
+      <button onclick="taalZet('uk')" data-taal="uk" title="Українська">🇺🇦</button>
+      <button onclick="taalZet('pl')" data-taal="pl" title="Polski">🇵🇱</button>
+      <button onclick="taalZet('cs')" data-taal="cs" title="Čeština">🇨🇿</button>
+      <button onclick="taalZet('da')" data-taal="da" title="Dansk">🇩🇰</button>
+      <button onclick="taalZet('pt')" data-taal="pt" title="Português">🇵🇹</button>
+      <button onclick="taalZet('it')" data-taal="it" title="Italiano">🇮🇹</button>
+    </div>
+
+    <section>
+      <h2 style="display:flex;align-items:center;justify-content:space-between;">
+        <span data-i18n="kopBoot">Boot &amp; eigenaar</span>
+        <span id="infoEditBtn" onclick="setTab('instellingen');setSubTab('boot');" style="display:none;cursor:pointer;font-size:1rem;" title="Bewerken">&#9998;</span>
+      </h2>
+      <div id="pubInfo">—</div>
+    </section>
+
+    <section>
+      <h2 id="berichtKop" onclick="berichtToggle()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <span data-i18n="kopBericht">Berichten</span>
+        <span id="berichtChevron">&#9660;</span>
+      </h2>
+      <div id="berichtBody">
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;" data-i18n="berichtUitleg">Stuur een bericht aan de eigenaar van deze boot — geen pincode nodig.</p>
+        <input id="berichtAfzNaam" type="text" placeholder="jouw naam" data-i18n-ph="phNaam" autocomplete="off" maxlength="19" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+        <input id="berichtAfzTel" type="tel" placeholder="jouw telefoonnummer" data-i18n-ph="phTel" autocomplete="off" maxlength="15" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:10px;">
+
+        <div style="font-size:.72rem;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;" data-i18n="labelNood">Noodgeval</div>
+        <div class="grid2" id="noodGrid"></div>
+        <div id="noodOk" style="font-size:.78rem;min-height:1.1em;margin:6px 0 10px;"></div>
+
+        <div class="grid2" id="berichtGrid"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <input id="berichtVrijeTekst" type="text" placeholder="of typ zelf een bericht…" data-i18n-ph="phVrij" maxlength="70" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;">
+          <button class="mbtn" style="flex:none;" data-i18n="btnStuur" onclick="stuurBerichtVrij()">STUUR</button>
+        </div>
+        <div id="berichtOk" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+      </div>
+    </section>
+
+    <section id="lockedHint">
+      <p style="font-size:.78rem;color:var(--text-dim);text-align:center;padding:10px 0;"><span data-i18n="lockedHint">Bediening vereist de eigenaars- of een gastpincode.</span> <a href="#" onclick="openPin();return false;" data-i18n="ontgrendelen">Ontgrendelen &#8594;</a></p>
+    </section>
+  </div>
+
+  <div>
+    <div id="tabHuis" class="tabpane" style="display:none">
+      <section>
+        <h2>Interieurverlichting</h2>
+        <div class="grid3" id="huisAlgemeen"></div>
+      </section>
+      <section>
+        <h2>Lampen</h2>
+        <div id="huisLampen"></div>
+      </section>
+      <section id="huisBuitenSection" style="display:none">
+        <h2>Buitenverlichting</h2>
+        <div class="grid3 tilegrid" id="huisBuiten"></div>
+      </section>
+      <section id="huisApparatenSection" style="display:none">
+        <h2>Apparaten</h2>
+        <div class="grid3 tilegrid" id="huisApparaten"></div>
+      </section>
+    </div>
+
+    <div id="tabBoot" class="tabpane" style="display:none">
+      <section>
+        <h2>Vaarmodus</h2>
+        <div class="grid4" id="modusGrid"></div>
+      </section>
+
+      <section>
+        <h2>Verlichting</h2>
+        <div class="grid3" id="lichtGrid"></div>
+      </section>
+
+      <section id="paneelSection" style="display:none">
+        <h2>Vaarpaneel</h2>
+        <div class="grid3" id="paneelGrid"></div>
+      </section>
+    </div>
+
+    <div id="tabIo" class="tabpane" style="display:none">
+      <section>
+        <h2>IO kanalen</h2>
+        <div id="ioList"></div>
+      </section>
+
+      <section>
+        <h2>Verbonden modules</h2>
+        <div id="netInfo">—</div>
+      </section>
+    </div>
+
+    <div id="tabFotos" class="tabpane" style="display:none">
+      <section>
+        <h2>Foto HAVEN-dashboard</h2>
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Achtergrondfoto van het HAVEN-scherm op de boordcomputer zelf. Elke upload voegt een nieuwe foto toe aan de diashow.</p>
+        <div id="fotosStatus" style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">—</div>
+        <input type="file" id="fotoInputHaven" accept="image/*" style="display:none">
+        <button class="mbtn" id="fotoBtnHaven" onclick="document.getElementById('fotoInputHaven').click()">FOTO KIEZEN &amp; BIJSNIJDEN</button>
+        <div id="fotosMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        <div id="fotosLijst" style="margin-top:8px;"></div>
+      </section>
+
+      <section>
+        <h2>Achtergrond webapp</h2>
+        <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Eigen foto op de achtergrond van deze pagina — apart voor staand en liggend gebruik. Een nieuwe upload vervangt de oude in datzelfde slot.</p>
+        <input type="file" id="agInputLiggend" accept="image/*" style="display:none">
+        <input type="file" id="agInputStaand"  accept="image/*" style="display:none">
+        <div class="grid2">
+          <button class="mbtn" id="agBtnLiggend" onclick="document.getElementById('agInputLiggend').click()">LIGGEND</button>
+          <button class="mbtn" id="agBtnStaand"  onclick="document.getElementById('agInputStaand').click()">STAAND</button>
+        </div>
+        <div id="agMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+      </section>
+
+      <section>
+        <h2>Opslag &amp; bestanden</h2>
+        <div id="bfInfo">—</div>
+        <div class="grid2" id="bfFsKeuze" style="margin-top:8px;display:none;"></div>
+        <div id="bfPad" style="font-size:.75rem;color:var(--text-dim);margin:8px 0 6px;">/</div>
+        <div id="bfLijst"><div style="color:var(--text-dim);font-size:.85rem;">Laden…</div></div>
+      </section>
+    </div>
+
+    <div id="tabInstellingen" class="tabpane" style="display:none">
+      <div class="tabbar" style="margin-top:0;">
+        <button class="tabbtn active" data-subtab="boot" onclick="setSubTab('boot')">BOOT</button>
+        <button class="tabbtn" data-subtab="verbindingen" onclick="setSubTab('verbindingen')">VERBINDINGEN</button>
+        <button class="tabbtn" data-subtab="toegang" onclick="setSubTab('toegang')">TOEGANG</button>
+        <button class="tabbtn" data-subtab="backup" onclick="setSubTab('backup')">BACKUP</button>
+      </div>
+
+      <div id="instSubBoot" class="tabpane">
+        <section>
+          <h2>Boot</h2>
+          <div id="instBoot"></div>
+        </section>
+        <section>
+          <h2>Eigenaar</h2>
+          <div id="instEig"></div>
+          <button class="mbtn" style="margin-top:8px;" onclick="instellingenOpslaan()">OPSLAAN</button>
+          <div id="instMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+      </div>
+
+      <div id="instSubVerbindingen" class="tabpane" style="display:none">
+        <section>
+          <h2>Meldingen (Signal / WhatsApp)</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Berichten via CallMeBot bij opstart/alarm/hartslag. De lange Signal-/WhatsApp-code van CallMeBot kun je hier makkelijker plakken dan intypen op het scherm van de boordcomputer.</p>
+          <div id="meldingVelden"></div>
+          <div class="grid2" style="margin-top:8px;">
+            <button class="mbtn" onclick="meldingOpslaan()">OPSLAAN</button>
+            <button class="mbtn" onclick="meldingTest()">TESTBERICHT STUREN</button>
+          </div>
+          <div id="meldingMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+      </div>
+
+      <div id="instSubToegang" class="tabpane" style="display:none">
+        <section>
+          <h2>Pincode wijzigen</h2>
+          <input id="pinOud" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="huidige pincode" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1rem;padding:10px;margin-bottom:8px;">
+          <input id="pinNieuw" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="nieuwe pincode" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1rem;padding:10px;margin-bottom:8px;">
+          <button class="mbtn" onclick="pinWijzigen()">PINCODE WIJZIGEN</button>
+          <div id="pinWijzMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+
+        <section>
+          <h2>Gasten pincodes</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">GAST = HUIS+BOOT. LOGE = ook kanalen die minimaal LOGE vereisen (bv. een slot). DELER = ook kanalen die minimaal DELER vereisen. Nooit IO/FOTOS/INSTELLINGEN — dat blijft de eigenaar.</p>
+          <input id="gastNaam" type="text" placeholder="naam (optioneel)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <input id="gastCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="code (optioneel — leeg = automatisch)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Niveau</label>
+          <div class="grid3" id="gastNiveauKeuze" style="margin-bottom:8px;"></div>
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Geldigheid</label>
+          <div class="grid3" id="gastDuurKeuze" style="margin-bottom:8px;"></div>
+          <div class="grid2">
+            <button class="mbtn" id="gastActieBtn" onclick="gastActie()">CODE AANMAKEN</button>
+            <button class="mbtn" id="gastAnnuleerBtn" onclick="gastFormReset()" style="display:none;">ANNULEER</button>
+          </div>
+          <div id="gastMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+          <div id="gastLijst" style="margin-top:8px;"></div>
+        </section>
+
+        <section>
+          <h2>Berichtlimiet</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Maximum aantal berichten per apparaat (MAC-adres) via het "bericht aan eigenaar"-formulier, voordat er gewacht moet worden — voorkomt spam. 0 = geen limiet.</p>
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Max. berichten — ingelogd (gast-/eigenaarscode)</label>
+          <input id="blimIngelogd" type="number" min="0" max="65535" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Max. berichten — niet ingelogd</label>
+          <input id="blimGast" type="number" min="0" max="65535" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Reset-periode (uren zonder bericht voordat de teller weer op nul mag)</label>
+          <input id="blimResetUren" type="number" min="0" max="65535" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <button class="mbtn" onclick="berichtlimietOpslaan()">OPSLAAN</button>
+          <div id="blimMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+      </div>
+
+      <div id="instSubBackup" class="tabpane" style="display:none">
+        <section>
+          <h2>Instellingen exporteren/importeren</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Download alle instellingen (boot &amp; eigenaar, IO-namen/configuratie, PANEEL/LAMPEN, meldingen, gasten pincodes, WiFi, pincode — geen foto's) als één bestand. Handig bij het wisselen van bestandssysteem (SPIFFS/FATFS) of het overzetten naar een nieuwe boordcomputer.</p>
+          <button class="mbtn" onclick="instellingenExport()">EXPORTEREN (DOWNLOAD)</button>
+          <input type="file" id="instImportInput" accept="application/json" style="display:none" onchange="instellingenImportUpload(this)">
+          <button class="mbtn" style="margin-top:8px;" onclick="document.getElementById('instImportInput').click()">IMPORTEREN (BESTAND KIEZEN)</button>
+          <p style="font-size:.72rem;color:var(--text-dim);margin-top:8px;">Importeren overschrijft de huidige instellingen en herstart het apparaat automatisch.</p>
+          <div id="instBackupMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+        <section>
+          <h2>Firmware-updates zonder pincode</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Staat dit <b>uit</b> (standaard), dan vraagt de boordcomputer de pincode voordat een update uit de Post of via CONFIG wordt gestart. Zet dit <b>aan</b> als iedereen aan boord een update mag starten. Voorgestelde <i>instellingen</i> vragen altijd de pincode.</p>
+          <div id="updpinStatus" style="font-size:.85rem;margin-bottom:8px;"></div>
+          <button class="mbtn" onclick="updpinZet(true)">UPDATES ZONDER PINCODE: AAN</button>
+          <button class="mbtn" style="margin-top:8px;" onclick="updpinZet(false)">UPDATES ZONDER PINCODE: UIT</button>
+          <div id="updpinMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+        <section>
+          <h2>Foutrapportage (GitHub-token)</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Plak hier het GitHub-token (fine-grained, alleen <i>issues: write</i> op BKOS-NUI-logs). Het token wordt nooit teruggestuurd naar de browser.</p>
+          <div id="frapStatus" style="font-size:.85rem;margin-bottom:8px;"></div>
+          <input id="frapToken" type="password" autocomplete="off" placeholder="github_pat_..." style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:8px;">
+          <button class="mbtn" onclick="frapOpslaan()">TOKEN OPSLAAN + RAPPORTAGE AAN</button>
+          <button class="mbtn" style="margin-top:8px;" onclick="frapAan(false)">RAPPORTAGE UIT</button>
+          <div id="frapMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" class="hidden">
+  <div id="pinCard">
+    <h3>Pincode vereist</h3>
+    <p>De eigenaars-pincode (zelfde als op het scherm van de boordcomputer) geeft volledige toegang. Een tijdelijke gastcode geeft alleen HUIS+BOOT.</p>
+    <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    <div id="pinErr"></div>
+    <div class="row">
+      <button class="cancel" onclick="closePin(false)">ANNULEER</button>
+      <button class="ok" onclick="submitPin()">ONTGRENDEL</button>
+    </div>
+  </div>
+</div>
+
+<div id="cropModal" class="hidden">
+  <p style="font-size:.78rem;color:var(--text-dim);text-align:center;margin-bottom:10px;">Sleep om te schuiven, gebruik de schuif om in/uit te zoomen. Alleen het deel in het kader wordt opgeslagen.</p>
+  <div id="cropViewport"><img id="cropImg" draggable="false" alt=""></div>
+  <input type="range" id="cropZoom" min="100" max="400" value="100">
+  <div class="row" style="margin-top:14px;">
+    <button class="cancel" onclick="cropAnnuleer()">ANNULEER</button>
+    <button class="ok" onclick="cropBevestig()">GEBRUIK DIT DEEL</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+var ws = null;
+var unlocked = false;
+var ioData = {cnt:0,o:[],i:[],r:[],n:[],lbl:[]};
+var paneelData = [];
+var huispaneelData = [];
+var stateData = {m:0,l:0};
+var infoData = {};
+var netData = {peers:[]};
+var lampData = {hoofdAanwezig:false,hoofdAan:false,kleur:0,overrule:-1,items:[]};
+// 0 = uitgelogd, 1 = gastcode (alleen HUIS+BOOT), 2 = eigenaar (alles) — de
+// server bepaalt dit (pin_niveau() in gast.h), de client verbergt alleen de
+// tabbladen die toch niets zouden mogen doen; échte afdwinging gebeurt altijd
+// serverkant (WebSocket-commando's en HTTP-routes checken zelf opnieuw).
+// Zelfde 4 rechtenniveaus als gast.h (server bepaalt/handhaaft dit altijd
+// opnieuw — deze constanten zijn puur voor leesbare UI-vergelijkingen).
+var NIVEAU_GEEN = 0, NIVEAU_GAST = 1, NIVEAU_LOGE = 2, NIVEAU_DELER = 3, NIVEAU_EIGENAAR = 4;
+var NIVEAU_NAMEN = ['GEEN', 'GAST', 'LOGE', 'DELER', 'EIGENAAR'];
+var niveau = 0;
+var actieveTab = 'info';
+var berichtOpen = true;
+var instellingenData = {zeilnr:'',naam:'',boot:[],eig:[]};
+var gastData = [];
+var meldingData = null;
+
+// Eén PIN, gedeeld met /haven (localStorage is per host, dus zelfde apparaat) —
+// eenmaal invoeren ontgrendelt zowel bediening hier als uploaden/verwijderen
+// op de HAVEN-pagina, zonder daar opnieuw te hoeven inloggen.
+var PIN_KEY = 'bkos_pin';
+var pendingPin = '';       // welke pin het laatste auth-verzoek gebruikte
+var autoPinSilent = false; // true = automatische poging met opgeslagen pin (geen foutmelding tonen als hij niet meer klopt)
+
+var MODI = [
+  {id:0,naam:'HAVEN',kleur:'var(--haven)'},
+  {id:1,naam:'ZEILEN',kleur:'var(--zeilen)'},
+  {id:2,naam:'MOTOR',kleur:'var(--motor)'},
+  {id:3,naam:'ANKER',kleur:'var(--anker)'}
+];
+var LICHT = ['UIT','AAN','AUTO'];
+
+function esc(s){
+  var d=document.createElement('div'); d.textContent=String(s); return d.innerHTML;
+}
+
+function wsUrl(){
+  return 'ws://' + location.hostname + ':8080/';
+}
+
+function connect(){
+  try{
+    if (window.BKOS_TRANSPORT) { ws = window.BKOS_TRANSPORT.maak(); if (!ws) return; }
+    else ws = new WebSocket(wsUrl());
+  }catch(e){ setTimeout(connect, 2000); return; }
+  ws.onopen = function(){
+    setConn(true);
+    var saved = localStorage.getItem(PIN_KEY);
+    if (saved && !unlocked) { pendingPin = saved; autoPinSilent = true; send({t:'auth', pin:saved}); }
+  };
+  ws.onclose = function(){ setConn(false); unlocked=false; setLock(false, 0); setTimeout(connect, 2000); };
+  ws.onerror = function(){ try{ ws.close(); }catch(e){} };
+  ws.onmessage = function(ev){
+    var msg;
+    try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+    handleMsg(msg);
+  };
+}
+
+// Brendan wil "uitgelogd" ook als expliciete, zichtbare status i.p.v. alleen
+// het kleine slotje — hdrSub toont daarom voortaan verbinding + inlogstatus
+// samen (bv. "verbonden · Eigenaar" / "verbonden · Uitgelogd").
+var connected = false;
+function _hdrSubRender(){
+  var loginTekst = (typeof unlocked !== 'undefined' && unlocked) ? (NIVEAU_NAMEN[niveau] || 'Ingelogd') : 'Uitgelogd';
+  document.getElementById('hdrSub').textContent = (connected ? 'verbonden' : 'verbinden…') + ' · ' + loginTekst;
+}
+function setConn(on){
+  connected = on;
+  document.getElementById('connDot').className = 'dot' + (on ? ' on' : '');
+  _hdrSubRender();
+}
+
+function berichtSetOpen(open){
+  berichtOpen = open;
+  document.getElementById('berichtBody').style.display = open ? '' : 'none';
+  document.getElementById('berichtChevron').innerHTML = open ? '&#9660;' : '&#9654;';
+}
+function berichtToggle(){ berichtSetOpen(!berichtOpen); }
+
+function setLock(on, niv){
+  unlocked = on;
+  niveau = on ? (niv || 0) : 0;
+  _hdrSubRender();
+  var b = document.getElementById('lockBtn');
+  b.className = 'lock' + (on ? ' open' : '');
+  b.innerHTML = on ? '&#128275;' : '&#128274;';
+  document.getElementById('lockedHint').style.display = on ? 'none' : '';
+  // Ingelogd: het berichtje-blok is dan niet meer de enige manier om iets
+  // te melden, dus mag ingeklapt — uitgelogd blijft het vanzelf open (de
+  // enige publieke functie op deze pagina).
+  berichtSetOpen(!on);
+  // INFO is altijd zichtbaar (ook uitgelogd). Een gastcode (niveau 1-3) mag
+  // HUIS+BOOT; IO/FOTOS/INSTELLINGEN blijven voorbehouden aan de eigenaar
+  // (niveau 4). Server dwingt dit sowieso zelf af; dit is puur zodat iemand
+  // geen tabblad ziet dat toch niets zou doen.
+  var magHuisBoot = (niveau >= NIVEAU_GAST);
+  var eigenaar    = (niveau >= NIVEAU_EIGENAAR);
+  document.getElementById('tabBtnHuis').style.display = magHuisBoot ? '' : 'none';
+  document.getElementById('tabBtnBoot').style.display = magHuisBoot ? '' : 'none';
+  document.getElementById('tabBtnIo').style.display = eigenaar ? '' : 'none';
+  document.getElementById('tabBtnFotos').style.display = eigenaar ? '' : 'none';
+  document.getElementById('tabBtnInstellingen').style.display = eigenaar ? '' : 'none';
+  document.getElementById('infoEditBtn').style.display = eigenaar ? '' : 'none';
+  var verbergTabs = eigenaar ? [] : magHuisBoot ? ['io','fotos','instellingen'] : ['huis','boot','io','fotos','instellingen'];
+  // Net ingelogd (dit is de enige plek waar setLock(true, ...) aangeroepen
+  // wordt): meteen naar HUIS of BOOT springen, welke van de twee ook op de
+  // boordcomputer zelf het laatst actieve "thuis"-scherm was (stateData.h,
+  // altijd al binnen vóórdat inloggen kan voltooien — zie bkos_client.ino),
+  // i.p.v. altijd op INFO te blijven staan.
+  if (on && magHuisBoot) setTab(stateData.h ? 'huis' : 'boot');
+  else if (verbergTabs.indexOf(actieveTab) >= 0) setTab('info');
+  else setTab(actieveTab);
+  // Her-render meteen met de nieuwe niveau-waarde. Zonder dit bleven
+  // PANEEL/lampen-knoppen op slot staan zoals vóór het inloggen berekend was
+  // (met niveau=0, want de server pusht paneel/lampen/state al vóór de
+  // authenticatie) — tot toevallig een latere broadcast een her-render
+  // triggerde. Vandaar "staat soms alles op slot, dan ineens niet".
+  renderPaneel(); renderHuispaneel(); renderHuis(); renderState();
+}
+
+function setTab(naam){
+  actieveTab = naam;
+  var tabs = ['info','huis','boot','io','fotos','instellingen'];
+  tabs.forEach(function(t){
+    var pane = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (pane) pane.style.display = (t === naam) ? '' : 'none';
+  });
+  if (naam === 'fotos') { fotosInfo(); fotosLijst(); bfInfo(); bfLijst(); }
+  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); berichtlimietLaden(); setSubTab(subTab); }
+  document.querySelectorAll('.tabbar')[0].querySelectorAll('.tabbtn').forEach(function(btn){
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === naam);
+  });
+}
+
+var subTab = 'boot';
+function setSubTab(naam){
+  subTab = naam;
+  ['boot','verbindingen','toegang','backup'].forEach(function(t){
+    var pane = document.getElementById('instSub' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (pane) pane.style.display = (t === naam) ? '' : 'none';
+  });
+  document.getElementById('tabInstellingen').querySelector('.tabbar').querySelectorAll('.tabbtn').forEach(function(btn){
+    btn.classList.toggle('active', btn.getAttribute('data-subtab') === naam);
+  });
+}
+
+// Klik op het hangslot: ontgrendeld → uitloggen (opgeslagen pin vergeten),
+// vergrendeld → pincode vragen.
+function lockClick(){
+  if (unlocked) { localStorage.removeItem(PIN_KEY); setLock(false, 0); }
+  else openPin();
+}
+
+function handleMsg(msg){
+  switch(msg.t){
+    case 'io_full':
+      ioData = msg; renderIO(); break;
+    case 'io_delta':
+      if (msg.ch < ioData.o.length) { ioData.o[msg.ch]=msg.o; ioData.i[msg.ch]=msg.i; renderIO(); }
+      break;
+    case 'state':
+      stateData = msg; renderState(); break;
+    case 'net':
+      netData = msg; renderNet(); break;
+    case 'info':
+      infoData = msg; renderInfo(); break;
+    case 'paneel':
+      paneelData = msg.items || []; renderPaneel(); break;
+    case 'huispaneel':
+      huispaneelData = msg.items || []; renderHuispaneel(); break;
+    case 'lampen':
+      lampData = msg; renderHuis(); break;
+    case 'instellingen':
+      instellingenData = msg; renderInstellingen(); break;
+    case 'gastlijst':
+      gastData = msg.items || []; renderGast(); break;
+    case 'gast_nieuw':
+      renderGastNieuw(msg); break;
+    case 'gast_bewerkt':
+      renderGastBewerkt(msg); break;
+    case 'melding':
+      meldingData = msg; renderMelding(); break;
+    case 'berichtlimiet':
+      renderBerichtlimiet(msg); break;
+    case 'melding_test_res':
+      { var mm = document.getElementById('meldingMelding'); if (mm) { mm.style.color = 'var(--green)'; mm.textContent = 'Testbericht verstuurd.'; } }
+      break;
+    case 'pin_wijzig_res':
+      renderPinRes(msg.ok); break;
+    case 'auth_ok':
+      if (pendingPin) localStorage.setItem(PIN_KEY, pendingPin);
+      setLock(true, msg.niveau || 0); closePin(true); break;
+    case 'auth_fout':
+      localStorage.removeItem(PIN_KEY);
+      if (!autoPinSilent) document.getElementById('pinErr').textContent = 'Onjuiste pincode';
+      autoPinSilent = false; break;
+    case 'auth_vereist':
+      setLock(false, 0); break;
+    default: break;
+  }
+}
+
+function send(obj){
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function needAuth(){
+  if (!unlocked){ openPin(); return true; }
+  return false;
+}
+
+function setModus(m){ if (needAuth()) return; send({t:'set_modus', m:m}); }
+function setLicht(l){ if (needAuth()) return; send({t:'set_licht', l:l}); }
+function toggleIO(i){ if (needAuth()) return; send({t:'io_toggle', i:i}); }
+function togglePaneel(i){ if (needAuth()) return; send({t:'paneel_toggle', i:i}); }
+function toggleHuispaneel(i){ if (needAuth()) return; send({t:'huispaneel_toggle', i:i}); }
+function hoofdToggle(){ if (needAuth()) return; send({t:'interieur_toggle'}); }
+function kleurKiezen(rood){ if (needAuth()) return; send({t:'interieur_kleur', rood:(rood?1:0)}); }
+function lampToggle(nr){ if (needAuth()) return; send({t:'lamp_toggle', nr:nr}); }
+function lampAlles(aan){ if (needAuth()) return; send({t:'lamp_alles', aan:(aan?1:0)}); }
+
+function openPin(){
+  document.getElementById('pinErr').textContent = '';
+  document.getElementById('pinInput').value = '';
+  document.getElementById('overlay').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById('pinInput').focus(); }, 50);
+}
+function closePin(){
+  document.getElementById('overlay').classList.add('hidden');
+}
+function submitPin(){
+  var v = document.getElementById('pinInput').value;
+  if (v.length !== 4){ document.getElementById('pinErr').textContent = '4 cijfers invoeren'; return; }
+  pendingPin = v; autoPinSilent = false;
+  send({t:'auth', pin:v});
+}
+document.getElementById('pinInput').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') submitPin();
+});
+
+function renderState(){
+  document.getElementById('modusGrid').innerHTML = MODI.map(function(m){
+    return '<button class="mbtn' + (stateData.m===m.id?' active':'') + '" style="--acc:' + m.kleur + '" onclick="setModus(' + m.id + ')">' + m.naam + '</button>';
+  }).join('');
+  document.getElementById('lichtGrid').innerHTML = LICHT.map(function(l,i){
+    return '<button class="mbtn' + (stateData.l===i?' active':'') + '" onclick="setLicht(' + i + ')">' + l + '</button>';
+  }).join('');
+}
+
+function renderHuis(){
+  var alg = [];
+  if (lampData.hoofdAanwezig) {
+    alg.push('<button class="pbtn hoofd ' + (lampData.hoofdAan?'aan':'') + '" onclick="hoofdToggle()">' +
+              (lampData.hoofdAan ? 'VERLICHTING: AAN' : 'VERLICHTING: UIT') + '</button>');
+  }
+  alg.push('<button class="pbtn ' + (lampData.overrule===0?'aan':'') + '" onclick="kleurKiezen(false)">WIT</button>');
+  alg.push('<button class="pbtn ' + (lampData.overrule===1?'aan':'') + '" onclick="kleurKiezen(true)">ROOD</button>');
+  if (lampData.items.length){
+    alg.push('<button class="pbtn" onclick="lampAlles(true)">ALLES AAN</button>');
+    alg.push('<button class="pbtn" onclick="lampAlles(false)">ALLES UIT</button>');
+  }
+  document.getElementById('huisAlgemeen').innerHTML = alg.join('');
+
+  var box = document.getElementById('huisLampen');
+  if (!lampData.items.length){
+    box.innerHTML = '<div style="color:var(--text-dim);font-size:.85rem;padding:8px 2px;">Geen genummerde lampgroepen gevonden.</div>';
+    return;
+  }
+  box.innerHTML = lampData.items.map(function(l){
+    var minNiveau = l.minNiveau || NIVEAU_GAST;
+    if (niveau < minNiveau) {
+      return '<div class="iorow"><div class="naam">&#128274; ' + esc(l.naam) + '</div>' +
+             '<button class="sw" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">' + esc(NIVEAU_NAMEN[minNiveau]) + '</button></div>';
+    }
+    return '<div class="iorow"><div class="naam">' + esc(l.naam) + '</div>' +
+           '<button class="sw' + (l.aan?' aan':'') + '" onclick="lampToggle(' + l.nr + ')">' + (l.aan?'AAN':'UIT') + '</button></div>';
+  }).join('');
+}
+
+// BOOT-tab (vaarpaneel) — de server stuurt hier alleen knoppen mee die
+// daadwerkelijk aan een IO-kanaal gekoppeld zijn (zie io_paneel_vinkje_
+// toepassen(), io.ino), dus niets te verbergen op basis van ontbrekende IO.
+function renderPaneel(){
+  var html = paneelData.length ? paneelData.map(function(p, i){
+    var minNiveau = p.minNiveau || NIVEAU_GAST;
+    if (niveau < minNiveau) {
+      return '<button class="pbtn locked" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">&#128274; ' + esc(p.naam) + '</button>';
+    }
+    var cls = p.staat === 2 ? 'aan' : (p.staat === 1 ? 'mix' : '');
+    return '<button class="pbtn ' + cls + '" onclick="togglePaneel(' + i + ')">' + esc(p.naam) + '</button>';
+  }).join('') : '';
+  document.getElementById('paneelSection').style.display = paneelData.length ? '' : 'none';
+  document.getElementById('paneelGrid').innerHTML = html;
+}
+
+// HUIS-tab (huispaneel) — losstaand van het vaarpaneel hierboven sinds de
+// huis/vaarpaneel-herbouw (voorheen hergebruikte deze sectie letterlijk de
+// BOOT-data, wat HUIS en BOOT bijna identiek liet aanvoelen). Gesplitst in
+// buitenverlichting/apparaten via het server-berekende "licht"-veld (dezelfde
+// herkenning als het HAVEN-dashboard op het scherm zelf gebruikt), zodat de
+// indeling hier de boordcomputer volgt: basisverlichting → lampen →
+// buitenverlichting → apparaten.
+// Symbool per tegel — zelfde herkenning/volgorde als paneel_icoon() op de
+// boordcomputer zelf (screen_main.ino): buitenverlichting altijd hetzelfde
+// icoon, anders op naam-substring. Onbekende namen krijgen null (geen
+// symbool) — die tonen dan de naam op leesbare grootte, zie renderHuispaneel().
+// Het officiële USB-drietand-logo: balletje onderin, stam naar een
+// vertakpunt, dan 3 takken elk met een eigen eindsymbool (vierkant/cirkel/
+// driehoek) — als kleine inline SVG, geen Unicode-emoji hiervoor bruikbaar
+// genoeg (Brendans feedback op de eerste 🔌-versie). Meteen consistent met
+// hetzelfde symbool op de boordcomputer (_hv_app_icoon_teken(),
+// screen_haven.ino). Vast lichtgrijs (i.p.v. currentColor) zodat 'm net als
+// de emoji-iconen zijn eigen kleur houdt, los van de knop-status.
+// Buitenste 2 takken lopen eerst diagonaal, dan recht omhoog naar hun
+// symbool (i.p.v. één rechte diagonale lijn) — middentak blijft recht
+// omhoog. Alle 3 eindsymbolen GEVULD (was: cirkel/vierkant omlijnd, alleen
+// de driehoek gevuld) — Brendan wilde alle vormen consequent óf gekleurd óf
+// omlijnd, nooit een mix.
+// Iets minder hoog dan de vorige ronde (Brendans "nog echt te hoog") — ball
+// en topsymbolen dichter naar het midden toe getrokken.
+var USB_SVG = '<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-.2em">'
+  + '<circle cx="12" cy="18" r="2" fill="#c9d3db"/>'
+  + '<path d="M12 16V13" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M12 13L8 9" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<circle cx="8" cy="9" r="2" fill="#c9d3db"/>'
+  + '<path d="M12 13V4" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M10 4L14 4 12 1Z" fill="#c9d3db"/>'
+  + '<path d="M12 13L16 9" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<path d="M16 9V6" fill="none" stroke="#c9d3db" stroke-width="1.6"/>'
+  + '<rect x="14" y="5" width="4" height="4" fill="#c9d3db"/>'
+  + '</svg>';
+
+function tileIcoon(p){
+  if (p.licht) return '\u{1F526}';           // buitenverlichting (dek e.d.)
+  var b = p.naam.toLowerCase();
+  if (b.indexOf('usb') >= 0)   return USB_SVG;
+  if (b.indexOf('230') >= 0)   return '⚡';
+  if (b.indexOf('tv') >= 0)    return '\u{1F4FA}';
+  if (b.indexOf('water') >= 0) return '\u{1F6B0}';
+  return null;
+}
+
+function renderHuispaneel(){
+  function knop(p, i){
+    var minNiveau = p.minNiveau || NIVEAU_GAST;
+    if (niveau < minNiveau) {
+      return '<button class="pbtn locked" disabled title="Vereist niveau ' + esc(NIVEAU_NAMEN[minNiveau]) + '">&#128274; ' + esc(p.naam) + '</button>';
+    }
+    var cls = p.staat === 2 ? 'aan' : (p.staat === 1 ? 'mix' : '');
+    var ic = tileIcoon(p);
+    var inner = ic
+      ? '<span class="ticon">' + ic + '</span><span class="tlabel">' + esc(p.naam) + '</span>'
+      : '<span class="tlabelGroot">' + esc(p.naam) + '</span>';
+    return '<button class="pbtn ' + cls + '" onclick="toggleHuispaneel(' + i + ')">' + inner + '</button>';
+  }
+  var buiten = [], apparaten = [];
+  huispaneelData.forEach(function(p, i){ (p.licht ? buiten : apparaten).push(knop(p, i)); });
+  document.getElementById('huisBuitenSection').style.display = buiten.length ? '' : 'none';
+  document.getElementById('huisBuiten').innerHTML = buiten.join('');
+  document.getElementById('huisApparatenSection').style.display = apparaten.length ? '' : 'none';
+  document.getElementById('huisApparaten').innerHTML = apparaten.join('');
+}
+
+function renderIO(){
+  var box = document.getElementById('ioList');
+  var html = '';
+  for (var i = 0; i < ioData.cnt; i++){
+    var isIn = ioData.r[i] === 1;
+    var aan  = ioData.o[i] === 1 || ioData.o[i] === 3;
+    var lbl  = (ioData.lbl && ioData.lbl[i]) ? ioData.lbl[i] : i;
+    var naam = (ioData.n && ioData.n[i]) ? ioData.n[i] : ('kanaal ' + i);
+    if (isIn){
+      var actief = !!ioData.i[i];
+      html += '<div class="iorow ingang"><div class="lbl">' + esc(lbl) + '</div>' +
+              '<div class="naam">' + esc(naam) + '</div>' +
+              '<div class="badge' + (actief?' aan':'') + '"></div></div>';
+    } else {
+      html += '<div class="iorow"><div class="lbl">' + esc(lbl) + '</div>' +
+              '<div class="naam">' + esc(naam) + '</div>' +
+              '<button class="sw' + (aan?' aan':'') + '" onclick="toggleIO(' + i + ')">' + (aan?'AAN':'UIT') + '</button></div>';
+    }
+  }
+  box.innerHTML = html || '<div style="color:var(--text-dim);font-size:.85rem;padding:8px 2px;">Geen IO-kanalen gevonden</div>';
+}
+
+function renderInfo(){
+  document.getElementById('hdrSub').textContent =
+    (infoData.boot || infoData.naam || 'BKOS') + ' · v' + (infoData.ver || '?');
+}
+
+function renderNet(){
+  var el = document.getElementById('netInfo');
+  var peers = (netData.peers || []);
+  if (!peers.length){ el.innerHTML = 'Geen extra modules gekoppeld (standalone of master zonder slaves).'; return; }
+  el.innerHTML = peers.map(function(p){
+    return '<div><b>' + esc(p.naam) + '</b> — ' + (p.online ? 'online' : 'offline') + ', ' + p.io + ' IO</div>';
+  }).join('');
+}
+
+// ─── Bestanden-tab: simpele SPIFFS/SD-lijst+verwijderen, mirror van CONFIG →
+// BESTANDEN op het scherm zelf. Eigenaar-only (server checkt dit zelf ook bij
+// verwijderen) — vandaar dat dit tabblad al bij het inloggen verborgen wordt
+// voor een gastcode (zie setLock()).
+var bfFs = 'spiffs';
+var bfPad = '/';
+
+function fmtBytes(n){
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(1) + ' MB';
+}
+
+function bfInfo(){
+  fetch('/bestanden/info').then(function(r){ return r.json(); }).then(function(d){
+    var s = 'SPIFFS: ' + fmtBytes(d.spiffsTotaal - d.spiffsVrij) + ' / ' + fmtBytes(d.spiffsTotaal) + ' gebruikt';
+    if (d.sdBeschikbaar) s += '<br>SD: ' + fmtBytes(d.sdTotaal - d.sdVrij) + ' / ' + fmtBytes(d.sdTotaal) + ' gebruikt';
+    document.getElementById('bfInfo').innerHTML = s;
+    var keuze = document.getElementById('bfFsKeuze');
+    if (d.sdBeschikbaar) {
+      keuze.style.display = '';
+      keuze.innerHTML =
+        '<button class="mbtn' + (bfFs==='spiffs'?' active':'') + '" onclick="bfWisselFs(\'spiffs\')">SPIFFS</button>' +
+        '<button class="mbtn' + (bfFs==='sd'?' active':'') + '" onclick="bfWisselFs(\'sd\')">SD</button>';
+    } else {
+      keuze.style.display = 'none';
+    }
+  }).catch(function(){});
+}
+
+function bfWisselFs(fs){ bfFs = fs; bfPad = '/'; bfLijst(); }
+
+function bfLijst(){
+  document.getElementById('bfPad').textContent = bfPad;
+  fetch('/bestanden/lijst?fs=' + bfFs + '&pad=' + encodeURIComponent(bfPad))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var items = d.items || [];
+      var html = '';
+      if (bfPad !== '/') {
+        html += '<div class="filerow" onclick="bfOmhoog()" style="cursor:pointer;"><div class="naam map">.. (omhoog)</div></div>';
+      }
+      if (!items.length && bfPad === '/') {
+        html += '<div style="color:var(--text-dim);font-size:.85rem;padding:8px 2px;">Geen bestanden gevonden.</div>';
+      }
+      items.forEach(function(it){
+        if (it.map) {
+          html += '<div class="filerow" onclick="bfNaarMap(\'' + esc(it.naam) + '\')" style="cursor:pointer;">' +
+                  '<div class="naam map">' + esc(it.naam) + '/</div></div>';
+        } else {
+          html += '<div class="filerow"><div class="naam">' + esc(it.naam) + '</div>' +
+                  '<div class="grootte">' + fmtBytes(it.bytes) + '</div>' +
+                  '<button class="del" onclick="bfVerwijder(\'' + esc(it.naam) + '\')">WISSEN</button></div>';
+        }
+      });
+      document.getElementById('bfLijst').innerHTML = html;
+    }).catch(function(){});
+}
+
+function bfNaarMap(naam){
+  bfPad = (bfPad === '/' ? '/' : bfPad + '/') + naam;
+  bfLijst();
+}
+function bfOmhoog(){
+  var i = bfPad.lastIndexOf('/');
+  bfPad = (i <= 0) ? '/' : bfPad.substring(0, i);
+  bfLijst();
+}
+function bfVerwijder(naam){
+  if (needAuth()) return;
+  var pad = (bfPad === '/' ? '/' : bfPad + '/') + naam;
+  var fd = new URLSearchParams();
+  fd.set('fs', bfFs); fd.set('pad', pad); fd.set('pin', localStorage.getItem(PIN_KEY) || '');
+  fetch('/bestanden/verwijder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ bfLijst(); })
+    .catch(function(){});
+}
+
+// ─── Taalkeuze (INFO-tab) — vertaalt de vaste UI-teksten, de vaste
+// noodgeval-knoppen en de standaard-berichtpresets. Een door de eigenaar zelf
+// aangepaste presettekst kan niet automatisch vertaald worden (geen
+// internetvertaaldienst aan boord) en verschijnt dan gewoon in het
+// Nederlands, zoals ingevoerd. Berichten gaan altijd in het Nederlands naar
+// de eigenaar (zie bericht.ino) — alleen de webpagina zelf wordt vertaald.
+var TAAL_KEY = 'bkos_taal';
+function huidigeTaal(){ return localStorage.getItem(TAAL_KEY) || 'nl'; }
+function huidigDict(){ return I18N[huidigeTaal()] || I18N.nl; }
+function taalZet(taal){ localStorage.setItem(TAAL_KEY, taal); taalToepassen(); }
+function taalToepassen(){
+  var taal = huidigeTaal(), dict = huidigDict();
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function(el){
+    if (dict[el.getAttribute('data-i18n')]) el.textContent = dict[el.getAttribute('data-i18n')];
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-ph]'), function(el){
+    if (dict[el.getAttribute('data-i18n-ph')]) el.placeholder = dict[el.getAttribute('data-i18n-ph')];
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.taalRij button'), function(b){
+    b.classList.toggle('actief', b.getAttribute('data-taal') === taal);
+  });
+  ladenPubliek(); ladenBericht(); laadNood();
+}
+
+var PRESET_NL = ['Aangekomen','Onderweg naar huis','Alles in orde','Bel me even','Probleem aan boord','Later dan gepland'];
+var PRESET_VERTAAL = {
+  en: ['Arrived','On the way home',"Everything's fine",'Call me','Problem on board','Running late'],
+  de: ['Angekommen','Auf dem Weg nach Hause','Alles in Ordnung','Ruf mich an','Problem an Bord','Später als geplant'],
+  fr: ['Arrivé','En route vers la maison','Tout va bien','Appelle-moi','Problème à bord','Plus tard que prévu'],
+  es: ['Llegado','De camino a casa','Todo bien','Llámame','Problema a bordo','Más tarde de lo previsto'],
+  uk: ["Прибув(-ла)",'Їду додому','Все гаразд','Зателефонуй мені','Проблема на борту','Пізніше, ніж планувалось'],
+  pl: ['Dotarłem/dotarłam','W drodze do domu','Wszystko w porządku','Zadzwoń do mnie','Problem na pokładzie','Później niż planowano'],
+  cs: ['Dorazil/a jsem','Cestou domů','Vše v pořádku','Zavolej mi','Problém na palubě','Později, než bylo plánováno'],
+  da: ['Ankommet','På vej hjem','Alt er i orden','Ring til mig','Problem om bord','Senere end planlagt'],
+  pt: ['Chegou','A caminho de casa','Está tudo bem','Ligue-me','Problema a bordo','Mais tarde do que planeado'],
+  it: ['Arrivato','In viaggio verso casa','Tutto a posto','Chiamami','Problema a bordo','Più tardi del previsto']
+};
+var NOOD_VERTAAL = {
+  nl: ['Je bent op drift','De boot ligt niet (meer) goed vast','Het regent in','Je boot zinkt of dreigt te zinken','Je bent aangevaren'],
+  en: ['You are adrift','The boat is no longer moored properly',"It's leaking rain inside",'Your boat is sinking or about to sink',"You've been in a collision"],
+  de: ['Du treibst ab','Das Boot liegt nicht (mehr) richtig fest','Es regnet hinein','Dein Boot sinkt oder droht zu sinken','Du hattest eine Kollision'],
+  fr: ['Vous êtes à la dérive',"Le bateau n'est plus bien amarré","Il y a une fuite d'eau de pluie à l'intérieur","Votre bateau coule ou risque de couler","Vous avez été heurté par un autre bateau"],
+  es: ['Estás a la deriva','El barco ya no está bien amarrado','Está entrando agua de lluvia','Tu barco se está hundiendo o corre riesgo de hundirse','Has tenido una colisión'],
+  uk: ['Вас зносить за течією','Човен більше не пришвартований належним чином','Всередину затікає дощова вода','Ваш човен тоне або може затонути','Стався зіткнення'],
+  pl: ['Dryfujesz','Łódź nie jest już dobrze przycumowana','Wlewa się deszcz do środka','Twoja łódź tonie lub grozi jej zatonięcie','Doszło do kolizji'],
+  cs: ['Unášíte se (jste na driftu)','Loď už není pořádně uvázaná','Zatéká dovnitř déšť','Vaše loď se potápí nebo jí hrozí potopení','Došlo ke srážce'],
+  da: ['Du driver til søs','Båden ligger ikke (længere) ordentligt fortøjet','Der trænger regnvand ind','Din båd synker eller er ved at synke','Du har været involveret i en kollision'],
+  pt: ['Está à deriva','O barco já não está bem amarrado','Está a entrar água da chuva','O seu barco está a afundar ou em risco de afundar','Sofreu uma colisão'],
+  it: ['Stai andando alla deriva','La barca non è (più) ormeggiata bene','Sta entrando acqua piovana','La tua barca sta affondando o rischia di affondare','Sei stato coinvolto in una collisione']
+};
+var I18N = {
+  nl: { ehLabel:'Eigenaar:', kopBoot:'Boot & eigenaar', labelNood:'Noodgeval',
+    kopBericht:'Berichten',
+    berichtUitleg:'Stuur een bericht aan de eigenaar van deze boot.',
+    phNaam:'jouw naam', phTel:'jouw telefoonnummer', phVrij:'of typ zelf een bericht…', btnStuur:'STUUR',
+    okBericht:'Bericht verzonden.', okNood:'Noodmelding verzonden.', foutVerzenden:'Versturen mislukt.',
+    foutNaamTel:'Vul eerst je naam en telefoonnummer in.', foutTypEerst:'Typ eerst een bericht.',
+    foutLimiet:'Je hebt het maximum aantal berichten bereikt. Probeer het over {wacht} opnieuw.',
+    lockedHint:'Bediening vereist de eigenaars- of een gastpincode.', ontgrendelen:'Ontgrendelen →' },
+  en: { ehLabel:'Owner:', kopBoot:'Boat & owner', labelNood:'Emergency',
+    kopBericht:'Messages',
+    berichtUitleg:'Send a message to the owner of this boat.',
+    phNaam:'your name', phTel:'your phone number', phVrij:'or type your own message…', btnStuur:'SEND',
+    okBericht:'Message sent.', okNood:'Emergency message sent.', foutVerzenden:'Sending failed.',
+    foutNaamTel:'Please fill in your name and phone number first.', foutTypEerst:'Please type a message first.',
+    foutLimiet:'You have reached the maximum number of messages. Try again in {wacht}.',
+    lockedHint:"Control requires the owner's or a guest PIN.", ontgrendelen:'Unlock →' },
+  de: { ehLabel:'Eigentümer:', kopBoot:'Boot & Eigentümer', labelNood:'Notfall',
+    kopBericht:'Nachrichten',
+    berichtUitleg:'Schick eine Nachricht an den Eigentümer dieses Boots.',
+    phNaam:'dein Name', phTel:'deine Telefonnummer', phVrij:'oder schreib selbst eine Nachricht…', btnStuur:'SENDEN',
+    okBericht:'Nachricht gesendet.', okNood:'Notfallmeldung gesendet.', foutVerzenden:'Senden fehlgeschlagen.',
+    foutNaamTel:'Bitte zuerst Name und Telefonnummer ausfüllen.', foutTypEerst:'Bitte zuerst eine Nachricht eingeben.',
+    lockedHint:'Bedienung erfordert den Eigentümer- oder einen Gast-PIN.', ontgrendelen:'Entsperren →' },
+  fr: { ehLabel:'Propriétaire :', kopBoot:'Bateau & propriétaire', labelNood:'Urgence',
+    kopBericht:'Messages',
+    berichtUitleg:'Envoyez un message au propriétaire de ce bateau.',
+    phNaam:'votre nom', phTel:'votre numéro de téléphone', phVrij:'ou écrivez votre propre message…', btnStuur:'ENVOYER',
+    okBericht:'Message envoyé.', okNood:"Message d'urgence envoyé.", foutVerzenden:"Échec de l'envoi.",
+    foutNaamTel:'Veuillez d\'abord indiquer votre nom et votre numéro de téléphone.', foutTypEerst:'Veuillez d\'abord écrire un message.',
+    lockedHint:"La commande nécessite le code PIN du propriétaire ou d'un invité.", ontgrendelen:'Déverrouiller →' },
+  es: { ehLabel:'Propietario:', kopBoot:'Barco y propietario', labelNood:'Emergencia',
+    kopBericht:'Mensajes',
+    berichtUitleg:'Envía un mensaje al propietario de este barco.',
+    phNaam:'tu nombre', phTel:'tu número de teléfono', phVrij:'o escribe tu propio mensaje…', btnStuur:'ENVIAR',
+    okBericht:'Mensaje enviado.', okNood:'Mensaje de emergencia enviado.', foutVerzenden:'Error al enviar.',
+    foutNaamTel:'Primero rellena tu nombre y número de teléfono.', foutTypEerst:'Primero escribe un mensaje.',
+    lockedHint:'El control requiere el PIN del propietario o de un invitado.', ontgrendelen:'Desbloquear →' },
+  uk: { ehLabel:"Власник:", kopBoot:"Човен і власник", labelNood:'Надзвичайна ситуація',
+    kopBericht:'Повідомлення',
+    berichtUitleg:"Надішліть повідомлення власнику цього човна.",
+    phNaam:"ваше ім'я", phTel:'ваш номер телефону', phVrij:'або напишіть своє повідомлення…', btnStuur:'НАДІСЛАТИ',
+    okBericht:'Повідомлення надіслано.', okNood:'Повідомлення про надзвичайну ситуацію надіслано.', foutVerzenden:'Не вдалося надіслати.',
+    foutNaamTel:"Спочатку вкажіть ім'я та номер телефону.", foutTypEerst:'Спочатку напишіть повідомлення.',
+    lockedHint:'Для керування потрібен PIN-код власника або гостя.', ontgrendelen:'Розблокувати →' },
+  pl: { ehLabel:'Właściciel:', kopBoot:'Łódź i właściciel', labelNood:'Nagły wypadek',
+    kopBericht:'Wiadomości',
+    berichtUitleg:'Wyślij wiadomość do właściciela tej łodzi.',
+    phNaam:'twoje imię', phTel:'twój numer telefonu', phVrij:'lub napisz własną wiadomość…', btnStuur:'WYŚLIJ',
+    okBericht:'Wiadomość wysłana.', okNood:'Wiadomość alarmowa wysłana.', foutVerzenden:'Wysyłanie nie powiodło się.',
+    foutNaamTel:'Najpierw podaj imię i numer telefonu.', foutTypEerst:'Najpierw napisz wiadomość.',
+    lockedHint:'Sterowanie wymaga kodu PIN właściciela lub gościa.', ontgrendelen:'Odblokuj →' },
+  cs: { ehLabel:'Majitel:', kopBoot:'Loď a majitel', labelNood:'Nouzová situace',
+    kopBericht:'Zprávy',
+    berichtUitleg:'Pošlete zprávu majiteli této lodi.',
+    phNaam:'vaše jméno', phTel:'vaše telefonní číslo', phVrij:'nebo napište vlastní zprávu…', btnStuur:'ODESLAT',
+    okBericht:'Zpráva odeslána.', okNood:'Nouzová zpráva odeslána.', foutVerzenden:'Odeslání se nezdařilo.',
+    foutNaamTel:'Nejprve vyplňte jméno a telefonní číslo.', foutTypEerst:'Nejprve napište zprávu.',
+    lockedHint:'Ovládání vyžaduje PIN majitele nebo hosta.', ontgrendelen:'Odemknout →' },
+  da: { ehLabel:'Ejer:', kopBoot:'Båd & ejer', labelNood:'Nødsituation',
+    kopBericht:'Beskeder',
+    berichtUitleg:'Send en besked til ejeren af denne båd.',
+    phNaam:'dit navn', phTel:'dit telefonnummer', phVrij:'eller skriv selv en besked…', btnStuur:'SEND',
+    okBericht:'Besked sendt.', okNood:'Nødbesked sendt.', foutVerzenden:'Afsendelse mislykkedes.',
+    foutNaamTel:'Udfyld først navn og telefonnummer.', foutTypEerst:'Skriv først en besked.',
+    lockedHint:'Betjening kræver ejerens eller en gæstepinkode.', ontgrendelen:'Lås op →' },
+  pt: { ehLabel:'Proprietário:', kopBoot:'Barco e proprietário', labelNood:'Emergência',
+    kopBericht:'Mensagens',
+    berichtUitleg:'Envie uma mensagem ao proprietário deste barco.',
+    phNaam:'o seu nome', phTel:'o seu número de telefone', phVrij:'ou escreva a sua própria mensagem…', btnStuur:'ENVIAR',
+    okBericht:'Mensagem enviada.', okNood:'Mensagem de emergência enviada.', foutVerzenden:'Falha ao enviar.',
+    foutNaamTel:'Preencha primeiro o seu nome e número de telefone.', foutTypEerst:'Escreva primeiro uma mensagem.',
+    lockedHint:'O controlo requer o PIN do proprietário ou de um convidado.', ontgrendelen:'Desbloquear →' },
+  it: { ehLabel:'Proprietario:', kopBoot:'Barca e proprietario', labelNood:'Emergenza',
+    kopBericht:'Messaggi',
+    berichtUitleg:'Invia un messaggio al proprietario di questa barca.',
+    phNaam:'il tuo nome', phTel:'il tuo numero di telefono', phVrij:'oppure scrivi tu stesso un messaggio…', btnStuur:'INVIA',
+    okBericht:'Messaggio inviato.', okNood:'Messaggio di emergenza inviato.', foutVerzenden:'Invio non riuscito.',
+    foutNaamTel:'Inserisci prima nome e numero di telefono.', foutTypEerst:'Scrivi prima un messaggio.',
+    lockedHint:'Il comando richiede il PIN del proprietario o di un ospite.', ontgrendelen:'Sblocca →' }
+};
+
+// ─── Openbaar (geen PIN): boot/eigenaar-info + "iets is los"-berichtje ─────
+function ladenPubliek(){
+  fetch('/info/publiek').then(function(r){ return r.json(); }).then(function(d){
+    var dict = huidigDict();
+    document.getElementById('pubInfo').innerHTML =
+      '<div style="font-size:.9rem;"><b>' + esc(d.boot || '?') + '</b>' +
+      (d.type ? ' — ' + esc(d.type) : '') + '</div>' +
+      (d.eigenaar ? '<div style="color:var(--text-dim);font-size:.8rem;margin-top:2px;">' + esc(dict.ehLabel) + ' ' + esc(d.eigenaar) + '</div>' : '');
+  }).catch(function(){});
+}
+
+var BERICHT_NAAM_KEY = 'bkos_bericht_naam';
+var BERICHT_TEL_KEY  = 'bkos_bericht_tel';
+
+// ─── Noodgeval-knoppen: vaste set, naam/telefoon optioneel — zie bericht.h.
+function laadNood(){
+  var taal = huidigeTaal();
+  fetch('/bericht/nood/lijst').then(function(r){ return r.json(); }).then(function(d){
+    var presets = d.presets || [], anker = !!d.anker;
+    document.getElementById('noodGrid').innerHTML = presets.map(function(p, i){
+      if (p.alleenAnker && !anker) return '';
+      var label = (NOOD_VERTAAL[taal] && NOOD_VERTAAL[taal][i]) ? NOOD_VERTAAL[taal][i] : p.tekst;
+      return '<button class="mbtn nood" onclick="stuurNood(' + i + ')">' + esc(label) + '</button>';
+    }).join('');
+  }).catch(function(){});
+}
+
+function noodMelding(tekst, isFout){
+  var el = document.getElementById('noodOk');
+  el.style.color = isFout ? 'var(--red)' : 'var(--green)';
+  el.textContent = tekst;
+  setTimeout(function(){ if (el.textContent === tekst) el.textContent = ''; }, 4000);
+}
+
+function stuurNood(i){
+  // Naam/telefoon zijn hier optioneel — wél meesturen (en onthouden) als ze
+  // al ingevuld staan, maar nooit blokkeren als ze leeg zijn.
+  var dict = huidigDict();
+  var naam = document.getElementById('berichtAfzNaam').value.trim();
+  var tel  = document.getElementById('berichtAfzTel').value.trim();
+  if (naam) localStorage.setItem(BERICHT_NAAM_KEY, naam);
+  if (tel)  localStorage.setItem(BERICHT_TEL_KEY, tel);
+  var fd = new URLSearchParams(); fd.set('idx', i); fd.set('naam', naam); fd.set('tel', tel);
+  fetch('/bericht/nood/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ noodMelding(d.ok ? dict.okNood : dict.foutVerzenden, !d.ok); })
+    .catch(function(){ noodMelding(dict.foutVerzenden, true); });
+}
+
+function ladenBericht(){
+  var naamEl = document.getElementById('berichtAfzNaam');
+  var telEl  = document.getElementById('berichtAfzTel');
+  naamEl.value = localStorage.getItem(BERICHT_NAAM_KEY) || '';
+  telEl.value  = localStorage.getItem(BERICHT_TEL_KEY)  || '';
+  // Server-kant (MAC-adres, zie mac_record.h) vult aan waar localStorage
+  // niets weet — bv. een ander apparaat/browser dan de vorige keer.
+  if (!naamEl.value || !telEl.value) {
+    fetch('/bericht/afzender').then(function(r){ return r.json(); }).then(function(d){
+      if (!naamEl.value && d.naam) naamEl.value = d.naam;
+      if (!telEl.value  && d.tel)  telEl.value  = d.tel;
+    }).catch(function(){});
+  }
+  var taal = huidigeTaal();
+  fetch('/bericht/lijst').then(function(r){ return r.json(); }).then(function(d){
+    var presets = d.presets || [];
+    document.getElementById('berichtGrid').innerHTML = presets.map(function(t, i){
+      var idxNl = PRESET_NL.indexOf(t);
+      var label = (idxNl >= 0 && PRESET_VERTAAL[taal]) ? PRESET_VERTAAL[taal][idxNl] : t;
+      return '<button class="mbtn" onclick="stuurBericht(' + i + ')">' + esc(label) + '</button>';
+    }).join('');
+  }).catch(function(){});
+}
+
+function berichtMelding(tekst, isFout){
+  var el = document.getElementById('berichtOk');
+  el.style.color = isFout ? 'var(--red)' : 'var(--green)';
+  el.textContent = tekst;
+  setTimeout(function(){ if (el.textContent === tekst) el.textContent = ''; }, 4000);
+}
+
+// Naam/telefoon worden bewaard in localStorage — hoeft maar één keer per
+// toestel ingevuld, ook al kunnen daarna meerdere berichten (presets én vrije
+// tekst) verstuurd worden.
+function berichtAfzGegevens(){
+  var naam = document.getElementById('berichtAfzNaam').value.trim();
+  var tel  = document.getElementById('berichtAfzTel').value.trim();
+  if (!naam || !tel) { berichtMelding(huidigDict().foutNaamTel, true); return null; }
+  localStorage.setItem(BERICHT_NAAM_KEY, naam);
+  localStorage.setItem(BERICHT_TEL_KEY, tel);
+  return { naam: naam, tel: tel };
+}
+
+// Ratelimiet (mac_record.h) geeft de resterende wachttijd in seconden mee —
+// leesbaar maken i.p.v. kaal "3600 seconden".
+function _berichtLeesbareTijd(sec){
+  if (sec < 90) return sec + 's';
+  var min = Math.ceil(sec / 60);
+  if (min < 90) return min + 'min';
+  return Math.ceil(min / 60) + 'u';
+}
+function _berichtFoutmelding(d, dict){
+  if (d.reden === 'limiet') return (dict.foutLimiet || dict.foutVerzenden).replace('{wacht}', _berichtLeesbareTijd(d.wachtSec || 0));
+  return dict.foutVerzenden;
+}
+
+function stuurBericht(i){
+  var dict = huidigDict();
+  var afz = berichtAfzGegevens(); if (!afz) return;
+  var fd = new URLSearchParams(); fd.set('idx', i); fd.set('naam', afz.naam); fd.set('tel', afz.tel);
+  fd.set('pin', localStorage.getItem(PIN_KEY) || '');
+  fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ berichtMelding(d.ok ? dict.okBericht : _berichtFoutmelding(d, dict), !d.ok); })
+    .catch(function(){ berichtMelding(dict.foutVerzenden, true); });
+}
+
+function stuurBerichtVrij(){
+  var dict = huidigDict();
+  var afz = berichtAfzGegevens(); if (!afz) return;
+  var veld = document.getElementById('berichtVrijeTekst');
+  var tekst = veld.value.trim();
+  if (!tekst) { berichtMelding(dict.foutTypEerst, true); return; }
+  var fd = new URLSearchParams(); fd.set('tekst', tekst); fd.set('naam', afz.naam); fd.set('tel', afz.tel);
+  fd.set('pin', localStorage.getItem(PIN_KEY) || '');
+  fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      berichtMelding(d.ok ? dict.okBericht : _berichtFoutmelding(d, dict), !d.ok);
+      if (d.ok) veld.value = '';
+    })
+    .catch(function(){ berichtMelding(dict.foutVerzenden, true); });
+}
+
+// ─── Eigen achtergrondfoto (staand/liggend, apart slot per oriëntatie) ─────
+// Puur cosmetisch, dus altijd toegepast (ook zonder pincode) — het UPLOADEN
+// van een nieuwe foto blijft wel achter de pincode (zie de #gated-sectie).
+function achtergrondToepassen(){
+  var liggend = window.matchMedia('(orientation: landscape)').matches;
+  var slot = liggend ? 'liggend' : 'staand';
+  fetch('/achtergrond/info').then(function(r){ return r.json(); }).then(function(d){
+    var aanwezig = liggend ? d.liggend : d.staand;
+    var bg = document.getElementById('bgFixed');
+    if (!aanwezig) { bg.style.backgroundImage = ''; return; }
+    // Donkere overlay overheen zodat de bestaande (effen) kaartjes/secties
+    // leesbaar blijven — zelfde idee als de fototint op het HAVEN-scherm van
+    // de boordcomputer zelf.
+    bg.style.backgroundImage =
+      'linear-gradient(rgba(12,26,38,.82),rgba(12,26,38,.82)), url(/achtergrond/foto?slot=' + slot + '&t=' + Date.now() + ')';
+  }).catch(function(){});
+}
+window.addEventListener('resize', achtergrondToepassen);
+
+// ─── Eén gedeelde interactieve pan/zoom/crop-modal voor alle 3 foto-uploads
+// (HAVEN-dashboardfoto, achtergrond liggend, achtergrond staand) — elk met
+// zijn eigen doelresolutie/kwaliteitsladder/servergrens, cropTarget bepaalt
+// welke bij bevestigen wordt gebruikt en waarheen geüpload wordt.
+// liggend/staand waren 1280x720/1536KB — veel te groot voor de daadwerkelijk
+// geflashte SPIFFS-partitie (~2MB, gedeeld met alle andere opgeslagen data);
+// dat was de reden dat die upload steevast mislukte. Puur een CSS-achtergrond
+// achter een donkere overlay (nooit door het apparaat zelf gedecodeerd), dus
+// fors kleiner scheelt nauwelijks zichtbaar maar past nu daadwerkelijk.
+var CROP_TARGETS = {
+  liggend: { doelW: 960, doelH: 540, maxBytes: 400 * 1024, stappen: [0.8, 0.65, 0.5, 0.35, 0.22, 0.12] },
+  staand:  { doelW: 540, doelH: 960, maxBytes: 400 * 1024, stappen: [0.8, 0.65, 0.5, 0.35, 0.22, 0.12] },
+  haven:   { doelW: 800, doelH: 480, maxBytes: 300 * 1024, stappen: [0.75, 0.6, 0.45, 0.32, 0.22, 0.14, 0.08, 0.04] }
+};
+
+// ─── Foutcodes bij mislukte foto-uploads — eerste cijfer = WELKE foto
+// (1=HAVEN-dashboard, 2=achtergrond liggend, 3=achtergrond staand), tweede
+// cijfer = WAT er misging. Zo kan Brendan "fout 2.4" doorgeven i.p.v. de hele
+// melding te moeten overtypen. `redenSleutel` is dezelfde string als de
+// server in het "reden"-veld van de JSON-respons stuurt (zie webapp.ino/
+// haven_achtergrond.ino) — geen aparte vertaaltabel nodig.
+var FOUTCODE_GROEP = { haven: 1, liggend: 2, staand: 3 };
+var FOUTCODE_REDEN = { pin: 1, groot: 2, ruimte: 3, schrijffout: 4, vol: 5, leeg: 6, verbinding: 6, bijsnijden: 7, laden: 8, onbekend: 0 };
+var FOUTTEKST_REDEN = {
+  pin: 'geen toegang',
+  groot: 'bestand nog te groot, ook na compressie',
+  ruimte: 'te weinig vrije opslag over',
+  schrijffout: 'het bestandssysteem weigerde te schrijven — verwijder een oude foto en probeer opnieuw',
+  vol: 'alle foto-plekken zijn bezet — verwijder er eerst één hieronder',
+  leeg: 'lege upload',
+  verbinding: 'verbindingsfout',
+  laden: 'kon de foto niet laden',
+  onbekend: 'onbekende fout'
+};
+function foutCode(doel, redenSleutel){
+  var groep = FOUTCODE_GROEP[doel] || 0;
+  var reden = FOUTCODE_REDEN[redenSleutel]; if (reden == null) reden = 0;
+  return groep + '.' + reden;
+}
+function uploadFoutTekst(doel, redenSleutel){
+  var tekst = FOUTTEKST_REDEN[redenSleutel] || FOUTTEKST_REDEN.onbekend;
+  return 'Upload mislukt (fout ' + foutCode(doel, redenSleutel) + '): ' + tekst + '.';
+}
+
+var cropTarget = null;
+var cropImgEl, cropVp;
+var cropNatW = 0, cropNatH = 0;
+var cropBaseScale = 1, cropScale = 1;
+var cropPanX = 0, cropPanY = 0;
+var cropSlepen = false, cropStartX = 0, cropStartY = 0, cropStartPanX = 0, cropStartPanY = 0;
+// Twee-vinger pinch-to-zoom naast de schuif — cropPointers houdt actieve
+// aanrakingen bij (pointerId -> {x,y}); zodra er 2 zijn, bepaalt de
+// afstandsverandering tussen die twee de zoom (i.p.v. slepen).
+var cropPointers = {};
+var cropPinchStartDist = 0, cropPinchStartScale = 1;
+// Blob-URL van de momenteel geladen foto — expliciet vrijgegeven zodra we
+// 'm niet meer nodig hebben (nieuwe foto, annuleren, of na het bijsnijden).
+// Zonder dit stapelen herhaalde uploads in dezelfde sessie op (elke
+// createObjectURL() blijft anders het volledige origineel — soms 10+MB van
+// een telefooncamera — vasthouden tot de pagina ververst wordt), wat op een
+// telefoon uiteindelijk geheugendruk kan geven.
+var cropObjectUrl = null;
+
+function cropMelding(target, tekst, isFout){
+  var el = document.getElementById(target === 'haven' ? 'fotosMelding' : 'agMelding');
+  if (!el) return;
+  el.style.color = isFout ? 'var(--red)' : 'var(--green)';
+  el.textContent = tekst;
+}
+
+function openCrop(file, target){
+  cropTarget = target;
+  cropImgEl = document.getElementById('cropImg');
+  cropVp = document.getElementById('cropViewport');
+  cropPointers = {}; cropSlepen = false; cropPinchStartDist = 0;
+  var cfg = CROP_TARGETS[target];
+  cropVp.style.aspectRatio = cfg.doelW + '/' + cfg.doelH;
+  if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
+  // Eerder kon dit hier stil blijven hangen (geen melding, geen crop-scherm)
+  // als de foto om wat voor reden dan ook nooit klaar met laden was — deze
+  // time-out garandeert nu altijd een zichtbare (en doorgeefbare) foutcode
+  // i.p.v. een oorzaakloze stilte.
+  var afgehandeld = false;
+  var timeoutId = setTimeout(function(){
+    if (afgehandeld) return;
+    afgehandeld = true;
+    cropMelding(target, uploadFoutTekst(target, 'laden') + ' (time-out)', true);
+  }, 8000);
+  var img = new Image();
+  img.onload = function(){
+    if (afgehandeld) return;
+    afgehandeld = true; clearTimeout(timeoutId);
+    cropNatW = img.naturalWidth; cropNatH = img.naturalHeight;
+    cropImgEl.src = img.src;
+    document.getElementById('cropZoom').value = 100;
+    document.getElementById('cropModal').classList.remove('hidden');
+    requestAnimationFrame(cropHerbereken);
+  };
+  img.onerror = function(){
+    if (afgehandeld) return;
+    afgehandeld = true; clearTimeout(timeoutId);
+    cropMelding(target, uploadFoutTekst(target, 'laden'), true);
+  };
+  cropObjectUrl = URL.createObjectURL(file);
+  img.src = cropObjectUrl;
+}
+
+function cropHerbereken(){
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  cropBaseScale = Math.max(vpW / cropNatW, vpH / cropNatH);
+  var zoom = document.getElementById('cropZoom').value / 100;
+  cropScale = cropBaseScale * zoom;
+  var dispW = cropNatW * cropScale, dispH = cropNatH * cropScale;
+  cropPanX = Math.min(0, Math.max(vpW - dispW, (vpW - dispW) / 2));
+  cropPanY = Math.min(0, Math.max(vpH - dispH, (vpH - dispH) / 2));
+  cropToon();
+}
+function cropToon(){
+  cropImgEl.style.width  = (cropNatW * cropScale) + 'px';
+  cropImgEl.style.height = (cropNatH * cropScale) + 'px';
+  cropImgEl.style.transform = 'translate(' + cropPanX + 'px,' + cropPanY + 'px)';
+}
+function cropKlem(){
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  var dispW = cropNatW * cropScale, dispH = cropNatH * cropScale;
+  cropPanX = Math.min(0, Math.max(vpW - dispW, cropPanX));
+  cropPanY = Math.min(0, Math.max(vpH - dispH, cropPanY));
+}
+document.getElementById('cropZoom').addEventListener('input', function(e){
+  if (!cropVp) return;
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  var midXvoor = (vpW / 2 - cropPanX) / cropScale;
+  var midYvoor = (vpH / 2 - cropPanY) / cropScale;
+  cropScale = cropBaseScale * (e.target.value / 100);
+  cropPanX = vpW / 2 - midXvoor * cropScale;
+  cropPanY = vpH / 2 - midYvoor * cropScale;
+  cropKlem();
+  cropToon();
+});
+function _cropPinchDist(){
+  var ids = Object.keys(cropPointers);
+  var a = cropPointers[ids[0]], b = cropPointers[ids[1]];
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+document.getElementById('cropViewport').addEventListener('pointerdown', function(e){
+  cropVp.setPointerCapture(e.pointerId);
+  cropPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPointers);
+  if (ids.length >= 2) {
+    cropSlepen = false;
+    cropPinchStartDist = _cropPinchDist();
+    cropPinchStartScale = cropScale;
+  } else {
+    cropSlepen = true;
+    cropStartX = e.clientX; cropStartY = e.clientY;
+    cropStartPanX = cropPanX; cropStartPanY = cropPanY;
+  }
+});
+document.getElementById('cropViewport').addEventListener('pointermove', function(e){
+  if (!(e.pointerId in cropPointers)) return;
+  cropPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPointers);
+  if (ids.length >= 2) {
+    if (cropPinchStartDist <= 0) return;
+    var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+    var midXvoor = (vpW / 2 - cropPanX) / cropScale;
+    var midYvoor = (vpH / 2 - cropPanY) / cropScale;
+    var nieuweScale = cropPinchStartScale * (_cropPinchDist() / cropPinchStartDist);
+    var nieuwZoom = Math.min(400, Math.max(100, (nieuweScale / cropBaseScale) * 100));
+    document.getElementById('cropZoom').value = nieuwZoom;
+    cropScale = cropBaseScale * (nieuwZoom / 100);
+    cropPanX = vpW / 2 - midXvoor * cropScale;
+    cropPanY = vpH / 2 - midYvoor * cropScale;
+    cropKlem();
+    cropToon();
+  } else if (cropSlepen) {
+    cropPanX = cropStartPanX + (e.clientX - cropStartX);
+    cropPanY = cropStartPanY + (e.clientY - cropStartY);
+    cropKlem();
+    cropToon();
+  }
+});
+function _cropPointerWeg(e){
+  delete cropPointers[e.pointerId];
+  var ids = Object.keys(cropPointers);
+  if (ids.length === 1) {
+    // Nog één vinger over: gewoon verder slepen vanaf de huidige positie
+    // i.p.v. een sprong te geven t.o.v. de oude pinch-startpositie.
+    var p = cropPointers[ids[0]];
+    cropSlepen = true;
+    cropStartX = p.x; cropStartY = p.y;
+    cropStartPanX = cropPanX; cropStartPanY = cropPanY;
+  } else {
+    cropSlepen = false;
+  }
+}
+document.getElementById('cropViewport').addEventListener('pointerup', _cropPointerWeg);
+document.getElementById('cropViewport').addEventListener('pointercancel', _cropPointerWeg);
+
+function cropAnnuleer(){
+  document.getElementById('cropModal').classList.add('hidden');
+  if (cropImgEl) cropImgEl.src = '';
+  if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
+  cropTarget = null;
+}
+
+function cropEncodeerBinnenBudget(canvas, stapIdx, cfg, callback){
+  canvas.toBlob(function(blob){
+    var laatsteStap = stapIdx >= cfg.stappen.length - 1;
+    if (blob && blob.size <= cfg.maxBytes) callback(blob, true);
+    else if (laatsteStap) callback(blob, false);
+    else cropEncodeerBinnenBudget(canvas, stapIdx + 1, cfg, callback);
+  }, 'image/jpeg', cfg.stappen[stapIdx]);
+}
+
+function cropBevestig(){
+  var target = cropTarget;
+  if (!target) return;
+  var cfg = CROP_TARGETS[target];
+  // Meten VÓÓR verbergen — een verborgen element geeft clientWidth/Height 0
+  // terug, waardoor drawImage() niets tekent en canvas.toBlob() dat exporteert
+  // als een volledig ZWARTE JPEG (geen alphakanaal in dat formaat). Dit was de
+  // daadwerkelijke oorzaak van eerder gemelde zwarte-foto's/mislukte uploads.
+  // De try/catch eromheen zorgt dat een onverwachte fout hier voortaan altijd
+  // een zichtbare melding geeft i.p.v. een stille, oneindige "wordt verwerkt…".
+  var vpW = cropVp.clientWidth, vpH = cropVp.clientHeight;
+  var sx = -cropPanX / cropScale, sy = -cropPanY / cropScale;
+  var sw = vpW / cropScale, sh = vpH / cropScale;
+  document.getElementById('cropModal').classList.add('hidden');
+  cropMelding(target, 'Foto wordt verwerkt…', false);
+  try {
+    if (!(sw > 0) || !(sh > 0)) throw new Error('leeg kader');
+    var canvas = document.createElement('canvas');
+    canvas.width = cfg.doelW; canvas.height = cfg.doelH;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, cfg.doelW, cfg.doelH);
+    // Het volledige (mogelijk 10+MB) origineel is nu niet meer nodig — de
+    // canvas hierboven heeft het al op de kleine doelresolutie vastgelegd.
+    if (cropObjectUrl) { URL.revokeObjectURL(cropObjectUrl); cropObjectUrl = null; }
+    cropEncodeerBinnenBudget(canvas, 0, cfg, function(blob, gelukt){
+      if (!gelukt) { cropMelding(target, uploadFoutTekst(target, 'groot'), true); return; }
+      if (target === 'haven') uploadHavenFoto(blob);
+      else uploadAchtergrondFoto(blob, target === 'liggend');
+    });
+  } catch (e) {
+    cropMelding(target, 'Bijsnijden mislukt (' + e.message + ') — fout ' + foutCode(target, 'bijsnijden') + '. Probeer het opnieuw.', true);
+  }
+  cropTarget = null;
+}
+
+function uploadAchtergrondFoto(blob, liggend){
+  var doel = liggend ? 'liggend' : 'staand';
+  var fd = new FormData(); fd.append('foto', blob, 'bg.jpg');
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/achtergrond/upload?slot=' + doel + '&pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
+  xhr.onload = function(){
+    if (xhr.status === 200){ cropMelding(doel, 'Opgeslagen.', false); achtergrondToepassen(); return; }
+    var d = {}; try { d = JSON.parse(xhr.responseText); } catch(e){}
+    cropMelding(doel, uploadFoutTekst(doel, d.reden || 'onbekend'), true);
+  };
+  xhr.onerror = function(){ cropMelding(doel, uploadFoutTekst(doel, 'verbinding'), true); };
+  xhr.send(fd);
+}
+
+function uploadHavenFoto(blob){
+  var fd = new FormData(); fd.append('foto', blob, 'foto.jpg');
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/fotos/upload?pin=' + encodeURIComponent(localStorage.getItem(PIN_KEY) || ''));
+  xhr.onload = function(){
+    var d = {}; try { d = JSON.parse(xhr.responseText); } catch(e){}
+    if (xhr.status === 200 && d.ok) { cropMelding('haven', 'Foto opgeslagen als ' + d.naam + '.', false); fotosLijst(); fotosInfo(); }
+    else {
+      cropMelding('haven', uploadFoutTekst('haven', d.reden || 'onbekend'), true);
+      fotosInfo();
+    }
+  };
+  xhr.onerror = function(){ cropMelding('haven', uploadFoutTekst('haven', 'verbinding'), true); };
+  xhr.send(fd);
+}
+
+document.getElementById('agInputLiggend').addEventListener('change', function(e){
+  var f = e.target.files[0]; e.target.value = ''; if (f) openCrop(f, 'liggend');
+});
+document.getElementById('agInputStaand').addEventListener('change', function(e){
+  var f = e.target.files[0]; e.target.value = ''; if (f) openCrop(f, 'staand');
+});
+document.getElementById('fotoInputHaven').addEventListener('change', function(e){
+  var f = e.target.files[0]; e.target.value = ''; if (f) openCrop(f, 'haven');
+});
+
+// ─── FOTOS-tab: HAVEN-dashboardfoto's uploaden/lijst/verwijderen ───────────
+function fotosInfo(){
+  fetch('/fotos/info').then(function(r){ return r.json(); }).then(function(d){
+    if (d.w && d.h) { CROP_TARGETS.haven.doelW = d.w; CROP_TARGETS.haven.doelH = d.h; }
+    if (d.maxBytes) CROP_TARGETS.haven.maxBytes = d.maxBytes;
+    var st = document.getElementById('fotosStatus');
+    if (!st) return;
+    var vol = (d.aantal >= d.maxAantal) || (d.vrij < 20000);
+    st.style.color = vol ? 'var(--red)' : 'var(--text-dim)';
+    st.textContent = d.aantal + '/' + d.maxAantal + ' foto\'s · ' + fmtBytes(d.vrij) + ' vrij op het apparaat'
+      + (vol ? ' — verwijder een oude foto of maak ruimte vrij vóór het uploaden' : '');
+  }).catch(function(){});
+}
+function fotosLijst(){
+  fetch('/fotos/lijst').then(function(r){ return r.json(); }).then(function(d){
+    var fotos = d.fotos || [];
+    var box = document.getElementById('fotosLijst');
+    if (!fotos.length){ box.innerHTML = '<div style="color:var(--text-dim);font-size:.85rem;">Nog geen eigen foto\'s.</div>'; return; }
+    box.innerHTML = fotos.map(function(f){
+      return '<div class="filerow"><img src="/fotos/foto?naam=' + encodeURIComponent(f.naam) + '" style="width:44px;height:28px;object-fit:cover;border-radius:4px;flex:none;">' +
+             '<div class="naam">' + esc(f.naam) + '</div>' +
+             '<div class="grootte">' + fmtBytes(f.bytes) + '</div>' +
+             '<button class="del" onclick="fotoVerwijderen(\'' + esc(f.naam) + '\')">WISSEN</button></div>';
+    }).join('');
+  }).catch(function(){});
+}
+function fotoVerwijderen(naam){
+  if (needAuth()) return;
+  var fd = new URLSearchParams(); fd.set('pin', localStorage.getItem(PIN_KEY) || ''); fd.set('naam', naam);
+  fetch('/fotos/verwijder', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(){ fotosLijst(); })
+    .catch(function(){});
+}
+
+// ─── INSTELLINGEN-tab: boot/eigenaar-info, pincode wijzigen, gastcodes ─────
+function escAttr(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function veldRij(label, attr, idx, waarde, numeriek){
+  return '<label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">' + esc(label) + '</label>' +
+         '<input data-' + attr + '="' + idx + '" class="inst' + attr + 'Veld" type="' + (numeriek?'number':'text') +
+         '" value="' + escAttr(waarde) + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:10px;">';
+}
+function frapStatus(){
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  fetch('/foutlog/status?pin=' + encodeURIComponent(pin)).then(function(r){ return r.json(); }).then(function(d){
+    var el = document.getElementById('frapStatus'); if (!el) return;
+    el.textContent = 'Rapportage: ' + (d.aan ? 'AAN' : 'UIT') + '  |  Token: ' + (d.token ? 'aanwezig' : 'niet ingesteld');
+  }).catch(function(){});
+}
+function frapPost(body, okTekst){
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  var el = document.getElementById('frapMelding');
+  fetch('/foutlog/instellen?pin=' + encodeURIComponent(pin), {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body
+  }).then(function(r){ return r.json().then(function(d){ return {s:r.status, d:d}; }); })
+    .then(function(res){
+      if (res.s === 200 && res.d.ok) { el.style.color = 'var(--green)'; el.textContent = okTekst; frapStatus(); }
+      else { el.style.color = 'var(--red)'; el.textContent = 'Mislukt' + (res.d.reden ? ' (' + res.d.reden + ')' : '') + '.'; }
+    }).catch(function(){ el.style.color = 'var(--red)'; el.textContent = 'Mislukt (verbinding).'; });
+}
+function frapOpslaan(){
+  if (needAuth()) return;
+  var t = document.getElementById('frapToken').value.trim();
+  if (!t) { var el = document.getElementById('frapMelding'); el.style.color = 'var(--red)'; el.textContent = 'Plak eerst een token.'; return; }
+  frapPost('token=' + encodeURIComponent(t) + '&aan=1', 'Token opgeslagen, rapportage staat AAN.');
+  document.getElementById('frapToken').value = '';
+}
+function frapAan(aan){
+  if (needAuth()) return;
+  frapPost('aan=' + (aan ? '1' : '0'), aan ? 'Rapportage AAN.' : 'Rapportage UIT.');
+}
+function updpinStatus(){
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  fetch('/updpin/status?pin=' + encodeURIComponent(pin)).then(function(r){ return r.json(); }).then(function(d){
+    var el = document.getElementById('updpinStatus'); if (!el) return;
+    el.textContent = 'Updates zonder pincode: ' + (d.aan ? 'AAN' : 'UIT');
+  }).catch(function(){});
+}
+function updpinZet(aan){
+  if (needAuth()) return;
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  var el = document.getElementById('updpinMelding');
+  fetch('/updpin/zet?pin=' + encodeURIComponent(pin), {
+    method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: 'aan=' + (aan ? '1' : '0')
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.ok) { el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.'; updpinStatus(); }
+    else { el.style.color = 'var(--red)'; el.textContent = 'Mislukt (pincode).'; }
+  }).catch(function(){ el.style.color = 'var(--red)'; el.textContent = 'Mislukt (verbinding).'; });
+}
+function instellingenLaden(){ send({t:'instellingen_get'}); frapStatus(); updpinStatus(); }
+function renderInstellingen(){
+  var d = instellingenData;
+  document.getElementById('instBoot').innerHTML =
+    veldRij('Zeilnummer', 'zn', 0, d.zeilnr, false) +
+    veldRij('Apparaatnaam', 'nm', 0, d.naam, false) +
+    (d.boot || []).map(function(v, i){ return veldRij(v.label, 'bi', i, v.waarde, v.num); }).join('');
+  document.getElementById('instEig').innerHTML =
+    (d.eig || []).map(function(v, i){ return veldRij(v.label, 'ei', i, v.waarde, false); }).join('');
+}
+function instellingenOpslaan(){
+  if (needAuth()) return;
+  var obj = {t:'instellingen_set'};
+  var zn = document.querySelector('[data-zn]'); if (zn) obj.zeilnr = zn.value;
+  var nm = document.querySelector('[data-nm]'); if (nm) obj.naam = nm.value;
+  document.querySelectorAll('.instbiVeld').forEach(function(el){ obj['b' + el.getAttribute('data-bi')] = el.value; });
+  document.querySelectorAll('.insteiVeld').forEach(function(el){ obj['e' + el.getAttribute('data-ei')] = el.value; });
+  send(obj);
+  var el = document.getElementById('instMelding');
+  el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.';
+  setTimeout(function(){ el.textContent = ''; }, 3000);
+}
+
+function instellingenExport(){
+  if (needAuth()) return;
+  var pin = localStorage.getItem(PIN_KEY) || '';
+  var el = document.getElementById('instBackupMelding');
+  el.style.color = 'var(--text-dim)'; el.textContent = 'Bezig met voorbereiden...';
+  fetch('/instellingen/export?pin=' + encodeURIComponent(pin))
+    .then(function(r){ if (!r.ok) throw new Error('status ' + r.status); return r.blob(); })
+    .then(function(blob){
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'bkos_backup.json';
+      document.body.appendChild(a);
+      a.click();
+      // Direct verwijderen kan in sommige browsers de download afbreken —
+      // pas ná een korte vertraging opruimen.
+      setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+      el.textContent = '';
+    })
+    .catch(function(){
+      el.style.color = 'var(--red)'; el.textContent = 'Exporteren mislukt (onjuiste pincode of verbinding).';
+    });
+}
+function instellingenImportUpload(input){
+  if (needAuth()) return;
+  var f = input.files[0]; if (!f) return;
+  var el = document.getElementById('instBackupMelding');
+  var reader = new FileReader();
+  reader.onload = function(){
+    el.style.color = 'var(--text-dim)'; el.textContent = 'Bezig met importeren…';
+    var pin = localStorage.getItem(PIN_KEY) || '';
+    fetch('/instellingen/import?pin=' + encodeURIComponent(pin), {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: reader.result
+    }).then(function(r){ return r.json().then(function(d){ return {status:r.status, d:d}; }); })
+      .then(function(res){
+        if (res.status === 200 && res.d.ok) {
+          el.style.color = 'var(--green)';
+          el.textContent = 'Geïmporteerd (' + res.d.aantal + ' bestanden). Apparaat herstart nu…';
+        } else {
+          el.style.color = 'var(--red)';
+          el.textContent = 'Importeren mislukt' + (res.d.reden ? ' (' + res.d.reden + ')' : '') + '.';
+        }
+      }).catch(function(){
+        el.style.color = 'var(--red)'; el.textContent = 'Importeren mislukt (verbinding).';
+      });
+  };
+  reader.readAsText(f);
+  input.value = '';
+}
+function pinWijzigen(){
+  if (needAuth()) return;
+  var oud = document.getElementById('pinOud').value;
+  var nieuw = document.getElementById('pinNieuw').value;
+  var el = document.getElementById('pinWijzMelding');
+  if (oud.length !== 4 || nieuw.length !== 4){
+    el.style.color = 'var(--red)'; el.textContent = 'Beide velden vereisen 4 cijfers.';
+    return;
+  }
+  send({t:'pin_wijzig', oud:oud, nieuw:nieuw});
+}
+function renderPinRes(ok){
+  var el = document.getElementById('pinWijzMelding');
+  if (ok) {
+    el.style.color = 'var(--green)'; el.textContent = 'Pincode gewijzigd.';
+    document.getElementById('pinOud').value = ''; document.getElementById('pinNieuw').value = '';
+  } else {
+    el.style.color = 'var(--red)'; el.textContent = 'Wijzigen mislukt (huidige pincode onjuist?).';
+  }
+}
+
+var GAST_DUUR_OPTIES = [
+  {lbl:'ONBEPERKT', dagen:0}, {lbl:'1 DAG', dagen:1}, {lbl:'3 DAGEN', dagen:3},
+  {lbl:'7 DAGEN', dagen:7}, {lbl:'30 DAGEN', dagen:30}
+];
+var GAST_NIVEAU_OPTIES = [NIVEAU_GAST, NIVEAU_LOGE, NIVEAU_DELER];
+var gastDuurIdx = 0;
+var gastNiveau = NIVEAU_GAST;
+var gastBewerkIdx = -1;  // -1 = nieuwe code aanmaken, anders index in gastData die bewerkt wordt
+
+function renderGastDuur(){
+  document.getElementById('gastDuurKeuze').innerHTML = GAST_DUUR_OPTIES.map(function(o, i){
+    return '<button class="mbtn' + (gastDuurIdx===i?' active':'') + '" onclick="gastDuurKiezen(' + i + ')">' + o.lbl + '</button>';
+  }).join('');
+}
+function gastDuurKiezen(i){ gastDuurIdx = i; renderGastDuur(); }
+function renderGastNiveau(){
+  document.getElementById('gastNiveauKeuze').innerHTML = GAST_NIVEAU_OPTIES.map(function(n){
+    return '<button class="mbtn' + (gastNiveau===n?' active':'') + '" onclick="gastNiveauKiezen(' + n + ')">' + NIVEAU_NAMEN[n] + '</button>';
+  }).join('');
+}
+function gastNiveauKiezen(n){ gastNiveau = n; renderGastNiveau(); }
+renderGastDuur();
+renderGastNiveau();
+
+function gastLaden(){ send({t:'gast_get'}); }
+function renderGast(){
+  var box = document.getElementById('gastLijst');
+  if (!gastData.length){ box.innerHTML = '<div style="color:var(--text-dim);font-size:.85rem;">Nog geen gastcodes.</div>'; return; }
+  box.innerHTML = gastData.map(function(g, i){
+    return '<div class="filerow" onclick="gastBewerken(' + i + ')" style="cursor:pointer;">' +
+           '<div class="naam">' + esc(g.code) + (g.naam ? (' — ' + esc(g.naam)) : '') + ' &middot; ' + esc(g.niveauNaam) + '</div>' +
+           '<div class="grootte">' + esc(g.resterend) + '</div>' +
+           '<button class="del" onclick="event.stopPropagation();gastVerwijderen(' + i + ')">WISSEN</button></div>';
+  }).join('');
+}
+function gastFormReset(){
+  gastBewerkIdx = -1;
+  document.getElementById('gastNaam').value = '';
+  document.getElementById('gastCode').value = '';
+  gastDuurIdx = 0; gastNiveau = NIVEAU_GAST;
+  renderGastDuur(); renderGastNiveau();
+  document.getElementById('gastActieBtn').textContent = 'CODE AANMAKEN';
+  document.getElementById('gastAnnuleerBtn').style.display = 'none';
+  document.getElementById('gastMelding').textContent = '';
+}
+function gastBewerken(i){
+  var g = gastData[i];
+  if (!g) return;
+  gastBewerkIdx = i;
+  document.getElementById('gastNaam').value = g.naam || '';
+  document.getElementById('gastCode').value = g.code || '';
+  gastNiveau = g.niveau || NIVEAU_GAST;
+  // De precieze resterende duur laat zich niet 1-op-1 terugvertalen naar een
+  // van de vaste duur-knoppen — standaard op ONBEPERKT laten staan, tenzij de
+  // code al verlopen/tijdelijk is; de gebruiker kiest bij bewerken gewoon
+  // opnieuw een duur (telt vanaf nu, niet vanaf de oorspronkelijke aanmaak).
+  gastDuurIdx = 0;
+  renderGastDuur(); renderGastNiveau();
+  document.getElementById('gastActieBtn').textContent = 'WIJZIGEN OPSLAAN';
+  document.getElementById('gastAnnuleerBtn').style.display = '';
+  var el = document.getElementById('gastMelding');
+  el.style.color = ''; el.textContent = 'Code ' + g.code + ' bewerken — pas evt. de code zelf of de geldigheid aan (telt vanaf nu).';
+}
+function gastActie(){
+  if (needAuth()) return;
+  var naam = document.getElementById('gastNaam').value;
+  var code = document.getElementById('gastCode').value.trim();
+  if (code && (code.length !== 4 || !/^[0-9]{4}$/.test(code))) {
+    var el = document.getElementById('gastMelding');
+    el.style.color = 'var(--red)'; el.textContent = 'Code moet leeg zijn (automatisch) of precies 4 cijfers.';
+    return;
+  }
+  var dagen = GAST_DUUR_OPTIES[gastDuurIdx].dagen;
+  if (gastBewerkIdx < 0) send({t:'gast_toevoegen', naam:naam, code:code, dagen:dagen, niveau:gastNiveau});
+  else send({t:'gast_bewerken', idx:gastBewerkIdx, naam:naam, code:code, dagen:dagen, niveau:gastNiveau});
+}
+function renderGastNieuw(msg){
+  var el = document.getElementById('gastMelding');
+  if (msg.ok) {
+    el.style.color = 'var(--green)'; el.textContent = 'Nieuwe code: ' + msg.code + ' — geef door aan de gast.';
+    gastFormReset();
+    gastLaden();
+  } else {
+    var reden = msg.reden === 'tijd'  ? 'tijd nog onbekend, kies ONBEPERKT'
+              : msg.reden === 'bezet' ? 'die code is al in gebruik'
+              : msg.reden === 'vol'   ? 'maximum (20) bereikt' : 'onbekende fout';
+    el.style.color = 'var(--red)'; el.textContent = 'Aanmaken mislukt (' + reden + ').';
+  }
+}
+function renderGastBewerkt(msg){
+  var el = document.getElementById('gastMelding');
+  if (msg.ok) {
+    el.style.color = 'var(--green)'; el.textContent = 'Gewijzigd.';
+    gastFormReset();
+    gastLaden();
+  } else {
+    var reden = msg.reden === 'tijd'  ? 'tijd nog onbekend, kies ONBEPERKT'
+              : msg.reden === 'bezet' ? 'die code is al in gebruik' : 'onbekende fout';
+    el.style.color = 'var(--red)'; el.textContent = 'Wijzigen mislukt (' + reden + ').';
+  }
+}
+function gastVerwijderen(i){
+  if (needAuth()) return;
+  if (gastBewerkIdx === i) gastFormReset();
+  send({t:'gast_verwijderen', idx:i});
+}
+
+// ─── INSTELLINGEN → VERBINDINGEN: Meldingen (CallMeBot Signal/WhatsApp) ────
+// De lange Signal-/WhatsApp-code is vervelend intypen op het scherm van de
+// boordcomputer — vanaf hier gewoon te plakken.
+function meldingLaden(){ send({t:'melding_get'}); }
+var MEL_HARTSLAG_LBL = ['UIT', 'DAGELIJKS', 'WEKELIJKS'];
+function renderMelHartslag(){
+  if (!meldingData) return;
+  document.getElementById('melHartslagKeuze').innerHTML = MEL_HARTSLAG_LBL.map(function(l, i){
+    return '<button class="mbtn' + (meldingData.hartslag===i?' active':'') + '" onclick="melHartslagKiezen(' + i + ')">' + l + '</button>';
+  }).join('');
+}
+function melHartslagKiezen(i){ meldingData.hartslag = i; renderMelHartslag(); }
+function melVeldRij(label, id, waarde, numeriek){
+  return '<label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">' + esc(label) + '</label>' +
+         '<input id="' + id + '" type="' + (numeriek?'number':'text') +
+         '" value="' + escAttr(waarde) + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;padding:10px;margin-bottom:10px;">';
+}
+function renderMelding(){
+  var d = meldingData;
+  if (!d) return;
+  var h = '';
+  h += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><input type="checkbox" id="melAan"' + (d.aan?' checked':'') + '> Meldingen aan</label>';
+  h += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><input type="checkbox" id="melBijOpstart"' + (d.bijOpstart?' checked':'') + '> Bericht bij opstart</label>';
+  h += '<label style="font-size:.72rem;color:var(--text-dim);display:block;margin-bottom:4px;">Hartslag</label>';
+  h += '<div class="grid3" id="melHartslagKeuze" style="margin-bottom:10px;"></div>';
+  h += melVeldRij('Hartslag-uur (0-23)', 'melHartslagUur', d.hartslagUur, true);
+  h += melVeldRij('Hartslag-dag (0=ma .. 6=zo, alleen wekelijks)', 'melHartslagDag', d.hartslagDag, true);
+  h += melVeldRij('Eigenaar — Signal-code', 'melEigSignalKey', d.eigSignalKey, false);
+  h += melVeldRij('Eigenaar — WhatsApp-code', 'melEigWhatsappKey', d.eigWhatsappKey, false);
+  h += melVeldRij('Eigenaar — Signal alt.nr (optioneel)', 'melEigSignalTel', d.eigSignalTel, false);
+  h += melVeldRij('Eigenaar — WhatsApp alt.nr (optioneel)', 'melEigWhatsappTel', d.eigWhatsappTel, false);
+  for (var i = 0; i < 4; i++){
+    var e = (d.extra && d.extra[i]) || {};
+    h += '<h2 style="margin-top:16px;">Extra ontvanger ' + (i+1) + '</h2>';
+    h += melVeldRij('Naam', 'mel' + i + 'naam', e.naam, false);
+    h += melVeldRij('Telefoon', 'mel' + i + 'tel', e.tel, false);
+    h += melVeldRij('Signal-code', 'mel' + i + 'sk', e.signalKey, false);
+    h += melVeldRij('WhatsApp-code', 'mel' + i + 'wk', e.whatsappKey, false);
+    h += melVeldRij('Signal alt.nr (optioneel)', 'mel' + i + 'st', e.signalTel, false);
+    h += melVeldRij('WhatsApp alt.nr (optioneel)', 'mel' + i + 'wt', e.whatsappTel, false);
+    h += '<div class="grid3" style="margin-bottom:10px;">' +
+         '<label style="font-size:.78rem;"><input type="checkbox" id="mel' + i + 'c0"' + (e.cat&&e.cat[0]?' checked':'') + '> Status</label>' +
+         '<label style="font-size:.78rem;"><input type="checkbox" id="mel' + i + 'c1"' + (e.cat&&e.cat[1]?' checked':'') + '> Alarm</label>' +
+         '<label style="font-size:.78rem;"><input type="checkbox" id="mel' + i + 'c2"' + (e.cat&&e.cat[2]?' checked':'') + '> Eigenaar</label></div>';
+  }
+  document.getElementById('meldingVelden').innerHTML = h;
+  renderMelHartslag();
+}
+function meldingOpslaan(){
+  if (needAuth()) return;
+  var obj = {t:'melding_set'};
+  obj.aan = document.getElementById('melAan').checked ? 1 : 0;
+  obj.bijOpstart = document.getElementById('melBijOpstart').checked ? 1 : 0;
+  obj.hartslag = (meldingData && meldingData.hartslag) || 0;
+  obj.hartslagUur = parseInt(document.getElementById('melHartslagUur').value, 10) || 0;
+  obj.hartslagDag = parseInt(document.getElementById('melHartslagDag').value, 10) || 0;
+  obj.eigSignalKey = document.getElementById('melEigSignalKey').value;
+  obj.eigWhatsappKey = document.getElementById('melEigWhatsappKey').value;
+  obj.eigSignalTel = document.getElementById('melEigSignalTel').value;
+  obj.eigWhatsappTel = document.getElementById('melEigWhatsappTel').value;
+  for (var i = 0; i < 4; i++){
+    obj['e'+i+'naam'] = document.getElementById('mel'+i+'naam').value;
+    obj['e'+i+'tel']  = document.getElementById('mel'+i+'tel').value;
+    obj['e'+i+'sk']   = document.getElementById('mel'+i+'sk').value;
+    obj['e'+i+'wk']   = document.getElementById('mel'+i+'wk').value;
+    obj['e'+i+'st']   = document.getElementById('mel'+i+'st').value;
+    obj['e'+i+'wt']   = document.getElementById('mel'+i+'wt').value;
+    obj['e'+i+'c0']   = document.getElementById('mel'+i+'c0').checked ? 1 : 0;
+    obj['e'+i+'c1']   = document.getElementById('mel'+i+'c1').checked ? 1 : 0;
+    obj['e'+i+'c2']   = document.getElementById('mel'+i+'c2').checked ? 1 : 0;
+  }
+  send(obj);
+  var el = document.getElementById('meldingMelding');
+  el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.';
+}
+function meldingTest(){
+  if (needAuth()) return;
+  send({t:'melding_test'});
+  var el = document.getElementById('meldingMelding');
+  el.style.color = ''; el.textContent = 'Testbericht versturen…';
+}
+
+// Berichtlimiet (mac_record.h) — max. aantal berichten per MAC-adres,
+// apart voor ingelogd/niet-ingelogd, plus een reset-periode. Zelfde
+// get/render/opslaan-patroon als de meldingen-instellingen hierboven.
+function berichtlimietLaden(){ send({t:'berichtlimiet_get'}); }
+function renderBerichtlimiet(d){
+  document.getElementById('blimIngelogd').value  = d.ingelogd;
+  document.getElementById('blimGast').value      = d.gast;
+  document.getElementById('blimResetUren').value = d.resetUren;
+}
+function berichtlimietOpslaan(){
+  if (needAuth()) return;
+  send({
+    t: 'berichtlimiet_set',
+    ingelogd:  document.getElementById('blimIngelogd').value,
+    gast:      document.getElementById('blimGast').value,
+    resetUren: document.getElementById('blimResetUren').value
+  });
+  var el = document.getElementById('blimMelding');
+  el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.';
+  setTimeout(function(){ if (el.textContent === 'Opgeslagen.') el.textContent = ''; }, 3000);
+}
+
+achtergrondToepassen();
+taalToepassen();  // roept ladenPubliek()/ladenBericht()/laadNood() ook meteen aan
+connect();
+
+// Sommige mobiele browsers scrollen bij het openen vanzelf naar het eerste
+// tekstveld (hier: de naam-invoer bij "Berichten") zodra de dynamisch
+// opgebouwde inhoud hierboven de pagina langer maakt dan het scherm — met als
+// gevolg dat de taalvlaggetjes en het pincode-slotje bovenaan niet meer in
+// beeld staan. Forceer daarom de bovenkant, ná de layout (dubbele
+// requestAnimationFrame: één om de browser zijn eigen scrollgedrag te laten
+// uitvoeren, één om daar hierna overheen te gaan).
+requestAnimationFrame(function(){ requestAnimationFrame(function(){ window.scrollTo(0, 0); }); });
+</script>
+</body>
+</html>

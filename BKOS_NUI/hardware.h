@@ -12,6 +12,7 @@
 #include "provider.h"
 #include "bkos_net.h"
 #include "bkos_client.h"
+#include "ble_app.h"
 #include "webapp.h"
 #include "bkos_brug.h"
 #include "screen_brug.h"

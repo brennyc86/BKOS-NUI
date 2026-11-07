@@ -21,6 +21,7 @@
 #include "melding.h"         // CallMeBot Signal/WhatsApp — INSTELLINGEN → VERBINDINGEN in de webapp
 #include "mac_record.h"      // MAC-adres-onthouden-login + berichtlimiet-instellingen
 
+#include "ble_app.h"          // BLE-tunnel naar de GitHub-Pages-webapp
 #include <WebSocketsServer.h>
 #include <ESPmDNS.h>
 #include <time.h>
@@ -29,13 +30,15 @@ static WebSocketsServer _ws(BKOS_WS_POORT);
 // Array-grootte moet WEBSOCKETS_SERVER_CLIENT_MAX volgen (library-default 5),
 // niet een losse aanname — anders schrijft een 5e gelijktijdige klant (num=4)
 // buiten deze arrays, met corruptie van aangrenzend geheugen als gevolg.
-static bool _ws_klanten[WEBSOCKETS_SERVER_CLIENT_MAX]     = {false};
+// Extra slot achteraan = de (enige) BLE-client, zie ble_app.cpp.
+#define BKOS_BLE_NUM WEBSOCKETS_SERVER_CLIENT_MAX
+static bool _ws_klanten[WEBSOCKETS_SERVER_CLIENT_MAX + 1]     = {false};
 // Schrijfcommando's vereisen minimaal een geldige code (gast of eigenaar) —
 // status blijft voor iedereen op het lokale netwerk zichtbaar zonder in te
 // loggen, zo blijft "kijken" laagdrempelig en "schakelen" veilig. Een gastcode
 // mag alleen de HUIS/BOOT-achtige commando's (paneel/modus/licht/lamp/
 // interieur); IO-kanalen los blijven eigenaar-only — zie _verwerk_cmd().
-static uint8_t _ws_niveau[WEBSOCKETS_SERVER_CLIENT_MAX] = {NIVEAU_GEEN};
+static uint8_t _ws_niveau[WEBSOCKETS_SERVER_CLIENT_MAX + 1] = {NIVEAU_GEEN};
 static byte _ws_prev_output[MAX_IO_KANALEN];
 static bool _ws_prev_input[MAX_IO_KANALEN];
 static byte _ws_prev_modus = 255;
@@ -47,6 +50,16 @@ static bool _ws_gestart = false;
 // onEvent() hoeft maar één keer geregistreerd — bkos_client_setup()/_stop()
 // schakelen verder alleen begin()/close(), zelfde patroon als webapp.ino.
 static bool _ws_handler_klaar = false;
+
+// Eén verzendpunt voor WebSocket én BLE. num == BKOS_BLE_NUM = de BLE-client.
+static void _tx(uint8_t num, const String& s) {
+    if (num == BKOS_BLE_NUM) ble_app_stuur(s);
+    else _ws.sendTXT(num, s.c_str(), s.length());
+}
+static void _bc(const String& s) {
+    if (_ws_gestart) _ws.broadcastTXT(s.c_str(), s.length());
+    if (ble_app_verbonden()) ble_app_stuur(s);
+}
 
 // ─── JSON builders (String in handtekening: String = Arduino-type, geen probleem) ──
 
@@ -344,17 +357,17 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
                 // browser na gewiste opslag) automatisch weer inlogt — zie
                 // mac_record.h. Alleen zinvol/betrouwbaar via de eigen hotspot.
                 uint8_t mac[6];
-                if (wifi_mac_voor_ip(_ws.remoteIP(num), mac)) mac_record_login_onthoud(mac, buf);
+                if (num != BKOS_BLE_NUM && wifi_mac_voor_ip(_ws.remoteIP(num), mac)) mac_record_login_onthoud(mac, buf);
             } else {
                 r = F("{\"t\":\"auth_fout\"}");
             }
-            _ws.sendTXT(num, r);
+            _tx(num, r);
         }
         return;
     }
     if (t.indexOf(F("\"ping\"")) >= 0) {
         String pong = F("{\"t\":\"pong\"}");
-        _ws.sendTXT(num, pong);
+        _tx(num, pong);
         return;
     }
 
@@ -364,12 +377,12 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
     // bewust alleen toegang tot de HUIS/BOOT-achtige commando's.
     if (_ws_niveau[num] < NIVEAU_GAST) {
         String r = F("{\"t\":\"auth_vereist\"}");
-        _ws.sendTXT(num, r);
+        _tx(num, r);
         return;
     }
 
     if (t.indexOf(F("\"io_toggle\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
         int idx = t.indexOf(F("\"i\":"));
         if (idx >= 0) net_io_kanaal_toggle(t.substring(idx + 4).toInt());
 
@@ -380,7 +393,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             if (i >= 0 && i < paneel_aantal()) {
                 const char* naam = paneel_knop_naam(i);
                 if (_ws_niveau[num] >= io_min_niveau_voor_naam(naam)) net_io_apparaat_toggle(naam);
-                else { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); }
+                else { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); }
             }
         }
 
@@ -391,7 +404,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             if (i >= 0 && i < huispaneel_aantal()) {
                 const char* naam = huispaneel_knop_naam(i);
                 if (_ws_niveau[num] >= io_min_niveau_voor_naam(naam)) net_io_apparaat_toggle(naam);
-                else { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); }
+                else { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); }
             }
         }
 
@@ -421,7 +434,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
                 char naam[16]; snprintf(naam, sizeof(naam), "**IL_%d", nr);
                 net_io_apparaat_toggle(naam);
             } else {
-                String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r);
+                String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r);
             }
         }
 
@@ -463,8 +476,8 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
     // dus deze extra check is strikt genomen dubbel op, maar maakt elke case
     // hier zelfstandig leesbaar/veilig ook als de volgorde ooit verandert.
     } else if (t.indexOf(F("\"instellingen_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
-        String s = _instellingen_json(); _ws.sendTXT(num, s);
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        String s = _instellingen_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"instellingen_set\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
@@ -486,7 +499,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         }
         info_opslaan();
         state_save();
-        String s = _instellingen_json(); _ws.sendTXT(num, s);
+        String s = _instellingen_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"pin_wijzig\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
@@ -496,11 +509,11 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         bool ok = oud.equals(opgeslagen) && nieuw.length() == 4;
         if (ok) pin_schrijven_pub(nieuw.c_str());
         String r = String(F("{\"t\":\"pin_wijzig_res\",\"ok\":")) + (ok ? "true" : "false") + "}";
-        _ws.sendTXT(num, r);
+        _tx(num, r);
 
     } else if (t.indexOf(F("\"gast_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
-        String s = _gast_json(); _ws.sendTXT(num, s);
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        String s = _gast_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"gast_toevoegen\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
@@ -511,10 +524,10 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         if (niveau < NIVEAU_GAST || niveau > NIVEAU_DELER) niveau = NIVEAU_GAST;
         if (gewenste_code.length() && !gast_code_beschikbaar(gewenste_code.c_str(), -1)) {
             String r = F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"bezet\"}");
-            _ws.sendTXT(num, r);
+            _tx(num, r);
         } else if (dagen > 0 && !ntp_synced()) {
             String r = F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"tijd\"}");
-            _ws.sendTXT(num, r);
+            _tx(num, r);
         } else {
             uint32_t verloopt = (dagen > 0) ? (uint32_t)time(nullptr) + (uint32_t)dagen * 86400UL : 0;
             char code[GAST_CODE_LEN];
@@ -523,8 +536,8 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
                                      code, sizeof(code));
             String r = ok ? (String(F("{\"t\":\"gast_nieuw\",\"ok\":true,\"code\":\"")) + code + "\"}")
                           : String(F("{\"t\":\"gast_nieuw\",\"ok\":false,\"reden\":\"vol\"}"));
-            _ws.sendTXT(num, r);
-            if (ok) { String lijst = _gast_json(); _ws.sendTXT(num, lijst); }
+            _tx(num, r);
+            if (ok) { String lijst = _gast_json(); _tx(num, lijst); }
         }
 
     } else if (t.indexOf(F("\"gast_bewerken\"")) >= 0) {
@@ -537,28 +550,28 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         if (niveau < NIVEAU_GAST || niveau > NIVEAU_DELER) niveau = NIVEAU_GAST;
         if (nieuwe_code.length() && !gast_code_beschikbaar(nieuwe_code.c_str(), (int)idx)) {
             String r = F("{\"t\":\"gast_bewerkt\",\"ok\":false,\"reden\":\"bezet\"}");
-            _ws.sendTXT(num, r);
+            _tx(num, r);
         } else if (dagen > 0 && !ntp_synced()) {
             String r = F("{\"t\":\"gast_bewerkt\",\"ok\":false,\"reden\":\"tijd\"}");
-            _ws.sendTXT(num, r);
+            _tx(num, r);
         } else {
             uint32_t verloopt = (dagen > 0) ? (uint32_t)time(nullptr) + (uint32_t)dagen * 86400UL : 0;
             bool ok = (idx >= 0) && gast_bewerken((int)idx, naam.c_str(), verloopt, (uint8_t)niveau,
                                                   nieuwe_code.length() ? nieuwe_code.c_str() : nullptr);
             String r = String(F("{\"t\":\"gast_bewerkt\",\"ok\":")) + (ok ? "true" : "false") + "}";
-            _ws.sendTXT(num, r);
-            if (ok) { String lijst = _gast_json(); _ws.sendTXT(num, lijst); }
+            _tx(num, r);
+            if (ok) { String lijst = _gast_json(); _tx(num, lijst); }
         }
 
     } else if (t.indexOf(F("\"gast_verwijderen\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         long idx = _getal_uit(t, "idx");
         if (idx >= 0) gast_verwijderen((int)idx);
-        String lijst = _gast_json(); _ws.sendTXT(num, lijst);
+        String lijst = _gast_json(); _tx(num, lijst);
 
     } else if (t.indexOf(F("\"melding_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
-        String s = _melding_json(); _ws.sendTXT(num, s);
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        String s = _melding_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"melding_set\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
@@ -590,17 +603,17 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             }
         }
         melding_opslaan();
-        String s = _melding_json(); _ws.sendTXT(num, s);
+        String s = _melding_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"melding_test\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
         melding_test();
         String r = F("{\"t\":\"melding_test_res\"}");
-        _ws.sendTXT(num, r);
+        _tx(num, r);
 
     } else if (t.indexOf(F("\"berichtlimiet_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _ws.sendTXT(num, r); return; }
-        String s = _berichtlimiet_json(); _ws.sendTXT(num, s);
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        String s = _berichtlimiet_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"berichtlimiet_set\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
@@ -608,7 +621,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         long lg = _getal_uit(t, "gast");     if (lg >= 0 && lg <= 65535) bericht_limiet_gast       = (uint16_t)lg;
         long lr = _getal_uit(t, "resetUren"); if (lr >= 0 && lr <= 65535) bericht_limiet_reset_uren = (uint16_t)lr;
         mac_record_limiet_opslaan();
-        String s = _berichtlimiet_json(); _ws.sendTXT(num, s);
+        String s = _berichtlimiet_json(); _tx(num, s);
     }
 }
 
@@ -636,13 +649,37 @@ static void _mdns_start() {
 
 // ─── Setup: gebruik lambda zodat WStype_t NIET in standalone functie-handtekening staat ──
 
-void bkos_client_setup() {
-    if (_ws_gestart) return;
+static void _prev_reset() {
     memset(_ws_prev_output, 255, sizeof(_ws_prev_output));
     memset(_ws_prev_paneel, 255, sizeof(_ws_prev_paneel));
     memset(_ws_prev_huispaneel, 255, sizeof(_ws_prev_huispaneel));
+}
+
+// ─── BLE-client (ble_app.cpp roept deze drie aan, vanuit de hoofdlus) ──────────
+
+void bkos_ble_verbonden() {
+    _prev_reset();
+    _ws_klanten[BKOS_BLE_NUM] = true;
+    _ws_niveau[BKOS_BLE_NUM]  = NIVEAU_GEEN;
+    String m1 = _io_full_json();    _tx(BKOS_BLE_NUM, m1);
+    String m2 = _state_json();      _tx(BKOS_BLE_NUM, m2);
+    String m3 = _net_json();        _tx(BKOS_BLE_NUM, m3);
+    String m4 = _info_json();       _tx(BKOS_BLE_NUM, m4);
+    String m5 = _paneel_json();     _tx(BKOS_BLE_NUM, m5);
+    String m6 = _lamp_json();       _tx(BKOS_BLE_NUM, m6);
+    String m7 = _huispaneel_json(); _tx(BKOS_BLE_NUM, m7);
+}
+void bkos_ble_los() {
+    _ws_klanten[BKOS_BLE_NUM] = false;
+    _ws_niveau[BKOS_BLE_NUM]  = NIVEAU_GEEN;
+}
+void bkos_ble_rx(const String& json) { _verwerk_cmd(BKOS_BLE_NUM, json); }
+
+void bkos_client_setup() {
+    if (_ws_gestart) return;
+    _prev_reset();
     memset(_ws_klanten, 0, sizeof(_ws_klanten));
-    for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) _ws_niveau[i] = NIVEAU_GEEN;
+    for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX + 1; i++) _ws_niveau[i] = NIVEAU_GEEN;
     _ws_lamp_scan();
     _ws.begin();
     if (!_ws_handler_klaar) {
@@ -662,15 +699,15 @@ void bkos_client_setup() {
                         mac_record_login_probeer(_auto_mac, &_auto_niveau)) {
                         _ws_niveau[num] = _auto_niveau;
                         String ra = F("{\"t\":\"auth_ok\",\"niveau\":"); ra += _auto_niveau; ra += '}';
-                        _ws.sendTXT(num, ra);
+                        _tx(num, ra);
                     }
-                    String m1 = _io_full_json(); _ws.sendTXT(num, m1);
-                    String m2 = _state_json();   _ws.sendTXT(num, m2);
-                    String m3 = _net_json();     _ws.sendTXT(num, m3);
-                    String m4 = _info_json();    _ws.sendTXT(num, m4);
-                    String m5 = _paneel_json();  _ws.sendTXT(num, m5);
-                    String m6 = _lamp_json();    _ws.sendTXT(num, m6);
-                    String m7 = _huispaneel_json(); _ws.sendTXT(num, m7);
+                    String m1 = _io_full_json(); _tx(num, m1);
+                    String m2 = _state_json();   _tx(num, m2);
+                    String m3 = _net_json();     _tx(num, m3);
+                    String m4 = _info_json();    _tx(num, m4);
+                    String m5 = _paneel_json();  _tx(num, m5);
+                    String m6 = _lamp_json();    _tx(num, m6);
+                    String m7 = _huispaneel_json(); _tx(num, m7);
                     break;
                 }
                 case WStype_DISCONNECTED:
@@ -696,9 +733,12 @@ void bkos_client_stop() {
 }
 
 void bkos_client_loop() {
-    if (!_ws_gestart) return;
-    _ws.loop();
-    if (!_mdns_gestart) _mdns_start();
+    ble_app_loop();
+    if (_ws_gestart) {
+        _ws.loop();
+        if (!_mdns_gestart) _mdns_start();
+    }
+    if (!_ws_gestart && !ble_app_verbonden()) return;
 
     int n = io_zichtbaar();
     for (int i = 0; i < n && i < MAX_IO_KANALEN; i++) {
@@ -707,14 +747,14 @@ void bkos_client_loop() {
             String d = F("{\"t\":\"io_delta\",\"ch\":");
             d += i; d += F(",\"o\":"); d += io_output[i];
             d += F(",\"i\":"); d += (in_nu ? 1 : 0); d += '}';
-            _ws.broadcastTXT(d);
+            _bc(d);
             _ws_prev_output[i] = io_output[i];
             _ws_prev_input[i] = in_nu;
         }
     }
 
     if (vaar_modus != _ws_prev_modus || licht_instelling != _ws_prev_licht) {
-        String st = _state_json(); _ws.broadcastTXT(st);
+        String st = _state_json(); _bc(st);
         _ws_prev_modus = vaar_modus;
         _ws_prev_licht = licht_instelling;
     }
@@ -726,7 +766,7 @@ void bkos_client_loop() {
             byte st = io_apparaat_staat3(paneel_knop_naam(i));
             if (st != _ws_prev_paneel[i]) { _ws_prev_paneel[i] = st; gewijzigd = true; }
         }
-        if (gewijzigd) { String p = _paneel_json(); _ws.broadcastTXT(p); }
+        if (gewijzigd) { String p = _paneel_json(); _bc(p); }
     }
 
     {
@@ -736,7 +776,7 @@ void bkos_client_loop() {
             byte st = io_apparaat_staat3(huispaneel_knop_naam(i));
             if (st != _ws_prev_huispaneel[i]) { _ws_prev_huispaneel[i] = st; gewijzigd = true; }
         }
-        if (gewijzigd) { String hp = _huispaneel_json(); _ws.broadcastTXT(hp); }
+        if (gewijzigd) { String hp = _huispaneel_json(); _bc(hp); }
     }
 
     {
@@ -758,20 +798,20 @@ void bkos_client_loop() {
             _ws_prev_kleur     = kleur;
             _ws_prev_overrule  = overrule;
             for (int i = 0; i < _ws_lamp_cnt; i++) _ws_prev_lamp_aan[i] = io_lamp_effectief_aan(_ws_lamp_nrs[i]);
-            String l = _lamp_json(); _ws.broadcastTXT(l);
+            String l = _lamp_json(); _bc(l);
         }
     }
 }
 
-void bkos_client_io_full_sturen() { String s = _io_full_json(); _ws.broadcastTXT(s); }
+void bkos_client_io_full_sturen() { String s = _io_full_json(); _bc(s); }
 void bkos_client_io_delta(int k) {
     String d = F("{\"t\":\"io_delta\",\"ch\":"); d += k;
     d += F(",\"o\":"); d += io_output[k];
     d += F(",\"i\":"); d += (io_kanaal_input_effectief(k) ? 1 : 0); d += '}';
-    _ws.broadcastTXT(d);
+    _bc(d);
 }
-void bkos_client_state_sturen() { String s = _state_json(); _ws.broadcastTXT(s); }
-void bkos_client_net_sturen()   { String s = _net_json();   _ws.broadcastTXT(s); }
-void bkos_client_paneel_sturen(){ String s = _paneel_json(); _ws.broadcastTXT(s); }
+void bkos_client_state_sturen() { String s = _state_json(); _bc(s); }
+void bkos_client_net_sturen()   { String s = _net_json();   _bc(s); }
+void bkos_client_paneel_sturen(){ String s = _paneel_json(); _bc(s); }
 
 #endif // ESP32

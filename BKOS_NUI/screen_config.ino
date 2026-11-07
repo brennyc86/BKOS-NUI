@@ -1918,7 +1918,7 @@ static void cfg_we_teken() {
 
 // Vaste inhoud onafhankelijk van de (runtime) TOKEN-rij: FIRMWARE UPDATEN,
 // ruimte voor TOKEN, BRUG @ +100, BERICHTEN @ +150 (+44 rijhoogte).
-#define CFG_UPDATE_INHOUD_H   200
+#define CFG_UPDATE_INHOUD_H   250
 #define CFG_UPDATE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_UPDATE_INHOUD_H - (int)NAV_Y)
 
 static void cfg_update_teken() {
@@ -1945,6 +1945,15 @@ static void cfg_update_teken() {
             C_SURFACE, C_DARK_GRAY);
     ui_knop(10, y0 + 150 + 4, TFT_W - 20, 38, "BERICHTEN  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+
+    if (ble_app_beschikbaar()) {
+        char bl[44];
+        snprintf(bl, sizeof(bl), "BLUETOOTH-APP: %s", ble_app_status());
+        bool bl_aan = ble_app_ingeschakeld();
+        ui_knop(10, y0 + 200 + 4, TFT_W - 20, 38, bl,
+                bl_aan ? RGB565(0, 24, 12) : (ontg ? C_SURFACE2 : C_SURFACE),
+                bl_aan ? C_GREEN : (ontg ? C_CYAN : C_TEXT_DIM));
+    }
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_update_scroll_y, CFG_UPDATE_MAX_SCROLL);
 
@@ -2412,6 +2421,16 @@ static void cfg_update_run(int x, int y) {
         actief_scherm = SCREEN_OTA;
         scherm_bouwen = true;
         return;
+    }
+
+    if (ble_app_beschikbaar()) {   // BLUETOOTH-APP aan/uit (PIN-beveiligd)
+        int bl_y = upd_y + 200;
+        if (y >= bl_y && y < bl_y + 50) {
+            if (!ontg) { pin_vereist_tonen(); return; }
+            ble_app_zet(!ble_app_ingeschakeld());
+            cfg_update_teken();
+            return;
+        }
     }
 
     {   // BRUG + BERICHTEN (vaste posities)

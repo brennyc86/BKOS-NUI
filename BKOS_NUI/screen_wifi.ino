@@ -53,7 +53,7 @@ static void wifi_verbind_uitvoeren() {
         wifi_staat = WIFI_ST_LIJST;
         tft.setTextColor(C_RED_BRIGHT);
         tft.setCursor(40, CONTENT_Y + 80);
-        tft.print("Verbinding mislukt. Probeer opnieuw.");
+        tft.print("Verbinding mislukt. Wachtwoord is wel opgeslagen.");
         delay(2000);
         scherm_bouwen = true;
     }

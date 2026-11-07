@@ -180,6 +180,17 @@ bool wifi_internet_ok() {
 }
 
 // ─── WiFi verbinden (intern, vanuit background task) ─────────────────────────
+// Bij een SSID dat op meerdere access points zit (repeater: één sterk, één
+// zwak) pakt de standaard fast-scan simpelweg het eerste gevonden AP, niet het
+// sterkste — verbinden met de zwakke repeater duurt lang of mislukt. Dus eerst
+// alle kanalen scannen en op signaalsterkte sorteren.
+static void _wifi_kies_sterkste_ap() {
+#if PLATFORM_ESP32
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+#endif
+}
+
 static void _wifi_verbinden_intern() {
     if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
     WiFi.mode(wifi_hotspot_actief() ? WIFI_AP_STA : WIFI_STA);
@@ -193,6 +204,7 @@ static void _wifi_verbinden_intern() {
     // stroomverbruik te letten, dus uit voor consistent snel/responsief WiFi.
     WiFi.setSleep(false);
     WiFi.setAutoReconnect(false);
+    _wifi_kies_sterkste_ap();
 
     // Eenmalige migratie van oude opslag
     _wifi_migreer_oud();
@@ -219,7 +231,7 @@ static void _wifi_verbinden_intern() {
             s.toCharArray(ssid, sizeof(ssid));
             pw.toCharArray(pass, sizeof(pass));
             WiFi.begin(ssid, pass);
-            for (int i = 0; i < 15 && WiFi.status() != WL_CONNECTED; i++)
+            for (int i = 0; i < 30 && WiFi.status() != WL_CONNECTED; i++)
                 vTaskDelay(300 / portTICK_PERIOD_MS);
         }
         wprefs.end();
@@ -535,14 +547,19 @@ void getijdata_meer_laden_aanvragen(int station) {
 }
 
 bool wifi_verbind(const char* ssid, const char* wachtwoord) {
+    // Eerst onthouden, pas dan verbinden: een zwakke of trage verbinding (bv.
+    // repeater) mag het ingetypte wachtwoord niet kwijt laten raken. Een fout
+    // wachtwoord wordt bij een nieuwe poging voor dezelfde SSID overschreven;
+    // de achtergrondtaak probeert opgeslagen netwerken zelf opnieuw.
+    wifi_creds_toevoegen(ssid, wachtwoord);
     WiFi.disconnect(true);
     vTaskDelay(200 / portTICK_PERIOD_MS);
+    _wifi_kies_sterkste_ap();
     WiFi.begin(ssid, wachtwoord);
     unsigned long t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) delay(300);
+    while (WiFi.status() != WL_CONNECTED && millis() - t < 25000) delay(300);
     wifi_verbonden = (WiFi.status() == WL_CONNECTED);
     if (wifi_verbonden) {
-        wifi_creds_toevoegen(ssid, wachtwoord);  // opslaan in meervoudige lijst
         ntp_forceer_hersync();  // nieuw netwerk kan een andere/betere NTP-route hebben
     }
     return wifi_verbonden;

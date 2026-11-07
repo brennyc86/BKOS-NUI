@@ -49,120 +49,148 @@ void tijdzone_toepassen() {
 }
 
 // ─── Meervoudige credential opslag ───────────────────────────────────────────
-// Preferences namespace "wifi_creds": cnt + s0..s4 + p0..p4
+// SPIFFS-bestand WIFI_CREDS_BESTAND, één netwerk per regel: "ssid<TAB>wachtwoord".
+// Stond eerder in NVS (Preferences "wifi_creds"). NVS is krap (zie de IO-namen,
+// die er om dezelfde reden uit zijn gehaald) en een mislukte putString() bleef
+// onopgemerkt: het netwerk werd dan stil niet opgeslagen. Hier wordt na het
+// schrijven teruggelezen, en het resultaat is op te vragen (wifi_creds_opslaan_ok).
+#define WIFI_CREDS_BESTAND "/bkos_wifi.csv"
 
-static void _wifi_migreer_oud() {
-    // Eenmalige migratie van enkelvoudige ssid/pass naar geïndexeerde opslag
+static bool _wc_laatste_ok = true;
+bool wifi_creds_opslaan_ok() { return _wc_laatste_ok; }
+
+// Eenmalig: neem netwerken uit de oude NVS-opslag over zolang er nog geen bestand is.
+static int _wc_oud_nvs_lezen(WifiCred* wc) {
+    int n = 0;
     Preferences p;
-    p.begin("wifi_creds", false);
-    if (p.isKey("cnt")) { p.end(); return; }  // al gemigreerd
-    String ssid = p.getString("ssid", "");
-    String pass = p.getString("pass", "");
-    if (ssid.length() > 0) {
-        p.putInt("cnt", 1);
-        p.putString("s0", ssid);
-        p.putString("p0", pass);
-        p.remove("ssid");
-        p.remove("pass");
-    } else {
-        p.putInt("cnt", 0);
+    if (!p.begin("wifi_creds", true)) return 0;
+    int cnt = p.getInt("cnt", 0);
+    char ks[4], kp[4];
+    for (int i = 0; i < cnt && n < WIFI_MAX_CREDS; i++) {
+        snprintf(ks, sizeof(ks), "s%d", i);
+        snprintf(kp, sizeof(kp), "p%d", i);
+        String s = p.getString(ks, "");
+        if (s.length() == 0) continue;
+        strncpy(wc[n].ssid, s.c_str(), 32); wc[n].ssid[32] = '\0';
+        strncpy(wc[n].pass, p.getString(kp, "").c_str(), 64); wc[n].pass[64] = '\0';
+        n++;
+    }
+    if (n == 0) {  // nog ouder: enkelvoudige ssid/pass
+        String s = p.getString("ssid", "");
+        if (s.length() > 0) {
+            strncpy(wc[0].ssid, s.c_str(), 32); wc[0].ssid[32] = '\0';
+            strncpy(wc[0].pass, p.getString("pass", "").c_str(), 64); wc[0].pass[64] = '\0';
+            n = 1;
+        }
     }
     p.end();
+    return n;
+}
+
+static bool _wc_schrijf(const WifiCred* wc, int n) {
+    File f = SPIFFS.open(WIFI_CREDS_BESTAND, "w");
+    if (!f) return false;
+    bool ok = true;
+    for (int i = 0; i < n; i++) {
+        int verwacht = strlen(wc[i].ssid) + strlen(wc[i].pass) + 2;  // tab + newline
+        if (f.printf("%s\t%s\n", wc[i].ssid, wc[i].pass) != verwacht) ok = false;
+    }
+    f.close();
+    if (!ok) return false;
+    // Terugleren en vergelijken, zoals paneel_opslaan()
+    File r = SPIFFS.open(WIFI_CREDS_BESTAND, "r");
+    if (!r) return false;
+    for (int i = 0; i < n && ok; i++) {
+        String l = r.readStringUntil('\n');
+        l.replace("\r", "");
+        String verwacht = String(wc[i].ssid) + "\t" + wc[i].pass;
+        if (!l.equals(verwacht)) ok = false;
+    }
+    r.close();
+    return ok;
+}
+
+static int _wc_laad(WifiCred* wc) {
+    int n = 0;
+    if (SPIFFS.exists(WIFI_CREDS_BESTAND)) {
+        File f = SPIFFS.open(WIFI_CREDS_BESTAND, "r");
+        if (f) {
+            while (f.available() && n < WIFI_MAX_CREDS) {
+                String l = f.readStringUntil('\n');
+                l.replace("\r", "");
+                int t = l.indexOf('\t');
+                if (t <= 0) continue;
+                strncpy(wc[n].ssid, l.substring(0, t).c_str(), 32); wc[n].ssid[32] = '\0';
+                strncpy(wc[n].pass, l.substring(t + 1).c_str(), 64); wc[n].pass[64] = '\0';
+                n++;
+            }
+            f.close();
+        }
+        return n;
+    }
+    n = _wc_oud_nvs_lezen(wc);
+    if (n > 0) _wc_schrijf(wc, n);  // migreren; mislukt dit, dan blijft de NVS-bron gewoon bestaan
+    return n;
+}
+
+static void _wifi_migreer_oud() {
+    WifiCred wc[WIFI_MAX_CREDS];
+    _wc_laad(wc);
 }
 
 int wifi_creds_cnt() {
-    Preferences p;
-    p.begin("wifi_creds", true);
-    int cnt = p.getInt("cnt", 0);
-    p.end();
-    return cnt;
+    WifiCred wc[WIFI_MAX_CREDS];
+    return _wc_laad(wc);
 }
 
 void wifi_creds_lees(int idx, char* ssid, int ssid_len, char* pass, int pass_len) {
-    Preferences p;
-    p.begin("wifi_creds", true);
-    char ks[4], kp[4];
-    snprintf(ks, sizeof(ks), "s%d", idx);
-    snprintf(kp, sizeof(kp), "p%d", idx);
-    String s  = p.getString(ks, "");
-    String pw = p.getString(kp, "");
-    p.end();
-    strncpy(ssid, s.c_str(),  ssid_len - 1); ssid[ssid_len - 1] = '\0';
-    strncpy(pass, pw.c_str(), pass_len - 1); pass[pass_len - 1] = '\0';
+    WifiCred wc[WIFI_MAX_CREDS];
+    int n = _wc_laad(wc);
+    const char* s = (idx >= 0 && idx < n) ? wc[idx].ssid : "";
+    const char* p = (idx >= 0 && idx < n) ? wc[idx].pass : "";
+    strncpy(ssid, s, ssid_len - 1); ssid[ssid_len - 1] = '\0';
+    strncpy(pass, p, pass_len - 1); pass[pass_len - 1] = '\0';
 }
 
 bool wifi_creds_toevoegen(const char* ssid, const char* pass) {
-    if (!ssid || strlen(ssid) == 0) return false;
-    Preferences p;
-    p.begin("wifi_creds", false);
-    int cnt = p.getInt("cnt", 0);
-
-    // Bestaand SSID → wachtwoord bijwerken
-    char ks[4], kp[4];
-    for (int i = 0; i < cnt; i++) {
-        snprintf(ks, sizeof(ks), "s%d", i);
-        if (p.getString(ks, "") == ssid) {
-            snprintf(kp, sizeof(kp), "p%d", i);
-            p.putString(kp, pass ? pass : "");
-            p.end();
-            return true;
-        }
+    if (!ssid || strlen(ssid) == 0 || strlen(ssid) > 32) return false;
+    if (!pass) pass = "";
+    if (strlen(pass) > 64 || strpbrk(ssid, "\t\n\r") || strpbrk(pass, "\t\n\r")) {
+        _wc_laatste_ok = false;
+        return false;
     }
+    WifiCred wc[WIFI_MAX_CREDS];
+    int n = _wc_laad(wc);
 
-    // Lijst vol: oudste (index 0) verwijderen, rest opschuiven
-    if (cnt >= WIFI_MAX_CREDS) {
-        for (int i = 0; i < WIFI_MAX_CREDS - 1; i++) {
-            char ks2[4], kp2[4], ks3[4], kp3[4];
-            snprintf(ks2, sizeof(ks2), "s%d", i);
-            snprintf(kp2, sizeof(kp2), "p%d", i);
-            snprintf(ks3, sizeof(ks3), "s%d", i + 1);
-            snprintf(kp3, sizeof(kp3), "p%d", i + 1);
-            p.putString(ks2, p.getString(ks3, ""));
-            p.putString(kp2, p.getString(kp3, ""));
+    int gevonden = -1;
+    for (int i = 0; i < n; i++) if (strcmp(wc[i].ssid, ssid) == 0) { gevonden = i; break; }
+    if (gevonden >= 0) {
+        strcpy(wc[gevonden].pass, pass);   // bestaand SSID: wachtwoord bijwerken
+    } else {
+        if (n >= WIFI_MAX_CREDS) {          // vol: oudste (index 0) eruit
+            for (int i = 0; i < WIFI_MAX_CREDS - 1; i++) wc[i] = wc[i + 1];
+            n = WIFI_MAX_CREDS - 1;
         }
-        cnt = WIFI_MAX_CREDS - 1;
+        strcpy(wc[n].ssid, ssid);
+        strcpy(wc[n].pass, pass);
+        n++;
     }
-
-    snprintf(ks, sizeof(ks), "s%d", cnt);
-    snprintf(kp, sizeof(kp), "p%d", cnt);
-    p.putString(ks, ssid);
-    p.putString(kp, pass ? pass : "");
-    p.putInt("cnt", cnt + 1);
-    p.end();
-    return true;
+    _wc_laatste_ok = _wc_schrijf(wc, n);
+    return _wc_laatste_ok;
 }
 
 void wifi_creds_verwijder(int idx) {
-    Preferences p;
-    p.begin("wifi_creds", false);
-    int cnt = p.getInt("cnt", 0);
-    if (idx < 0 || idx >= cnt) { p.end(); return; }
-
-    // Schuif entries naar beneden
-    char ks[4], kp[4], ks2[4], kp2[4];
-    for (int i = idx; i < cnt - 1; i++) {
-        snprintf(ks,  sizeof(ks),  "s%d", i);
-        snprintf(kp,  sizeof(kp),  "p%d", i);
-        snprintf(ks2, sizeof(ks2), "s%d", i + 1);
-        snprintf(kp2, sizeof(kp2), "p%d", i + 1);
-        p.putString(ks, p.getString(ks2, ""));
-        p.putString(kp, p.getString(kp2, ""));
-    }
-    // Laatste entry leegmaken
-    snprintf(ks, sizeof(ks), "s%d", cnt - 1);
-    snprintf(kp, sizeof(kp), "p%d", cnt - 1);
-    p.putString(ks, "");
-    p.putString(kp, "");
-    p.putInt("cnt", cnt - 1);
-    p.end();
+    WifiCred wc[WIFI_MAX_CREDS];
+    int n = _wc_laad(wc);
+    if (idx < 0 || idx >= n) return;
+    for (int i = idx; i < n - 1; i++) wc[i] = wc[i + 1];
+    _wc_laatste_ok = _wc_schrijf(wc, n - 1);
 }
 
 void wifi_creds_wis_alles() {
-    Preferences p;
-    p.begin("wifi_creds", false);
-    p.clear();
-    p.putInt("cnt", 0);
-    p.end();
+    SPIFFS.remove(WIFI_CREDS_BESTAND);
+    Preferences p;       // ook de oude NVS-opslag, anders migreert die weer terug
+    if (p.begin("wifi_creds", false)) { p.clear(); p.end(); }
 }
 
 bool wifi_internet_ok() {
@@ -217,24 +245,13 @@ static void _wifi_verbinden_intern() {
 
     // 2. Probeer alle opgeslagen netwerken in volgorde
     {
-        Preferences wprefs;
-        wprefs.begin("wifi_creds", true);
-        int cnt = wprefs.getInt("cnt", 0);
-        char ssid[33], pass[65];
+        WifiCred wc[WIFI_MAX_CREDS];
+        int cnt = _wc_laad(wc);
         for (int n = 0; n < cnt && WiFi.status() != WL_CONNECTED; n++) {
-            char ks[4], kp[4];
-            snprintf(ks, sizeof(ks), "s%d", n);
-            snprintf(kp, sizeof(kp), "p%d", n);
-            String s = wprefs.getString(ks, "");
-            String pw = wprefs.getString(kp, "");
-            if (s.length() == 0) continue;
-            s.toCharArray(ssid, sizeof(ssid));
-            pw.toCharArray(pass, sizeof(pass));
-            WiFi.begin(ssid, pass);
+            WiFi.begin(wc[n].ssid, wc[n].pass);
             for (int i = 0; i < 30 && WiFi.status() != WL_CONNECTED; i++)
                 vTaskDelay(300 / portTICK_PERIOD_MS);
         }
-        wprefs.end();
     }
     if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
 
@@ -265,21 +282,13 @@ static void _wifi_verbinden_intern() {
 #else
     // Pico: geen gecachte creds — probeer alle opgeslagen netwerken
     _wifi_migreer_oud();
-    Preferences wprefs;
-    wprefs.begin("wifi_creds", true);
-    int cnt = wprefs.getInt("cnt", 0);
+    WifiCred wc[WIFI_MAX_CREDS];
+    int cnt = _wc_laad(wc);
     for (int n = 0; n < cnt && WiFi.status() != WL_CONNECTED; n++) {
-        char ks[4], kp[4];
-        snprintf(ks, sizeof(ks), "s%d", n);
-        snprintf(kp, sizeof(kp), "p%d", n);
-        String ssid = wprefs.getString(ks, "");
-        String pass = wprefs.getString(kp, "");
-        if (ssid.length() == 0) continue;
-        WiFi.begin(ssid.c_str(), pass.c_str());
+        WiFi.begin(wc[n].ssid, wc[n].pass);
         for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++)
             vTaskDelay(300 / portTICK_PERIOD_MS);
     }
-    wprefs.end();
 #endif
     wifi_verbonden = (WiFi.status() == WL_CONNECTED);
 }

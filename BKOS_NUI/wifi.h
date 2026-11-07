@@ -16,7 +16,8 @@
 #define NTP_GMT_OFFSET   3600   // CET = UTC+1
 #define NTP_DST_OFFSET   3600   // CEST = +1 extra
 
-#define WIFI_MAX_CREDS   5     // maximaal aantal opgeslagen netwerken
+#define WIFI_MAX_CREDS   10    // maximaal aantal opgeslagen netwerken
+struct WifiCred { char ssid[33]; char pass[65]; };  // hier i.v.m. Arduino-prototype-hoisting
 
 // ─── Tijdzones ────────────────────────────────────────────────────────────
 // POSIX TZ-strings inclusief automatische zomertijdregel. TIJDZONE_CUSTOM_IDX
@@ -44,6 +45,7 @@ void wifi_loop();
 bool wifi_check();
 void wifi_reset();
 bool wifi_verbind(const char* ssid, const char* wachtwoord);
+bool wifi_creds_opslaan_ok();   // laatste opslag van een netwerk gelukt en teruggelezen?
 void ntp_setup();
 void ntp_loop();
 void ntp_start_sync();              // start (opnieuw) de NTP-sync met de actieve tijdzone

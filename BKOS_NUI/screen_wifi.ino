@@ -45,7 +45,7 @@ static void wifi_verbind_uitvoeren() {
         wifi_staat = WIFI_ST_KLAAR;
         tft.setTextColor(C_GREEN);
         tft.setCursor(40, CONTENT_Y + 80);
-        tft.print("Verbonden! Instellingen opgeslagen.");
+        tft.print(wifi_creds_opslaan_ok() ? "Verbonden! Instellingen opgeslagen." : "Verbonden, maar opslaan mislukt!");
         delay(1500);
         actief_scherm = SCREEN_CONFIG;
         scherm_bouwen = true;
@@ -53,7 +53,10 @@ static void wifi_verbind_uitvoeren() {
         wifi_staat = WIFI_ST_LIJST;
         tft.setTextColor(C_RED_BRIGHT);
         tft.setCursor(40, CONTENT_Y + 80);
-        tft.print("Verbinding mislukt. Wachtwoord is wel opgeslagen.");
+        tft.print("Verbinding mislukt.");
+        tft.setTextColor(wifi_creds_opslaan_ok() ? C_TEXT_DIM : C_RED_BRIGHT);
+        tft.setCursor(40, CONTENT_Y + 110);
+        tft.print(wifi_creds_opslaan_ok() ? "Wachtwoord is wel opgeslagen." : "Opslaan mislukt (opslag vol?).");
         delay(2000);
         scherm_bouwen = true;
     }

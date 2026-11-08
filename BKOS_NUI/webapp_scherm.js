@@ -296,8 +296,9 @@ var BKS = (function () {
     miniPijl(cx, cy, 8, 155, k); miniPijl(cx, cy, 8, 335, k);
   }
   // Slotje: groen en open = ingelogd, grijs en dicht = niet ingelogd, rood = geen verbinding met de boordcomputer
+  // Geel = ingelogd, maar met een pincode die geen toegang geeft tot het scherm dat nu getoond wordt
   function slotIcoon(cx, cy) {
-    var w = S.web || {}, k = !w.verb ? C_RED_BRIGHT : w.ing ? C_GREEN : C_TEXT_DIM, o = w.ing ? 4 : 0;
+    var w = S.web || {}, k = !w.verb ? C_RED_BRIGHT : (w.ing && w.geel) ? C_AMBER : w.ing ? C_GREEN : C_TEXT_DIM, o = w.ing ? 4 : 0;
     var by = cy - 1;
     vl(cx - 5, by - 6 - o, 6 + o, k); vl(cx - 4, by - 6 - o, 6 + o, k);
     if (w.ing) { vl(cx + 4, by - 6 - o, 3, k); vl(cx + 5, by - 6 - o, 3, k); }
@@ -418,13 +419,15 @@ var BKS = (function () {
     nbFill(0, y, W, NAV_H, C_NAVBAR, 165); hl(0, y, W, C_SURFACE2);
     navMidden = ((S.ui && S.ui.nav) ? S.ui.nav : []).slice();
     if (!navMidden.some(function (it) { return it.s === SC.BERICHT; })) navMidden.unshift({ l: 'BERICHT', s: SC.BERICHT });
-    function sysKnop(x, act, scherm) {
-      if (act) nbFillActief(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE2); else nbFill(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE);
+    function sysKnop(x, act, scherm, uit) {
+      if (act) nbFillActief(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE2); else nbFill(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, uit ? C_NAVBAR : C_SURFACE);
       if (act) { hl(x + 4, y, NB_SQ - 8, C_CYAN); hl(x + 4, y + 1, NB_SQ - 8, C_CYAN); }
-      else { hl(x + 1, y + 1, NB_SQ - 2, C_SURFACE3); vl(x + 1, y + 1, NAV_H - 2, C_SURFACE3); hl(x + 1, y + NAV_H - 2, NB_SQ - 2, C_NAVBAR); vl(x + NB_SQ - 2, y + 1, NAV_H - 2, C_NAVBAR); }
-      zone(x, y, NB_SQ, NAV_H, function () { return { gaNaar: scherm === 'home' ? homeScherm() : scherm }; });
+      else if (!uit) { hl(x + 1, y + 1, NB_SQ - 2, C_SURFACE3); vl(x + 1, y + 1, NAV_H - 2, C_SURFACE3); hl(x + 1, y + NAV_H - 2, NB_SQ - 2, C_NAVBAR); vl(x + NB_SQ - 2, y + 1, NAV_H - 2, C_NAVBAR); }
+      if (!uit) zone(x, y, NB_SQ, NAV_H, function () { return { gaNaar: scherm === 'home' ? homeScherm() : scherm }; });
       return act;
     }
+    // Alleen op de boordcomputer (niet in de webapp): gedimd, doorgestreept en niet aanklikbaar
+    function uitStreep(x, w) { drawLine(x + 8, y + NAV_H - 8, x + w - 8, y + 8, C_DARK_GRAY); drawLine(x + 9, y + NAV_H - 8, x + w - 7, y + 8, C_DARK_GRAY); }
     var a;
     a = sysKnop(0, actief === SC.MAIN || actief === SC.HAVEN, 'home'); navPaneel(NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DIM); vl(NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
     a = sysKnop(NB_SQ, actief === SC.IO, SC.IO); navIO(NB_SQ + NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DIM); vl(2 * NB_SQ - 1, y + 4, NAV_H - 8, C_SURFACE2);
@@ -447,19 +450,20 @@ var BKS = (function () {
     nbFill(NB_MX, y + 1, NB_MW, NAV_H - 2, C_SURFACE); hl(NB_MX, y, NB_MW, C_SURFACE2);
     for (var vi = 0; vi < zichtbaar; vi++) {
       var ai = navScroll + vi; if (ai >= n) break;
-      var it = navMidden[ai], bx = appX0 + vi * NB_KW, act = (it.s === actief && it.s !== SC.LUA);
+      var it = navMidden[ai], bx = appX0 + vi * NB_KW, act = (it.s === actief && it.s !== SC.LUA), itUit = it.s === SC.LUA;
       if (act) { nbFillActief(bx + 1, y + 1, NB_KW - 2, NAV_H - 2, C_SURFACE2); hl(bx + 4, y, NB_KW - 8, C_CYAN); hl(bx + 4, y + 1, NB_KW - 8, C_CYAN); }
       else { hl(bx + 1, y + 1, NB_KW - 2, C_SURFACE3); vl(bx + 1, y + 1, NAV_H - 2, C_SURFACE3); hl(bx + 1, y + NAV_H - 2, NB_KW - 2, C_NAVBAR); vl(bx + NB_KW - 2, y + 1, NAV_H - 2, C_NAVBAR); }
       var lbl = (it.l || '').substr(0, 16), tw = lbl.length * 6;
       if (tw > NB_KW - 8) { var mc = Math.trunc((NB_KW - 8) / 6); lbl = lbl.substr(0, mc - 1) + '.'; tw = lbl.length * 6; }
-      tekst(lbl, bx + ((NB_KW - tw) / 2 | 0), y + (NAV_H - 8) / 2, 1, act ? C_CYAN : C_TEXT_DIM);
+      tekst(lbl, bx + ((NB_KW - tw) / 2 | 0), y + (NAV_H - 8) / 2, 1, act ? C_CYAN : itUit ? C_TEXT_DARK : C_TEXT_DIM);
+      if (itUit) uitStreep(bx, NB_KW);
       if (vi < zichtbaar - 1) vl(bx + NB_KW - 1, y + 4, NAV_H - 8, C_SURFACE2);
-      zone(bx, y, NB_KW, NAV_H, (function (s) { return function () { return { gaNaar: s }; }; })(it.s));
+      if (!itUit) zone(bx, y, NB_KW, NAV_H, (function (s) { return function () { return { gaNaar: s }; }; })(it.s));
     }
     vl(NB_R0X - 1, y + 4, NAV_H - 8, C_SURFACE2); vl(NB_R1X - 1, y + 4, NAV_H - 8, C_SURFACE2);
     vl(NB_R2X - 1, y + 4, NAV_H - 8, C_SURFACE2); vl(NB_R3X - 1, y + 4, NAV_H - 8, C_SURFACE2);
-    a = sysKnop(NB_R0X, actief === SC.NETWERK, SC.NETWERK); navNetwerk(NB_R0X + NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DIM);
-    a = sysKnop(NB_R1X, actief === SC.APPS, SC.APPS); navStore(NB_R1X + NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DIM);
+    a = sysKnop(NB_R0X, actief === SC.NETWERK, SC.NETWERK, true); navNetwerk(NB_R0X + NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DARK); uitStreep(NB_R0X, NB_SQ);
+    a = sysKnop(NB_R1X, actief === SC.APPS, SC.APPS, true); navStore(NB_R1X + NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DARK); uitStreep(NB_R1X, NB_SQ);
     a = sysKnop(NB_R2X, actief === SC.CONFIG, SC.CONFIG); navConfig(NB_R2X + NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DIM, a ? C_SURFACE2 : C_SURFACE);
     a = sysKnop(NB_R3X, actief === SC.INFO, SC.INFO); navInfo(NB_R3X + NB_SQ / 2, cy, a ? C_CYAN : C_TEXT_DIM);
   }

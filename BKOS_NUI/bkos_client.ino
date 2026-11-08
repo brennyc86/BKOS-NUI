@@ -569,7 +569,9 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             if (num == BKOS_BLE_NUM) pin_bewaking_id_ble(pid); else pin_bewaking_id_voor_ip(_ws.remoteIP(num), pid);
             PinStatus pst; uint32_t psec;
             int niveau = pin_niveau_bewaakt(pid, buf, &pst, &psec);
-            _ws_niveau[num] = niveau;
+            // Alleen bij een geldige pincode wisselen: een foute poging ("inloggen met een andere
+            // pincode") laat een bestaande login staan in plaats van je uit te loggen.
+            if (niveau > NIVEAU_GEEN) _ws_niveau[num] = niveau;
             String r;
             if (niveau > NIVEAU_GEEN) {
                 r = F("{\"t\":\"auth_ok\",\"niveau\":"); r += niveau; r += '}';
@@ -967,6 +969,11 @@ void bkos_diag_tekst(String& uit) {
     int n = 0; for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) if (_ws_klanten[i]) n++;
     uit += "websocket: "; uit += _ws_gestart ? "draait" : "UIT"; uit += ", clients "; uit += n; uit += "\n";
     uit += "andere boten gevonden: "; uit += _boten_n; uit += "\n";
+}
+
+int bkos_client_klanten() {
+    int n = 0; for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) if (_ws_klanten[i]) n++;
+    return n;
 }
 
 int bkos_boten_aantal() { return WiFi.status() == WL_CONNECTED ? _boten_n : 0; }

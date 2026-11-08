@@ -8,6 +8,8 @@
 #include "fout_log.h"
 #include "wifi.h"      // wifi_verbonden — crashmelding pas versturen als er WiFi is
 #include "ota.h"       // BKOS_NUI_VERSIE in de crashmelding
+#include "bkos_client.h"  // bkos_client_klanten() — niet slapen met een verbonden webapp
+#include "ble_app.h"      // ble_app_verbonden()
 #include "nav_bar.h"   // sb_waarschuwing_zet() — ATtiny-firmware-te-oud-voor-slaapstand-melding
 #include <Preferences.h>
 
@@ -225,6 +227,16 @@ void slaap_loop() {
     // eerstvolgende UART-activiteit (io_cyclus draait gewoon door via de
     // normale wakkere hw_loop-cyclus).
     if (net_slave_scherm_actief()) {
+        scherm_was_aan = true;
+        slaap_actief   = false;
+        return;
+    }
+
+    // Light sleep zet de WiFi-radio uit: de webapp (bkos.local, hotspot, WebSocket) is dan onbereikbaar
+    // en een open verbinding hangt (klikken doet niets, daarna "geen verbinding"). Zolang het toestel via
+    // WiFi bereikbaar moet zijn — verbonden met een netwerk, hotspot aan, of een webapp/Bluetooth-app
+    // verbonden — gaat alleen het scherm uit, niet de radio.
+    if (wifi_verbonden || wifi_hotspot_actief() || bkos_client_klanten() > 0 || ble_app_verbonden()) {
         scherm_was_aan = true;
         slaap_actief   = false;
         return;

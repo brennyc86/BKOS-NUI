@@ -235,6 +235,11 @@ body.bkos .wrap > .tabpane{position:absolute;left:0;right:0;top:8.75%;bottom:8.7
 body.bkos .wrap.bkVolledig > .tabpane{display:none !important;}
 body.bkos .wrap.geblurd > .tabpane{filter:blur(8px);pointer-events:none;overflow:hidden;}
 body.bkos .wrap.geblurd #bkosToegang{display:flex;}
+#bkosNiet{display:none;position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;align-items:center;justify-content:center;padding:16px;z-index:4;background:var(--bg);}
+body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
+#bkosNiet .kaart{background:rgba(21,37,53,.96);border:1px solid var(--border);border-radius:12px;padding:18px 20px;max-width:380px;text-align:center;}
+#bkosNiet b{display:block;color:var(--cyan);font-size:1rem;margin-bottom:6px;}
+#bkosNiet p{font-size:.82rem;color:var(--text);}
 #bkosToegang{position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;align-items:center;justify-content:center;padding:16px;z-index:5;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);}
 #bkosToegang .kaart{background:rgba(21,37,53,.96);border:1px solid var(--amber);border-radius:12px;padding:18px 20px;max-width:340px;text-align:center;}
 #bkosToegang b{display:block;color:var(--amber);font-size:1rem;margin-bottom:6px;}
@@ -525,6 +530,7 @@ body.bkos .wrap.geblurd #bkosToegang{display:flex;}
     </section>
   </div>
   <div id="bkosToegang"><div class="kaart"><b id="bkToegKop">Geen toegang</b><p id="bkToegTekst"></p><button id="bkToegKnop" onclick="openPin()">INLOGGEN</button></div></div>
+  <div id="bkosNiet"><div class="kaart"><b id="bkNietKop"></b><p id="bkNietTekst"></p></div></div>
   <canvas id="bkosCv" width="800" height="480"></canvas>
 </div>
 
@@ -614,9 +620,21 @@ function wsUrl(){
   return 'ws://' + location.hostname + ':8080/';
 }
 
+// Hartslag: elke 5 s een ping; komt er 15 s niets terug (toestel slaapt, WiFi weg), dan is de
+// verbinding dood — meteen opnieuw verbinden in plaats van te blijven doen alsof alles werkt.
+var wsLaatste = 0;
+setInterval(function(){
+  if (!ws || ws.readyState !== 1) return;
+  if (Date.now() - wsLaatste > 15000) {
+    try { ws.onclose = null; ws.onmessage = null; ws.close(); } catch(e){}
+    ws = null; setConn(false); unlocked = false; setLock(false, 0); connect(); return;
+  }
+  send({t:'ping'});
+}, 5000);
 function connect(){
   try{ ws = new WebSocket(wsUrl()); }catch(e){ setTimeout(connect, 2000); return; }
   ws.onopen = function(){
+    wsLaatste = Date.now();
     setConn(true);
     var saved = localStorage.getItem(PIN_KEY);
     if (saved && !unlocked) { pendingPin = saved; autoPinSilent = true; send({t:'auth', pin:saved}); }
@@ -626,6 +644,7 @@ function connect(){
   ws.onerror = function(){ try{ ws.close(); }catch(e){} };
   ws.onmessage = function(ev){
     var msg;
+    wsLaatste = Date.now();
     try{ msg = JSON.parse(ev.data); }catch(e){ return; }
     handleMsg(msg);
   };
@@ -2121,6 +2140,7 @@ var BK_SCHERMEN = {
   2:  {n:'METEO',     tab:'onbekend',     min:NIVEAU_GAST},
   3:  {n:'CONFIG',    tab:'instellingen', min:NIVEAU_EIGENAAR},
   21: {n:'BESTANDEN', tab:'fotos',        min:NIVEAU_EIGENAAR},
+  11: {n:'VICTRON',   tab:'onbekend',     min:NIVEAU_GAST},
   5:  {n:'INFO',      tab:'info',         min:NIVEAU_GEEN},
   16: {n:'BERICHT',   tab:'info',         min:NIVEAU_GEEN}
 };
@@ -2159,12 +2179,26 @@ function bkosToon(s){
   var geen = niveau < d.min;
   wrap.classList.toggle('geblurd', geen);
   if (geen) {
-    document.getElementById('bkToegKop').textContent = 'Geen toegang tot ' + d.n;
-    document.getElementById('bkToegTekst').textContent = d.min >= NIVEAU_EIGENAAR
-      ? 'Dit scherm is alleen voor de eigenaar. Log in met de eigenaarspincode om het te bekijken.'
-      : 'Log in met een pincode om dit scherm te bekijken.';
-    document.getElementById('bkToegKnop').style.display = unlocked && niveau >= NIVEAU_GAST && d.min > niveau ? 'none' : '';
+    var metPin = unlocked && niveau >= NIVEAU_GAST;   // ingelogd, maar deze pincode geeft geen toegang
+    document.getElementById('bkToegKop').textContent = metPin ? 'Geen toegang met deze pincode' : 'Geen toegang tot ' + d.n;
+    document.getElementById('bkToegTekst').textContent = metPin
+      ? 'Je bent ingelogd als ' + (NIVEAU_NAMEN[niveau] || 'gast') + '. ' + d.n + ' is alleen voor de eigenaar. Log in met een andere pincode om dit scherm te zien.'
+      : d.min >= NIVEAU_EIGENAAR
+        ? 'Dit scherm is alleen voor de eigenaar. Log in met de eigenaarspincode om het te bekijken.'
+        : 'Log in met een pincode om dit scherm te bekijken.';
+    document.getElementById('bkToegKnop').textContent = metPin ? 'ANDERE PINCODE' : 'INLOGGEN';
+    document.getElementById('bkToegKnop').style.display = '';
   }
+  // Schermen die (nog) niet in de webapp bestaan: duidelijke melding i.p.v. een lege of halve weergave
+  var komt = (s === 2 || s === 11), niet = !volledig && d.tab === 'onbekend';
+  wrap.classList.toggle('nietWeb', !geen && niet);
+  if (!geen && niet) {
+    document.getElementById('bkNietKop').textContent = d.n;
+    document.getElementById('bkNietTekst').textContent = komt
+      ? 'Dit scherm wordt nog gemaakt voor de webapp. Bekijk het voorlopig op de boordcomputer zelf.'
+      : 'Dit scherm is niet gemaakt voor de webapp en kan alleen op de boordcomputer zelf worden weergegeven.';
+  }
+  bkosWebStaat();
   bkosTeken();
 }
 // Gebruiker kiest een scherm in de app (navigatiebalk of knop op de canvas)
@@ -2178,12 +2212,13 @@ function bkosSyncEff(){ return bkosSync && unlocked && niveau >= NIVEAU_GAST; }
 // Verbindings-/inlogstatus en de sync-keuze doorgeven aan de canvas (slotje + sync-icoon in de statusbalk)
 function bkosWebStaat(){
   if (typeof BKS === 'undefined') return;
-  BKS.S.web = {ing: !!unlocked, verb: !!connected, sync: !!bkosSync};
+  var d = (typeof bkosInfoVoor === 'function' && typeof bkosScherm !== 'undefined') ? bkosInfoVoor(bkosScherm) : {min: 0};
+  BKS.S.web = {ing: !!unlocked, verb: !!connected, sync: !!bkosSync, geel: !!unlocked && niveau < d.min};
   if (bkosAan) bkosTeken();
 }
 // Aanrakingen op de canvas: schermwissel of een commando naar de boordcomputer
 function bkosActie(a){
-  if (a.slot) { lockClick(); return; }
+  if (a.slot) { if (BKS.S.web && BKS.S.web.geel) openPin(); else lockClick(); return; }
   if (a.sync) { bkosSyncWissel(); return; }
   if (a.weergave) { bkosWissel(); return; }
   if (a.bericht != null) { berKies(a.bericht); return; }

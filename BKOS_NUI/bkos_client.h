@@ -35,6 +35,7 @@ void bkos_client_paneel_sturen();
 // Andere masters in dezelfde haven (mDNS), voor de bootkeuze in de webapp
 void bkos_diag_tekst(String& uit);   // /status: mDNS- en websocket-toestand
 int  bkos_boten_aantal();
+int  bkos_client_klanten();   // aantal verbonden webapp-clients (WebSocket) — slaap_loop() blijft dan wakker
 void bkos_boot_info(int i, char* naam, size_t naam_len, char* ip, size_t ip_len);
 
 // BLE-client (ble_app.cpp)

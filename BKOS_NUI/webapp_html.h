@@ -9,6 +9,10 @@ const char WEBAPP_HTML[] PROGMEM = R"HTMLPAGE(<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
 <title>BKOS Afstandsbediening</title>
 <style>
 :root{
@@ -221,7 +225,13 @@ body.bkos #bgFixed{display:none;}
 /* Eén header, daaronder het scherm zo groot als past (5:3) — de pagina zelf scrolt nooit.
    --bkTop = hoogte van header (+ eventuele bootbalk), gemeten door bkosMaat(). */
 body.bkos{height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
-body.bkos header{display:none;}   /* BKOS-weergave: geen eigen header, slotje + sync zitten in de statusbalk van het scherm */
+body.bkos header{display:none;}
+/* Schermvullend (knop, F11 of als app op het beginscherm): zwart, geen rand, scherm zo groot mogelijk en gecentreerd */
+body.bkos.volscherm{background:#000;justify-content:center;}
+body.bkos.volscherm .wrap{margin:0 auto;border:0;border-radius:0;
+  width:min(100vw,calc((100vh - var(--bkTop,0px)) * 5 / 3));width:min(100vw,calc((100dvh - var(--bkTop,0px)) * 5 / 3));}
+#volToast{display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:70;background:var(--surface2);color:var(--text);
+  border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:.82rem;max-width:90vw;text-align:center;}   /* BKOS-weergave: geen eigen header, slotje + sync zitten in de statusbalk van het scherm */
 body.bkos .wrap{
   position:relative;flex:none;max-width:none;padding:0;margin:8px auto;overflow:hidden;background:#000;
   border:2px solid var(--border);border-radius:12px;aspect-ratio:5/3;
@@ -547,6 +557,7 @@ body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
   </div>
 </div>
 
+<div id="volToast"></div>
 <div id="berOverlay" class="hidden">
   <div id="berCard">
     <h3 id="berKop">Wie stuurt dit bericht?</h3>
@@ -2213,13 +2224,14 @@ function bkosSyncEff(){ return bkosSync && unlocked && niveau >= NIVEAU_GAST; }
 function bkosWebStaat(){
   if (typeof BKS === 'undefined') return;
   var d = (typeof bkosInfoVoor === 'function' && typeof bkosScherm !== 'undefined') ? bkosInfoVoor(bkosScherm) : {min: 0};
-  BKS.S.web = {ing: !!unlocked, verb: !!connected, sync: !!bkosSync, geel: !!unlocked && niveau < d.min};
+  BKS.S.web = {ing: !!unlocked, verb: !!connected, sync: !!bkosSync, geel: !!unlocked && niveau < d.min, vol: volschermActief()};
   if (bkosAan) bkosTeken();
 }
 // Aanrakingen op de canvas: schermwissel of een commando naar de boordcomputer
 function bkosActie(a){
   if (a.slot) { if (BKS.S.web && BKS.S.web.geel) openPin(); else lockClick(); return; }
   if (a.sync) { bkosSyncWissel(); return; }
+  if (a.volscherm) { volschermWissel(); return; }
   if (a.weergave) { bkosWissel(); return; }
   if (a.bericht != null) { berKies(a.bericht); return; }
   if (a.nood != null) { noodKies(a.nood); return; }
@@ -2227,6 +2239,34 @@ function bkosActie(a){
   if (a.stuur) { if (needAuth()) return; send(a.stuur); }
 }
 function bkosAchtergrond(){}
+
+// ─── Schermvullend ───────────────────────────────────────────────────────────
+// Via de knop (Fullscreen-API), via F11 (browser-volledig scherm: geen API-event, dus herkend aan de
+// venstergrootte) of als app vanaf het beginscherm (display-mode). Alle drie krijgen dezelfde weergave.
+function volschermActief(){
+  if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+  if (window.matchMedia && (matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches)) return true;
+  return window.innerHeight >= screen.height - 1 && window.innerWidth >= screen.width - 1;   // F11
+}
+function volschermPas(){
+  document.body.classList.toggle('volscherm', volschermActief());
+  bkosMaat(); bkosWebStaat();
+}
+function volToast(t){
+  var el = document.getElementById('volToast'); el.textContent = t; el.style.display = 'block';
+  clearTimeout(volToast._t); volToast._t = setTimeout(function(){ el.style.display = 'none'; }, 5000);
+}
+function volschermWissel(){
+  var d = document, el = d.documentElement;
+  if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+  if (volschermActief()) { volToast('Schermvullend via de browser: verlaat het met F11 (of Esc).'); return; }
+  var req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) { volToast('Deze browser kan niet schermvullend vanuit de pagina. Op een iPhone: deel-knop \u2192 "Zet op beginscherm" en open BKOS vanaf daar.'); return; }
+  try { var p = req.call(el, {navigationUI: 'hide'}); if (p && p.catch) p.catch(function(){ volToast('Schermvullend werd geweigerd door de browser.'); }); } catch(e){}
+}
+document.addEventListener('fullscreenchange', volschermPas);
+document.addEventListener('webkitfullscreenchange', volschermPas);
+window.addEventListener('resize', volschermPas);
 
 // ─── BERICHT-scherm in de BKOS-weergave ──────────────────────────────────────
 // Gewoon bericht: eerst naam + telefoon (verplicht, de eigenaar moet je kunnen terugbellen), dan versturen.
@@ -2347,6 +2387,7 @@ if (typeof BKS !== 'undefined') {
   var _wb = document.getElementById('weergBtn'); if (_wb) _wb.style.display = 'none';
 }
 bkosPas();
+volschermPas();
 if (bkosAan) bkosToon(5);
 
 achtergrondToepassen();

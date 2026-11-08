@@ -275,7 +275,21 @@ var BKS = (function () {
       SB_HOTSPOT_X = SB_ICON_X0 + SB_WIFI_W + SB_ICON_GAP + 1, SB_UPDATE_W = 18, SB_BEL_W = 16, SB_TITEL_GAP = 18,
       SB_KLOK_X = W - 68, SB_KLOK_ZWART_X = SB_KLOK_X - 14;
   // Webapp: het zwarte klokvenster loopt door over twee iconen (synchroon/asynchroon + slotje)
-  var WEB_ICON_W = 30, WEB_ZWART_X = SB_KLOK_ZWART_X - 2 * WEB_ICON_W;
+  var WEB_ICON_W = 30, WEB_ZWART_X = SB_KLOK_ZWART_X - 3 * WEB_ICON_W;
+  // Schermvullend: vier hoekjes naar buiten (aanzetten) of naar binnen (staat aan → verlaten)
+  function volschermIcoon(cx, cy) {
+    var w = S.web || {}, k = w.vol ? C_CYAN : C_TEXT_DIM, A = 8, L = 5;
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (h) {
+      var sx = h[0], sy = h[1], px0, py0, dx, dy;
+      if (!w.vol) { px0 = cx + sx * A; py0 = cy + sy * A; dx = -sx; dy = -sy; }            // hoekjes naar buiten
+      else { px0 = cx + sx * (A - L); py0 = cy + sy * (A - L); dx = sx; dy = sy; }        // hoekjes naar binnen
+      for (var t = 0; t < 2; t++) {
+        drawLine(px0, py0 - sy * t, px0 + dx * L, py0 - sy * t, k);   // horizontaal pootje
+        drawLine(px0 - sx * t, py0, px0 - sx * t, py0 + dy * L, k);   // verticaal pootje
+      }
+    });
+  }
+
   function miniPijl(cx, cy, r, graden, k) {
     var rad = graden * Math.PI / 180, trad = rad + Math.PI / 2, pX = cx + Math.trunc(r * Math.cos(rad)), pY = cy + Math.trunc(r * Math.sin(rad));
     var tx = Math.round(Math.cos(trad) * 4), ty = Math.round(Math.sin(trad) * 4), rx = Math.round(Math.cos(rad) * 3), ry = Math.round(Math.sin(rad) * 3);
@@ -316,10 +330,12 @@ var BKS = (function () {
     nbFill(0, 0, W, SB_H, C_STATUSBAR, 165);
     hl(0, SB_H - 1, W, C_SURFACE2);
     fillRect(WEB_ZWART_X, 0, W - WEB_ZWART_X, SB_H, C_BLACK);
-    syncIcoon(WEB_ZWART_X + (WEB_ICON_W >> 1), SB_ICON_CY);
-    slotIcoon(WEB_ZWART_X + WEB_ICON_W + (WEB_ICON_W >> 1), SB_ICON_CY);
-    zone(WEB_ZWART_X, 0, WEB_ICON_W, SB_H, function () { return { sync: true }; });
-    zone(WEB_ZWART_X + WEB_ICON_W, 0, WEB_ICON_W, SB_H, function () { return { slot: true }; });
+    volschermIcoon(WEB_ZWART_X + (WEB_ICON_W >> 1), SB_ICON_CY);
+    syncIcoon(WEB_ZWART_X + WEB_ICON_W + (WEB_ICON_W >> 1), SB_ICON_CY);
+    slotIcoon(WEB_ZWART_X + 2 * WEB_ICON_W + (WEB_ICON_W >> 1), SB_ICON_CY);
+    zone(WEB_ZWART_X, 0, WEB_ICON_W, SB_H, function () { return { volscherm: true }; });
+    zone(WEB_ZWART_X + WEB_ICON_W, 0, WEB_ICON_W, SB_H, function () { return { sync: true }; });
+    zone(WEB_ZWART_X + 2 * WEB_ICON_W, 0, WEB_ICON_W, SB_H, function () { return { slot: true }; });
     wifiIcon(SB_ICON_X0, SB_ICON_CY, 1);
     hotspotIcon(SB_HOTSPOT_X, SB_ICON_CY, 1);
     var x = SB_HOTSPOT_X + SB_HOTSPOT_W;

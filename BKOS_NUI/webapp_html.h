@@ -202,6 +202,41 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
 #botenOverlay button.boot{display:block;width:100%;margin:0 0 10px;padding:16px;border:0;border-radius:12px;background:var(--surface2);color:var(--text);font-size:1rem;font-weight:600;text-align:left;cursor:pointer;}
 #botenOverlay button.boot.hier{background:#0e3a55;color:#7fe3ff;}
 #botenOverlay button.boot small{display:block;font-weight:400;color:var(--text-dim);font-size:.72rem;margin-top:2px;}
+
+/* ─── BKOS-weergave: het scherm van de boordcomputer nagebouwd ─────────────── */
+#bkosBalk{display:none;position:sticky;top:0;z-index:19;background:var(--surface);border-bottom:1px solid var(--surface3);padding:6px 12px;gap:6px;flex-wrap:wrap;align-items:center;font-size:.72rem;color:var(--text-dim);}
+body.bkos #bkosBalk{display:flex;}
+#bkosBalk button{background:var(--surface2);color:var(--text-dim);border:1px solid var(--surface3);border-radius:8px;padding:6px 10px;font-size:.72rem;cursor:pointer;}
+#bkosBalk button.act{background:#0e3a55;color:#7fe3ff;border-color:#1b6a94;}
+#bkosBalk .sp{flex:1;}
+#bkosNav,#bkosToegang{display:none;}
+body.bkos #bgFixed{display:none;}
+body.bkos .wrap{
+  position:relative;max-width:none;padding:0;margin:10px auto;overflow:hidden;
+  display:flex;flex-direction:column;background:var(--bg) center/cover no-repeat;
+  border:2px solid var(--border);border-radius:14px;
+  aspect-ratio:5/3;width:min(calc(100vw - 20px),calc((100vh - 130px) * 5 / 3));
+  --navh:56px;
+}
+body.bkos.staand .wrap{aspect-ratio:3/5;width:min(calc(100vw - 20px),calc((100vh - 130px) * 3 / 5));}
+body.bkos .wrap > .tabbar{display:none;}
+body.bkos .wrap > .tabpane{flex:1;min-height:0;overflow-y:auto;padding:0 12px 12px;background:rgba(12,26,38,.55);}
+body.bkos #bkosNav{display:flex;flex:none;height:var(--navh);gap:4px;padding:5px;background:var(--surface);border-top:1px solid var(--border);overflow-x:auto;}
+body.bkos #bkosNav button{flex:1 0 auto;min-width:64px;background:var(--surface2);color:var(--text);border:1px solid var(--surface3);border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;}
+body.bkos #bkosNav button.act{background:#0e3a55;color:#7fe3ff;border-color:var(--cyan);}
+body.bkos #bkosNav button.slot{opacity:.55;}
+body.bkos .wrap.geblurd > .tabpane{filter:blur(8px);pointer-events:none;overflow:hidden;}
+body.bkos .wrap.geblurd #bkosToegang{display:flex;}
+#bkosToegang{position:absolute;left:0;right:0;top:0;bottom:var(--navh);align-items:center;justify-content:center;padding:16px;z-index:5;}
+#bkosToegang .kaart{background:rgba(21,37,53,.96);border:1px solid var(--amber);border-radius:12px;padding:18px 20px;max-width:340px;text-align:center;}
+#bkosToegang b{display:block;color:var(--amber);font-size:1rem;margin-bottom:6px;}
+#bkosToegang p{font-size:.82rem;color:var(--text);margin-bottom:12px;}
+#bkosToegang button{background:var(--cyan);color:#04121c;border:0;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;}
+/* tegelkeuze: boordcomputers als tegels */
+#botenLijst{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+#botenOverlay .kaart{max-width:560px;}
+#botenOverlay button.boot{margin:0;min-height:96px;display:flex;flex-direction:column;justify-content:center;}
+#botenOverlay button.boot .ico{font-size:1.6rem;margin-bottom:4px;}
 </style>
 </head>
 <body>
@@ -214,11 +249,21 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
     <b>BKOS</b>
     <span id="hdrSub">verbinden…</span>
   </div>
+  <button class="lock" id="weergBtn" onclick="bkosWissel()" title="Weergave: klassiek of BKOS (nagebouwd boordcomputerscherm)" style="margin-right:6px;font-size:.72rem;font-weight:700;">KLASSIEK</button>
   <button class="lock" id="lockBtn" onclick="lockClick()">&#128274;</button>
 </header>
+<div id="bkosBalk">
+  <span>Scherm:</span>
+  <button id="bkSyncBtn" onclick="bkosSyncWissel()" title="Synchroon: alle apparaten staan op hetzelfde scherm">SYNCHROON</button>
+  <span class="sp"></span>
+  <span>Stand:</span>
+  <button data-st="auto" onclick="bkosStand('auto')">AUTO</button>
+  <button data-st="liggend" onclick="bkosStand('liggend')">LIGGEND</button>
+  <button data-st="staand" onclick="bkosStand('staand')">STAAND</button>
+</div>
 
 <div id="botenBalk"><span>&#9875; <b id="botenNaam"></b></span><button id="botenBtn" onclick="botenKies(false)" style="display:none;">ANDERE BOOT &#9662;</button></div>
-<div id="botenOverlay"><div class="kaart"><h2>Kies je boot</h2><p>Meerdere boordcomputers zijn in dit netwerk gevonden.</p><div id="botenLijst"></div><button class="boot" id="botenSluit" onclick="botenSluit()" style="background:transparent;text-align:center;color:var(--text-dim);font-weight:400;">Sluiten</button></div></div>
+<div id="botenOverlay"><div class="kaart"><h2>Kies je boot</h2><p>Actieve boordcomputers (masters) in dit netwerk.</p><div id="botenLijst"></div><button class="boot" id="botenSluit" onclick="botenSluit()" style="background:transparent;text-align:center;color:var(--text-dim);font-weight:400;">Sluiten</button></div></div>
 
 <div class="wrap">
   <div class="tabbar">
@@ -473,6 +518,14 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
       </div>
     </div>
   </div>
+
+  <div id="tabOnbekend" class="tabpane" style="display:none">
+    <section><h2 id="bkOnbekendKop">SCHERM</h2>
+      <p style="font-size:.9rem;color:var(--text);">Dit scherm is op de boordcomputer geopend, maar nog niet nagebouwd in de app. Zodra het op het scherm van de boordcomputer wisselt, volgt de app dat.</p>
+    </section>
+  </div>
+  <div id="bkosToegang"><div class="kaart"><b id="bkToegKop">Geen toegang</b><p id="bkToegTekst"></p><button id="bkToegKnop" onclick="openPin()">INLOGGEN</button></div></div>
+  <nav id="bkosNav"></nav>
 </div>
 
 <div id="overlay" class="hidden">
@@ -623,11 +676,12 @@ function setLock(on, niv){
   // authenticatie) — tot toevallig een latere broadcast een her-render
   // triggerde. Vandaar "staat soms alles op slot, dan ineens niet".
   renderPaneel(); renderHuispaneel(); renderHuis(); renderState();
+  if (bkosAan) bkosToon(bkosScherm);
 }
 
 function setTab(naam){
   actieveTab = naam;
-  var tabs = ['info','huis','boot','io','fotos','instellingen'];
+  var tabs = ['info','huis','boot','io','fotos','instellingen','onbekend'];
   tabs.forEach(function(t){
     var pane = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (pane) pane.style.display = (t === naam) ? '' : 'none';
@@ -665,6 +719,8 @@ function handleMsg(msg){
     case 'io_delta':
       if (msg.ch < ioData.o.length) { ioData.o[msg.ch]=msg.o; ioData.i[msg.ch]=msg.i; renderIO(); }
       break;
+    case 'scherm':
+      bkosBoardScherm = msg.s; if (bkosAan && bkosSync) bkosToon(msg.s); break;
     case 'state':
       stateData = msg; renderState(); break;
     case 'net':
@@ -1261,17 +1317,18 @@ function stuurBerichtVrij(){
 // Puur cosmetisch, dus altijd toegepast (ook zonder pincode) — het UPLOADEN
 // van een nieuwe foto blijft wel achter de pincode (zie de #gated-sectie).
 function achtergrondToepassen(){
-  var liggend = window.matchMedia('(orientation: landscape)').matches;
+  var liggend = bkosAan ? bkosLiggend() : window.matchMedia('(orientation: landscape)').matches;
   var slot = liggend ? 'liggend' : 'staand';
   fetch('/achtergrond/info').then(function(r){ return r.json(); }).then(function(d){
     var aanwezig = liggend ? d.liggend : d.staand;
     var bg = document.getElementById('bgFixed');
-    if (!aanwezig) { bg.style.backgroundImage = ''; return; }
+    if (!aanwezig) { bg.style.backgroundImage = ''; bkosAchtergrond(); return; }
     // Donkere overlay overheen zodat de bestaande (effen) kaartjes/secties
     // leesbaar blijven — zelfde idee als de fototint op het HAVEN-scherm van
     // de boordcomputer zelf.
     bg.style.backgroundImage =
       'linear-gradient(rgba(12,26,38,.82),rgba(12,26,38,.82)), url(/achtergrond/foto?slot=' + slot + '&t=' + Date.now() + ')';
+    bkosAchtergrond();
   }).catch(function(){});
 }
 window.addEventListener('resize', achtergrondToepassen);
@@ -1968,9 +2025,9 @@ var botenData = null;
 function botenSluit(){ document.getElementById('botenOverlay').style.display = 'none'; try{ sessionStorage.setItem('bkos_gekozen','1'); }catch(e){} }
 function botenKies(auto){
   if (!botenData) return;
-  var h = '<button class="boot hier" onclick="botenSluit()">&#9875; ' + esc(botenData.eigen) + '<small>verbonden</small></button>';
+  var h = '<button class="boot hier" onclick="botenSluit()"><span class="ico">&#9875;</span>' + esc(botenData.eigen) + '<small>verbonden &middot; WiFi</small></button>';
   (botenData.boten || []).forEach(function(b){
-    h += '<button class="boot" onclick="botenGa(\'' + esc(b.ip) + '\')">&#9875; ' + esc(b.naam) + '<small>' + esc(b.ip) + '</small></button>';
+    h += '<button class="boot" onclick="botenGa(\'' + esc(b.ip) + '\')"><span class="ico">&#9875;</span>' + esc(b.naam) + '<small>master &middot; ' + esc(b.ip) + '</small></button>';
   });
   document.getElementById('botenLijst').innerHTML = h;
   document.getElementById('botenSluit').style.display = auto ? 'none' : '';
@@ -1985,7 +2042,7 @@ function botenRender(autoOpen){
   var meer = (botenData.boten || []).length > 0;
   document.getElementById('botenBtn').style.display = meer ? '' : 'none';
   var gekozen = false; try{ gekozen = !!sessionStorage.getItem('bkos_gekozen'); }catch(e){}
-  if (autoOpen && meer && !gekozen && location.hostname === 'bkos.local') botenKies(true);
+  if (autoOpen && meer && !gekozen) botenKies(true);
 }
 function botenLaad(eerste){
   fetch('/boten').then(function(r){ return r.json(); }).then(function(d){ botenData = d; botenRender(eerste); }).catch(function(){});
@@ -2013,6 +2070,104 @@ function renderBlokLijst(d){
 }
 function blokWis(i){ if (needAuth()) return; send({t:'blok_wis', i:i}); }
 function blokWisAlles(){ if (needAuth()) return; send({t:'blok_wis', alles:1}); }
+
+
+// ─── BKOS-weergave ───────────────────────────────────────────────────────────
+// Bouwt het scherm van de boordcomputer na (liggend 800x480 of staand), met dezelfde navigatiebalk.
+// SYNCHROON: webapp en boordcomputer staan altijd op hetzelfde scherm (wissel je op de een, dan volgt de
+// ander). LOS: elk apparaat kiest zelf. Schermen waar je geen toegang toe hebt (zie min-niveau, gelijk
+// aan _scherm_min_niveau() in bkos_client.ino) worden geblurd met een melding getoond; de server dwingt
+// de toegang sowieso zelf af.
+var BK_SCHERMEN = {
+  0:  {n:'HOME',      tab:'boot',         min:NIVEAU_GAST},
+  20: {n:'HAVEN',     tab:'huis',         min:NIVEAU_GAST},
+  15: {n:'PANEEL',    tab:'boot',         min:NIVEAU_GAST},
+  24: {n:'HUISPANEEL',tab:'huis',         min:NIVEAU_GAST},
+  1:  {n:'IO',        tab:'io',           min:NIVEAU_EIGENAAR},
+  2:  {n:'METEO',     tab:'onbekend',     min:NIVEAU_GAST},
+  3:  {n:'CONFIG',    tab:'instellingen', min:NIVEAU_EIGENAAR},
+  21: {n:'BESTANDEN', tab:'fotos',        min:NIVEAU_EIGENAAR},
+  5:  {n:'INFO',      tab:'info',         min:NIVEAU_GEEN}
+};
+var BK_NAV = [[0,'HOME'],[1,'IO'],[2,'METEO'],[15,'PANEEL'],[21,'BESTANDEN'],[3,'CONFIG'],[5,'INFO']];
+var BK_NAAM = {4:'WIFI',7:'IO CFG',8:'APPS',11:'VICTRON',12:'NETWERK',13:'BRUG',14:'MELDINGEN',16:'BERICHT',17:'TIJD',18:'LAMPEN',19:'KLEUR',22:'GASTEN',23:'APPSTORE',25:'POST'};
+function _bkLs(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
+function _bkLsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+var bkosAan = _bkLs('bkos_weergave','klassiek') === 'bkos';
+var bkosSync = _bkLs('bkos_sync','1') !== '0';
+var bkosStandKeuze = _bkLs('bkos_stand','auto');
+var bkosScherm = 5, bkosBoardScherm = -1;
+function bkosLiggend(){
+  if (bkosStandKeuze === 'liggend') return true;
+  if (bkosStandKeuze === 'staand') return false;
+  return window.innerWidth >= window.innerHeight;
+}
+function bkosInfoVoor(s){
+  var d = BK_SCHERMEN[s];
+  if (d) return d;
+  return {n: BK_NAAM[s] || ('SCHERM ' + s), tab:'onbekend', min:NIVEAU_EIGENAAR};
+}
+function bkosNavBouw(){
+  var h = BK_NAV.map(function(b){
+    var d = BK_SCHERMEN[b[0]];
+    var act = (bkosScherm === b[0]) || (b[0] === 0 && bkosScherm === 20) || (b[0] === 15 && bkosScherm === 24);
+    var slot = niveau < d.min;
+    return '<button class="' + (act?'act ':'') + (slot?'slot':'') + '" onclick="bkosGa(' + b[0] + ')">' + (slot?'&#128274; ':'') + b[1] + '</button>';
+  }).join('');
+  document.getElementById('bkosNav').innerHTML = h;
+}
+function bkosToon(s){
+  bkosScherm = s;
+  var d = bkosInfoVoor(s);
+  setTab(d.tab);
+  if (d.tab === 'onbekend') document.getElementById('bkOnbekendKop').textContent = d.n;
+  if (s === 15 || s === 24) { var el = document.getElementById(s === 15 ? 'paneelSection' : 'huisApparatenSection'); if (el && el.scrollIntoView) el.scrollIntoView(); }
+  var geen = niveau < d.min;
+  var wrap = document.querySelector('.wrap');
+  wrap.classList.toggle('geblurd', geen);
+  if (geen) {
+    document.getElementById('bkToegKop').textContent = 'Geen toegang tot ' + d.n;
+    document.getElementById('bkToegTekst').textContent = d.min >= NIVEAU_EIGENAAR
+      ? 'Dit scherm is alleen voor de eigenaar. Log in met de eigenaarspincode om het te bekijken.'
+      : 'Log in met een pincode om dit scherm te bekijken.';
+    document.getElementById('bkToegKnop').style.display = unlocked && niveau >= NIVEAU_GAST && d.min > niveau ? 'none' : '';
+  }
+  bkosNavBouw();
+}
+// Gebruiker kiest een scherm in de app
+function bkosGa(s){
+  bkosToon(s);
+  var d = bkosInfoVoor(s);
+  if (bkosSync && niveau >= d.min && niveau >= NIVEAU_GAST) send({t:'set_scherm', s:s});
+}
+function bkosPas(){
+  document.body.classList.toggle('bkos', bkosAan);
+  document.body.classList.toggle('staand', bkosAan && !bkosLiggend());
+  document.getElementById('weergBtn').textContent = bkosAan ? 'BKOS' : 'KLASSIEK';
+  document.getElementById('bkSyncBtn').textContent = bkosSync ? 'SYNCHROON' : 'ASYNCHROON';
+  document.getElementById('bkSyncBtn').className = bkosSync ? 'act' : '';
+  document.querySelectorAll('#bkosBalk [data-st]').forEach(function(b){ b.className = (b.getAttribute('data-st') === bkosStandKeuze) ? 'act' : ''; });
+  if (!bkosAan) { document.querySelector('.wrap').classList.remove('geblurd'); setTab(actieveTab === 'onbekend' ? 'info' : actieveTab); }
+  bkosAchtergrond();
+}
+function bkosWissel(){
+  bkosAan = !bkosAan; _bkLsSet('bkos_weergave', bkosAan ? 'bkos' : 'klassiek');
+  bkosPas();
+  if (bkosAan) { bkosToon(bkosSync && bkosBoardScherm >= 0 ? bkosBoardScherm : bkosScherm); achtergrondToepassen(); }
+}
+function bkosSyncWissel(){
+  bkosSync = !bkosSync; _bkLsSet('bkos_sync', bkosSync ? '1' : '0'); bkosPas();
+  if (bkosSync && bkosBoardScherm >= 0) bkosToon(bkosBoardScherm);   // de boordcomputer leidt
+}
+function bkosStand(k){ bkosStandKeuze = k; _bkLsSet('bkos_stand', k); bkosPas(); achtergrondToepassen(); }
+// Achtergrondfoto van de pagina ook in het nagebouwde scherm
+function bkosAchtergrond(){
+  var wrap = document.querySelector('.wrap'), bg = document.getElementById('bgFixed');
+  wrap.style.backgroundImage = bkosAan ? bg.style.backgroundImage : '';
+}
+window.addEventListener('resize', function(){ if (bkosAan) { bkosPas(); } });
+bkosPas();
+if (bkosAan) bkosToon(5);
 
 achtergrondToepassen();
 taalToepassen();  // roept ladenPubliek()/ladenBericht()/laadNood() ook meteen aan

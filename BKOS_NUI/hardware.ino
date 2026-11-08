@@ -1020,3 +1020,16 @@ void hw_loop() {
     vorige_touch = aanraking_vast;
 #endif  // PLATFORM_ESP32
 }
+
+// Naar een scherm gaan op verzoek van buiten de touch (webapp, synchrone weergave).
+// Zelfde afhandeling als een tik in de navigatiebalk, maar bewust ZONDER te wekken:
+// scherm_touched/tft_actief blijven onaangeroerd. Welk scherm je ziet loopt synchroon, of het
+// display wakker of gedimd is niet — een gedimd display wisselt dus stil van scherm.
+void hw_scherm_ga(int scherm) {
+    if (scherm == actief_scherm && lua_forceer_app < 0) return;
+    lua_app_sluiten();
+    lua_forceer_app = -1;
+    sb_paneel_open  = false;
+    actief_scherm   = scherm;
+    scherm_bouwen   = true;
+}

@@ -340,6 +340,28 @@ static String _melding_json() {
     return s;
 }
 
+// ─── Scherm-synchronisatie (BKOS-weergave in de webapp) ───────────────────────
+// De webapp kan het scherm van de boordcomputer volgen ("synchroon") en sturen.
+// Minimaal niveau om naar een scherm te navigeren; wie dat niveau niet heeft ziet het
+// scherm in de webapp geblurd met een toegangsmelding.
+static int _scherm_min_niveau(int s) {
+    switch (s) {
+        case SCREEN_INFO: case SCREEN_POST:                              return NIVEAU_GEEN;
+        case SCREEN_MAIN: case SCREEN_HAVEN: case SCREEN_PANEEL:
+        case SCREEN_HUISPANEEL: case SCREEN_METEO:                       return NIVEAU_GAST;
+        default:                                                         return NIVEAU_EIGENAAR;
+    }
+}
+// Schermen waar de webapp naartoe mag sturen (geen kalibratie, OTA of losse Lua-app)
+static bool _scherm_toegestaan(int s) {
+    return s >= 0 && s <= SCREEN_POST && s != SCREEN_LUA_APP && s != SCREEN_CALIBRATIE && s != SCREEN_OTA;
+}
+static String _scherm_json() {
+    String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm; s += '}';
+    return s;
+}
+static int _ws_prev_scherm = -1;
+
 // _verwerk_cmd: alleen Arduino-types in handtekening → prototype OK
 static void _verwerk_cmd(uint8_t num, const String& t) {
     if (t.indexOf(F("\"auth\"")) >= 0) {
@@ -389,7 +411,15 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         return;
     }
 
-    if (t.indexOf(F("\"io_toggle\"")) >= 0) {
+    if (t.indexOf(F("\"set_scherm\"")) >= 0) {
+        int idx = t.indexOf(F("\"s\":"));
+        int sc = (idx >= 0) ? (int)t.substring(idx + 4).toInt() : -1;
+        if (!_scherm_toegestaan(sc)) return;
+        if (_ws_niveau[num] < _scherm_min_niveau(sc)) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        hw_scherm_ga(sc);
+        _ws_prev_scherm = -1;   // loop meldt de wijziging aan alle clients
+
+    } else if (t.indexOf(F("\"io_toggle\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
         int idx = t.indexOf(F("\"i\":"));
         if (idx >= 0) net_io_kanaal_toggle(t.substring(idx + 4).toInt());
@@ -756,6 +786,7 @@ void bkos_ble_verbonden() {
     String m5 = _paneel_json();     _tx(BKOS_BLE_NUM, m5);
     String m6 = _lamp_json();       _tx(BKOS_BLE_NUM, m6);
     String m7 = _huispaneel_json(); _tx(BKOS_BLE_NUM, m7);
+    String m8 = _scherm_json();     _tx(BKOS_BLE_NUM, m8);
 }
 void bkos_ble_los() {
     _ws_klanten[BKOS_BLE_NUM] = false;
@@ -798,6 +829,7 @@ void bkos_client_setup() {
                     String m5 = _paneel_json();  _tx(num, m5);
                     String m6 = _lamp_json();    _tx(num, m6);
                     String m7 = _huispaneel_json(); _tx(num, m7);
+                    String m8 = _scherm_json();  _tx(num, m8);
                     break;
                 }
                 case WStype_DISCONNECTED:
@@ -852,6 +884,11 @@ void bkos_client_loop() {
             _ws_prev_output[i] = io_output[i];
             _ws_prev_input[i] = in_nu;
         }
+    }
+
+    if (actief_scherm != _ws_prev_scherm) {
+        String sc = _scherm_json(); _bc(sc);
+        _ws_prev_scherm = actief_scherm;
     }
 
     if (vaar_modus != _ws_prev_modus || licht_instelling != _ws_prev_licht) {

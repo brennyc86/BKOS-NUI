@@ -133,6 +133,9 @@ extern char boot_app_id[24];
 // Lua app geforceerd open (ongeacht vervangt-veld); -1 = geen
 extern int lua_forceer_app;
 
+// Naar een scherm gaan op verzoek van buiten de touch (webapp, synchrone weergave) — hardware.ino
+void hw_scherm_ga(int scherm);
+
 // Sluit de actieve standalone Lua-app (lua_forceer_app >= 0) -- dezelfde weg
 // als lang indrukken op een fullscreen-app (hardware.ino): direct, of pas na
 // de boordcomputer-pincode als de gebruiker de app zelf vergrendeld heeft.

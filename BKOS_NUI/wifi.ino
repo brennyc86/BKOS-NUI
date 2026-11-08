@@ -231,7 +231,10 @@ static void _wifi_verbinden_intern() {
     // Brendan meldde. Een boordcomputer aan vaste voeding hoeft niet op
     // stroomverbruik te letten, dus uit voor consistent snel/responsief WiFi.
     WiFi.setSleep(false);
-    WiFi.setAutoReconnect(false);
+    // Automatisch opnieuw verbinden AAN (was uit): WiFi moet altijd online blijven. Zonder dit bleef
+    // het toestel na één keer wegvallen offline tot de volgende weerupdate (tot 30 min) — geen
+    // webapp via het eigen netwerk, geen bkos.local, geen meldingen.
+    WiFi.setAutoReconnect(true);
     _wifi_kies_sterkste_ap();
 
     // Eenmalige migratie van oude opslag
@@ -413,7 +416,7 @@ void wifi_hotspot_tick() {
     // zelf (zie toelichting hierboven), maar hier vanuit de achtergrondlus,
     // die pas na de eerste paar seconden voor het eerst draait.
     static bool auto_gedaan = false;
-    if (!auto_gedaan && millis() > 3000) {
+    if (!auto_gedaan && millis() > 15000) {   // vangnet: normaal start netwerk_taak de hotspot al
         auto_gedaan = true;
         wifi_hotspot_starten();
     }
@@ -466,6 +469,10 @@ static void _wifi_verbreken_intern() {
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
 
+    // Hotspot EERST, in deze taak: niet meer tegelijk vanuit de hoofdlus terwijl hier de STA verbindt
+    // (twee taken die tegelijk WiFi.mode()/softAP()/begin()/scan aanroepen verstoren elkaar).
+    wifi_hotspot_starten();
+
     _wifi_verbinden_intern();
     if (wifi_verbonden) {
         ntp_start_sync();
@@ -479,14 +486,32 @@ static void netwerk_taak(void* param) {
         if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
             ota_nieuwer_beschikbaar = true;
     }
-    _wifi_verbreken_intern();
+    // WiFi blijft voortaan altijd verbonden (geen _wifi_verbreken_intern() meer om stroom te sparen).
 
+    unsigned long laatste_cyclus = millis();
+    unsigned long volgende_poging = 0, wachttijd = 10000UL;
     for (;;) {
+        // Elke 5 s: WiFi-bewaker. Bij een opdracht (ulTaskNotify) meteen door naar de updatecyclus.
 #if PLATFORM_ESP32
-        ulTaskNotifyTake(pdTRUE, 60000 / portTICK_PERIOD_MS);
+        uint32_t gewekt = ulTaskNotifyTake(pdTRUE, 5000 / portTICK_PERIOD_MS);
 #else
-        vTaskDelay(60000 / portTICK_PERIOD_MS);
+        vTaskDelay(5000 / portTICK_PERIOD_MS); uint32_t gewekt = 0;
 #endif
+        bool verbonden_nu = (WiFi.status() == WL_CONNECTED);
+        wifi_verbonden = verbonden_nu;                       // altijd de echte stand (was soms verouderd)
+        if (!verbonden_nu && !wifi_ota_modus && (long)(millis() - volgende_poging) >= 0) {
+            _wifi_verbinden_intern();                         // scant/verbindt; zet wifi_verbonden
+            if (wifi_verbonden) { wachttijd = 10000UL; ntp_start_sync(); }
+            else {
+                // 10 s → 20 → 40 → 80 → 120 s; met telefoons op de hotspot max 5 min (een scan laat
+                // hun verbinding even haperen, op zee zonder bekend netwerk heeft vaak proberen geen zin)
+                unsigned long max_w = (WiFi.softAPgetStationNum() > 0) ? 300000UL : 120000UL;
+                wachttijd = (wachttijd * 2 > max_w) ? max_w : wachttijd * 2;
+            }
+            volgende_poging = millis() + wachttijd;
+        }
+        if (!gewekt && millis() - laatste_cyclus < 60000UL) continue;
+        laatste_cyclus = millis();
 
         unsigned long nu = millis();
         bool update_nodig = (!meteo_geladen) ||
@@ -504,8 +529,6 @@ static void netwerk_taak(void* param) {
         bool melding_gevraagd = melding_wacht();   // berichten in de wachtrij?
 
         if (!update_nodig && !wifi_ota_modus && !ota_gevraagd && !getij_gevraagd && !meer_gevraagd && !melding_gevraagd) continue;
-
-        if (WiFi.status() != WL_CONNECTED) _wifi_verbinden_intern();
 
         if (wifi_verbonden) {
             if (meer_gevraagd) {
@@ -530,8 +553,6 @@ static void netwerk_taak(void* param) {
         } else if (getij_gevraagd || meer_gevraagd) {
             getijdata_ophalen_klaar = true;
         }
-
-        if (!wifi_ota_modus) _wifi_verbreken_intern();
     }
 }
 
@@ -717,6 +738,7 @@ bool tijd_handmatig_zetten(int jaar, int maand, int dag, int uur, int minuut) {
 }
 
 void wifi_ontkoppelen() {
+    return;   // WiFi blijft voortaan altijd verbonden (zie netwerk_taak); bewust geen ontkoppelen meer
     if (!wifi_ota_modus) _wifi_verbreken_intern();
 }
 

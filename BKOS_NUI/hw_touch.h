@@ -36,6 +36,8 @@ void ts_kalibratie_opslaan();
 #endif
 
 void ts_setup();
+void ts_gezondheid();      // elke 5 s I2C-ping naar de GT911; bij uitval opnieuw initialiseren (GUI-taak)
+extern int ts_i2c_fout, ts_herstarts;
 bool ts_touched();
 int  touch_x();
 int  touch_y();

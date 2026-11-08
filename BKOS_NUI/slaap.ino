@@ -155,11 +155,11 @@ static char _zwart_vorig[520] = "";
 static void _zwart_opname_nvs(const char* fase, uint32_t gui_tik_delta, const char* sleutel);
 static void _zwart_opname(const char* fase, uint32_t gui_tik_delta) { _zwart_opname_nvs(fase, gui_tik_delta, "zwart"); }
 static void _zwart_opname_nvs(const char* fase, uint32_t gui_tik_delta, const char* sleutel) {
-    char t[200];
-    snprintf(t, sizeof(t), "%s | up %lus | gui-tikken %lu | WiFi st %d verb %d | hotspot %d stations %d | ws %d | touch %lus geleden | RAM int %lu (min %lu, blok %lu) | %s",
-             fase, (unsigned long)(millis() / 1000UL), (unsigned long)gui_tik_delta, (int)WiFi.status(), wifi_verbonden ? 1 : 0,
+    char t[260];
+    snprintf(t, sizeof(t), "%s | up %lus | gui-tikken %lu | WiFi st %d verb %d rssi %d | hotspot %d stations %d | ws %d | touch %lus geleden, i2c %d, herinit %d | RAM int %lu (min %lu, blok %lu) | %s",
+             fase, (unsigned long)(millis() / 1000UL), (unsigned long)gui_tik_delta, (int)WiFi.status(), wifi_verbonden ? 1 : 0, (int)WiFi.RSSI(),
              wifi_hotspot_actief() ? 1 : 0, (int)WiFi.softAPgetStationNum(), bkos_client_klanten(),
-             (unsigned long)((millis() - (unsigned long)scherm_touched) / 1000UL),
+             (unsigned long)((millis() - (unsigned long)scherm_touched) / 1000UL), ts_i2c_fout, ts_herstarts,
              (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), BKOS_NUI_VERSIE);
     Preferences p; p.begin("diag", false); p.putString(sleutel, t); p.end();

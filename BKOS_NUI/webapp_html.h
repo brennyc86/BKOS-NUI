@@ -829,7 +829,14 @@ function submitPin(){
   var v = document.getElementById('pinInput').value;
   if (v.length !== 4){ document.getElementById('pinErr').textContent = '4 cijfers invoeren'; return; }
   pendingPin = v; autoPinSilent = false;
+  document.getElementById('pinErr').textContent = '';
+  if (!ws || ws.readyState !== 1) { document.getElementById('pinErr').textContent = 'Geen verbinding met de boordcomputer \u2014 even wachten of de pagina vernieuwen.'; return; }
   send({t:'auth', pin:v});
+  var poging = v;
+  setTimeout(function(){
+    if (!unlocked && pendingPin === poging && !document.getElementById('overlay').classList.contains('hidden') && !document.getElementById('pinErr').textContent)
+      document.getElementById('pinErr').textContent = 'Geen antwoord van de boordcomputer.';
+  }, 5000);
 }
 document.getElementById('pinInput').addEventListener('keydown', function(e){
   if (e.key === 'Enter') submitPin();

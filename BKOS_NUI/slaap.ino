@@ -6,6 +6,8 @@
 #include "io.h"
 #include "bkos_net.h"
 #include "fout_log.h"
+#include "wifi.h"      // wifi_verbonden — crashmelding pas versturen als er WiFi is
+#include "ota.h"       // BKOS_NUI_VERSIE in de crashmelding
 #include "nav_bar.h"   // sb_waarschuwing_zet() — ATtiny-firmware-te-oud-voor-slaapstand-melding
 #include <Preferences.h>
 
@@ -95,8 +97,60 @@ static const char* _reset_reden_naam(esp_reset_reason_t r) {
 }
 #endif
 
+// ─── Crash-spoor (zie slaap.h) ────────────────────────────────────────────────
+#if PLATFORM_ESP32
+#define SPOOR_MAGIC 0xB0C5D1A6UL
+static RTC_NOINIT_ATTR uint32_t _spoor_magic;
+static RTC_NOINIT_ATTR char     _spoor[24];
+static RTC_NOINIT_ATTR uint32_t _spoor_stack_min;
+#endif
+static char     _spoor_vorig[24] = "";
+static uint32_t _stack_min_vorig = 0;
+static bool     _crash_wacht     = false;
+static char     _crash_tekst[140] = "";
+static uint8_t  _crash_pogingen  = 0;
+
+void bkos_spoor(const char* stap) {
+#if PLATFORM_ESP32
+    strncpy(_spoor, stap ? stap : "", sizeof(_spoor) - 1);
+    _spoor[sizeof(_spoor) - 1] = '\0';
+    _spoor_magic = SPOOR_MAGIC;
+#endif
+}
+const char* bkos_spoor_vorig()     { return _spoor_vorig; }
+uint32_t    bkos_stack_min_vorig() { return _stack_min_vorig; }
+void bkos_stack_meten() {
+#if PLATFORM_ESP32
+    static unsigned long laatste = 0;                               // stack doorzoeken kost tijd: max 1x per 2 s
+    if (millis() - laatste < 2000UL) return;
+    laatste = millis();
+    uint32_t vrij = (uint32_t)uxTaskGetStackHighWaterMark(NULL);   // ESP-IDF: in bytes
+    if (_spoor_magic != SPOOR_MAGIC) return;
+    if (_spoor_stack_min == 0 || vrij < _spoor_stack_min) _spoor_stack_min = vrij;
+#endif
+}
+
+void slaap_diag_loop() {
+#if PLATFORM_ESP32
+    if (!_crash_wacht || !wifi_verbonden || millis() < 70000UL) return;
+    static unsigned long laatste = 0;
+    if (laatste && millis() - laatste < 65000UL) return;
+    laatste = millis();
+    if (fout_log_stuur(FOUT_APP_CRASH, _crash_tekst, "onverwachte herstart") || ++_crash_pogingen >= 5) _crash_wacht = false;
+#endif
+}
+
 void slaap_reset_reden_verwerken() {
 #if PLATFORM_ESP32
+    // Spoor van de vorige run veiligstellen en een nieuw spoor beginnen
+    if (_spoor_magic == SPOOR_MAGIC) {
+        _spoor[sizeof(_spoor) - 1] = '\0';
+        strncpy(_spoor_vorig, _spoor, sizeof(_spoor_vorig) - 1);
+        _stack_min_vorig = _spoor_stack_min;
+    }
+    _spoor_stack_min = 0;
+    bkos_spoor("opstarten");
+
     esp_reset_reason_t reden = esp_reset_reason();
     // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal
     // — alleen alles daarbuiten is een ONVERWACHTE herstart die het waard is om
@@ -110,7 +164,11 @@ void slaap_reset_reden_verwerken() {
     prefs.putString("laatste_reset", omschrijving);
     prefs.end();
 
-    fout_log_stuur(FOUT_APP_CRASH, omschrijving, "onverwachte herstart bij opstarten");  // bewaakt zelf fout_rapportage/token
+    // Niet nu versturen (de 60s-cooldown van fout_log weigert dat bij het opstarten altijd);
+    // slaap_diag_loop() stuurt hem zodra er WiFi is.
+    snprintf(_crash_tekst, sizeof(_crash_tekst), "%s | spoor: %s | min. vrije loopstack: %lu B | versie %s",
+             omschrijving, _spoor_vorig[0] ? _spoor_vorig : "?", (unsigned long)_stack_min_vorig, BKOS_NUI_VERSIE);
+    _crash_wacht = true;
 #endif
 }
 

@@ -22,6 +22,7 @@
 #include "pin_bewaking.h"   // vertraging + zwarte lijst bij foute pincodes
 #include "mac_record.h"     // MAC-adres-onthouden afzendergegevens + berichtlimiet
 #include "wifi.h"           // wifi_mac_voor_ip()
+#include "slaap.h"          // crash-spoor (bkos_spoor) + /status
 #include "fout_log.h"      // fout_log_token_zet/_aanwezig — token plakken via webapp
 #include <WebServer.h>
 
@@ -202,10 +203,12 @@ void webapp_setup() {
     if (_http_gestart) return;
     if (_http_handlers_klaar) { _http.begin(); _http_gestart = true; return; }
     _http.on("/", HTTP_GET, []() {
+        bkos_spoor("http:/");
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HTML);
     });
     // Ingebakken HAVEN-voorbeeldfoto's (voor de BKOS-weergave: de webapp tekent de foto zelf op haar canvas)
     _http.on("/haven/ingebakken", HTTP_GET, []() {
+        bkos_spoor("http:/haven/ingebakken");
         const uint8_t* d; uint32_t n;
         if (!haven_ingebakken_foto(_http.arg("i").toInt(), &d, &n)) { _http.send(404, "text/plain", "niet gevonden"); return; }
         _http.setContentLength(n);
@@ -214,6 +217,7 @@ void webapp_setup() {
     });
     // BKOS-weergave: het boordcomputerscherm pixel voor pixel in de browser (canvas)
     _http.on("/bkos_scherm.js", HTTP_GET, []() {
+        bkos_spoor("http:/bkos_scherm.js");
         _http.sendHeader("Cache-Control", "no-cache");
         _http.send_P(200, "application/javascript; charset=utf-8", WEBAPP_SCHERM_JS);
     });
@@ -231,6 +235,10 @@ void webapp_setup() {
         s += ", ap-ip "; s += WiFi.softAPIP().toString(); s += ", clients "; s += WiFi.softAPgetStationNum(); s += "\n";
         s += "bluetooth-app: "; s += ble_app_status(); s += "\n";
         s += "pinbewaking: zwart "; s += pin_bewaking_zwart_aantal(); s += ", wachtend "; s += pin_bewaking_geblokkeerd_aantal(); s += "\n";
+        s += "spoor voor laatste herstart: "; s += bkos_spoor_vorig()[0] ? bkos_spoor_vorig() : "(onbekend)";
+        s += ", min. vrije loopstack toen: "; s += (unsigned long)bkos_stack_min_vorig(); s += " B\n";
+        s += "vrije loopstack nu: "; s += (unsigned long)uxTaskGetStackHighWaterMark(NULL); s += " B, vrij intern RAM: ";
+        s += (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL); s += " B (min "; s += (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL); s += ")\n";
         bkos_diag_tekst(s);
         _http.send(200, "text/plain; charset=utf-8", s);
     });
@@ -425,6 +433,7 @@ void webapp_setup() {
     // gevalideerd i.p.v. blind geopend, zodat dit geen willekeurig SPIFFS-
     // bestand kan lekken.
     _http.on("/fotos/foto", HTTP_GET, []() {
+        bkos_spoor("http:/fotos/foto");
         String naam = _http.arg("naam");
         int n = haven_gebruikersfoto_aantal();
         bool geldig = false;

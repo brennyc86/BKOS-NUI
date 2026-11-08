@@ -651,14 +651,20 @@ void hw_loop() {
     // prioriteit. Deze lus verwerkt alleen netwerk-gerelateerde en opslag-taken
     // die geen directe schermtoegang nodig hebben.
 
+    bkos_spoor("lus:net");
     net_loop();          // ESP-NOW queue verwerken + heartbeat
     wifi_hotspot_tick();  // sluit de tijdelijke bestandsdeel-hotspot na afloop vanzelf af
     // Geen BKOS_REMOTE_ENABLED-guard meer op de loop-aanroepen zelf: beide
     // functies doen niets zolang ze niet gestart zijn (_gestart-vlag). Starten
     // gebeurt nu uitsluitend vanuit wifi_hotspot_starten()/_stoppen() (wifi.ino),
     // NIET meer automatisch bij opstarten — zie bkos_client.h voor de reden.
+    bkos_spoor("lus:ws");
     bkos_client_loop();  // WebSocket server tick + mDNS (status/besturing)
+    bkos_spoor("lus:http");
     webapp_loop();       // HTTP server tick (afstandsbediening-pagina)
+    bkos_spoor("lus:overig");
+    bkos_stack_meten();
+    slaap_diag_loop();   // uitgestelde crashmelding (met spoor) zodra er WiFi is
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     brug_loop();       // WiFi-brug BLE verbindingscheck (core 3.x only)
 #endif

@@ -553,6 +553,12 @@ static int _ws_prev_scherm = -1;
 
 // _verwerk_cmd: alleen Arduino-types in handtekening → prototype OK
 static void _verwerk_cmd(uint8_t num, const String& t) {
+    {   // spoor: "ws:<type>"
+        char sp[24]; int a = t.indexOf(F("\"t\":\""));
+        String typ = (a >= 0) ? t.substring(a + 5, a + 5 + 18) : String("?");
+        int q = typ.indexOf('"'); if (q >= 0) typ = typ.substring(0, q);
+        snprintf(sp, sizeof(sp), "ws:%s", typ.c_str()); bkos_spoor(sp);
+    }
     if (t.indexOf(F("\"auth\"")) >= 0) {
         int idx = t.indexOf(F("\"pin\":\""));
         if (idx >= 0) {
@@ -1029,6 +1035,7 @@ void bkos_client_setup() {
                         String ra = F("{\"t\":\"auth_ok\",\"niveau\":"); ra += _auto_niveau; ra += '}';
                         _tx(num, ra);
                     }
+                    bkos_spoor("ws:verbonden");
                     _ws_init_nodig[num] = true;   // beginberichten volgen in bkos_client_loop()
                     break;
                 }
@@ -1061,15 +1068,16 @@ static void _ws_init_sturen() {
         if (!_ws_init_nodig[num]) continue;
         _ws_init_nodig[num] = false;
         if (!_ws_klanten[num]) continue;
-        { String m = _io_full_json();    _tx(num, m); }
-        { String m = _state_json();      _tx(num, m); }
-        { String m = _net_json();        _tx(num, m); }
-        { String m = _info_json();       _tx(num, m); }
-        { String m = _paneel_json();     _tx(num, m); }
-        { String m = _lamp_json();       _tx(num, m); }
-        { String m = _huispaneel_json(); _tx(num, m); }
-        { String m = _scherm_json();     _tx(num, m); }
-        { String m = _ui_json();         _tx(num, m); }
+        bkos_spoor("ws:init io");     { String m = _io_full_json();    _tx(num, m); }
+        bkos_spoor("ws:init state");  { String m = _state_json();      _tx(num, m); }
+        bkos_spoor("ws:init net");    { String m = _net_json();        _tx(num, m); }
+        bkos_spoor("ws:init info");   { String m = _info_json();       _tx(num, m); }
+        bkos_spoor("ws:init paneel"); { String m = _paneel_json();     _tx(num, m); }
+        bkos_spoor("ws:init lampen"); { String m = _lamp_json();       _tx(num, m); }
+        bkos_spoor("ws:init huis");   { String m = _huispaneel_json(); _tx(num, m); }
+        bkos_spoor("ws:init scherm"); { String m = _scherm_json();     _tx(num, m); }
+        bkos_spoor("ws:init ui");     { String m = _ui_json();         _tx(num, m); }
+        bkos_spoor("ws:init klaar");
         return;
     }
 }
@@ -1116,8 +1124,9 @@ void bkos_client_loop() {
         static unsigned long ui_ms = 0;
         if (millis() - ui_ms > 500UL) {
             ui_ms = millis();
+            bkos_spoor("ws:ui");
             String u = _ui_json();
-            if (u != _ui_prev) { _bc(u); _ui_prev = u; }
+            if (u != _ui_prev) { bkos_spoor("ws:ui stuur"); _bc(u); _ui_prev = u; }
         }
     }
 

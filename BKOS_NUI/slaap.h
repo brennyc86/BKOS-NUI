@@ -58,3 +58,14 @@ bool slaap_was_deep_wake();  // true als opgestart vanuit deep sleep
 // (heeft het foutrapportage-token nodig als fout_rapportage aanstaat).
 void slaap_reset_reden_verwerken();
 const char* slaap_laatste_onverwachte_reset();  // Nederlandse omschrijving, of "geen bekend"
+
+// ─── Crash-spoor ──────────────────────────────────────────────────────────────
+// bkos_spoor() onthoudt in RTC-geheugen (overleeft een crash/herstart, niet een stroomonderbreking)
+// waar de loopTask mee bezig was. Na een onverwachte herstart gaat dat spoor mee in de crashmelding,
+// die nu pas verstuurd wordt zodra WiFi er is en de 60s-cooldown van fout_log voorbij is
+// (slaap_diag_loop) — bij het opstarten zelf werd hij altijd door die cooldown geweigerd.
+void        bkos_spoor(const char* stap);     // max 23 tekens
+const char* bkos_spoor_vorig();               // spoor van vóór de laatste herstart ("" als onbekend)
+uint32_t    bkos_stack_min_vorig();           // kleinste vrije loopTask-stack (bytes) vóór de laatste herstart, 0 = onbekend
+void        bkos_stack_meten();               // aanroepen vanuit de loopTask
+void        slaap_diag_loop();                // stuurt een uitgestelde crashmelding

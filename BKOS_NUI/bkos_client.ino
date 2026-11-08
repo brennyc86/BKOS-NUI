@@ -546,6 +546,45 @@ static String _info_scherm_json(int niveau) {
     return s;
 }
 
+// METEO → WEER in de BKOS-weergave: dezelfde gegevens als meteo_weer_teken() (screen_meteo.ino)
+static String _meteo_scherm_json() {
+    String s; s.reserve(900); char b[48];
+    s = F("{\"t\":\"meteo_scherm\",\"geladen\":"); s += meteo_geladen ? 1 : 0;
+    s += F(",\"wifi\":"); s += wifi_verbonden ? 1 : 0;
+    s += F(",\"stad\":\""); _ui_esc(s, meteo_weer_stad[0] ? meteo_weer_stad : meteo_stad);
+    s += F("\",\"station\":\""); _ui_esc(s, getij_stations[meteo_station_idx].naam);
+    s += F("\",\"upd\":\"");
+    if (meteo_update_tijd > 0) { struct tm lt; localtime_r(&meteo_update_tijd, &lt); snprintf(b, sizeof(b), "%02d:%02d", lt.tm_hour, lt.tm_min); s += b; }
+    s += F("\",\"code\":"); s += meteo_weer_code; s += F(",\"dag\":"); s += meteo_is_dag ? 1 : 0;
+    snprintf(b, sizeof(b), "%.1f", isnan(meteo_temp) ? 0.0f : meteo_temp); s += F(",\"temp\":\""); s += b;
+    s += F("\",\"oms\":\""); _ui_esc(s, meteo_weer_omschrijving(meteo_weer_code));
+    s += F("\",\"wr\":\""); _ui_esc(s, meteo_wind_richting(meteo_wind_dir));
+    s += F("\",\"wdir\":"); s += meteo_wind_dir;
+    s += F(",\"bft\":"); s += meteo_beaufort(meteo_wind_ms); s += F(",\"bftmax\":"); s += meteo_beaufort(meteo_wind_max);
+    snprintf(b, sizeof(b), "%.1f", isnan(meteo_wind_ms) ? 0.0f : meteo_wind_ms); s += F(",\"ms\":\""); s += b; s += '"';
+    if (meteo_zonsopgang > 0 && meteo_zonsondergang > meteo_zonsopgang) {
+        struct tm a, o; localtime_r(&meteo_zonsopgang, &a); localtime_r(&meteo_zonsondergang, &o);
+        snprintf(b, sizeof(b), "%02d:%02d", a.tm_hour, a.tm_min); s += F(",\"zop\":\""); s += b;
+        snprintf(b, sizeof(b), "%02d:%02d", o.tm_hour, o.tm_min); s += F("\",\"zon\":\""); s += b;
+        long duur = meteo_zonsondergang - meteo_zonsopgang;
+        snprintf(b, sizeof(b), "%ldh%02ldm daglicht", duur / 3600, (duur % 3600) / 60); s += F("\",\"duur\":\""); s += b;
+        time_t nu = time(nullptr); float fr = 0.5f;
+        if (nu >= meteo_zonsopgang && nu <= meteo_zonsondergang) fr = (float)(nu - meteo_zonsopgang) / (float)(meteo_zonsondergang - meteo_zonsopgang);
+        else fr = (nu > meteo_zonsondergang) ? 1.0f : 0.0f;
+        snprintf(b, sizeof(b), "%.3f", fr); s += F("\",\"frac\":"); s += b;
+    }
+    { time_t nu = time(nullptr); struct tm lt; localtime_r(&nu, &lt); s += F(",\"wday\":"); s += lt.tm_wday; }
+    s += F(",\"dagen\":[");
+    for (int i = 0; i < 7; i++) {
+        if (i) s += ',';
+        s += '['; s += meteo_dag_code[i];
+        snprintf(b, sizeof(b), ",%.0f,%.0f,\"", isnan(meteo_dag_temp_max[i]) ? 0.0f : meteo_dag_temp_max[i], isnan(meteo_dag_temp_min[i]) ? 0.0f : meteo_dag_temp_min[i]); s += b;
+        _ui_esc(s, meteo_wind_richting(meteo_dag_wind_dir[i])); s += F("\","); s += meteo_beaufort(meteo_dag_wind[i]); s += ']';
+    }
+    s += F("]}");
+    return s;
+}
+
 static String _scherm_json() {
     String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm; s += '}';
     return s;
@@ -593,6 +632,11 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         }
         return;
     }
+    if (t.indexOf(F("\"meteo_scherm\"")) >= 0) {   // weer is voor iedereen zichtbaar (ook op /info/publiek-niveau)
+        String r = _meteo_scherm_json();
+        _tx(num, r);
+        return;
+    }
     if (t.indexOf(F("\"info_scherm\"")) >= 0) {   // openbaar: de inhoud hangt zelf af van het niveau
         String r = _info_scherm_json(_ws_niveau[num]);
         _tx(num, r);
@@ -618,12 +662,12 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         int idx = t.indexOf(F("\"s\":"));
         int sc = (idx >= 0) ? (int)t.substring(idx + 4).toInt() : -1;
         if (!_scherm_toegestaan(sc)) return;
-        if (_ws_niveau[num] < _scherm_min_niveau(sc)) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        if (_ws_niveau[num] < _scherm_min_niveau(sc)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         hw_scherm_ga(sc);
         _ws_prev_scherm = -1;   // loop meldt de wijziging aan alle clients
 
     } else if (t.indexOf(F("\"io_toggle\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         int idx = t.indexOf(F("\"i\":"));
         if (idx >= 0) net_io_kanaal_toggle(t.substring(idx + 4).toInt());
 
@@ -634,7 +678,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             if (i >= 0 && i < paneel_aantal()) {
                 const char* naam = paneel_knop_naam(i);
                 if (_ws_niveau[num] >= io_min_niveau_voor_naam(naam)) net_io_apparaat_toggle(naam);
-                else { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); }
+                else { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); }
             }
         }
 
@@ -645,7 +689,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             if (i >= 0 && i < huispaneel_aantal()) {
                 const char* naam = huispaneel_knop_naam(i);
                 if (_ws_niveau[num] >= io_min_niveau_voor_naam(naam)) net_io_apparaat_toggle(naam);
-                else { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); }
+                else { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); }
             }
         }
 
@@ -653,7 +697,8 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         int idx = t.indexOf(F("\"m\":"));
         if (idx >= 0) {
             byte nieuw = (byte)t.substring(idx + 4).toInt();
-            if (nieuw != vaar_modus) licht_cfg_idx = 0;
+            if (nieuw == vaar_modus) licht_cfg_idx++;    // tweede tik: alternatieve configuratie (io_verlichting_update wikkelt rond)
+            else licht_cfg_idx = 0;
             vaar_modus = nieuw;
             io_verlichting_update();
             net_app_staat_sturen();
@@ -687,7 +732,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
                 char naam[16]; snprintf(naam, sizeof(naam), "**IL_%d", nr);
                 net_io_apparaat_toggle(naam);
             } else {
-                String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r);
+                String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r);
             }
         }
 
@@ -729,7 +774,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
     // dus deze extra check is strikt genomen dubbel op, maar maakt elke case
     // hier zelfstandig leesbaar/veilig ook als de volgorde ooit verandert.
     } else if (t.indexOf(F("\"instellingen_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         String s = _instellingen_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"instellingen_set\"")) >= 0) {
@@ -765,7 +810,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         _tx(num, r);
 
     } else if (t.indexOf(F("\"gast_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         String s = _gast_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"gast_toevoegen\"")) >= 0) {
@@ -823,7 +868,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         String lijst = _gast_json(); _tx(num, lijst);
 
     } else if (t.indexOf(F("\"melding_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         String s = _melding_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"melding_set\"")) >= 0) {
@@ -865,7 +910,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         _tx(num, r);
 
     } else if (t.indexOf(F("\"blok_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         String s; pin_bewaking_lijst_json(s); _tx(num, s);
 
     } else if (t.indexOf(F("\"blok_wis\"")) >= 0) {
@@ -875,7 +920,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         String s; pin_bewaking_lijst_json(s); _tx(num, s);
 
     } else if (t.indexOf(F("\"berichtlimiet_get\"")) >= 0) {
-        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         String s = _berichtlimiet_json(); _tx(num, s);
 
     } else if (t.indexOf(F("\"berichtlimiet_set\"")) >= 0) {

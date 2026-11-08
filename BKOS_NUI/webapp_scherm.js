@@ -237,7 +237,9 @@ var BKS = (function () {
     toegang: 0,
     web: { ing: false, verb: false, sync: true },   // alleen webapp: ingelogd / verbonden / synchroon (gezet door de pagina)
     info: null,                                     // INFO-scherm (bericht 'info_scherm' van de boordcomputer)
-    ber: null, berFlits: null                       // BERICHT-scherm: {presets, aan, nood, anker} + bevestigingsbalk
+    ber: null, berFlits: null,                      // BERICHT-scherm: {presets, aan, nood, anker} + bevestigingsbalk
+    io: null,                                       // IO-scherm: {o,i,r,n,lbl} uit io_full / io_delta
+    meteo: null                                     // METEO → WEER (bericht 'meteo_scherm')
   };
 
   // ── Statusbalk (nav_bar.ino) ───────────────────────────────────────────────
@@ -428,7 +430,7 @@ var BKS = (function () {
   var navScroll = 0;
   var navMidden = [];   // [{l,s}]
   var zones = [];       // klikzones, gevuld tijdens het tekenen
-  function zone(x, y, w, h, fn) { zones.push({ x: x, y: y, w: w, h: h, fn: fn }); }
+  function zone(x, y, w, h, fn, lang) { zones.push({ x: x, y: y, w: w, h: h, fn: fn, lang: lang }); }
   function homeScherm() { return S.h ? SC.HAVEN : SC.MAIN; }
   function navBar(actief) {
     var y = NAV_Y, cy = y + NAV_H / 2;
@@ -682,7 +684,10 @@ var BKS = (function () {
     VM_ALLE.forEach(function (m) {
       if (!(mask & m.bit)) return;
       modusKnop(cxs[n], cys[n], MKNOP_W, MKNOP_H, m.naam, m.ic, m.kl, S.modus === m.modus);
-      zone(cxs[n], cys[n], MKNOP_W, MKNOP_H, function () { return { stuur: { t: 'set_modus', m: m.modus } }; });
+      // Kort: vaarmodus (nogmaals op de actieve = alternatieve verlichting). Lang (HAVEN/ANKER): HAVEN-dashboard,
+      // zoals screen_main_lang_indruk() op het toestel.
+      zone(cxs[n], cys[n], MKNOP_W, MKNOP_H, function () { return { stuur: { t: 'set_modus', m: m.modus } }; },
+           (m.modus === 0 || m.modus === 3) ? function () { return { gaNaar: SC.HAVEN }; } : null);
       n++;
     });
     autoKnop();
@@ -1063,6 +1068,165 @@ var BKS = (function () {
     navBar(SC.INFO);
   }
 
+  // ── IO OVERZICHT (screen_io.ino) ───────────────────────────────────────────
+  var IO_RIJ_H = 44, IO_RIJEN = Math.trunc(CONTENT_H / IO_RIJ_H), ioPagina = 0;
+  var C_LIGHT_OFF = RGB(18, 22, 38), C_LIGHT_COOLING = RGB(160, 80, 0), C_LIGHT_PENDING = RGB(180, 160, 50);
+  function ioStaat(k) {   // io_licht_staat(): ingang = AAN/UIT; uitgang = UIT / KOELT / WACHT / AAN
+    var d = S.io, aan = d.o[k] === 1 || d.o[k] === 3, inn = !!d.i[k];
+    if (d.r[k] === 1) return inn ? 3 : 0;
+    return aan ? (inn ? 3 : 2) : (inn ? 1 : 0);
+  }
+  function schermIO() {
+    fillRect(0, 0, W, H, C_BG);
+    var d = S.io, n = d ? (d.n || []).length : 0, nPag = Math.max(1, Math.ceil(n / IO_RIJEN));
+    if (ioPagina > nPag - 1) ioPagina = nPag - 1;
+    sbBasis();
+    tekst('IO OVERZICHT', 86, (SB_H - 16) >> 1, 2, C_CYAN);
+    // Bladeren (op het toestel op TFT_W-340; hier links van het webapp-klokvenster)
+    var px = WEB_ZWART_X - 8 - 216, voor = ioPagina > 0, achter = ioPagina < nPag - 1;
+    fillRoundRect(px, 4, 80, SB_H - 8, KNOP_R, voor ? C_SURFACE2 : C_SURFACE); tekst('< VORIG', px + ((80 - 84) >> 1), (SB_H - 16) >> 1, 2, voor ? C_TEXT : C_TEXT_DIM);
+    var pag = (ioPagina + 1) + '/' + nPag; tekst(pag, px + 86 + ((44 - pag.length * 12) >> 1), (SB_H - 16) >> 1, 2, C_TEXT_DIM);
+    fillRoundRect(px + 136, 4, 80, SB_H - 8, KNOP_R, achter ? C_SURFACE2 : C_SURFACE); tekst('VOLG >', px + 136 + ((80 - 72) >> 1), (SB_H - 16) >> 1, 2, achter ? C_TEXT : C_TEXT_DIM);
+    if (voor) zone(px, 0, 80, SB_H, function () { return { ioPagina: -1 }; });
+    if (achter) zone(px + 136, 0, 80, SB_H, function () { return { ioPagina: 1 }; });
+    if (!d) { tekst('IO wordt geladen...', 18, CONTENT_Y + 16, 2, C_TEXT_DIM); navBar(SC.IO); return; }
+    var kleuren = [C_LIGHT_OFF, C_LIGHT_COOLING, C_LIGHT_PENDING, C_GREEN], txt = ['UIT', 'KOELT', 'WACHT', 'AAN'];
+    for (var r = 0; r < IO_RIJEN; r++) {
+      var k = ioPagina * IO_RIJEN + r, y = CONTENT_Y + r * IO_RIJ_H;
+      fillRect(0, y, W, IO_RIJ_H, (k % 2 === 0) ? C_SURFACE : C_BG); hl(0, y + IO_RIJ_H - 1, W, C_SURFACE2);
+      if (k >= n) continue;
+      var isIn = d.r[k] === 1, st = ioStaat(k);
+      tekst((d.lbl || [])[k] || String(k), 8, y + ((IO_RIJ_H - 8) >> 1), 1, C_TEXT_DIM);
+      tekst(d.n[k] || '', 42, y + ((IO_RIJ_H - 16) >> 1), 2, C_TEXT);
+      if (isIn) { fillRoundRect(440, y + 8, 62, IO_RIJ_H - 16, 4, C_BLUE); tekst('INGANG', 449, y + ((IO_RIJ_H - 8) >> 1), 1, C_WHITE); }
+      fillRoundRect(512, y + 8, 70, IO_RIJ_H - 16, 4, kleuren[st]);
+      tekst(txt[st], 512 + ((70 - txt[st].length * 6) >> 1), y + ((IO_RIJ_H - 8) >> 1), 1, st === 3 ? C_TEXT_DARK : C_TEXT_DIM);
+      if (!isIn) {
+        var aan = d.o[k] === 1 || d.o[k] === 3, sl = aan ? 'AAN' : 'UIT';
+        fillRoundRect(592, y + 6, 90, IO_RIJ_H - 12, 6, aan ? RGB(0, 140, 60) : C_SURFACE2);
+        tekst(sl, 592 + ((90 - sl.length * 12) >> 1), y + ((IO_RIJ_H - 16) >> 1), 2, aan ? C_WHITE : C_TEXT_DIM);
+        zone(592, y, 90, IO_RIJ_H, (function (kk) { return function () { return { stuur: { t: 'io_toggle', i: kk } }; }; })(k));
+      }
+      fillCircle(W - 14, y + (IO_RIJ_H >> 1), 6, d.i[k] ? C_GREEN : C_DARK_GRAY);
+    }
+    navBar(SC.IO);
+  }
+
+  // ── METEO → WEER (screen_meteo.ino meteo_weer_teken) ───────────────────────
+  var M_TAB_H = 38, M_TAB_W = W / 4, M_PANEL_Y = CONTENT_Y + M_TAB_H + 2, M_PANEL_H = H - NAV_H - M_PANEL_Y, meteoTab = 0, meteoDag = 0;
+  function tekstMidden(x, y, w, t, k, g) {   // ui_tekst_midden(): tekst met C_BG-achtergrond, zoals op het toestel
+    var tw = t.length * 6 * g; fillRect(x + ((w - tw) >> 1), y, tw, 8 * g, C_BG); tekst(t, x + ((w - tw) >> 1), y, g, k);
+  }
+  function wZon(cx, cy, r, c) {
+    fillCircle(cx, cy, r, c);
+    for (var a = 0; a < 360; a += 45) { var rd = a * Math.PI / 180; drawLine(Math.trunc(cx + (r + 3) * Math.cos(rd)), Math.trunc(cy + (r + 3) * Math.sin(rd)), Math.trunc(cx + (r + 8) * Math.cos(rd)), Math.trunc(cy + (r + 8) * Math.sin(rd)), c); }
+  }
+  function wWolk(cx, cy, w, h, c) {
+    fillRoundRect(cx - (w >> 1), cy - (h >> 2), w, h >> 1, h >> 2, c);
+    fillCircle(cx - Math.trunc(w / 5), cy - (h >> 2) + 1, Math.trunc(h / 3), c); fillCircle(cx + Math.trunc(w / 6), cy - (h >> 2) - 1, h >> 2, c);
+  }
+  function wRegen(cx, cy, w, h, cc, cr) { wWolk(cx, cy - 4, w, h >> 1, cc); for (var i = -1; i <= 1; i++) drawLine(cx + i * 8, cy + (h >> 2), cx + i * 8 - 3, cy + (h >> 1) + 2, cr); }
+  function wSneeuw(cx, cy, w, h, cc, cs) { wWolk(cx, cy - 4, w, h >> 1, cc); for (var i = -1; i <= 1; i++) { px(cx + i * 8, cy + Math.trunc(h / 3), cs); px(cx + i * 8 + 1, cy + Math.trunc(h / 3), cs); fillCircle(cx + i * 8, cy + (h >> 1), 2, cs); } }
+  function wOnweer(cx, cy, w, h, cc, cl) { wWolk(cx, cy - 4, w, h >> 1, cc); drawLine(cx + 2, cy + (h >> 2), cx - 3, cy + (h >> 2) + 8, cl); drawLine(cx - 3, cy + (h >> 2) + 8, cx + 3, cy + (h >> 2) + 8, cl); drawLine(cx + 3, cy + (h >> 2) + 8, cx - 2, cy + (h >> 1) + 4, cl); }
+  function weerIcoon(code, cx, cy, maat, dag) {
+    var czon = RGB(255, 220, 40), cwolk = RGB(130, 145, 165), cregen = RGB(80, 160, 255), csneeuw = RGB(200, 220, 255), cbl = RGB(255, 230, 50), cmaan = RGB(210, 210, 160), r = maat >> 1;
+    if (code === 0) { if (dag) wZon(cx, cy, r, czon); else { drawCircle(cx, cy, r, cmaan); fillCircle(cx + Math.trunc(r / 3), cy - (r >> 2), Math.trunc(r * 3 / 4), C_BG); } }
+    else if (code <= 2) { if (dag) wZon(cx - (r >> 1), cy, Math.trunc(r * 2 / 3), czon); else fillCircle(cx - (r >> 1), cy, Math.trunc(r * 2 / 3), cmaan); wWolk(cx + Math.trunc(r / 3), cy + (r >> 2), Math.trunc(maat * 2 / 3), maat >> 1, cwolk); }
+    else if (code === 3) wWolk(cx, cy, Math.trunc(maat * 3 / 4), maat >> 1, cwolk);
+    else if (code <= 48) { for (var i = 0; i < 3; i++) hl(cx - r, cy - 4 + i * 8, maat, cwolk); }
+    else if (code <= 67 || (code >= 80 && code <= 82)) wRegen(cx, cy, Math.trunc(maat * 3 / 4), maat >> 1, cwolk, cregen);
+    else if (code <= 77) wSneeuw(cx, cy, Math.trunc(maat * 3 / 4), maat >> 1, cwolk, csneeuw);
+    else wOnweer(cx, cy, Math.trunc(maat * 3 / 4), maat >> 1, cwolk, cbl);
+  }
+  function windKompas(cx, cy, r, graden, bft) {
+    drawCircle(cx, cy, r, C_SURFACE3); drawCircle(cx, cy, r + 1, C_SURFACE2);
+    var rd = (graden - 90) * Math.PI / 180, ax = Math.trunc(cx + (r - 4) * Math.cos(rd)), ay = Math.trunc(cy + (r - 4) * Math.sin(rd));
+    drawLine(Math.trunc(cx - 8 * Math.cos(rd)), Math.trunc(cy - 8 * Math.sin(rd)), ax, ay, C_CYAN); fillCircle(ax, ay, 3, C_CYAN);
+    var b = 'B' + bft; tekst(b, cx - ((b.length * 12) >> 1), cy - 8, 2, C_TEXT);
+  }
+  function zonBoog(cx, cy, r, frac, dag) {
+    for (var a = 0; a <= 180; a += 3) { var rd = a * Math.PI / 180; fillRect(Math.trunc(cx + r * Math.cos(rd)) - 1, Math.trunc(cy - r * Math.sin(rd)) - 1, 3, 3, C_SURFACE3); }
+    var sa = (1 - frac) * Math.PI, sx = Math.trunc(cx + r * Math.cos(sa)), sy = Math.trunc(cy - r * Math.sin(sa)), sc = dag ? RGB(255, 220, 40) : RGB(180, 180, 140);
+    fillCircle(sx, sy, 7, sc);
+    if (dag) for (var b = 0; b < 360; b += 45) { var ra = b * Math.PI / 180; drawLine(sx + Math.trunc(9 * Math.cos(ra)), sy + Math.trunc(9 * Math.sin(ra)), sx + Math.trunc(13 * Math.cos(ra)), sy + Math.trunc(13 * Math.sin(ra)), sc); }
+  }
+  function knopKlein(x, y, w, h, t, bg, fg) { fillRoundRect(x, y, w, h, KNOP_R, bg); tekst(t, x + ((w - t.length * 12) >> 1), y + ((h - 16) >> 1), 2, fg); }
+  function schermMeteo() {
+    fillRect(0, 0, W, H, C_BG);
+    var m = S.meteo;
+    sbBasis();
+    tekst('METEO', 86, (SB_H - 16) >> 1, 2, C_CYAN);
+    setTextSize(1);
+    tekst(m ? (m.geladen ? m.station + (m.upd ? '  ' + m.upd : '') : (m.wifi ? 'Ophalen...' : 'Geen WiFi')) : '', 180, (SB_H - 8) >> 1, 1, C_TEXT_DIM);
+    var tabs = ['WEER', 'GETIJ', 'LOCATIE', 'STROOM'];
+    fillRect(0, CONTENT_Y, W, M_TAB_H + 2, C_BG);
+    for (var i = 0; i < 4; i++) {
+      var x = i * M_TAB_W, act = i === meteoTab;
+      fillRect(x, CONTENT_Y, M_TAB_W, M_TAB_H, act ? C_SURFACE2 : C_SURFACE);
+      if (act) hl(x, CONTENT_Y + M_TAB_H - 2, M_TAB_W, C_CYAN);
+      vl(x + M_TAB_W - 1, CONTENT_Y, M_TAB_H, C_SURFACE3);
+      tekstMidden(x, CONTENT_Y + 6, M_TAB_W, tabs[i], act ? C_CYAN : C_TEXT_DIM, 1);
+      zone(x, CONTENT_Y, M_TAB_W, M_TAB_H, (function (t) { return function () { return { meteoTab: t }; }; })(i));
+    }
+    hl(0, CONTENT_Y + M_TAB_H, W, C_SURFACE3);
+    var PY = M_PANEL_Y, PH = M_PANEL_H;
+    if (meteoTab !== 0) {
+      fillRoundRect(6, PY + 4, W - 12, 80, 8, C_SURFACE);
+      tekstMidden(6, PY + 22, W - 12, tabs[meteoTab], C_CYAN, 2);
+      tekstMidden(6, PY + 52, W - 12, 'Dit tabblad is (nog) alleen op de boordcomputer zelf te zien', C_TEXT_DIM, 1);
+      navBar(SC.METEO); return;
+    }
+    if (!m || !m.geladen) {
+      fillRoundRect(6, PY + 4, W - 12, 80, 8, C_SURFACE);
+      tekst(m ? m.stad : '', 16, PY + 10, 2, C_CYAN);
+      tekstMidden(6, PY + 44, W - 12, !m ? 'Weerdata laden...' : m.wifi ? 'Weerdata ophalen...' : 'Geen WiFi - kan geen weerdata laden', C_TEXT_DIM, 2);
+      navBar(SC.METEO); return;
+    }
+    var lx = 6, ly = PY + 4, lw = 476, lh = 166;
+    fillRoundRect(lx, ly, lw, lh, 8, C_SURFACE);
+    tekst(m.stad, lx + 96, ly + 6, 2, C_CYAN);
+    weerIcoon(m.code, lx + 44, ly + (lh >> 1), 52, !!m.dag);
+    tekst(m.temp, lx + 96, ly + 30, 4, C_TEXT); tekst(' ' + DEG + 'C', lx + 96 + m.temp.length * 24, ly + 30, 2, C_TEXT_DIM);
+    var d0 = (m.dagen || [])[0] || [0, 0, 0, '', 0];
+    tekst('max ' + Number(d0[1]).toFixed(1) + DEG + '   min ' + Number(d0[2]).toFixed(1) + DEG, lx + 96, ly + 62, 1, C_TEXT_DIM);
+    tekst(m.oms, lx + 96, ly + 78, 2, C_TEXT);
+    tekst('Wind: ' + m.wr + '  B' + m.bft + '  (' + m.ms + ' m/s)   stoten: B' + m.bftmax, lx + 96, ly + 108, 1, C_TEXT_DIM);
+    windKompas(lx + lw - 52, ly + (lh >> 1), 36, m.wdir, m.bft);
+    var rx = lx + lw + 8, ry = ly, rw = W - rx - 6, rh = lh;
+    fillRoundRect(rx, ry, rw, rh, 8, C_SURFACE);
+    tekstMidden(rx, ry + 6, rw, 'DAGLICHT', C_CYAN, 1);
+    if (m.zop) {
+      var cx = rx + (rw >> 1), cy = ry + rh - 32, r = Math.min((rw >> 1) - 18, rh - 56);
+      hl(rx + 10, cy, rw - 20, C_SURFACE2);
+      zonBoog(cx, cy, r, m.frac, !!m.dag);
+      tekst(m.zop, rx + 8, cy + 6, 1, RGB(255, 200, 80)); tekst(m.zon, rx + rw - m.zon.length * 6 - 8, cy + 6, 1, RGB(255, 200, 80));
+      tekstMidden(rx, ry + rh - 14, rw, m.duur, C_TEXT_DIM, 1);
+    } else tekstMidden(rx, ry + (rh >> 1) - 4, rw, 'Geen zondata', C_TEXT_DIM, 1);
+    var navY = ly + lh + 6, navH = 20, dy = navY + navH + 2, dh = PH - lh - 14 - navH - 2, dw = Math.trunc((W - 12) / 4) - 4;
+    fillRect(6, navY, W - 12, navH, C_SURFACE);
+    var kl = meteoDag > 0, kr = meteoDag + 4 < 7;
+    knopKlein(6, navY, 36, navH, '<', kl ? C_SURFACE2 : C_SURFACE, kl ? C_TEXT : C_TEXT_DIM);
+    knopKlein(W - 42, navY, 36, navH, '>', kr ? C_SURFACE2 : C_SURFACE, kr ? C_TEXT : C_TEXT_DIM);
+    if (kl) zone(6, navY, 36, navH, function () { return { meteoDag: -1 }; });
+    if (kr) zone(W - 42, navY, 36, navH, function () { return { meteoDag: 1 }; });
+    tekstMidden(42, navY + 2, W - 84, 'Dag ' + (meteoDag + 1) + '-' + Math.min(meteoDag + 4, 7) + ' van 7', C_TEXT_DIM, 1);
+    var afk = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'];
+    for (var j = 0; j < 4; j++) {
+      var di = meteoDag + j; if (di >= 7) break;
+      var dd = (m.dagen || [])[di]; if (!dd) continue;
+      var bx = 6 + j * (dw + 4), vndg = di === 0;
+      fillRoundRect(bx, dy, dw, dh, 6, vndg ? C_SURFACE2 : C_SURFACE);
+      if (vndg) drawRoundRect(bx, dy, dw, dh, 6, C_SURFACE3);
+      var nm = di === 0 ? 'Vndg' : di === 1 ? 'Mrgn' : afk[(m.wday + di) % 7];
+      tekstMidden(bx, dy + 5, dw, nm, vndg ? C_CYAN : C_TEXT_DIM, 1);
+      weerIcoon(dd[0], bx + (dw >> 1), dy + (dh >> 1) - 8, 28, true);
+      tekstMidden(bx, dy + dh - 26, dw, dd[1] + '/' + dd[2] + DEG, C_TEXT, 1);
+      tekstMidden(bx, dy + dh - 14, dw, dd[3] + ' B' + dd[4], C_TEXT_DIM, 1);
+      drawRoundRect(bx, dy, dw, dh, 6, C_SURFACE3);
+    }
+    navBar(SC.METEO);
+  }
+
   // ── BERICHT (screen_bericht.ino) ───────────────────────────────────────────
   var BER_HDR_H = 28, BER_KOL = 2, BER_GAP = 8, BER_NOOD_LBL_H = 18;
   function berNood() {
@@ -1131,10 +1295,28 @@ var BKS = (function () {
   function init(canvas, opt) {
     cv = canvas; opties = opt || {}; cv.width = W; cv.height = H; ctx = cv.getContext('2d');
     imgData = ctx.createImageData(W, H); u32 = new Uint32Array(imgData.data.buffer);
-    cv.addEventListener('click', function (e) {
-      var r = cv.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) * W / r.width), y = Math.floor((e.clientY - r.top) * H / r.height);
-      klik(x, y);
+    function pos(e) { var r = cv.getBoundingClientRect(); return { x: Math.floor((e.clientX - r.left) * W / r.width), y: Math.floor((e.clientY - r.top) * H / r.height) }; }
+    var langTimer = null, langGedaan = false;
+    cv.addEventListener('pointerdown', function (e) {
+      var p = pos(e); langGedaan = false; clearTimeout(langTimer);
+      langTimer = setTimeout(function () { if (langKlik(p.x, p.y)) langGedaan = true; }, 700);   // LANG_DRUK_MS op het toestel
     });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { cv.addEventListener(ev, function () { clearTimeout(langTimer); }); });
+    cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });   // lang drukken op touch opent anders een menu
+    cv.addEventListener('click', function (e) {
+      if (langGedaan) { langGedaan = false; return; }   // lang ingedrukt: de korte actie niet ook nog uitvoeren
+      var p = pos(e); klik(p.x, p.y);
+    });
+  }
+  function treffer(z, x, y) { return z.cirkel ? ((x - z.x) * (x - z.x) + (y - z.y) * (y - z.y) <= z.r * z.r) : (x >= z.x && x < z.x + z.w && y >= z.y && y < z.y + z.h); }
+  function langKlik(x, y) {
+    for (var i = 0; i < zones.length; i++) {
+      var z = zones[i]; if (!treffer(z, x, y)) continue;
+      if (!z.lang) return false;
+      var a = z.lang(); if (a && opties.actie) opties.actie(a);
+      return true;
+    }
+    return false;
   }
   function klik(x, y) {
     for (var i = 0; i < zones.length; i++) {
@@ -1144,6 +1326,9 @@ var BKS = (function () {
       if (a.navScroll) { navScroll = Math.max(0, navScroll + a.navScroll); teken(); return; }
       if (a.hvScroll) { hvScroll = Math.max(0, Math.min(hvMaxScroll, hvScroll + a.hvScroll)); teken(); return; }
       if (a.infoTab != null) { infoTab = a.infoTab; teken(); return; }
+      if (a.ioPagina) { ioPagina = Math.max(0, ioPagina + a.ioPagina); teken(); return; }
+      if (a.meteoTab != null) { meteoTab = a.meteoTab; teken(); return; }
+      if (a.meteoDag) { meteoDag = Math.max(0, Math.min(3, meteoDag + a.meteoDag)); teken(); return; }
       if (opties.actie) opties.actie(a);
       return;
     }
@@ -1157,15 +1342,19 @@ var BKS = (function () {
     else if (m.t === 'paneel') S.paneel = m.items || [];
     else if (m.t === 'info') { S.bootnaam = m.boot || ''; S.versie = m.ver || ''; }
     else if (m.t === 'info_scherm') S.info = m;
+    else if (m.t === 'meteo_scherm') S.meteo = m;
+    else if (m.t === 'io_full') S.io = { o: m.o || [], i: m.i || [], r: m.r || [], n: m.n || [], lbl: m.lbl || [] };
+    else if (m.t === 'io_delta' && S.io && m.ch < S.io.o.length) { S.io.o[m.ch] = m.o; S.io.i[m.ch] = m.i; }
     else if (m.t === 'ber') S.ber = m;
   }
   // Geeft true terug als dit scherm volledig door de canvas getekend wordt
-  function volledig(scherm) { return scherm === SC.MAIN || scherm === SC.HAVEN || scherm === SC.INFO || scherm === SC.BERICHT; }
+  function volledig(scherm) { return scherm === SC.MAIN || scherm === SC.HAVEN || scherm === SC.INFO || scherm === SC.BERICHT || scherm === SC.IO || scherm === SC.METEO; }
   function teken(scherm, titel) {
     if (scherm == null) scherm = S.scherm; S.scherm = scherm; zones = [];
     tintFn = null;
     if (scherm === SC.MAIN) schermMain(); else if (scherm === SC.HAVEN) schermHaven();
     else if (scherm === SC.INFO) schermInfo(); else if (scherm === SC.BERICHT) schermBericht();
+    else if (scherm === SC.IO) schermIO(); else if (scherm === SC.METEO) schermMeteo();
     else schermLeeg(titel || 'BKOS', scherm);
     u32.set(fb); ctx.putImageData(imgData, 0, 0);
   }

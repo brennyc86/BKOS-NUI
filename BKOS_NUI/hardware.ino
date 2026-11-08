@@ -3,6 +3,9 @@
 #include "screen_post.h"
 #include "boot_log.h"
 #include "slaap.h"
+#if PLATFORM_ESP32
+#include "esp_task_wdt.h"   // hardware-waakhond op de hoofdlus
+#endif
 #include "getijdata.h"
 #include "screen_main.h"
 #include "screen_io.h"
@@ -642,6 +645,11 @@ void hw_setup() {
         nullptr,
         1        // Core 1 — zelfde core als loopTask, maar hogere prioriteit
     );
+    // Hardware-waakhond op de hoofdlus (loopTask): staat die 60 s stil — bv. omdat hij samen met de
+    // GUI-taak vastloopt, waardoor de software-waakhond in slaap_diag_loop() zelf niet meer draait —
+    // dan herstart de chip (reset-reden TASK_WDT) en gaan beide sporen mee in de crashmelding.
+    esp_task_wdt_init(60, true);
+    esp_task_wdt_add(NULL);
 #endif
 }
 
@@ -654,6 +662,7 @@ void hw_loop() {
         _hw_achtergrond_init_eenmalig();
     }
 #if PLATFORM_ESP32
+    esp_task_wdt_reset();   // hardware-waakhond (zie hw_setup)
     // ─── Achtergrondlus (Core 1, lage prioriteit) ─────────────────────────────
     // De GUI taak (_gui_taak) beheert alle touch en schermtekening op hogere
     // prioriteit. Deze lus verwerkt alleen netwerk-gerelateerde en opslag-taken

@@ -650,6 +650,7 @@ function connect(){
     var saved = localStorage.getItem(PIN_KEY);
     if (saved && !unlocked) { pendingPin = saved; autoPinSilent = true; send({t:'auth', pin:saved}); }
     if (bkosAan && bkosScherm === 5) send({t:'info_scherm'});   // INFO stond al open vóór de verbinding er was
+    if (bkosAan && bkosScherm === 2) send({t:'meteo_scherm'});
   };
   ws.onclose = function(){ setConn(false); unlocked=false; setLock(false, 0); setTimeout(connect, 2000); };
   ws.onerror = function(){ try{ ws.close(); }catch(e){} };
@@ -766,7 +767,7 @@ function lockClick(){
 function handleMsg(msg){
   if (typeof BKS !== 'undefined') {
     BKS.zet(msg);
-    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm')) bkosTeken();
+    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
   }
   switch(msg.t){
     case 'io_full':
@@ -823,6 +824,9 @@ function handleMsg(msg){
       autoPinSilent = false; break;
     case 'auth_vereist':
       setLock(false, 0); break;
+    case 'geen_recht':   // ingelogd, maar deze pincode mag dit niet (bv. losse IO-kanalen alleen voor de eigenaar)
+      volToast('Dit mag je niet met deze pincode' + (unlocked ? ' (' + (NIVEAU_NAMEN[niveau] || 'gast') + ')' : '') + '. Log in met de eigenaarspincode om dit te schakelen.');
+      break;
     default: break;
   }
 }
@@ -2187,6 +2191,7 @@ function bkosToon(s){
   }
   if (s === 5) send({t:'info_scherm'});
   if (s === 16) berLaden();
+  if (s === 2) send({t:'meteo_scherm'});
   var geen = niveau < d.min;
   wrap.classList.toggle('geblurd', geen);
   if (geen) {
@@ -2201,7 +2206,7 @@ function bkosToon(s){
     document.getElementById('bkToegKnop').style.display = '';
   }
   // Schermen die (nog) niet in de webapp bestaan: duidelijke melding i.p.v. een lege of halve weergave
-  var komt = (s === 2 || s === 11), niet = !volledig && d.tab === 'onbekend';
+  var komt = (s === 11), niet = !volledig && d.tab === 'onbekend';
   wrap.classList.toggle('nietWeb', !geen && niet);
   if (!geen && niet) {
     document.getElementById('bkNietKop').textContent = d.n;
@@ -2219,6 +2224,7 @@ function bkosGa(s){
   if (bkosSyncEff() && niveau >= d.min) send({t:'set_scherm', s:s});
 }
 // Synchroon werkt alleen als je ingelogd bent; daarvoor kiest de webapp altijd zelf zijn scherm
+setInterval(function(){ if (bkosAan && bkosScherm === 2) send({t:'meteo_scherm'}); }, 60000);
 function bkosSyncEff(){ return bkosSync && unlocked && niveau >= NIVEAU_GAST; }
 // Verbindings-/inlogstatus en de sync-keuze doorgeven aan de canvas (slotje + sync-icoon in de statusbalk)
 function bkosWebStaat(){

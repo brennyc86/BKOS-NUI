@@ -1120,9 +1120,12 @@ void bkos_client_loop() {
         _ws_prev_scherm = actief_scherm;
     }
 
-    {   // BKOS-weergave: hooguit 2x/s, en alleen sturen als er iets veranderd is
+    {   // BKOS-weergave: hooguit 1x/s, alleen als er een client is, en alleen sturen als er iets veranderd is
         static unsigned long ui_ms = 0;
-        if (millis() - ui_ms > 500UL) {
+        bool klant = ble_app_verbonden();
+        for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX && !klant; i++) if (_ws_klanten[i]) klant = true;
+        if (!klant) _ui_prev = String();   // geheugen vrijgeven; een nieuwe client krijgt het bij het verbinden
+        else if (millis() - ui_ms > 1000UL) {
             ui_ms = millis();
             bkos_spoor("ws:ui");
             String u = _ui_json();

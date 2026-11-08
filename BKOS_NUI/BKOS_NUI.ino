@@ -1,11 +1,7 @@
 #include "hardware.h"
 
-// loopTask-stack: standaard 8KB. In deze lus draaien de WebSocket- en HTTP-server (bkos_client_loop,
-// webapp_loop), die grote JSON-berichten opbouwen (o.a. het 'ui'-bericht van de BKOS-weergave met
-// snprintf-floats). Op de S3 (genoeg RAM) daarom 16KB, als marge tegen een stack-overloop/herstart.
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-SET_LOOP_TASK_STACK_SIZE(16 * 1024);
-#endif
+// (0.2.261108.8 zette de loopTask-stack hier op 16KB; teruggedraaid in .10: die 8KB extra gaat af
+// van het interne RAM dat Bluetooth en TLS nodig hebben — Bluetooth aanzetten liet het toestel crashen.)
 
 void setup() {
     hw_setup();

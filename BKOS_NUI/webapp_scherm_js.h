@@ -915,6 +915,7 @@ var BKS = (function () {
     }
   }
   function schermHaven() {
+    if (S.ui && S.ui.hf) laadFoto(S.ui.hf, function () { if (opties.opnieuw) opties.opnieuw(); });
     fillRect(0, 0, W, H, C_BG);
     // achtergrondfoto over het hele scherm (de balken tinten er straks overheen)
     for (var i = 0; i < W * H; i++) fb[i] = LUT[foto565 ? foto565[i] : C_BG];
@@ -1137,7 +1138,7 @@ var BKS = (function () {
   }
   function zet(m) {
     if (!m || !m.t) return;
-    if (m.t === 'ui') { S.ui = m; if (m.pal) zetPalet(m.pal); if (m.hf) laadFoto(m.hf, function () { if (opties.opnieuw) opties.opnieuw(); }); }
+    if (m.t === 'ui') { S.ui = m; if (m.pal) zetPalet(m.pal); }   // foto: pas bij het HAVEN-scherm (schermHaven)
     else if (m.t === 'lampen') S.lampen = m;
     else if (m.t === 'huispaneel') S.huis = m.items || [];
     else if (m.t === 'state') { S.modus = m.m; S.licht = m.l; S.h = m.h; }

@@ -21,6 +21,7 @@ volatile bool slaap_actief   = false;
 #if PLATFORM_ESP32
 #include "esp_sleep.h"
 #include "esp_system.h"
+#include "esp_heap_caps.h"   // heap_caps_get_free_size() — diagnose intern RAM
 
 // BEWUST geen RTC_DATA_ATTR: esp_reset_reason() is zelf al elke boot betrouwbaar
 // opvraagbaar (ESP_RST_DEEPSLEEP alleen bij een echte deep-sleep wake). Met
@@ -132,6 +133,21 @@ void bkos_stack_meten() {
 
 void slaap_diag_loop() {
 #if PLATFORM_ESP32
+    static bool gezond_gestuurd = false;
+    if (!gezond_gestuurd && !_crash_wacht && wifi_verbonden && millis() > 120000UL) {
+        static unsigned long gp = 0;
+        if (!gp || millis() - gp > 65000UL) {
+            gp = millis();
+            char t[160];
+            snprintf(t, sizeof(t), "Opgestart en %lus actief | intern RAM vrij %lu B (min %lu, grootste blok %lu) | PSRAM vrij %lu B | versie %s",
+                     (unsigned long)(millis() / 1000UL),
+                     (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+                     (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                     BKOS_NUI_VERSIE);
+            static uint8_t gpog = 0;
+            if (fout_log_stuur(FOUT_ALGEMEEN, t, "gezondheid na opstarten", "gezondheid") || ++gpog >= 3) gezond_gestuurd = true;
+        }
+    }
     if (!_crash_wacht || !wifi_verbonden || millis() < 70000UL) return;
     static unsigned long laatste = 0;
     if (laatste && millis() - laatste < 65000UL) return;

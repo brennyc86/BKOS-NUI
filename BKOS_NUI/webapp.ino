@@ -25,6 +25,7 @@
 #include "slaap.h"          // crash-spoor (bkos_spoor) + /status
 #include "fout_log.h"      // fout_log_token_zet/_aanwezig — token plakken via webapp
 #include <WebServer.h>
+#include "esp_heap_caps.h"   // heap_caps_get_free_size() — diagnose intern RAM
 
 // SD-kaart is alleen aangesloten op de S3 (zie app_manager.cpp) — zelfde
 // platformcheck als screen_bestanden.ino, dus de webapp-Bestanden-tab biedt

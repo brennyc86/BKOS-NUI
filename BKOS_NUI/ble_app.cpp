@@ -134,7 +134,7 @@ void ble_app_setup() {
             p.putBool("poging", false);
             _mislukt = true;
         }
-        _aan = p.getBool("aan", true);     // standaard AAN: boordcomputers moeten ook buiten het netwerk vindbaar zijn
+        _aan = p.getBool("aan", false);    // standaard UIT: BLE-start is nog niet op hardware bewezen stabiel naast WiFi
         p.end();
     }
 }

@@ -472,6 +472,7 @@ static String _ui_json() {
     return s;
 }
 static String _ui_prev;
+static unsigned long _herteken_na_ms = 0;   // tweede hertekening na een webapp-opdracht (zie _verwerk_cmd)
 
 // INFO-scherm van de BKOS-weergave: zelfde velden als screen_info.ino. Wat je ziet hangt af
 // van je niveau: bootgegevens en de naam van de eigenaar zijn openbaar (net als vroeger op de
@@ -885,6 +886,15 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         mac_record_limiet_opslaan();
         String s = _berichtlimiet_json(); _tx(num, s);
     }
+
+    // Iets geschakeld vanuit de webapp (vaarmodus, licht, knop, lamp, interieur, auto): het scherm
+    // van de boordcomputer moet dat ook laten zien. Nu meteen hertekenen, en over 600 ms nog eens
+    // (dan is de IO-terugkoppeling binnen). Wekt het display niet — een zwart scherm tekent stil mee.
+    if (t.indexOf(F("_toggle\"")) >= 0 || t.indexOf(F("\"set_modus\"")) >= 0 || t.indexOf(F("\"set_licht\"")) >= 0 ||
+        t.indexOf(F("\"set_auto\"")) >= 0 || t.indexOf(F("\"lamp_")) >= 0 || t.indexOf(F("\"interieur_")) >= 0) {
+        scherm_bouwen = true;
+        _herteken_na_ms = millis() + 600;
+    }
 }
 
 // Vaste naam voor de voorste boordcomputer: master/standalone meldt zich als "bkos.local" (de
@@ -1094,6 +1104,7 @@ void bkos_client_loop() {
     if (_ws_gestart) {
         _ws.loop();
         _ws_init_sturen();
+        if (_herteken_na_ms && (long)(millis() - _herteken_na_ms) >= 0) { _herteken_na_ms = 0; scherm_bouwen = true; }
         // Opnieuw starten zodra het IP-adres verandert: mDNS dat al draaide vóór de WiFi-verbinding
         // (opstart) of tijdens een herverbinding blijft anders op het netwerk onzichtbaar.
         // Hoogstens eens per 3 s en nooit terwijl de bootzoektaak mDNS gebruikt (anders wordt mDNS

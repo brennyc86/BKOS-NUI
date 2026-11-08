@@ -134,7 +134,7 @@ void ble_app_setup() {
             p.putBool("poging", false);
             _mislukt = true;
         }
-        _aan = p.getBool("aan", false);
+        _aan = p.getBool("aan", true);     // standaard AAN: boordcomputers moeten ook buiten het netwerk vindbaar zijn
         p.end();
     }
 }

@@ -243,42 +243,65 @@ static void _wifi_verbinden_intern() {
         vTaskDelay(300 / portTICK_PERIOD_MS);
     if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
 
-    // 2. Probeer alle opgeslagen netwerken in volgorde
+    // 2. Eerst één keer scannen, dan alleen de opgeslagen netwerken proberen die er nu echt zijn,
+    //    sterkste eerst. Blind alle netwerken af kost per afwezig netwerk ~9 s, op een boot die
+    //    net in een haven aankomt is dat het verschil tussen seconden en minuten tot verbinding.
+    int n_zicht = WiFi.scanNetworks(false, true);   // true = ook verborgen netwerken
     {
         WifiCred wc[WIFI_MAX_CREDS];
         int cnt = _wc_laad(wc);
-        for (int n = 0; n < cnt && WiFi.status() != WL_CONNECTED; n++) {
-            WiFi.begin(wc[n].ssid, wc[n].pass);
-            for (int i = 0; i < 30 && WiFi.status() != WL_CONNECTED; i++)
-                vTaskDelay(300 / portTICK_PERIOD_MS);
+        int sterkte[WIFI_MAX_CREDS], volg[WIFI_MAX_CREDS], nv = 0;
+        bool verborgen = false;
+        for (int s = 0; s < n_zicht; s++) if (WiFi.SSID(s).length() == 0) verborgen = true;
+        for (int n = 0; n < cnt; n++) {
+            int best = -999;
+            for (int s = 0; s < n_zicht; s++)
+                if (WiFi.SSID(s) == wc[n].ssid && WiFi.RSSI(s) > best) best = WiFi.RSSI(s);
+            // scan mislukt of verborgen netwerk in de buurt: dan toch proberen
+            if (best > -999 || n_zicht <= 0 || verborgen) { sterkte[n] = best; volg[nv++] = n; }
+        }
+        for (int a = 1; a < nv; a++) {          // sorteren: sterkste signaal eerst
+            int v = volg[a], b = a - 1;
+            while (b >= 0 && sterkte[volg[b]] < sterkte[v]) { volg[b + 1] = volg[b]; b--; }
+            volg[b + 1] = v;
+        }
+        for (int k = 0; k < nv && WiFi.status() != WL_CONNECTED; k++) {
+            WiFi.begin(wc[volg[k]].ssid, wc[volg[k]].pass);
+            for (int i = 0; i < 45 && WiFi.status() != WL_CONNECTED; i++)
+                vTaskDelay(200 / portTICK_PERIOD_MS);
         }
     }
-    if (WiFi.status() == WL_CONNECTED) { wifi_verbonden = true; return; }
+    if (WiFi.status() == WL_CONNECTED) { WiFi.scanDelete(); wifi_verbonden = true; return; }
 
-    // 3. Auto-verbinden met open netwerken (tracking-optie, PIN-beveiligd)
-    if (wifi_open_auto) {
-        int n_nets = WiFi.scanNetworks();
-        for (int i = 0; i < n_nets; i++) {
-            bool open = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN);
-            if (!open) continue;
-            int rssi = WiFi.RSSI(i);
-            if (rssi < -85) continue;  // signaal te zwak, overslaan
+    // 3. Geen bekend netwerk: auto-verbinden met open netwerken (instelling OPEN WIFI, PIN-beveiligd).
+    //    Een open netwerk met internet gaat voor; zonder internet (bijv. havenportaal) blijft het
+    //    een goede reserve, want de boordcomputer is dan nog steeds bereikbaar voor apparaten
+    //    op datzelfde netwerk (bkos.local, bootkeuze).
+    if (wifi_open_auto && n_zicht > 0) {
+        String reserve = "";
+        for (int i = 0; i < n_zicht && !wifi_verbonden; i++) {
+            if (WiFi.encryptionType(i) != WIFI_AUTH_OPEN) continue;
+            if (WiFi.RSSI(i) < -85) continue;  // signaal te zwak, overslaan
             String ssid_s = WiFi.SSID(i);
+            if (ssid_s.length() == 0) continue;
             WiFi.begin(ssid_s.c_str());
-            for (int j = 0; j < 10 && WiFi.status() != WL_CONNECTED; j++)
-                vTaskDelay(300 / portTICK_PERIOD_MS);
+            for (int j = 0; j < 20 && WiFi.status() != WL_CONNECTED; j++)
+                vTaskDelay(200 / portTICK_PERIOD_MS);
             if (WiFi.status() == WL_CONNECTED) {
-                if (wifi_internet_ok()) {
-                    wifi_verbonden = true;
-                    return;
-                }
-                // Geen internet — ontkoppelen en volgende proberen
+                if (wifi_internet_ok()) { wifi_verbonden = true; break; }
+                if (reserve.length() == 0) reserve = ssid_s;
                 WiFi.disconnect(true);
                 vTaskDelay(500 / portTICK_PERIOD_MS);
-                WiFi.mode(WIFI_STA);
+                WiFi.mode(wifi_hotspot_actief() ? WIFI_AP_STA : WIFI_STA);
             }
         }
+        if (!wifi_verbonden && reserve.length() > 0) {
+            WiFi.begin(reserve.c_str());
+            for (int j = 0; j < 30 && WiFi.status() != WL_CONNECTED; j++)
+                vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
     }
+    WiFi.scanDelete();
 #else
     // Pico: geen gecachte creds — probeer alle opgeslagen netwerken
     _wifi_migreer_oud();

@@ -648,6 +648,7 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
 // altijd via de bootkeuze bereikbaar). Een slave houdt zijn eigen naam, zodat hij bkos.local niet
 // kan inpikken.
 static int _mdns_modus = -1;
+static uint32_t _mdns_ip = 0;   // STA-IP waarmee mDNS is gestart
 static void _mdns_start() {
     if (_mdns_gestart) MDNS.end();
     String hostnaam = String(net_eigen_naam);
@@ -673,6 +674,7 @@ static void _mdns_start() {
     MDNS.addService("http", "tcp", 80);   // webapp
     _mdns_gestart = true;
     _mdns_modus = net_modus;
+    _mdns_ip = (uint32_t)WiFi.localIP();
 }
 
 // ─── Andere boten in dezelfde haven (bootkeuze in de webapp) ──────────────────────────────────
@@ -815,7 +817,9 @@ void bkos_client_loop() {
     ble_app_loop();
     if (_ws_gestart) {
         _ws.loop();
-        if (!_mdns_gestart || _mdns_modus != net_modus) _mdns_start();
+        // Opnieuw starten zodra het IP-adres verandert: mDNS dat al draaide vóór de WiFi-verbinding
+        // (opstart) of tijdens een herverbinding blijft anders op het netwerk onzichtbaar.
+        if (!_mdns_gestart || _mdns_modus != net_modus || _mdns_ip != (uint32_t)WiFi.localIP()) _mdns_start();
         _boten_ververs();
     }
     if (!_ws_gestart && !ble_app_verbonden()) return;

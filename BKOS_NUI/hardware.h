@@ -33,6 +33,7 @@
 // [[project_arduino_prototype_hoisting]].
 #include "screen_bestanden.h"
 #include "gast.h"  // GastPin vroeg zichtbaar (prototype-hoisting, zie project-geheugen)
+#include "pin_bewaking.h"  // vertraging + zwarte lijst bij foute pincodes
 #include "mac_record.h"  // MAC-adres-gebaseerd webapp-inloggen + afzender-tracking
 
 void hw_setup();

@@ -16,6 +16,7 @@
 #include "huispaneel.h"
 #include "screen_main.h"     // paneel_naam_is_exterieur() — licht/apparaat-indeling huispaneel
 #include "lamp.h"            // genummerde lampgroepen — Huis-tab in de webapp
+#include "pin_bewaking.h"   // vertraging + zwarte lijst bij foute pincodes
 #include "gast.h"            // pin_niveau() — eigenaar vs. gastcode
 #include "wifi.h"            // ntp_synced() — gasten-vervaldatum, zie gast.h
 #include "melding.h"         // CallMeBot Signal/WhatsApp — INSTELLINGEN → VERBINDINGEN in de webapp
@@ -347,7 +348,10 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             int s2 = idx + 7, e2 = t.indexOf('"', s2);
             char buf[8] = {0};
             t.substring(s2, e2).toCharArray(buf, sizeof(buf));
-            int niveau = pin_niveau(buf);
+            uint8_t pid[6];
+            if (num == BKOS_BLE_NUM) pin_bewaking_id_ble(pid); else pin_bewaking_id_voor_ip(_ws.remoteIP(num), pid);
+            PinStatus pst; uint32_t psec;
+            int niveau = pin_niveau_bewaakt(pid, buf, &pst, &psec);
             _ws_niveau[num] = niveau;
             String r;
             if (niveau > NIVEAU_GEEN) {
@@ -358,6 +362,10 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
                 // mac_record.h. Alleen zinvol/betrouwbaar via de eigen hotspot.
                 uint8_t mac[6];
                 if (num != BKOS_BLE_NUM && wifi_mac_voor_ip(_ws.remoteIP(num), mac)) mac_record_login_onthoud(mac, buf);
+            } else if (pst == PINSTAT_ZWART) {
+                r = F("{\"t\":\"auth_geblokkeerd\",\"zwart\":true}");
+            } else if (pst == PINSTAT_WACHT) {
+                r = F("{\"t\":\"auth_geblokkeerd\",\"sec\":"); r += psec; r += '}';
             } else {
                 r = F("{\"t\":\"auth_fout\"}");
             }
@@ -611,6 +619,16 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         String r = F("{\"t\":\"melding_test_res\"}");
         _tx(num, r);
 
+    } else if (t.indexOf(F("\"blok_get\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        String s; pin_bewaking_lijst_json(s); _tx(num, s);
+
+    } else if (t.indexOf(F("\"blok_wis\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) return;
+        if (t.indexOf(F("\"alles\"")) >= 0) pin_bewaking_wis_alles();
+        else pin_bewaking_wis((int)_getal_uit(t, "i"));
+        String s; pin_bewaking_lijst_json(s); _tx(num, s);
+
     } else if (t.indexOf(F("\"berichtlimiet_get\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
         String s = _berichtlimiet_json(); _tx(num, s);
@@ -625,18 +643,27 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
     }
 }
 
+// Vaste naam voor de voorste boordcomputer: master/standalone meldt zich als "bkos.local" (de
+// eerste die het doet krijgt die naam; een tweede wijkt volgens de mDNS-regels uit en is dan nog
+// altijd via de bootkeuze bereikbaar). Een slave houdt zijn eigen naam, zodat hij bkos.local niet
+// kan inpikken.
+static int _mdns_modus = -1;
 static void _mdns_start() {
     if (_mdns_gestart) MDNS.end();
     String hostnaam = String(net_eigen_naam);
-    hostnaam.toLowerCase();
-    for (int i = 0; i < (int)hostnaam.length(); i++) {
-        char c = hostnaam[i];
-        if (!isAlphaNumeric(c) && c != '-') hostnaam[i] = '-';
+    if (net_modus == NET_MASTER || net_modus == NET_STANDALONE) {
+        hostnaam = "bkos";
+    } else {
+        hostnaam.toLowerCase();
+        for (int i = 0; i < (int)hostnaam.length(); i++) {
+            char c = hostnaam[i];
+            if (!isAlphaNumeric(c) && c != '-') hostnaam[i] = '-';
+        }
+        while (hostnaam.length() > 0 && hostnaam[0] == '-') hostnaam = hostnaam.substring(1);
+        while (hostnaam.length() > 0 && hostnaam[hostnaam.length()-1] == '-')
+            hostnaam = hostnaam.substring(0, hostnaam.length()-1);
+        if (hostnaam.isEmpty()) hostnaam = "bkos-nui";
     }
-    while (hostnaam.length() > 0 && hostnaam[0] == '-') hostnaam = hostnaam.substring(1);
-    while (hostnaam.length() > 0 && hostnaam[hostnaam.length()-1] == '-')
-        hostnaam = hostnaam.substring(0, hostnaam.length()-1);
-    if (hostnaam.isEmpty()) hostnaam = "bkos-nui";
 
     if (!MDNS.begin(hostnaam.c_str())) return;
     MDNS.addService("bkos", "tcp", BKOS_WS_POORT);
@@ -645,6 +672,56 @@ static void _mdns_start() {
     MDNS.addServiceTxt("bkos", "tcp", "modus", String(net_modus).c_str());
     MDNS.addService("http", "tcp", 80);   // webapp
     _mdns_gestart = true;
+    _mdns_modus = net_modus;
+}
+
+// ─── Andere boten in dezelfde haven (bootkeuze in de webapp) ──────────────────────────────────
+// Elke master zoekt met mDNS naar andere masters/standalone-units en houdt de lijst bij. Het zoeken
+// duurt enkele seconden, dus in een eigen kleine taak (nooit in de GUI- of netwerklus).
+#define BOTEN_MAX 8
+static char     _boten_naam[BOTEN_MAX][28];
+static uint32_t _boten_ip[BOTEN_MAX];
+static volatile int _boten_n = 0;
+static volatile bool _boten_bezig = false;
+static unsigned long _boten_ms = 0;
+
+static void _boten_taak(void*) {
+    char naam[BOTEN_MAX][28]; uint32_t ip[BOTEN_MAX]; int t = 0;
+    int n = MDNS.queryService("bkos", "tcp");
+    uint32_t eigen = (uint32_t)WiFi.localIP();
+    uint32_t eigen_ap = (uint32_t)WiFi.softAPIP();
+    for (int i = 0; i < n && t < BOTEN_MAX; i++) {
+        String modus = MDNS.txt(i, "modus");
+        if (modus.toInt() != NET_MASTER && modus.toInt() != NET_STANDALONE) continue;   // slaves tellen niet mee
+        uint32_t a = (uint32_t)MDNS.IP(i);
+        if (a == 0 || a == eigen || a == eigen_ap) continue;
+        bool dubbel = false; for (int j = 0; j < t; j++) if (ip[j] == a) dubbel = true;
+        if (dubbel) continue;
+        String b = MDNS.txt(i, "boot"); if (b.length() == 0) b = MDNS.txt(i, "comp");
+        if (b.length() == 0) b = "BKOS";
+        strncpy(naam[t], b.c_str(), sizeof(naam[t]) - 1); naam[t][sizeof(naam[t]) - 1] = 0;
+        ip[t++] = a;
+    }
+    for (int i = 0; i < t; i++) { memcpy(_boten_naam[i], naam[i], sizeof(naam[i])); _boten_ip[i] = ip[i]; }
+    _boten_n = t;
+    _boten_bezig = false;
+    vTaskDelete(nullptr);
+}
+
+static void _boten_ververs() {
+    if (_boten_bezig || !_mdns_gestart || WiFi.status() != WL_CONNECTED) return;
+    if (_boten_ms && millis() - _boten_ms < 30000UL) return;
+    _boten_ms = millis();
+    _boten_bezig = true;
+    if (xTaskCreate(_boten_taak, "boten", 4096, nullptr, 1, nullptr) != pdPASS) _boten_bezig = false;
+}
+
+int bkos_boten_aantal() { return WiFi.status() == WL_CONNECTED ? _boten_n : 0; }
+void bkos_boot_info(int i, char* naam, size_t naam_len, char* ip, size_t ip_len) {
+    if (i < 0 || i >= _boten_n) { if (naam_len) naam[0] = 0; if (ip_len) ip[0] = 0; return; }
+    strncpy(naam, _boten_naam[i], naam_len - 1); naam[naam_len - 1] = 0;
+    IPAddress a(_boten_ip[i]);
+    snprintf(ip, ip_len, "%u.%u.%u.%u", a[0], a[1], a[2], a[3]);
 }
 
 // ─── Setup: gebruik lambda zodat WStype_t NIET in standalone functie-handtekening staat ──
@@ -695,7 +772,9 @@ void bkos_client_setup() {
                     // bericht als een handmatige login, dus geen client-wijziging
                     // nodig (handleMsg()'s "auth_ok"-tak reageert hier al op).
                     uint8_t _auto_mac[6]; int _auto_niveau;
-                    if (wifi_mac_voor_ip(_ws.remoteIP(num), _auto_mac) &&
+                    uint8_t _auto_id[6]; pin_bewaking_id_voor_ip(_ws.remoteIP(num), _auto_id);
+                    if (pin_bewaking_status(_auto_id) == PINSTAT_OK &&   // geblokkeerd/zwart = ook geen auto-login
+                        wifi_mac_voor_ip(_ws.remoteIP(num), _auto_mac) &&
                         mac_record_login_probeer(_auto_mac, &_auto_niveau)) {
                         _ws_niveau[num] = _auto_niveau;
                         String ra = F("{\"t\":\"auth_ok\",\"niveau\":"); ra += _auto_niveau; ra += '}';
@@ -736,7 +815,8 @@ void bkos_client_loop() {
     ble_app_loop();
     if (_ws_gestart) {
         _ws.loop();
-        if (!_mdns_gestart) _mdns_start();
+        if (!_mdns_gestart || _mdns_modus != net_modus) _mdns_start();
+        _boten_ververs();
     }
     if (!_ws_gestart && !ble_app_verbonden()) return;
 

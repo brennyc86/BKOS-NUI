@@ -186,6 +186,16 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
 }
 #cropModal .row button.ok{background:var(--cyan);color:#04121c;border-color:var(--cyan);}
 #cropModal .row button.cancel{background:var(--surface2);color:var(--text-dim);}
+#botenBalk{display:none;background:var(--surface);border-bottom:1px solid var(--surface3);padding:6px 12px;font-size:.82rem;align-items:center;gap:8px;}
+#botenBalk b{color:var(--cyan);}
+#botenBalk button{margin-left:auto;background:var(--surface2);color:var(--cyan);border:1px solid var(--surface3);border-radius:8px;padding:5px 10px;font-size:.75rem;cursor:pointer;}
+#botenOverlay{display:none;position:fixed;inset:0;z-index:300;background:rgba(6,19,31,.94);align-items:center;justify-content:center;padding:16px;}
+#botenOverlay .kaart{width:100%;max-width:420px;}
+#botenOverlay h2{margin:0 0 6px;color:var(--cyan);}
+#botenOverlay p{margin:0 0 14px;font-size:.82rem;color:var(--text-dim);}
+#botenOverlay button.boot{display:block;width:100%;margin:0 0 10px;padding:16px;border:0;border-radius:12px;background:var(--surface2);color:var(--text);font-size:1rem;font-weight:600;text-align:left;cursor:pointer;}
+#botenOverlay button.boot.hier{background:#0e3a55;color:#7fe3ff;}
+#botenOverlay button.boot small{display:block;font-weight:400;color:var(--text-dim);font-size:.72rem;margin-top:2px;}
 </style>
 
 <style>
@@ -313,6 +323,9 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
   </div>
   <button class="lock" id="lockBtn" onclick="lockClick()">&#128274;</button>
 </header>
+
+<div id="botenBalk"><span>&#9875; <b id="botenNaam"></b></span><button id="botenBtn" onclick="botenKies(false)" style="display:none;">ANDERE BOOT &#9662;</button></div>
+<div id="botenOverlay"><div class="kaart"><h2>Kies je boot</h2><p>Meerdere boordcomputers zijn in dit netwerk gevonden.</p><div id="botenLijst"></div><button class="boot" id="botenSluit" onclick="botenSluit()" style="background:transparent;text-align:center;color:var(--text-dim);font-weight:400;">Sluiten</button></div></div>
 
 <div class="wrap">
   <div class="tabbar">
@@ -514,6 +527,13 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
           </div>
           <div id="gastMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
           <div id="gastLijst" style="margin-top:8px;"></div>
+        </section>
+
+        <section>
+          <h2>Geblokkeerde apparaten</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Na 3 foute pincodes mag een apparaat 5 minuten niet opnieuw proberen; elke volgende 3 foute pogingen verdubbelt dat. Bij de 30e foute poging komt het apparaat op de zwarte lijst tot je het hier vrijgeeft. Een juiste pincode zet de teller terug op nul.</p>
+          <div id="blokLijst"></div>
+          <button class="mbtn" onclick="blokWisAlles()" style="margin-top:8px;">ALLES VRIJGEVEN</button>
         </section>
 
         <section>
@@ -723,7 +743,7 @@ function setTab(naam){
     if (pane) pane.style.display = (t === naam) ? '' : 'none';
   });
   if (naam === 'fotos') { fotosInfo(); fotosLijst(); bfInfo(); bfLijst(); }
-  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); berichtlimietLaden(); setSubTab(subTab); }
+  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); berichtlimietLaden(); blokLaden(); setSubTab(subTab); }
   document.querySelectorAll('.tabbar')[0].querySelectorAll('.tabbtn').forEach(function(btn){
     btn.classList.toggle('active', btn.getAttribute('data-tab') === naam);
   });
@@ -779,6 +799,15 @@ function handleMsg(msg){
       meldingData = msg; renderMelding(); break;
     case 'berichtlimiet':
       renderBerichtlimiet(msg); break;
+    case 'blok_lijst':
+      renderBlokLijst(msg); break;
+    case 'auth_geblokkeerd':
+      if (!autoPinSilent) {
+        document.getElementById('pinErr').textContent = msg.zwart
+          ? 'Dit apparaat is geblokkeerd. De eigenaar kan het vrijgeven.'
+          : 'Te vaak een onjuiste pincode. Probeer het over ' + Math.max(1, Math.ceil((msg.sec || 60) / 60)) + ' min opnieuw.';
+      }
+      autoPinSilent = false; break;
     case 'melding_test_res':
       { var mm = document.getElementById('meldingMelding'); if (mm) { mm.style.color = 'var(--green)'; mm.textContent = 'Testbericht verstuurd.'; } }
       break;
@@ -2040,6 +2069,60 @@ function berichtlimietOpslaan(){
   el.style.color = 'var(--green)'; el.textContent = 'Opgeslagen.';
   setTimeout(function(){ if (el.textContent === 'Opgeslagen.') el.textContent = ''; }, 3000);
 }
+
+// ─── Bootkeuze (bkos.local) ─────────────────────────────────────────────────────────────────
+// Alleen als de pagina van een boordcomputer zelf komt (http); in de app (https/Bluetooth) niet.
+// Via bkos.local komt de gebruiker bij een willekeurige master uit; die kent de andere masters in
+// het netwerk (mDNS) en laat kiezen. De pincode is per boot apart (andere host = andere opslag).
+var botenData = null;
+function botenSluit(){ document.getElementById('botenOverlay').style.display = 'none'; try{ sessionStorage.setItem('bkos_gekozen','1'); }catch(e){} }
+function botenKies(auto){
+  if (!botenData) return;
+  var h = '<button class="boot hier" onclick="botenSluit()">&#9875; ' + esc(botenData.eigen) + '<small>verbonden</small></button>';
+  (botenData.boten || []).forEach(function(b){
+    h += '<button class="boot" onclick="botenGa(\'' + esc(b.ip) + '\')">&#9875; ' + esc(b.naam) + '<small>' + esc(b.ip) + '</small></button>';
+  });
+  document.getElementById('botenLijst').innerHTML = h;
+  document.getElementById('botenSluit').style.display = auto ? 'none' : '';
+  document.getElementById('botenOverlay').style.display = 'flex';
+}
+function botenGa(ip){ location.href = 'http://' + ip + '/?k=1'; }
+function botenRender(autoOpen){
+  if (!botenData) return;
+  var bar = document.getElementById('botenBalk');
+  bar.style.display = 'flex';
+  document.getElementById('botenNaam').textContent = botenData.eigen;
+  var meer = (botenData.boten || []).length > 0;
+  document.getElementById('botenBtn').style.display = meer ? '' : 'none';
+  var gekozen = false; try{ gekozen = !!sessionStorage.getItem('bkos_gekozen'); }catch(e){}
+  if (autoOpen && meer && !gekozen && location.hostname === 'bkos.local') botenKies(true);
+}
+function botenLaad(eerste){
+  fetch('/boten').then(function(r){ return r.json(); }).then(function(d){ botenData = d; botenRender(eerste); }).catch(function(){});
+}
+if (location.protocol === 'http:' && !window.BKOS_TRANSPORT) {
+  if (/[?&]k=1/.test(location.search)) { try{ sessionStorage.setItem('bkos_gekozen','1'); history.replaceState(null,'',location.pathname); }catch(e){} }
+  botenLaad(true);
+  setInterval(function(){ botenLaad(false); }, 30000);
+}
+
+// Zwarte lijst / geblokkeerde apparaten (eigenaar): foute pincodes, zie pin_bewaking.h
+function blokLaden(){ send({t:'blok_get'}); }
+function renderBlokLijst(d){
+  var el = document.getElementById('blokLijst'); if (!el) return;
+  var items = d.items || [];
+  if (!items.length){ el.innerHTML = '<p style="font-size:.78rem;color:var(--text-dim);">Geen geblokkeerde apparaten.</p>'; return; }
+  var h = '';
+  items.forEach(function(it){
+    var st = it.zwart ? '<b style="color:var(--red)">ZWARTE LIJST</b>' : (it.wacht ? 'wacht nog ' + Math.ceil(it.wacht/60) + ' min' : 'tellend');
+    h += '<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--surface3);font-size:.8rem;">'
+       + '<span style="flex:1">' + esc(it.id) + '<br><small style="color:var(--text-dim)">' + it.f + ' foute pogingen &middot; ' + st + '</small></span>'
+       + '<button class="mbtn" style="width:auto;padding:6px 10px;" onclick="blokWis(' + it.i + ')">VRIJGEVEN</button></div>';
+  });
+  el.innerHTML = h;
+}
+function blokWis(i){ if (needAuth()) return; send({t:'blok_wis', i:i}); }
+function blokWisAlles(){ if (needAuth()) return; send({t:'blok_wis', alles:1}); }
 
 achtergrondToepassen();
 taalToepassen();  // roept ladenPubliek()/ladenBericht()/laadNood() ook meteen aan

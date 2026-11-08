@@ -48,3 +48,11 @@ bootlus te veroorzaken (taak 187). Victron-scan en Brug doen op core 2.x daarom 
 Gevolg voor de BLE-server: starten **na** het opstarten, in een eigen taak, achter een instelling die
 standaard **uit** staat. Eén hang mag het opstarten nooit kunnen blokkeren. Pas na een test op de S3
 gaat dit standaard aan.
+
+
+## Aanvulling 8 nov 2026: bkos.local, bootkeuze en pincodebewaking
+- `bkos.local` is de vaste naam van de eerste master/standalone in het netwerk (mDNS). Een tweede master wijkt uit
+  en blijft bereikbaar via de bootkeuze. Elke master houdt via mDNS de lijst van andere masters bij (`GET /boten`).
+- De webpagina toont bovenin de boot waarmee je verbonden bent en laat wisselen; via `bkos.local` verschijnt de
+  keuze meteen als er meer dan een master is. Pincode en login zijn per boot (ander adres = andere opslag).
+- Foute pincodes: zie `BKOS_NUI/pin_bewaking.h` (3 fout = 5 min, dan verdubbeld; 30 fout = zwarte lijst).

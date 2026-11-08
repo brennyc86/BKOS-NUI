@@ -1918,7 +1918,7 @@ static void cfg_we_teken() {
 
 // Vaste inhoud onafhankelijk van de (runtime) TOKEN-rij: FIRMWARE UPDATEN,
 // ruimte voor TOKEN, BRUG @ +100, BERICHTEN @ +150 (+44 rijhoogte).
-#define CFG_UPDATE_INHOUD_H   250
+#define CFG_UPDATE_INHOUD_H   300
 #define CFG_UPDATE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_UPDATE_INHOUD_H - (int)NAV_Y)
 
 static void cfg_update_teken() {
@@ -1953,6 +1953,16 @@ static void cfg_update_teken() {
         ui_knop(10, y0 + 200 + 4, TFT_W - 20, 38, bl,
                 bl_aan ? RGB565(0, 24, 12) : (ontg ? C_SURFACE2 : C_SURFACE),
                 bl_aan ? C_GREEN : (ontg ? C_CYAN : C_TEXT_DIM));
+    }
+
+    {   // WEB-TOEGANG: foute pincodes (vertraging + zwarte lijst), tikken = alles leegmaken
+        int zw = pin_bewaking_zwart_aantal(), gb = pin_bewaking_geblokkeerd_aantal();
+        char wl[48];
+        if (zw || gb) snprintf(wl, sizeof(wl), "WEB-TOEGANG: %d GEBLOKKEERD, %d ZWART  [WISSEN]", gb, zw);
+        else          snprintf(wl, sizeof(wl), "WEB-TOEGANG: GEEN BLOKKADES");
+        ui_knop(10, y0 + 250 + 4, TFT_W - 20, 38, wl,
+                (zw || gb) ? RGB565(28, 8, 0) : C_SURFACE,
+                (zw || gb) ? C_AMBER : C_TEXT_DIM);
     }
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_update_scroll_y, CFG_UPDATE_MAX_SCROLL);
@@ -2421,6 +2431,16 @@ static void cfg_update_run(int x, int y) {
         actief_scherm = SCREEN_OTA;
         scherm_bouwen = true;
         return;
+    }
+
+    {   // WEB-TOEGANG: blokkades/zwarte lijst leegmaken (PIN-beveiligd)
+        int wt_y = upd_y + 250;
+        if (y >= wt_y && y < wt_y + 50) {
+            if (!ontg) { pin_vereist_tonen(); return; }
+            pin_bewaking_wis_alles();
+            cfg_update_teken();
+            return;
+        }
     }
 
     if (ble_app_beschikbaar()) {   // BLUETOOTH-APP aan/uit (PIN-beveiligd)

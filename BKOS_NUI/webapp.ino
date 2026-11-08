@@ -6,6 +6,7 @@
 #ifdef ESP32
 
 #include "webapp.h"
+#include "bkos_client.h"   // bkos_boten_aantal() — bootkeuze
 #include "webapp_html.h"
 #include "webapp_haven_html.h"
 #include "haven_achtergrond.h"
@@ -16,6 +17,7 @@
 #include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /fotos/foto, webapp-achtergrond
 #include "gast.h"           // pin_niveau() — eigenaar vs. gastcode (HUIS/BOOT-toegang)
 #include "app_manager.h"    // app_spiffs_vrij/totaal, app_sd_aanwezig/vrij — Bestanden-tab
+#include "pin_bewaking.h"   // vertraging + zwarte lijst bij foute pincodes
 #include "mac_record.h"     // MAC-adres-onthouden afzendergegevens + berichtlimiet
 #include "wifi.h"           // wifi_mac_voor_ip()
 #include "fout_log.h"      // fout_log_token_zet/_aanwezig — token plakken via webapp
@@ -119,8 +121,15 @@ static bool _http_handlers_klaar = false;
 // _pin_ok() = minimaal gast-niveau (bediening); _pin_eigenaar() = uitsluitend
 // de echte eigenaars-pincode — foto's/achtergrond/bestanden blijven daarmee
 // buiten bereik van een gastcode, ook al kent die de juiste 4 cijfers.
+// Alle pincode-controles van de webpagina lopen via pin_bewaking (vertraging na foute pogingen,
+// zwarte lijst). _pin_status/_pin_wacht bevatten de uitkomst van de laatste controle, zodat
+// /verify de client kan vertellen dat hij geblokkeerd is.
+static PinStatus _pin_status = PINSTAT_OK;
+static uint32_t  _pin_wacht  = 0;
 static int _pin_niveau_van(const String& ingevoerd) {
-    return pin_niveau(ingevoerd.c_str());
+    uint8_t id[6];
+    pin_bewaking_id_voor_ip(_http.client().remoteIP(), id);
+    return pin_niveau_bewaakt(id, ingevoerd.c_str(), &_pin_status, &_pin_wacht);
 }
 static bool _pin_ok(const String& ingevoerd) {
     return _pin_niveau_van(ingevoerd) >= NIVEAU_GAST;
@@ -187,6 +196,21 @@ void webapp_setup() {
     if (_http_handlers_klaar) { _http.begin(); _http_gestart = true; return; }
     _http.on("/", HTTP_GET, []() {
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HTML);
+    });
+
+    // Bootkeuze (bkos.local): deze boot + de andere masters die in dezelfde haven te zien zijn
+    _http.on("/boten", HTTP_GET, []() {
+        String eigen = info_boot_naam();
+        if (eigen.length() == 0) eigen = "BKOS";
+        String s = "{\"eigen\":\""; s += _wa_json_escape(eigen); s += "\",\"boten\":[";
+        int n = bkos_boten_aantal();
+        for (int i = 0; i < n; i++) {
+            char naam[28], ip[20]; bkos_boot_info(i, naam, sizeof(naam), ip, sizeof(ip));
+            if (i) s += ',';
+            s += "{\"naam\":\""; s += _wa_json_escape(String(naam)); s += "\",\"ip\":\""; s += ip; s += "\"}";
+        }
+        s += "]}";
+        _http.send(200, "application/json", s);
     });
 
     // ─── Openbaar (geen PIN): boot/eigenaar-info + "iets is los"-berichtje ───
@@ -298,7 +322,10 @@ void webapp_setup() {
     _http.on("/verify", HTTP_POST, []() {
         int niveau = _pin_niveau_van(_http.arg("pin"));
         String s = "{\"ok\":"; s += (niveau > NIVEAU_GEEN) ? "true" : "false";
-        s += ",\"niveau\":"; s += niveau; s += '}';
+        s += ",\"niveau\":"; s += niveau;
+        if (_pin_status == PINSTAT_ZWART) s += ",\"zwart\":true";
+        else if (_pin_status == PINSTAT_WACHT) { s += ",\"wacht\":"; s += _pin_wacht; }
+        s += '}';
         _http.send(200, "application/json", s);
     });
 

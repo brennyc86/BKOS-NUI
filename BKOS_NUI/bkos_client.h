@@ -32,6 +32,10 @@ void bkos_client_state_sturen();
 void bkos_client_net_sturen();
 void bkos_client_paneel_sturen();
 
+// Andere masters in dezelfde haven (mDNS), voor de bootkeuze in de webapp
+int  bkos_boten_aantal();
+void bkos_boot_info(int i, char* naam, size_t naam_len, char* ip, size_t ip_len);
+
 // BLE-client (ble_app.cpp)
 void bkos_ble_verbonden();
 void bkos_ble_los();

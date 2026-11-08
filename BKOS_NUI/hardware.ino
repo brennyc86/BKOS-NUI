@@ -464,6 +464,7 @@ static void _hw_achtergrond_init_eenmalig() {
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
     gast_laden();    // laad gasten-pincodes voor de webapp (HUIS/BOOT-toegang)
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
+    pin_bewaking_laden();      // tellers/zwarte lijst foute pincodes
     mac_record_laden();        // laad MAC-adres-onthouden-login + afzendergegevens
     mac_record_limiet_laden(); // laad instelbare berichtlimieten (default 20/5/24u)
     ble_app_setup();           // BLE-app: instelling + startgarantie lezen (geen BLE-init hier, die start later in een eigen taak)

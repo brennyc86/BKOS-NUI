@@ -21,6 +21,12 @@
 #include "wifi.h"            // ntp_synced() — gasten-vervaldatum, zie gast.h
 #include "melding.h"         // CallMeBot Signal/WhatsApp — INSTELLINGEN → VERBINDINGEN in de webapp
 #include "mac_record.h"      // MAC-adres-onthouden-login + berichtlimiet-instellingen
+#include "nav_bar.h"         // nav_midden[] — BKOS-weergave in de webapp (zelfde navigatiebalk)
+#include "post.h"            // post_ongelezen_aantal() — belletje in de statusbalk
+#include "meteo.h"           // weerstrook op het hoofdscherm
+#include "victron_ble.h"     // mini-widget interieurbalk
+#include "data_store.h"
+#include "haven_achtergrond.h"  // haven_achtergrond_url() — foto op het HAVEN-scherm
 
 #include "ble_app.h"          // BLE-tunnel naar de GitHub-Pages-webapp
 #include <WebSocketsServer.h>
@@ -135,8 +141,15 @@ static String _paneel_json() {
         if (i) s += ',';
         const char* naam = paneel_knop_naam(i);
         char lbl[IO_NAAM_LEN]; paneel_label(naam, lbl, sizeof(lbl));
+        // "lb" = precies het label dat het scherm zelf toont (lampgroep → lampnaam of nummer);
+        // "ic" = icoon-id (I_* uit screen_main.h, -1 = geen icoon) voor de BKOS-weergave.
+        char lb2[IO_NAAM_LEN]; strncpy(lb2, lbl, sizeof(lb2)); lb2[sizeof(lb2)-1] = 0;
+        int lnr = io_il_lamp_nr(naam);
+        if (lnr > 0) { if (lamp_naam[lnr][0]) { strncpy(lb2, lamp_naam[lnr], sizeof(lb2)-1); lb2[sizeof(lb2)-1] = 0; } else snprintf(lb2, sizeof(lb2), "%d", lnr); }
         s += F("{\"naam\":\""); s += lbl;
-        s += F("\",\"staat\":"); s += io_apparaat_staat3(naam);
+        s += F("\",\"lb\":\""); s += lb2;
+        s += F("\",\"ic\":"); s += paneel_icoon(naam);
+        s += F(",\"staat\":"); s += io_apparaat_staat3(naam);
         s += F(",\"minNiveau\":"); s += io_min_niveau_voor_naam(naam); s += '}';
     }
     s += F("]}");
@@ -158,7 +171,8 @@ static String _huispaneel_json() {
         const char* naam = huispaneel_knop_naam(i);
         char lbl[IO_NAAM_LEN]; paneel_label(naam, lbl, sizeof(lbl));
         s += F("{\"naam\":\""); s += lbl;
-        s += F("\",\"staat\":"); s += io_apparaat_staat3(naam);
+        s += F("\",\"ic\":"); s += paneel_icoon(naam);   // icoon-id voor de BKOS-weergave (I_* in screen_main.h)
+        s += F(",\"staat\":"); s += io_apparaat_staat3(naam);
         s += F(",\"licht\":"); s += paneel_naam_is_exterieur(naam) ? F("true") : F("false");
         s += F(",\"minNiveau\":"); s += io_min_niveau_voor_naam(naam); s += '}';
     }
@@ -356,6 +370,103 @@ static int _scherm_min_niveau(int s) {
 static bool _scherm_toegestaan(int s) {
     return s >= 0 && s <= SCREEN_POST && s != SCREEN_LUA_APP && s != SCREEN_CALIBRATIE && s != SCREEN_OTA;
 }
+
+// ─── BKOS-weergave: alles wat de webapp nodig heeft om het boordcomputerscherm
+// pixel-voor-pixel na te tekenen (palet in RGB565, klok, statusbalk-iconen,
+// bootmodel, lichtstanden, weerstrook, interieurbalk). De webapp tekent zelf —
+// hier staat uitsluitend STAAT, geen opmaak.
+static void _ui_esc(String& s, const char* t) {
+    for (; *t; t++) { char c = *t; if (c == '"' || c == '\\') s += '\\'; if ((uint8_t)c >= 0x20) s += c; }
+}
+static String _ui_json() {
+    String s; s.reserve(1100);
+    s = F("{\"t\":\"ui\",\"pal\":[");
+    s += C_BG; s += ','; s += C_SURFACE; s += ','; s += C_SURFACE2; s += ','; s += C_SURFACE3; s += ',';
+    s += C_STATUSBAR; s += ','; s += C_NAVBAR; s += ','; s += C_TEXT; s += ','; s += C_TEXT_DIM; s += ',';
+    s += C_TEXT_DARK; s += ','; s += C_DARK_GRAY; s += ','; s += C_CYAN;
+    s += F("],\"tijd\":\""); _ui_esc(s, klok_tijd.c_str());
+    s += F("\",\"wifi\":"); s += wifi_verbonden ? 2 : ((meteo_laatste_update > 0 && (unsigned long)(millis() - meteo_laatste_update) < 1800000UL) ? 1 : 0);
+    s += F(",\"hot\":"); s += wifi_hotspot_actief() ? 1 : 0;
+    s += F(",\"bel\":"); s += post_ongelezen_aantal() > 0 ? 1 : 0;
+    s += F(",\"upd\":"); s += ota_nieuwer_beschikbaar ? 1 : 0;
+    s += F(",\"cat\":"); s += boot_cat; s += F(",\"mod\":"); s += boot_model;
+    s += F(",\"auto\":"); s += vaarmodus_auto ? 1 : 0;
+    s += F(",\"im\":"); s += interieur_modus;
+    s += F(",\"ik\":"); s += interieur_kleur_rood ? 1 : 0;
+    // lichtstanden masttop(anker) / stoom / 3kl / hek / navi  (LSTATE_*)
+    int k_a=-1,k_s=-1,k_3=-1,k_n=-1,k_h=-1; bool wit=false, rood=false;
+    for (int i = 0; i < io_kanalen_cnt && i < MAX_IO_KANALEN; i++) {
+        if      (io_naam_is(i, "**L_anker")) k_a = i;
+        else if (io_naam_is(i, "**L_stoom")) k_s = i;
+        else if (io_naam_is(i, "**L_3kl"))   k_3 = i;
+        else if (io_naam_is(i, "**L_navi"))  k_n = i;
+        else if (io_naam_is(i, "**L_hek"))   k_h = i;
+        if (io_naam_is(i, "**IL_wit")  && io_output[i] == IO_AAN) wit  = true;
+        if (io_naam_is(i, "**IL_rood") && io_output[i] == IO_AAN) rood = true;
+    }
+    s += F(",\"lt\":[");
+    s += (k_a>=0)?io_licht_staat(k_a):0; s += ','; s += (k_s>=0)?io_licht_staat(k_s):0; s += ',';
+    s += (k_3>=0)?io_licht_staat(k_3):0; s += ','; s += (k_h>=0)?io_licht_staat(k_h):0; s += ',';
+    s += (k_n>=0)?io_licht_staat(k_n):0;
+    s += F("],\"iw\":"); s += wit ? 1 : 0; s += F(",\"ir\":"); s += rood ? 1 : 0;
+    // nav-midden (Bericht + apps in de balk): alleen labels, rest is vast
+    s += F(",\"nav\":[");
+    for (int i = 0; i < nav_midden_cnt; i++) {
+        if (i) s += ',';
+        s += F("{\"l\":\""); _ui_esc(s, nav_midden[i].label); s += F("\",\"s\":"); s += nav_midden[i].scherm; s += '}';
+    }
+    { char hf[64]; haven_achtergrond_url(hf, sizeof(hf)); s += F("],\"hf\":\""); _ui_esc(s, hf); s += '"'; }
+    s += F(",\"mg\":"); s += meteo_geladen ? 1 : 0;
+    s += F(",\"mc\":"); s += meteo_weer_code; s += F(",\"md\":"); s += meteo_is_dag ? 1 : 0;
+    // weerstrook
+    char b[40];
+    s += F(",\"w\":{\"o\":\""); _ui_esc(s, meteo_geladen ? meteo_weer_omschrijving(meteo_weer_code) : "");
+    snprintf(b, sizeof(b), "%.1f", meteo_temp);      s += F("\",\"t\":\""); s += b;
+    snprintf(b, sizeof(b), "%.0f", meteo_temp_max);  s += F("\",\"tm\":\""); s += b;
+    snprintf(b, sizeof(b), "%s B%d", meteo_wind_richting(meteo_wind_dir), meteo_beaufort(meteo_wind_ms)); s += F("\",\"wr\":\""); _ui_esc(s, b);
+    snprintf(b, sizeof(b), "stoot B%d", meteo_beaufort(meteo_wind_max)); s += F("\",\"ws\":\""); s += b;
+    snprintf(b, sizeof(b), "%.1fm/s", meteo_wind_ms); s += F("\",\"wm\":\""); s += b;
+    snprintf(b, sizeof(b), "%.2fm", meteo_waterstand_nu()); s += F("\",\"nu\":\""); s += b;
+    s += F("\",\"ri\":"); s += meteo_getij_richting();
+    s += F(",\"st\":\""); _ui_esc(s, getij_stations[meteo_station_idx].naam);
+    float md = meteo_maan_dag();
+    char mb[12]; meteo_maan_nautisc(md, mb, sizeof(mb));
+    s += F("\",\"mn\":\""); _ui_esc(s, mb);
+    snprintf(b, sizeof(b), "%.3f", md / 29.53f); s += F("\",\"mf\":"); s += b;
+    s += F(",\"gt\":[");
+    {
+        time_t nu = time(nullptr); int hw=-1, lw=-1;
+        for (int i = 0; i < getij_ext_cnt && (hw < 0 || lw < 0); i++)
+            if (getij_ext[i].tijd > nu) { if (hw<0 && getij_ext[i].hoog_water) hw=i; if (lw<0 && !getij_ext[i].hoog_water) lw=i; }
+        int ix[2]; int c = 0;
+        if (hw>=0 && lw>=0) { bool he = getij_ext[hw].tijd <= getij_ext[lw].tijd; ix[0]=he?hw:lw; ix[1]=he?lw:hw; c=2; }
+        else if (hw>=0) { ix[0]=hw; c=1; } else if (lw>=0) { ix[0]=lw; c=1; }
+        for (int k = 0; k < c; k++) {
+            const GetijHarmExt& e = getij_ext[ix[k]]; struct tm* lt = localtime(&e.tijd);
+            snprintf(b, sizeof(b), "%s %02d:%02d %.2fm", e.hoog_water ? "HW" : "LW", lt->tm_hour, lt->tm_min, e.hoogte);
+            if (k) s += ','; s += '"'; s += b; s += '"';
+        }
+    }
+    s += F("]}");
+    // Victron mini-widget
+    s += F(",\"vic\":");
+    if (victron_apparaten_cnt > 0) {
+        char k[VICTRON_SLEUTEL_LEN];
+        victron_sleutel(0, "batt_v",  k); float bv = data_lees_f(k, -1.0f);
+        victron_sleutel(0, "solar_w", k); int   sw = data_lees_i(k, -1);
+        victron_sleutel(0, "yield_wh",k); float yw = data_lees_f(k, -1.0f); long oud = data_leeftijd(k);
+        bool vers = (oud >= 0 && oud < 60);
+        char a1[14], a2[14], a3[14];
+        if (bv >= 0) snprintf(a1, 14, "%.1fV", bv); else snprintf(a1, 14, "--.-V");
+        if (sw >= 0) snprintf(a2, 14, "%dW", sw);   else snprintf(a2, 14, "--W");
+        if (yw >= 0 && vers) { if (yw >= 1000.0f) snprintf(a3, 14, "%.1fkWh", yw/1000.0f); else snprintf(a3, 14, "%.0fWh", yw); } else snprintf(a3, 14, "--Wh");
+        s += F("{\"v\":"); s += vers ? 1 : 0; s += F(",\"a\":[\""); s += a1; s += F("\",\""); s += a2; s += F("\",\""); s += a3; s += F("\"]}");
+    } else s += F("null");
+    s += '}';
+    return s;
+}
+static String _ui_prev;
+
 static String _scherm_json() {
     String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm; s += '}';
     return s;
@@ -463,6 +574,18 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             io_verlichting_update();
             net_app_staat_sturen();
         }
+
+    } else if (t.indexOf(F("\"set_auto\"")) >= 0) {
+        // Ronde AUTO-knop op het hoofdscherm (vaarmodus automatisch laten wisselen)
+        vaarmodus_auto = t.indexOf(F("\"a\":1")) >= 0;
+        state_save();
+
+    } else if (t.indexOf(F("\"interieur_cyclus\"")) >= 0) {
+        // Statusbalk op het hoofdscherm: UIT -> WIT -> ROOD -> AUTO -> UIT
+        interieur_modus = (interieur_modus + 1) % 4;
+        io_verlichting_update();
+        net_app_staat_sturen();
+        state_save();
 
     } else if (t.indexOf(F("\"lamp_toggle\"")) >= 0) {
         int idx = t.indexOf(F("\"nr\":"));
@@ -787,6 +910,7 @@ void bkos_ble_verbonden() {
     String m6 = _lamp_json();       _tx(BKOS_BLE_NUM, m6);
     String m7 = _huispaneel_json(); _tx(BKOS_BLE_NUM, m7);
     String m8 = _scherm_json();     _tx(BKOS_BLE_NUM, m8);
+    String m9 = _ui_json();         _tx(BKOS_BLE_NUM, m9);
 }
 void bkos_ble_los() {
     _ws_klanten[BKOS_BLE_NUM] = false;
@@ -830,6 +954,7 @@ void bkos_client_setup() {
                     String m6 = _lamp_json();    _tx(num, m6);
                     String m7 = _huispaneel_json(); _tx(num, m7);
                     String m8 = _scherm_json();  _tx(num, m8);
+                    String m9 = _ui_json();      _tx(num, m9);
                     break;
                 }
                 case WStype_DISCONNECTED:
@@ -889,6 +1014,15 @@ void bkos_client_loop() {
     if (actief_scherm != _ws_prev_scherm) {
         String sc = _scherm_json(); _bc(sc);
         _ws_prev_scherm = actief_scherm;
+    }
+
+    {   // BKOS-weergave: hooguit 2x/s, en alleen sturen als er iets veranderd is
+        static unsigned long ui_ms = 0;
+        if (millis() - ui_ms > 500UL) {
+            ui_ms = millis();
+            String u = _ui_json();
+            if (u != _ui_prev) { _bc(u); _ui_prev = u; }
+        }
     }
 
     if (vaar_modus != _ws_prev_modus || licht_instelling != _ws_prev_licht) {

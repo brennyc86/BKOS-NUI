@@ -562,3 +562,24 @@ void haven_achtergrond_idle_wissel() {
 void haven_achtergrond_tijd_reset() {
     hav_laatste_wissel = millis();
 }
+
+// ─── Voor de BKOS-weergave in de webapp (bkos_client.ino / webapp.ino) ───────────
+// De webapp tekent de HAVEN-achtergrond zelf na; daarvoor moet zij weten welke foto er nu op
+// het scherm staat. Eigen foto's lopen via /fotos/foto, de ingebakken voorbeelden via
+// /haven/ingebakken (webapp.ino).
+void haven_achtergrond_url(char* buf, size_t len) {
+    int gebruikers = haven_gebruikersfoto_aantal();
+    if (gebruikers > 0) {
+        char naam[24];
+        if (haven_gebruikersfoto_naam(hav_bg_idx % gebruikers, naam, sizeof(naam))) {
+            snprintf(buf, len, "/fotos/foto?naam=%s", naam);
+            return;
+        }
+    }
+    snprintf(buf, len, "/haven/ingebakken?i=%d", hav_bg_idx % HAVEN_FOTO_CNT);
+}
+bool haven_ingebakken_foto(int i, const uint8_t** data, uint32_t* len) {
+    if (i < 0 || i >= HAVEN_FOTO_CNT) return false;
+    *data = haven_fotos[i].data; *len = haven_fotos[i].len;
+    return true;
+}

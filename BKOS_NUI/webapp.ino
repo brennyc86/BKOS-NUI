@@ -9,6 +9,7 @@
 #include "bkos_client.h"   // bkos_boten_aantal() — bootkeuze
 #include "webapp_html.h"
 #include "webapp_haven_html.h"
+#include "webapp_scherm_js.h"   // BKOS-weergave: renderer van het boordcomputerscherm (gegenereerd)
 #include "haven_achtergrond.h"
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
@@ -196,6 +197,19 @@ void webapp_setup() {
     if (_http_handlers_klaar) { _http.begin(); _http_gestart = true; return; }
     _http.on("/", HTTP_GET, []() {
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HTML);
+    });
+    // Ingebakken HAVEN-voorbeeldfoto's (voor de BKOS-weergave: de webapp tekent de foto zelf op haar canvas)
+    _http.on("/haven/ingebakken", HTTP_GET, []() {
+        const uint8_t* d; uint32_t n;
+        if (!haven_ingebakken_foto(_http.arg("i").toInt(), &d, &n)) { _http.send(404, "text/plain", "niet gevonden"); return; }
+        _http.setContentLength(n);
+        _http.send(200, "image/jpeg", "");
+        _http.sendContent_P((const char*)d, n);
+    });
+    // BKOS-weergave: het boordcomputerscherm pixel voor pixel in de browser (canvas)
+    _http.on("/bkos_scherm.js", HTTP_GET, []() {
+        _http.sendHeader("Cache-Control", "no-cache");
+        _http.send_P(200, "application/javascript; charset=utf-8", WEBAPP_SCHERM_JS);
     });
 
     // Diagnose (platte tekst): toestand van netwerk, mDNS, Bluetooth en de laatste herstart

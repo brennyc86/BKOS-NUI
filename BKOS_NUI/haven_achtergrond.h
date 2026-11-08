@@ -96,3 +96,8 @@ size_t haven_gebruikersfoto_grootte(int i);
 bool haven_gebruikersfoto_opslaan(const uint8_t* data, size_t len, char* naam_out, size_t naam_out_len,
                                    char* reden_out = nullptr, size_t reden_out_len = 0);
 bool haven_gebruikersfoto_verwijderen(const char* naam);
+
+// Voor de BKOS-weergave in de webapp: URL van de foto die nu op het HAVEN-scherm staat, en toegang tot
+// de ingebakken voorbeeldfoto's (JPEG-bytes in PROGMEM).
+void haven_achtergrond_url(char* buf, size_t len);
+bool haven_ingebakken_foto(int i, const uint8_t** data, uint32_t* len);

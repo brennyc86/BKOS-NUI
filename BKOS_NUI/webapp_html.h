@@ -767,7 +767,7 @@ function lockClick(){
 function handleMsg(msg){
   if (typeof BKS !== 'undefined') {
     BKS.zet(msg);
-    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
+    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'meteo_dag' || msg.t === 'meteo_getij' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
   }
   switch(msg.t){
     case 'io_full':
@@ -2235,6 +2235,7 @@ function bkosWebStaat(){
 }
 // Aanrakingen op de canvas: schermwissel of een commando naar de boordcomputer
 function bkosActie(a){
+  if (a.vraag) { send(a.vraag); return; }   // gegevens opvragen voor een canvas-scherm (meteo_dag, meteo_getij)
   if (a.slot) { if (BKS.S.web && BKS.S.web.geel) openPin(); else lockClick(); return; }
   if (a.sync) { bkosSyncWissel(); return; }
   if (a.volscherm) { volschermWissel(); return; }

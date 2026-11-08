@@ -24,6 +24,7 @@
 #include "nav_bar.h"         // nav_midden[] — BKOS-weergave in de webapp (zelfde navigatiebalk)
 #include "post.h"            // post_ongelezen_aantal() — belletje in de statusbalk
 #include "meteo.h"           // weerstrook op het hoofdscherm
+#include "getijdata.h"       // GETIJ-tab in de webapp (getijdata_get/naam/lat_offset)
 #include "victron_ble.h"     // mini-widget interieurbalk
 #include "data_store.h"
 #include "haven_achtergrond.h"  // haven_achtergrond_url() — foto op het HAVEN-scherm
@@ -585,6 +586,69 @@ static String _meteo_scherm_json() {
     return s;
 }
 
+// METEO-dagdetail (meteo_detail_teken): 24 uur [bewolking%, regenkans%, temp, weercode] + koptekst
+static String _meteo_dag_json(int d) {
+    if (d < 0 || d > 6) d = 0;
+    String s; s.reserve(1200); char b[64];
+    s = F("{\"t\":\"meteo_dag\",\"d\":"); s += d;
+    time_t dt = time(nullptr) + (time_t)d * 86400L; struct tm tm; localtime_r(&dt, &tm);
+    static const char* dn[] = {"Zondag","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag"};
+    static const char* mn[] = {"jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"};
+    snprintf(b, sizeof(b), "%s %d %s", dn[tm.tm_wday], tm.tm_mday, mn[tm.tm_mon]); s += F(",\"label\":\""); s += b;
+    s += F("\",\"code\":"); s += meteo_dag_code[d];
+    s += F(",\"oms\":\""); _ui_esc(s, meteo_weer_omschrijving(meteo_dag_code[d]));
+    s += F("\",\"wr\":\""); _ui_esc(s, meteo_wind_richting(meteo_dag_wind_dir[d]));
+    s += F("\",\"bft\":"); s += meteo_beaufort(meteo_dag_wind[d]);
+    snprintf(b, sizeof(b), "%.0f", meteo_dag_temp_min[d]); s += F(",\"tmin\":"); s += b;   // (graden-teken bouwt de webapp: \xF7 is geen geldige UTF-8)
+    snprintf(b, sizeof(b), "%.0f", meteo_dag_temp_max[d]); s += F(",\"tmax\":"); s += b;
+    if (meteo_dag_zonsopgang[d] > 0) {
+        struct tm a, o; localtime_r(&meteo_dag_zonsopgang[d], &a); localtime_r(&meteo_dag_zonsondergang[d], &o);
+        snprintf(b, sizeof(b), "%02d:%02d", a.tm_hour, a.tm_min); s += F(",\"zop\":\""); s += b;
+        snprintf(b, sizeof(b), "%02d:%02d", o.tm_hour, o.tm_min); s += F("\",\"zon\":\""); s += b; s += '"';
+    }
+    s += F(",\"uur\":");
+    if (!meteo_uur_geladen) { s += F("null}"); return s; }
+    s += '[';
+    for (int h = 0; h < 24; h++) {
+        int i = d * 24 + h; if (h) s += ',';
+        s += '['; s += meteo_uur_cloud[i]; s += ','; s += meteo_uur_neerslag_kans[i]; s += ',';
+        snprintf(b, sizeof(b), "%.1f", isnan(meteo_uur_temp[i]) ? 0.0f : meteo_uur_temp[i]); s += b; s += ','; s += meteo_uur_wcode[i]; s += ']';
+    }
+    s += F("]}");
+    return s;
+}
+
+// METEO → GETIJ: hoog-/laagwater rond nu (max 60) + nu-balk (maan, station, LAT-correctie)
+static String _meteo_getij_json() {
+    String s; s.reserve(2600); char b[48];
+    const int MAXN = 300;
+    GetijExtreme* buf = (GetijExtreme*)malloc(sizeof(GetijExtreme) * MAXN);   // groot: niet op de stack
+    int n = 0;
+    if (buf) getijdata_get(getijdata_station_idx, buf, MAXN, &n);
+    time_t nu = time(nullptr);
+    int prev = -1; for (int i = 0; i < n; i++) { if (buf[i].tijdstip < nu) prev = i; else break; }
+    int start = prev > 4 ? prev - 4 : 0, eind = start + 60 < n ? start + 60 : n;
+    s = F("{\"t\":\"meteo_getij\",\"nu\":"); s += (uint32_t)nu;
+    s += F(",\"station\":\""); _ui_esc(s, getijdata_naam(getijdata_station_idx));
+    s += F("\",\"latoff\":"); s += getijdata_lat_offset(getijdata_station_idx);
+    float md = meteo_maan_dag(); if (isnan(md)) md = 0;
+    snprintf(b, sizeof(b), "%.2f", md); s += F(",\"maand\":"); s += b;
+    char mb[12]; meteo_maan_nautisc(md, mb, sizeof(mb)); s += F(",\"maan\":\""); _ui_esc(s, mb);
+    s += F("\",\"wifi\":"); s += wifi_verbonden ? 1 : 0;
+    s += F(",\"ext\":[");
+    for (int i = start; i < eind; i++) {
+        if (i > start) s += ',';
+        struct tm lt; localtime_r(&buf[i].tijdstip, &lt);
+        // [unix, hw, nap_cm, lat_cm, weekdag, dag, maand, uur, minuut] — lokale tijd al uitgerekend
+        snprintf(b, sizeof(b), "[%lu,%d,%.0f,%.0f,%d,%d,%d,%d,%d]", (unsigned long)buf[i].tijdstip, buf[i].is_hoogwater ? 1 : 0,
+                 buf[i].waterstand_nap_cm, buf[i].waterstand_lat_cm, lt.tm_wday, lt.tm_mday, lt.tm_mon + 1, lt.tm_hour, lt.tm_min);
+        s += b;
+    }
+    s += F("]}");
+    if (buf) free(buf);
+    return s;
+}
+
 static String _scherm_json() {
     String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm; s += '}';
     return s;
@@ -632,6 +696,11 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         }
         return;
     }
+    if (t.indexOf(F("\"meteo_dag\"")) >= 0) {
+        int a = t.indexOf(F("\"d\":")); String r = _meteo_dag_json(a >= 0 ? (int)t.substring(a + 4).toInt() : 0);
+        _tx(num, r); return;
+    }
+    if (t.indexOf(F("\"meteo_getij\"")) >= 0) { String r = _meteo_getij_json(); _tx(num, r); return; }
     if (t.indexOf(F("\"meteo_scherm\"")) >= 0) {   // weer is voor iedereen zichtbaar (ook op /info/publiek-niveau)
         String r = _meteo_scherm_json();
         _tx(num, r);

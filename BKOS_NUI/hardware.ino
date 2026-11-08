@@ -87,14 +87,19 @@ int hw_touch_drag_dy = 0;  // y-delta (touch_start → huidig) vóór elke scree
 #if PLATFORM_ESP32
 static void _gui_taak(void*) {
     for (;;) {
+        bkos_gui_tik();   // waakhond (slaap_diag_loop)
         // Touch en scherm-wake altijd EERST lezen — vóór blokkerende achtergrond-calls
+        bkos_gui_spoor("gui:touch");
         bool aanraking = ts_touched();
         if (aanraking) touch_los_sinds_ms = 0;
         else if (touch_los_sinds_ms == 0) touch_los_sinds_ms = millis();
         bool aanraking_vast = aanraking || (millis() - touch_los_sinds_ms < TOUCH_FLICKER_MS);
+        bkos_gui_spoor("gui:tft_loop");
         tft_loop();
 
+        bkos_gui_spoor("gui:io");
         io_loop();
+        bkos_gui_spoor("gui:ntp/ota/post");
         ntp_loop();
         ota_loop();
         post_loop();
@@ -102,6 +107,7 @@ static void _gui_taak(void*) {
         // Scherm (her)bouwen
         if (scherm_bouwen) {
             scherm_bouwen = false;
+            { char gs[24]; snprintf(gs, sizeof(gs), "gui:teken %d", actief_scherm); bkos_gui_spoor(gs); }
             // Onthoud welk van de twee "thuis"-schermen het laatst actief was —
             // de nav bar PANEEL-knop keert daarnaar terug (zie nav_bar_klik()).
             if (actief_scherm == SCREEN_MAIN || actief_scherm == SCREEN_HAVEN) laatste_hoofdscherm = actief_scherm;
@@ -312,6 +318,7 @@ static void _gui_taak(void*) {
                         tijd_scherm_openen();
                     } else {
                         hw_touch_drag_dy = ts_y - touch_start_y;
+                    { char gs[24]; snprintf(gs, sizeof(gs), "gui:tik %d", actief_scherm); bkos_gui_spoor(gs); }
                     switch (actief_scherm) {
                             case SCREEN_MAIN:   screen_main_run(ts_x, ts_y, true);   break;
                             case SCREEN_IO:     screen_io_run(ts_x, ts_y, true);     break;
@@ -357,6 +364,7 @@ static void _gui_taak(void*) {
             if (app_upd >= 0) {
                 lua_app_run(app_upd, 0, 0, false);
             } else {
+                { char gs[24]; snprintf(gs, sizeof(gs), "gui:periodiek %d", actief_scherm); bkos_gui_spoor(gs); }
                 switch (actief_scherm) {
                     case SCREEN_MAIN:       screen_main_run(0, 0, false);       break;
                     case SCREEN_IO:         screen_io_run(0, 0, false);         break;

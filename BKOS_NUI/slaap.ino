@@ -106,11 +106,17 @@ static const char* _reset_reden_naam(esp_reset_reason_t r) {
 static RTC_NOINIT_ATTR uint32_t _spoor_magic;
 static RTC_NOINIT_ATTR char     _spoor[24];
 static RTC_NOINIT_ATTR uint32_t _spoor_stack_min;
+static RTC_NOINIT_ATTR char     _gspoor[24];       // GUI-taak
+static RTC_NOINIT_ATTR uint32_t _gui_hang;         // != 0: vorige herstart was de GUI-waakhond
+#define GUI_HANG_MAGIC 0x6A11DEADUL
 #endif
+static volatile uint32_t _gui_tikken = 0;
+static char _gspoor_vorig[24] = "";
+static bool _was_gui_hang = false;
 static char     _spoor_vorig[24] = "";
 static uint32_t _stack_min_vorig = 0;
 static bool     _crash_wacht     = false;
-static char     _crash_tekst[140] = "";
+static char     _crash_tekst[180] = "";
 static uint8_t  _crash_pogingen  = 0;
 
 void bkos_spoor(const char* stap) {
@@ -118,6 +124,13 @@ void bkos_spoor(const char* stap) {
     strncpy(_spoor, stap ? stap : "", sizeof(_spoor) - 1);
     _spoor[sizeof(_spoor) - 1] = '\0';
     _spoor_magic = SPOOR_MAGIC;
+#endif
+}
+void bkos_gui_tik() { _gui_tikken++; }
+void bkos_gui_spoor(const char* stap) {
+#if PLATFORM_ESP32
+    strncpy(_gspoor, stap ? stap : "", sizeof(_gspoor) - 1);
+    _gspoor[sizeof(_gspoor) - 1] = '\0';
 #endif
 }
 const char* bkos_spoor_vorig()     { return _spoor_vorig; }
@@ -135,6 +148,17 @@ void bkos_stack_meten() {
 
 void slaap_diag_loop() {
 #if PLATFORM_ESP32
+    // ── GUI-waakhond ──
+    {
+        static uint32_t vorige_tik = 0; static unsigned long stil_sinds = 0;
+        uint32_t t = _gui_tikken;
+        if (t != vorige_tik || t == 0 || wifi_ota_modus) { vorige_tik = t; stil_sinds = millis(); }
+        else if (millis() - stil_sinds > 30000UL) {
+            _gui_hang = GUI_HANG_MAGIC;            // gspoor staat al in RTC
+            delay(50);
+            esp_restart();
+        }
+    }
     static bool gezond_gestuurd = false;
     if (!gezond_gestuurd && !_crash_wacht && wifi_verbonden && millis() > 120000UL) {
         static unsigned long gp = 0;
@@ -165,7 +189,12 @@ void slaap_reset_reden_verwerken() {
         _spoor[sizeof(_spoor) - 1] = '\0';
         strncpy(_spoor_vorig, _spoor, sizeof(_spoor_vorig) - 1);
         _stack_min_vorig = _spoor_stack_min;
+        _gspoor[sizeof(_gspoor) - 1] = '\0';
+        strncpy(_gspoor_vorig, _gspoor, sizeof(_gspoor_vorig) - 1);
+        _was_gui_hang = (_gui_hang == GUI_HANG_MAGIC);
     }
+    _gui_hang = 0;
+    bkos_gui_spoor("opstarten");
     _spoor_stack_min = 0;
     bkos_spoor("opstarten");
 
@@ -173,9 +202,9 @@ void slaap_reset_reden_verwerken() {
     // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal
     // — alleen alles daarbuiten is een ONVERWACHTE herstart die het waard is om
     // te onthouden/melden.
-    if (reden == ESP_RST_POWERON || reden == ESP_RST_SW) return;
+    if ((reden == ESP_RST_POWERON || reden == ESP_RST_SW) && !_was_gui_hang) return;
 
-    const char* omschrijving = _reset_reden_naam(reden);
+    const char* omschrijving = _was_gui_hang ? "GUI-taak hing (waakhond)" : _reset_reden_naam(reden);
 
     Preferences prefs;
     prefs.begin("diag", false);
@@ -184,8 +213,8 @@ void slaap_reset_reden_verwerken() {
 
     // Niet nu versturen (de 60s-cooldown van fout_log weigert dat bij het opstarten altijd);
     // slaap_diag_loop() stuurt hem zodra er WiFi is.
-    snprintf(_crash_tekst, sizeof(_crash_tekst), "%s | spoor: %s | min. vrije loopstack: %lu B | versie %s",
-             omschrijving, _spoor_vorig[0] ? _spoor_vorig : "?", (unsigned long)_stack_min_vorig, BKOS_NUI_VERSIE);
+    snprintf(_crash_tekst, sizeof(_crash_tekst), "%s | spoor: %s | gui: %s | min. vrije loopstack: %lu B | versie %s",
+             omschrijving, _spoor_vorig[0] ? _spoor_vorig : "?", _gspoor_vorig[0] ? _gspoor_vorig : "?", (unsigned long)_stack_min_vorig, BKOS_NUI_VERSIE);
     _crash_wacht = true;
 #endif
 }

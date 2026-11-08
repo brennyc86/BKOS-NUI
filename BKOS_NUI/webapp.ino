@@ -225,6 +225,7 @@ void webapp_setup() {
 
     // Diagnose (platte tekst): toestand van netwerk, mDNS, Bluetooth en de laatste herstart
     _http.on("/status", HTTP_GET, []() {
+        bkos_spoor("http:/status");
         String s = "BKOS status\nversie: "; s += BKOS_NUI_VERSIE;
         s += "\nin bedrijf: "; s += (unsigned long)(millis() / 1000UL); s += " s\n";
         s += "laatste reset: "; s += (int)esp_reset_reason(); s += " ("; s += slaap_laatste_onverwachte_reset(); s += ")\n";
@@ -246,6 +247,7 @@ void webapp_setup() {
 
     // Bootkeuze (bkos.local): deze boot + de andere masters die in dezelfde haven te zien zijn
     _http.on("/boten", HTTP_GET, []() {
+        bkos_spoor("http:/boten");
         String eigen = info_boot_naam();
         if (eigen.length() == 0) eigen = "BKOS";
         String s = "{\"eigen\":\""; s += _wa_json_escape(eigen); s += "\",\"boten\":[";
@@ -263,6 +265,7 @@ void webapp_setup() {
     // Bewust een zeer beperkte publieke set — verder vereist alles dezelfde
     // PIN als het CONFIG-scherm (zie _pin_ok/pin_lezen_pub hierboven).
     _http.on("/info/publiek", HTTP_GET, []() {
+        bkos_spoor("http:/info/publiek");
         String s = "{\"boot\":\"";     s += info_boot_naam();
         s += "\",\"type\":\"";         s += info_boot_type();
         s += "\",\"eigenaar\":\"";     s += info_eigenaar_naam();
@@ -271,6 +274,7 @@ void webapp_setup() {
     });
 
     _http.on("/bericht/lijst", HTTP_GET, []() {
+        bkos_spoor("http:/bericht/lijst");
         String s = "{\"presets\":[";
         for (int i = 0; i < BERICHT_AANTAL; i++) {
             if (i) s += ',';
@@ -287,6 +291,7 @@ void webapp_setup() {
     // localStorage-teller is triviaal te omzeilen door de opslag te wissen,
     // dat beschermt niet tegen een "grapjas" die wil spammen.
     _http.on("/bericht/verzend", HTTP_POST, []() {
+        bkos_spoor("http:/bericht/verzend");
         String naam = _http.arg("naam"); naam.trim();
         String tel  = _http.arg("tel");  tel.trim();
         if (naam.length() == 0 || tel.length() == 0) {
@@ -324,6 +329,7 @@ void webapp_setup() {
     // apparaat/browser dan de vorige keer (localStorage dekt alleen "zelfde
     // browser").
     _http.on("/bericht/afzender", HTTP_GET, []() {
+        bkos_spoor("http:/bericht/afzender");
         uint8_t mac[6];
         char naam[BERICHT_AFZ_NAAM_LEN] = "", tel[BERICHT_AFZ_TEL_LEN] = "";
         if (wifi_mac_voor_ip(_http.client().remoteIP(), mac))
@@ -337,6 +343,7 @@ void webapp_setup() {
     // verbergen die buiten die modus niet van toepassing is; de server
     // controleert dat bovendien zelf nogmaals bij het versturen.
     _http.on("/bericht/nood/lijst", HTTP_GET, []() {
+        bkos_spoor("http:/bericht/nood/lijst");
         String s = "{\"presets\":[";
         for (int i = 0; i < BERICHT_NOOD_AANTAL; i++) {
             if (i) s += ',';
@@ -350,6 +357,7 @@ void webapp_setup() {
     });
 
     _http.on("/bericht/nood/verzend", HTTP_POST, []() {
+        bkos_spoor("http:/bericht/nood/verzend");
         int idx = _http.arg("idx").toInt();
         if (idx < 0 || idx >= BERICHT_NOOD_AANTAL) { _http.send(400, "application/json", "{\"ok\":false}"); return; }
         if (bericht_nood_alleen_anker[idx] && vaar_modus != MODE_ANKER) {
@@ -368,6 +376,7 @@ void webapp_setup() {
     // Alleen voor hetzelfde toestel dat het noodbericht stuurde, binnen 15 minuten en maar één
     // keer — zo kan deze route niet misbruikt worden om los alarmberichten te versturen.
     _http.on("/bericht/nood/afzender", HTTP_POST, []() {
+        bkos_spoor("http:/bericht/nood/afzender");
         int idx = _http.arg("idx").toInt();
         String naam = _http.arg("naam"); naam.trim();
         String tel  = _http.arg("tel");  tel.trim();
@@ -388,6 +397,7 @@ void webapp_setup() {
     // webpagina's om een uit localStorage teruggehaalde PIN in de achtergrond
     // te bevestigen (of net zo stil weer te vergeten als 'm niet meer klopt).
     _http.on("/verify", HTTP_POST, []() {
+        bkos_spoor("http:/verify");
         int niveau = _pin_niveau_van(_http.arg("pin"));
         String s = "{\"ok\":"; s += (niveau > NIVEAU_GEEN) ? "true" : "false";
         s += ",\"niveau\":"; s += niveau;
@@ -399,10 +409,12 @@ void webapp_setup() {
 
     // ─── HAVEN-fotobeheer ───────────────────────────────────────────────────
     _http.on("/fotos", HTTP_GET, []() {
+        bkos_spoor("http:/fotos");
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HAVEN_HTML);
     });
 
     _http.on("/fotos/info", HTTP_GET, []() {
+        bkos_spoor("http:/fotos/info");
         int w, h; haven_doel_afmeting(&w, &h);
         String s = "{\"w\":"; s += w;
         s += ",\"h\":"; s += h;
@@ -415,6 +427,7 @@ void webapp_setup() {
     });
 
     _http.on("/fotos/lijst", HTTP_GET, []() {
+        bkos_spoor("http:/fotos/lijst");
         int n = haven_gebruikersfoto_aantal();
         String s = "{\"fotos\":[";
         for (int i = 0; i < n; i++) {
@@ -450,6 +463,7 @@ void webapp_setup() {
     });
 
     _http.on("/fotos/verwijder", HTTP_POST, []() {
+        bkos_spoor("http:/fotos/verwijder");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         bool ok = haven_gebruikersfoto_verwijderen(_http.arg("naam").c_str());
         _http.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
@@ -505,6 +519,7 @@ void webapp_setup() {
 
     // ─── Webapp-achtergrondfoto's ────────────────────────────────────────────
     _http.on("/achtergrond/info", HTTP_GET, []() {
+        bkos_spoor("http:/achtergrond/info");
         String s = "{\"liggend\":"; s += SPIFFS.exists(_ag_pad(true))  ? "true" : "false";
         s += ",\"staand\":";        s += SPIFFS.exists(_ag_pad(false)) ? "true" : "false";
         s += ",\"maxBytes\":"; s += (uint32_t)ACHTERGROND_MAX_BYTES;
@@ -513,6 +528,7 @@ void webapp_setup() {
     });
 
     _http.on("/achtergrond/foto", HTTP_GET, []() {
+        bkos_spoor("http:/achtergrond/foto");
         bool liggend = !_http.arg("slot").equals("staand");
         const char* pad = _ag_pad(liggend);
         if (!SPIFFS.exists(pad)) { _http.send(404, "text/plain", "niet gevonden"); return; }
@@ -523,6 +539,7 @@ void webapp_setup() {
     });
 
     _http.on("/achtergrond/verwijder", HTTP_POST, []() {
+        bkos_spoor("http:/achtergrond/verwijder");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         bool liggend = !_http.arg("slot").equals("staand");
         SPIFFS.remove(_ag_pad(liggend));
@@ -580,6 +597,7 @@ void webapp_setup() {
     // decodeerpas op het apparaat zelf per opgevraagde foto — voor een eerste
     // webversie bewust achterwege gelaten, gewoon naam+grootte).
     _http.on("/bestanden/info", HTTP_GET, []() {
+        bkos_spoor("http:/bestanden/info");
         String s = "{\"spiffsVrij\":"; s += (uint32_t)app_spiffs_vrij();
         s += ",\"spiffsTotaal\":"; s += (uint32_t)app_spiffs_totaal();
 #if WEBAPP_SD_MOGELIJK
@@ -595,6 +613,7 @@ void webapp_setup() {
     });
 
     _http.on("/bestanden/lijst", HTTP_GET, []() {
+        bkos_spoor("http:/bestanden/lijst");
         bool sd = _http.arg("fs").equals("sd");
         String pad = _http.arg("pad"); if (pad.length() == 0) pad = "/";
 #if WEBAPP_SD_MOGELIJK
@@ -622,6 +641,7 @@ void webapp_setup() {
     });
 
     _http.on("/bestanden/verwijder", HTTP_POST, []() {
+        bkos_spoor("http:/bestanden/verwijder");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         String pad = _http.arg("pad");
         // Alleen een absoluut pad zonder ".."-segmenten toestaan — geen vrije
@@ -641,6 +661,7 @@ void webapp_setup() {
 
     // ─── Instellingen backup: export (download) / import (upload+herstart) ──
     _http.on("/instellingen/export", HTTP_GET, []() {
+        bkos_spoor("http:/instellingen/export");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         String s = "{\"bkosBackup\":1,\"boot\":\""; s += _wa_json_escape(info_boot_naam()); s += "\",\"files\":{";
         bool first = true;
@@ -661,6 +682,7 @@ void webapp_setup() {
     });
 
     _http.on("/instellingen/import", HTTP_POST, []() {
+        bkos_spoor("http:/instellingen/import");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}"); return; }
         if (!_http.hasArg("plain")) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"leeg\"}"); return; }
         const String& body = _http.arg("plain");
@@ -693,6 +715,7 @@ void webapp_setup() {
     // ─── Foutrapportage: token plakken + aan/uit via de webapp (alleen eigenaar) ──
     // Het token zelf wordt nooit teruggestuurd; status geeft alleen aan/aanwezig.
     _http.on("/foutlog/status", HTTP_GET, []() {
+        bkos_spoor("http:/foutlog/status");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         String s = "{\"ok\":true,\"aan\":"; s += fout_rapportage ? "true" : "false";
         s += ",\"token\":"; s += fout_log_token_aanwezig() ? "true" : "false"; s += "}";
@@ -700,16 +723,19 @@ void webapp_setup() {
     });
     // ─── Updates zonder pincode (alleen eigenaar) ─────────────────────────────────
     _http.on("/updpin/status", HTTP_GET, []() {
+        bkos_spoor("http:/updpin/status");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
         _http.send(200, "application/json", update_zonder_pin ? "{\"ok\":true,\"aan\":true}" : "{\"ok\":true,\"aan\":false}");
     });
     _http.on("/updpin/zet", HTTP_POST, []() {
+        bkos_spoor("http:/updpin/zet");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}"); return; }
         update_zonder_pin = (_http.arg("aan") == "1");
         state_save();
         _http.send(200, "application/json", "{\"ok\":true}");
     });
     _http.on("/foutlog/instellen", HTTP_POST, []() {
+        bkos_spoor("http:/foutlog/instellen");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false,\"reden\":\"pin\"}"); return; }
         if (_http.hasArg("token")) {
             String t = _http.arg("token"); t.trim();
@@ -724,6 +750,7 @@ void webapp_setup() {
     });
 
     _http.onNotFound([]() {
+        bkos_spoor("http:404");
         _http.sendHeader("Location", "/", true);
         _http.send(302, "text/plain", "");
     });

@@ -204,17 +204,20 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
 #botenOverlay button.boot small{display:block;font-weight:400;color:var(--text-dim);font-size:.72rem;margin-top:2px;}
 
 /* ─── BKOS-weergave: het scherm van de boordcomputer, pixel voor pixel (canvas 800x480) ── */
-#bkosBalk{display:none;position:sticky;top:0;z-index:19;background:var(--surface);border-bottom:1px solid var(--surface3);padding:6px 12px;gap:6px;flex-wrap:wrap;align-items:center;font-size:.72rem;color:var(--text-dim);}
-body.bkos #bkosBalk{display:flex;}
-#bkosBalk button{background:var(--surface2);color:var(--text-dim);border:1px solid var(--surface3);border-radius:8px;padding:6px 10px;font-size:.72rem;cursor:pointer;}
-#bkosBalk button.act{background:#0e3a55;color:#7fe3ff;border-color:#1b6a94;}
-#bkosBalk .sp{flex:1;}
+#bkSyncBtn{display:none;}
+body.bkos #bkSyncBtn{display:block;}
 #bkosCv,#bkosToegang{display:none;}
 body.bkos #bgFixed{display:none;}
+/* Eén header, daaronder het scherm zo groot als past (5:3) — de pagina zelf scrolt nooit.
+   --bkTop = hoogte van header (+ eventuele bootbalk), gemeten door bkosMaat(). */
+body.bkos{height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
+body.bkos header{position:relative;padding:calc(env(safe-area-inset-top) + 5px) 12px 5px;}
+body.bkos header button.lock{padding:6px 10px;}
 body.bkos .wrap{
-  position:relative;max-width:none;padding:0;margin:10px auto;overflow:hidden;background:#000;
-  border:2px solid var(--border);border-radius:14px;
-  aspect-ratio:5/3;width:min(calc(100vw - 20px),calc((100vh - 130px) * 5 / 3));
+  position:relative;flex:none;max-width:none;padding:0;margin:8px auto;overflow:hidden;background:#000;
+  border:2px solid var(--border);border-radius:12px;aspect-ratio:5/3;
+  width:min(calc(100vw - 16px),calc((100vh - var(--bkTop,70px) - 20px - env(safe-area-inset-bottom)) * 5 / 3));
+  width:min(calc(100vw - 16px),calc((100dvh - var(--bkTop,70px) - 20px - env(safe-area-inset-bottom)) * 5 / 3));
 }
 body.bkos #bkosCv{display:block;position:absolute;left:0;top:0;width:100%;height:100%;z-index:1;cursor:pointer;}
 body.bkos .wrap > .tabbar{display:none;}
@@ -246,13 +249,10 @@ body.bkos .wrap.geblurd #bkosToegang{display:flex;}
     <b>BKOS</b>
     <span id="hdrSub">verbinden…</span>
   </div>
+  <button class="lock" id="bkSyncBtn" onclick="bkosSyncWissel()" title="Synchroon: webapp en boordcomputer staan altijd op hetzelfde scherm" style="margin-right:6px;font-size:.72rem;font-weight:700;">SYNC</button>
   <button class="lock" id="weergBtn" onclick="bkosWissel()" title="Weergave: klassiek of BKOS (nagebouwd boordcomputerscherm)" style="margin-right:6px;font-size:.72rem;font-weight:700;">KLASSIEK</button>
   <button class="lock" id="lockBtn" onclick="lockClick()">&#128274;</button>
 </header>
-<div id="bkosBalk">
-  <span>Scherm:</span>
-  <button id="bkSyncBtn" onclick="bkosSyncWissel()" title="Synchroon: alle apparaten staan op hetzelfde scherm">SYNCHROON</button>
-</div>
 
 <div id="botenBalk"><span>&#9875; <b id="botenNaam"></b></span><button id="botenBtn" onclick="botenKies(false)" style="display:none;">ANDERE BOOT &#9662;</button></div>
 <div id="botenOverlay"><div class="kaart"><h2>Kies je boot</h2><p>Actieve boordcomputers (masters) in dit netwerk.</p><div id="botenLijst"></div><button class="boot" id="botenSluit" onclick="botenSluit()" style="background:transparent;text-align:center;color:var(--text-dim);font-weight:400;">Sluiten</button></div></div>
@@ -1313,7 +1313,7 @@ function stuurBerichtVrij(){
 // Puur cosmetisch, dus altijd toegepast (ook zonder pincode) — het UPLOADEN
 // van een nieuwe foto blijft wel achter de pincode (zie de #gated-sectie).
 function achtergrondToepassen(){
-  var liggend = bkosAan ? bkosLiggend() : window.matchMedia('(orientation: landscape)').matches;
+  var liggend = window.matchMedia('(orientation: landscape)').matches;   // (bkosLiggend() bestaat sinds .6 niet meer — gaf een JS-fout die de hele pagina, incl. inloggen, stillegde)
   var slot = liggend ? 'liggend' : 'staand';
   fetch('/achtergrond/info').then(function(r){ return r.json(); }).then(function(d){
     var aanwezig = liggend ? d.liggend : d.staand;
@@ -2139,12 +2139,20 @@ function bkosActie(a){
   if (a.gaNaar != null) { bkosGa(a.gaNaar); return; }
   if (a.stuur) { if (needAuth()) return; send(a.stuur); }
 }
-function bkosAchtergrond(){}   // (oude weergave tekende de pagina-achtergrond zelf; de canvas heeft zijn eigen foto)
+function bkosAchtergrond(){}
+// Hoogte boven het scherm meten (header + bootbalk), zodat het scherm precies in het venster past
+function bkosMaat(){
+  var h = document.querySelector('header').offsetHeight + document.getElementById('botenBalk').offsetHeight;
+  document.documentElement.style.setProperty('--bkTop', h + 'px');
+}
+window.addEventListener('resize', bkosMaat);
+if (window.ResizeObserver) { var _bkRo = new ResizeObserver(bkosMaat); _bkRo.observe(document.querySelector('header')); _bkRo.observe(document.getElementById('botenBalk')); }   // (oude weergave tekende de pagina-achtergrond zelf; de canvas heeft zijn eigen foto)
 function bkosPas(){
   document.body.classList.toggle('bkos', bkosAan);
   document.getElementById('weergBtn').textContent = bkosAan ? 'BKOS' : 'KLASSIEK';
-  document.getElementById('bkSyncBtn').textContent = bkosSync ? 'SYNCHROON' : 'ASYNCHROON';
-  document.getElementById('bkSyncBtn').className = bkosSync ? 'act' : '';
+  document.getElementById('bkSyncBtn').textContent = bkosSync ? 'SYNC' : 'ASYNC';
+  document.getElementById('bkSyncBtn').className = 'lock' + (bkosSync ? ' open' : '');
+  bkosMaat();
   if (!bkosAan) { var w = document.querySelector('.wrap'); w.classList.remove('geblurd'); w.classList.remove('bkVolledig'); setTab(actieveTab === 'onbekend' ? 'info' : actieveTab); }
 }
 function bkosWissel(){

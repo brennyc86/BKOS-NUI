@@ -81,3 +81,14 @@ void bericht_verzend_nood(int idx, const char* afz_naam, const char* afz_tel) {
     }
     melding_stuur(t, MELDING_CAT_ALARM);
 }
+
+void bericht_nood_afzender_na(int idx, const char* afz_naam, const char* afz_tel) {
+    if (idx < 0 || idx >= BERICHT_NOOD_AANTAL) return;
+    if (!afz_naam || !afz_naam[0]) return;
+    String boot = String(info_boot_naam());
+    if (boot.length() == 0) boot = "BKOS";
+    String t = boot; t += " NOODGEVAL: \""; t += bericht_nood_preset[idx];
+    t += "\" gemeld door "; t += afz_naam;   // binnen MELDING_TEKST_LEN (140) bij maximale veldlengtes
+    if (afz_tel && afz_tel[0]) { t += " ("; t += afz_tel; t += ")"; }
+    melding_stuur(t, MELDING_CAT_ALARM);
+}

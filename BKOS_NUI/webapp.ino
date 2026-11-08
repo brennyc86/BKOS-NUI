@@ -14,6 +14,7 @@
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
 #include "bericht.h"        // bericht_preset/bericht_verzend — "iets is los"-berichtje, openbaar
+#include "melding.h"        // melding_aan — BERICHT-scherm in de webapp toont of berichten aan staan
 #include "app_state.h"      // vaar_modus, MODE_ANKER — noodgeval "op drift" alleen tonen/sturen in ankermodus
 #include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /fotos/foto, webapp-achtergrond
 #include "gast.h"           // pin_niveau() — eigenaar vs. gastcode (HUIS/BOOT-toegang)
@@ -132,6 +133,11 @@ static int _pin_niveau_van(const String& ingevoerd) {
     pin_bewaking_id_voor_ip(_http.client().remoteIP(), id);
     return pin_niveau_bewaakt(id, ingevoerd.c_str(), &_pin_status, &_pin_wacht);
 }
+// Laatste noodbericht (voor de nazending van naam/telefoon, zie /bericht/nood/afzender)
+static IPAddress     _nood_ip;
+static unsigned long _nood_ms  = 0;
+static int           _nood_idx = -1;
+
 static bool _pin_ok(const String& ingevoerd) {
     return _pin_niveau_van(ingevoerd) >= NIVEAU_GAST;
 }
@@ -261,7 +267,8 @@ void webapp_setup() {
             if (i) s += ',';
             s += "\""; s += bericht_preset[i]; s += "\"";
         }
-        s += "]}";
+        s += "],\"aan\":"; s += melding_aan ? "true" : "false";
+        s += '}';
         _http.send(200, "application/json", s);
     });
 
@@ -344,6 +351,27 @@ void webapp_setup() {
         if ((int)naam.length() > BERICHT_AFZ_NAAM_LEN - 1) naam = naam.substring(0, BERICHT_AFZ_NAAM_LEN - 1);
         if ((int)tel.length()  > BERICHT_AFZ_TEL_LEN - 1)  tel  = tel.substring(0, BERICHT_AFZ_TEL_LEN - 1);
         bericht_verzend_nood(idx, naam.c_str(), tel.c_str());
+        _nood_ip = _http.client().remoteIP(); _nood_ms = millis(); _nood_idx = idx;
+        _http.send(200, "application/json", "{\"ok\":true}");
+    });
+
+    // Nazending: het noodbericht ging direct weg; daarna vraagt de webapp alsnog naam/telefoon.
+    // Alleen voor hetzelfde toestel dat het noodbericht stuurde, binnen 15 minuten en maar één
+    // keer — zo kan deze route niet misbruikt worden om los alarmberichten te versturen.
+    _http.on("/bericht/nood/afzender", HTTP_POST, []() {
+        int idx = _http.arg("idx").toInt();
+        String naam = _http.arg("naam"); naam.trim();
+        String tel  = _http.arg("tel");  tel.trim();
+        if (naam.length() == 0 || tel.length() == 0) { _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"afzender\"}"); return; }
+        if (_nood_idx < 0 || idx != _nood_idx || !(_http.client().remoteIP() == _nood_ip) || millis() - _nood_ms > 15UL * 60UL * 1000UL) {
+            _http.send(400, "application/json", "{\"ok\":false,\"reden\":\"verlopen\"}"); return;
+        }
+        if ((int)naam.length() > BERICHT_AFZ_NAAM_LEN - 1) naam = naam.substring(0, BERICHT_AFZ_NAAM_LEN - 1);
+        if ((int)tel.length()  > BERICHT_AFZ_TEL_LEN - 1)  tel  = tel.substring(0, BERICHT_AFZ_TEL_LEN - 1);
+        bericht_nood_afzender_na(idx, naam.c_str(), tel.c_str());
+        _nood_idx = -1;
+        uint8_t mac[6];
+        if (wifi_mac_voor_ip(_http.client().remoteIP(), mac)) mac_record_bericht_registreer(mac, naam.c_str(), tel.c_str());
         _http.send(200, "application/json", "{\"ok\":true}");
     });
 

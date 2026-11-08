@@ -27,6 +27,8 @@
 #include "victron_ble.h"     // mini-widget interieurbalk
 #include "data_store.h"
 #include "haven_achtergrond.h"  // haven_achtergrond_url() — foto op het HAVEN-scherm
+#include "slaap.h"            // slaap_laatste_onverwachte_reset() — INFO-scherm in de webapp
+#include "hw_io.h"           // bkoss_versie, io_aparaten_cnt — INFO-scherm in de webapp
 
 #include "ble_app.h"          // BLE-tunnel naar de GitHub-Pages-webapp
 #include <WebSocketsServer.h>
@@ -40,6 +42,10 @@ static WebSocketsServer _ws(BKOS_WS_POORT);
 // Extra slot achteraan = de (enige) BLE-client, zie ble_app.cpp.
 #define BKOS_BLE_NUM WEBSOCKETS_SERVER_CLIENT_MAX
 static bool _ws_klanten[WEBSOCKETS_SERVER_CLIENT_MAX + 1]     = {false};
+// Nieuwe client: de beginberichten (io/state/net/info/paneel/lampen/huispaneel/scherm/ui) worden
+// NIET in de event-callback opgebouwd (diep in WebSocketsServer::loop(), op de 8KB loopTask-stack)
+// maar in de volgende ronde van bkos_client_loop() — zie _ws_init_sturen().
+static bool _ws_init_nodig[WEBSOCKETS_SERVER_CLIENT_MAX + 1] = {false};
 // Schrijfcommando's vereisen minimaal een geldige code (gast of eigenaar) —
 // status blijft voor iedereen op het lokale netwerk zichtbaar zonder in te
 // loggen, zo blijft "kijken" laagdrempelig en "schakelen" veilig. Een gastcode
@@ -360,7 +366,7 @@ static String _melding_json() {
 // scherm in de webapp geblurd met een toegangsmelding.
 static int _scherm_min_niveau(int s) {
     switch (s) {
-        case SCREEN_INFO: case SCREEN_POST:                              return NIVEAU_GEEN;
+        case SCREEN_INFO: case SCREEN_POST: case SCREEN_BERICHT:         return NIVEAU_GEEN;
         case SCREEN_MAIN: case SCREEN_HAVEN: case SCREEN_PANEEL:
         case SCREEN_HUISPANEEL: case SCREEN_METEO:                       return NIVEAU_GAST;
         default:                                                         return NIVEAU_EIGENAAR;
@@ -429,7 +435,7 @@ static String _ui_json() {
     snprintf(b, sizeof(b), "%.2fm", meteo_waterstand_nu()); s += F("\",\"nu\":\""); s += b;
     s += F("\",\"ri\":"); s += meteo_getij_richting();
     s += F(",\"st\":\""); _ui_esc(s, getij_stations[meteo_station_idx].naam);
-    float md = meteo_maan_dag();
+    float md = meteo_maan_dag(); if (isnan(md)) md = 0;   // NaN zou ongeldige JSON geven
     char mb[12]; meteo_maan_nautisc(md, mb, sizeof(mb));
     s += F("\",\"mn\":\""); _ui_esc(s, mb);
     snprintf(b, sizeof(b), "%.3f", md / 29.53f); s += F("\",\"mf\":"); s += b;
@@ -466,6 +472,78 @@ static String _ui_json() {
     return s;
 }
 static String _ui_prev;
+
+// INFO-scherm van de BKOS-weergave: zelfde velden als screen_info.ino. Wat je ziet hangt af
+// van je niveau: bootgegevens en de naam van de eigenaar zijn openbaar (net als vroeger op de
+// webapp), telefoon/stad/adres/e-mail en de SYSTEEM-tab alleen voor de eigenaar.
+// Kleurcodes systeemregels: 0=tekst 1=cyaan 2=groen 3=amber 4=rood 5=gedimd
+static void _inf_rij(String& s, bool& eerste, const char* label, const char* waarde, int kleur) {
+    if (!eerste) s += ','; eerste = false;
+    s += F("[\""); _ui_esc(s, label); s += F("\",\""); _ui_esc(s, waarde); s += F("\","); s += kleur; s += ']';
+}
+static const char* _inf_modus(uint8_t m) {
+    switch (m) { case NET_MASTER: return "master"; case NET_SLAVE: return "slave"; case NET_EXTRA: return "extra"; case NET_HEADLESS: return "headless"; default: return "standalone"; }
+}
+static String _info_scherm_json(int niveau) {
+    bool eig = niveau >= NIVEAU_EIGENAAR;
+    String s; s.reserve(900);
+    s = F("{\"t\":\"info_scherm\",\"niv\":"); s += niveau;
+    s += F(",\"boot\":[");
+    for (int i = 0; i < INFO_BOOT_VELDEN; i++) {
+        if (i) s += ',';
+        s += F("[\""); _ui_esc(s, info_boot_label(i)); s += F("\",\""); _ui_esc(s, info_boot_veld(i));
+        s += F("\","); s += info_boot_numeriek(i) ? 1 : 0; s += ']';
+    }
+    s += F("],\"eig\":[");
+    for (int i = 0; i < INFO_EIG_VELDEN; i++) {
+        if (i) s += ',';
+        s += F("[\""); _ui_esc(s, info_eig_label(i)); s += F("\",");
+        if (i == 0 || eig) { s += '"'; _ui_esc(s, info_eig_veld(i)); s += '"'; } else s += F("null");
+        s += ']';
+    }
+    s += F("],\"sys\":");
+    if (!eig) { s += F("null}"); return s; }
+    char b[48];
+    s += F("{\"naam\":\""); _ui_esc(s, net_eigen_naam); s += F("\",\"l\":[");
+    bool e = true;
+    if (net_eigen_naam[0] && strcmp(net_eigen_naam, "BKOS-NUI") != 0) snprintf(b, sizeof(b), "%s (%s)", net_eigen_naam, _inf_modus(net_modus));
+    else snprintf(b, sizeof(b), "%s", _inf_modus(net_modus));
+    _inf_rij(s, e, "", b, 1);
+    _inf_rij(s, e, "Versie:", BKOS_NUI_VERSIE, 1);
+    const char* rr = slaap_laatste_onverwachte_reset();
+    _inf_rij(s, e, "Reset:", rr, strcmp(rr, "geen bekend") == 0 ? 5 : 3);
+    if (bkoss_actief) { snprintf(b, sizeof(b), "%s  OK", bkoss_versie); _inf_rij(s, e, "BKOSS:", b, 2); }
+    else _inf_rij(s, e, "BKOSS:", "niet gevonden", 4);
+    _inf_rij(s, e, "WiFi:", wifi_verbonden ? "verbonden" : "geen verbinding", wifi_verbonden ? 2 : 3);
+    snprintf(b, sizeof(b), "%d mod / %d kn", io_aparaten_cnt, io_kanalen_cnt); _inf_rij(s, e, "IO:", b, 0);
+    for (int m = 0; m < io_aparaten_cnt && m < 4; m++) {
+        int ch = (io_aparaten[m] == MODULE_LOGICA16 || io_aparaten[m] == MODULE_SCHAKEL16) ? 16 : 8;
+        char ml[8]; snprintf(ml, sizeof(ml), "  m%d:", m + 1);
+        snprintf(b, sizeof(b), "%s (%d kn)", io_module_naam(io_aparaten[m]), ch); _inf_rij(s, e, ml, b, 1);
+    }
+    s += F("],\"r\":[");
+    e = true;
+    if (net_modus == NET_STANDALONE) _inf_rij(s, e, "", "Geen netwerk actief", 5);
+    else if (net_modus == NET_MASTER) {
+        snprintf(b, sizeof(b), "NETWERK  (%d)", net_peers_cnt); _inf_rij(s, e, "", b, 1);
+        int tm = io_aparaten_cnt, tk = io_kanalen_cnt;
+        for (int i = 0; i < net_peers_cnt; i++) if (net_peers[i].bevestigd) { tm += net_peers[i].io_modules; tk += net_peers[i].io_kanalen; }
+        snprintf(b, sizeof(b), "%d mod / %d kn", tm, tk); _inf_rij(s, e, "Totaal IO:", b, 0);
+        for (int i = 0; i < net_peers_cnt; i++) {
+            if (!net_peers[i].bevestigd) continue;
+            const char* pn = net_peers[i].naam[0] ? net_peers[i].naam : "?";
+            snprintf(b, sizeof(b), "%s (%s)", pn, _inf_modus(net_peers[i].modus)); _inf_rij(s, e, "", b, net_peers[i].actief ? 0 : 5);
+        }
+    } else {
+        _inf_rij(s, e, "", info_master_synced ? (net_master_bekend() ? "MASTER" : "MASTER (niet verbonden)") : "Wacht op master info...", info_master_synced ? 1 : 5);
+        if (info_master_synced) {
+            _inf_rij(s, e, "Versie:", info_master_versie, 1);
+            _inf_rij(s, e, "Netwerk:", net_gepaard ? "verbonden" : "geen verbinding", net_gepaard ? 2 : 3);
+        }
+    }
+    s += F("]}}");
+    return s;
+}
 
 static String _scherm_json() {
     String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm; s += '}';
@@ -504,6 +582,11 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
             }
             _tx(num, r);
         }
+        return;
+    }
+    if (t.indexOf(F("\"info_scherm\"")) >= 0) {   // openbaar: de inhoud hangt zelf af van het niveau
+        String r = _info_scherm_json(_ws_niveau[num]);
+        _tx(num, r);
         return;
     }
     if (t.indexOf(F("\"ping\"")) >= 0) {
@@ -946,19 +1029,12 @@ void bkos_client_setup() {
                         String ra = F("{\"t\":\"auth_ok\",\"niveau\":"); ra += _auto_niveau; ra += '}';
                         _tx(num, ra);
                     }
-                    String m1 = _io_full_json(); _tx(num, m1);
-                    String m2 = _state_json();   _tx(num, m2);
-                    String m3 = _net_json();     _tx(num, m3);
-                    String m4 = _info_json();    _tx(num, m4);
-                    String m5 = _paneel_json();  _tx(num, m5);
-                    String m6 = _lamp_json();    _tx(num, m6);
-                    String m7 = _huispaneel_json(); _tx(num, m7);
-                    String m8 = _scherm_json();  _tx(num, m8);
-                    String m9 = _ui_json();      _tx(num, m9);
+                    _ws_init_nodig[num] = true;   // beginberichten volgen in bkos_client_loop()
                     break;
                 }
                 case WStype_DISCONNECTED:
                     _ws_klanten[num] = false;
+                    _ws_init_nodig[num] = false;
                     _ws_niveau[num]  = NIVEAU_GEEN;
                     break;
                 case WStype_TEXT:
@@ -979,10 +1055,30 @@ void bkos_client_stop() {
     _ws_gestart = false;
 }
 
+// Beginberichten voor een net verbonden client, één client per ronde (houdt elke ronde kort)
+static void _ws_init_sturen() {
+    for (uint8_t num = 0; num < WEBSOCKETS_SERVER_CLIENT_MAX; num++) {
+        if (!_ws_init_nodig[num]) continue;
+        _ws_init_nodig[num] = false;
+        if (!_ws_klanten[num]) continue;
+        { String m = _io_full_json();    _tx(num, m); }
+        { String m = _state_json();      _tx(num, m); }
+        { String m = _net_json();        _tx(num, m); }
+        { String m = _info_json();       _tx(num, m); }
+        { String m = _paneel_json();     _tx(num, m); }
+        { String m = _lamp_json();       _tx(num, m); }
+        { String m = _huispaneel_json(); _tx(num, m); }
+        { String m = _scherm_json();     _tx(num, m); }
+        { String m = _ui_json();         _tx(num, m); }
+        return;
+    }
+}
+
 void bkos_client_loop() {
     ble_app_loop();
     if (_ws_gestart) {
         _ws.loop();
+        _ws_init_sturen();
         // Opnieuw starten zodra het IP-adres verandert: mDNS dat al draaide vóór de WiFi-verbinding
         // (opstart) of tijdens een herverbinding blijft anders op het netwerk onzichtbaar.
         // Hoogstens eens per 3 s en nooit terwijl de bootzoektaak mDNS gebruikt (anders wordt mDNS

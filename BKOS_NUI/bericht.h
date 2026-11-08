@@ -40,3 +40,6 @@ extern const char* const bericht_nood_preset[BERICHT_NOOD_AANTAL];
 extern const bool bericht_nood_alleen_anker[BERICHT_NOOD_AANTAL];
 
 void bericht_verzend_nood(int idx, const char* afz_naam, const char* afz_tel);  // afz_* mogen leeg/nullptr zijn
+// Nazending bij een noodbericht: het noodbericht zelf gaat direct weg (zonder te wachten op
+// naam/telefoon); de webapp vraagt die daarna alsnog en stuurt ze met deze functie na.
+void bericht_nood_afzender_na(int idx, const char* afz_naam, const char* afz_tel);

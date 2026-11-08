@@ -204,15 +204,24 @@ button.pbtn.locked, button.sw:disabled{opacity:.5;}
 #botenOverlay button.boot small{display:block;font-weight:400;color:var(--text-dim);font-size:.72rem;margin-top:2px;}
 
 /* ─── BKOS-weergave: het scherm van de boordcomputer, pixel voor pixel (canvas 800x480) ── */
-#bkSyncBtn{display:none;}
-body.bkos #bkSyncBtn{display:block;}
+#berOverlay{position:fixed;inset:0;background:rgba(4,10,16,.82);z-index:55;display:flex;align-items:center;justify-content:center;padding:20px;}
+#berOverlay.hidden{display:none;}
+#berCard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 20px;width:100%;max-width:360px;}
+#berCard h3{color:var(--cyan);font-size:1rem;margin-bottom:6px;}
+#berCard h3.nood{color:var(--amber);}
+#berCard p{color:var(--text-dim);font-size:.8rem;margin-bottom:14px;}
+#berCard input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:1rem;padding:11px 12px;margin-bottom:10px;-webkit-user-select:text;user-select:text;}
+#berErr{color:var(--red);font-size:.78rem;min-height:1.1em;margin-bottom:10px;}
+#berCard .row{display:flex;gap:8px;}
+#berCard button{flex:1;border-radius:10px;padding:12px;font-size:.9rem;font-weight:600;border:1px solid var(--border);}
+#berCard button.ok{background:var(--cyan);color:#04121c;border-color:var(--cyan);}
+#berCard button.cancel{background:var(--surface2);color:var(--text-dim);}
 #bkosCv,#bkosToegang{display:none;}
 body.bkos #bgFixed{display:none;}
 /* Eén header, daaronder het scherm zo groot als past (5:3) — de pagina zelf scrolt nooit.
    --bkTop = hoogte van header (+ eventuele bootbalk), gemeten door bkosMaat(). */
 body.bkos{height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
-body.bkos header{position:relative;padding:calc(env(safe-area-inset-top) + 5px) 12px 5px;}
-body.bkos header button.lock{padding:6px 10px;}
+body.bkos header{display:none;}   /* BKOS-weergave: geen eigen header, slotje + sync zitten in de statusbalk van het scherm */
 body.bkos .wrap{
   position:relative;flex:none;max-width:none;padding:0;margin:8px auto;overflow:hidden;background:#000;
   border:2px solid var(--border);border-radius:12px;aspect-ratio:5/3;
@@ -249,7 +258,6 @@ body.bkos .wrap.geblurd #bkosToegang{display:flex;}
     <b>BKOS</b>
     <span id="hdrSub">verbinden…</span>
   </div>
-  <button class="lock" id="bkSyncBtn" onclick="bkosSyncWissel()" title="Synchroon: webapp en boordcomputer staan altijd op hetzelfde scherm" style="margin-right:6px;font-size:.72rem;font-weight:700;">SYNC</button>
   <button class="lock" id="weergBtn" onclick="bkosWissel()" title="Weergave: klassiek of BKOS (nagebouwd boordcomputerscherm)" style="margin-right:6px;font-size:.72rem;font-weight:700;">KLASSIEK</button>
   <button class="lock" id="lockBtn" onclick="lockClick()">&#128274;</button>
 </header>
@@ -533,6 +541,20 @@ body.bkos .wrap.geblurd #bkosToegang{display:flex;}
   </div>
 </div>
 
+<div id="berOverlay" class="hidden">
+  <div id="berCard">
+    <h3 id="berKop">Wie stuurt dit bericht?</h3>
+    <p id="berTekst">De eigenaar ziet je naam en telefoonnummer, zodat hij contact met je kan opnemen.</p>
+    <input id="berNaam" type="text" maxlength="19" placeholder="Je naam" autocomplete="name">
+    <input id="berTel" type="tel" maxlength="15" placeholder="Je telefoonnummer" autocomplete="tel">
+    <div id="berErr"></div>
+    <div class="row">
+      <button class="cancel" id="berAnnuleer" onclick="berSluit()">ANNULEER</button>
+      <button class="ok" id="berOk" onclick="berVerstuur()">VERSTUUR</button>
+    </div>
+  </div>
+</div>
+
 <div id="cropModal" class="hidden">
   <p style="font-size:.78rem;color:var(--text-dim);text-align:center;margin-bottom:10px;">Sleep om te schuiven, gebruik de schuif om in/uit te zoomen. Alleen het deel in het kader wordt opgeslagen.</p>
   <div id="cropViewport"><img id="cropImg" draggable="false" alt=""></div>
@@ -598,6 +620,7 @@ function connect(){
     setConn(true);
     var saved = localStorage.getItem(PIN_KEY);
     if (saved && !unlocked) { pendingPin = saved; autoPinSilent = true; send({t:'auth', pin:saved}); }
+    if (bkosAan && bkosScherm === 5) send({t:'info_scherm'});   // INFO stond al open vóór de verbinding er was
   };
   ws.onclose = function(){ setConn(false); unlocked=false; setLock(false, 0); setTimeout(connect, 2000); };
   ws.onerror = function(){ try{ ws.close(); }catch(e){} };
@@ -620,6 +643,7 @@ function setConn(on){
   connected = on;
   document.getElementById('connDot').className = 'dot' + (on ? ' on' : '');
   _hdrSubRender();
+  bkosWebStaat();
 }
 
 function berichtSetOpen(open){
@@ -668,7 +692,12 @@ function setLock(on, niv){
   // authenticatie) — tot toevallig een latere broadcast een her-render
   // triggerde. Vandaar "staat soms alles op slot, dan ineens niet".
   renderPaneel(); renderHuispaneel(); renderHuis(); renderState();
-  if (bkosAan) bkosToon(bkosScherm);
+  bkosWebStaat();
+  if (bkosAan) {
+    // Net ingelogd en synchroon: meteen naar het scherm waar de boordcomputer op staat
+    if (bkosSyncEff() && bkosBoardScherm >= 0) bkosToon(bkosBoardScherm); else bkosToon(bkosScherm);
+  }
+  if (bkosScherm === 5) send({t:'info_scherm'});   // wat je op INFO mag zien hangt af van je niveau
 }
 
 function setTab(naam){
@@ -707,7 +736,7 @@ function lockClick(){
 function handleMsg(msg){
   if (typeof BKS !== 'undefined') {
     BKS.zet(msg);
-    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info')) bkosTeken();
+    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm')) bkosTeken();
   }
   switch(msg.t){
     case 'io_full':
@@ -716,7 +745,7 @@ function handleMsg(msg){
       if (msg.ch < ioData.o.length) { ioData.o[msg.ch]=msg.o; ioData.i[msg.ch]=msg.i; renderIO(); }
       break;
     case 'scherm':
-      bkosBoardScherm = msg.s; if (bkosAan && bkosSync) bkosToon(msg.s); break;
+      bkosBoardScherm = msg.s; if (bkosAan && bkosSyncEff()) bkosToon(msg.s); break;
     case 'state':
       stateData = msg; renderState(); break;
     case 'net':
@@ -2085,7 +2114,8 @@ var BK_SCHERMEN = {
   2:  {n:'METEO',     tab:'onbekend',     min:NIVEAU_GAST},
   3:  {n:'CONFIG',    tab:'instellingen', min:NIVEAU_EIGENAAR},
   21: {n:'BESTANDEN', tab:'fotos',        min:NIVEAU_EIGENAAR},
-  5:  {n:'INFO',      tab:'info',         min:NIVEAU_GEEN}
+  5:  {n:'INFO',      tab:'info',         min:NIVEAU_GEEN},
+  16: {n:'BERICHT',   tab:'info',         min:NIVEAU_GEEN}
 };
 var BK_NAAM = {4:'WIFI',6:'UPDATE',7:'IO CFG',8:'APPS',11:'VICTRON',12:'NETWERK',13:'BRUG',14:'MELDINGEN',16:'BERICHT',17:'TIJD',18:'LAMPEN',19:'KLEUR',22:'GASTEN',23:'APPSTORE',25:'POST'};
 function _bkLs(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
@@ -2117,6 +2147,8 @@ function bkosToon(s){
     if (d.tab === 'onbekend') document.getElementById('bkOnbekendKop').textContent = d.n;
     if (s === 15) { var el = document.getElementById('paneelSection'); if (el && el.scrollIntoView) el.scrollIntoView(); }
   }
+  if (s === 5) send({t:'info_scherm'});
+  if (s === 16) berLaden();
   var geen = niveau < d.min;
   wrap.classList.toggle('geblurd', geen);
   if (geen) {
@@ -2132,14 +2164,117 @@ function bkosToon(s){
 function bkosGa(s){
   bkosToon(s);
   var d = bkosInfoVoor(s);
-  if (bkosSync && niveau >= d.min && niveau >= NIVEAU_GAST) send({t:'set_scherm', s:s});
+  if (bkosSyncEff() && niveau >= d.min) send({t:'set_scherm', s:s});
+}
+// Synchroon werkt alleen als je ingelogd bent; daarvoor kiest de webapp altijd zelf zijn scherm
+function bkosSyncEff(){ return bkosSync && unlocked && niveau >= NIVEAU_GAST; }
+// Verbindings-/inlogstatus en de sync-keuze doorgeven aan de canvas (slotje + sync-icoon in de statusbalk)
+function bkosWebStaat(){
+  if (typeof BKS === 'undefined') return;
+  BKS.S.web = {ing: !!unlocked, verb: !!connected, sync: !!bkosSync};
+  if (bkosAan) bkosTeken();
 }
 // Aanrakingen op de canvas: schermwissel of een commando naar de boordcomputer
 function bkosActie(a){
+  if (a.slot) { lockClick(); return; }
+  if (a.sync) { bkosSyncWissel(); return; }
+  if (a.weergave) { bkosWissel(); return; }
+  if (a.bericht != null) { berKies(a.bericht); return; }
+  if (a.nood != null) { noodKies(a.nood); return; }
   if (a.gaNaar != null) { bkosGa(a.gaNaar); return; }
   if (a.stuur) { if (needAuth()) return; send(a.stuur); }
 }
 function bkosAchtergrond(){}
+
+// ─── BERICHT-scherm in de BKOS-weergave ──────────────────────────────────────
+// Gewoon bericht: eerst naam + telefoon (verplicht, de eigenaar moet je kunnen terugbellen), dan versturen.
+// Noodbericht: gaat METEEN weg (met je naam/telefoon als die al bekend zijn); daarna vragen we ze
+// alsnog en sturen ze na (/bericht/nood/afzender).
+var berModus = null, berIdx = -1, berNoodVerstuurd = null;
+function berLaden(){
+  Promise.all([
+    fetch('/bericht/lijst').then(function(r){ return r.json(); }),
+    fetch('/bericht/nood/lijst').then(function(r){ return r.json(); })
+  ]).then(function(res){
+    BKS.zet({t:'ber', presets: res[0].presets || [], aan: res[0].aan !== false, nood: res[1].presets || [], anker: !!res[1].anker});
+    bkosTeken();
+  }).catch(function(){});
+}
+function berFlits(txt, kl){
+  BKS.S.berFlits = {txt: txt, kl: kl, tot: Date.now() + 2500};
+  bkosTeken(); setTimeout(bkosTeken, 2600);
+}
+function berAfz(){ return {naam: localStorage.getItem(BERICHT_NAAM_KEY) || '', tel: localStorage.getItem(BERICHT_TEL_KEY) || ''}; }
+function berOpen(modus, kop, tekst, knop){
+  berModus = modus;
+  var a = berAfz();
+  document.getElementById('berNaam').value = a.naam;
+  document.getElementById('berTel').value = a.tel;
+  if (!a.naam || !a.tel) {
+    fetch('/bericht/afzender').then(function(r){ return r.json(); }).then(function(d){
+      var n = document.getElementById('berNaam'), t = document.getElementById('berTel');
+      if (!n.value && d.naam) n.value = d.naam;
+      if (!t.value && d.tel) t.value = d.tel;
+    }).catch(function(){});
+  }
+  var k = document.getElementById('berKop'); k.textContent = kop; k.className = modus === 'nood' ? 'nood' : '';
+  document.getElementById('berTekst').textContent = tekst;
+  document.getElementById('berOk').textContent = knop;
+  document.getElementById('berAnnuleer').textContent = modus === 'nood' ? 'SLUITEN' : 'ANNULEER';
+  document.getElementById('berErr').textContent = '';
+  document.getElementById('berOverlay').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById(a.naam ? 'berTel' : 'berNaam').focus(); }, 50);
+}
+function berSluit(){ document.getElementById('berOverlay').classList.add('hidden'); berModus = null; }
+function berKies(i){
+  var b = BKS.S.ber || {}, t = (b.presets || [])[i] || '';
+  berIdx = i;
+  berOpen('preset', 'Bericht: \u201c' + t + '\u201d', 'Laat even weten wie je bent: de eigenaar ziet je naam en telefoonnummer, zodat hij contact met je kan opnemen.', 'VERSTUUR');
+}
+function noodKies(idx){
+  var a = berAfz(), fd = new URLSearchParams();
+  fd.set('idx', idx); fd.set('naam', a.naam); fd.set('tel', a.tel);
+  fetch('/bericht/nood/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.ok) { berFlits(d.reden === 'modus' ? 'Dit noodbericht kan alleen in ankermodus' : 'Versturen mislukt', 'fout'); return; }
+      berFlits('Noodbericht verstuurd', 'nood');
+      berIdx = idx; berNoodVerstuurd = a;
+      berOpen('nood', 'Noodbericht is verstuurd',
+        a.naam ? 'De eigenaar heeft je bericht ontvangen, met deze gegevens. Klopt er iets niet? Pas het aan en stuur het na.'
+               : 'De eigenaar heeft je bericht al ontvangen. Laat nu weten wie je bent, dan sturen we dat na zodat hij je kan bellen.',
+        'STUUR NA');
+    })
+    .catch(function(){ berFlits('Versturen mislukt', 'fout'); });
+}
+function berVerstuur(){
+  var naam = document.getElementById('berNaam').value.trim(), tel = document.getElementById('berTel').value.trim();
+  if (!naam || !tel) { document.getElementById('berErr').textContent = 'Vul je naam en telefoonnummer in.'; return; }
+  localStorage.setItem(BERICHT_NAAM_KEY, naam); localStorage.setItem(BERICHT_TEL_KEY, tel);
+  var fd = new URLSearchParams(); fd.set('idx', berIdx); fd.set('naam', naam); fd.set('tel', tel);
+  if (berModus === 'nood') {
+    // Al met precies deze gegevens verstuurd: niets na te sturen
+    if (berNoodVerstuurd && berNoodVerstuurd.naam === naam && berNoodVerstuurd.tel === tel) { berSluit(); return; }
+    fetch('/bericht/nood/afzender', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.ok) { berSluit(); berFlits('Je gegevens zijn nagestuurd', 'ok'); }
+        else document.getElementById('berErr').textContent = d.reden === 'verlopen' ? 'Nasturen kan niet meer (te lang geleden).' : 'Nasturen mislukt.';
+      })
+      .catch(function(){ document.getElementById('berErr').textContent = 'Nasturen mislukt.'; });
+    return;
+  }
+  fd.set('pin', localStorage.getItem(PIN_KEY) || '');
+  fetch('/bericht/verzend', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:fd.toString()})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) { berSluit(); berFlits('Verstuurd naar eigenaar', 'ok'); return; }
+      document.getElementById('berErr').textContent = d.reden === 'limiet'
+        ? 'Je hebt al veel berichten gestuurd. Probeer het over ' + _berichtLeesbareTijd(d.wachtSec || 0) + ' opnieuw.'
+        : d.reden === 'afzender' ? 'Vul je naam en telefoonnummer in.' : 'Versturen mislukt.';
+    })
+    .catch(function(){ document.getElementById('berErr').textContent = 'Versturen mislukt.'; });
+}
 // Hoogte boven het scherm meten (header + bootbalk), zodat het scherm precies in het venster past
 function bkosMaat(){
   var h = document.querySelector('header').offsetHeight + document.getElementById('botenBalk').offsetHeight;
@@ -2150,8 +2285,7 @@ if (window.ResizeObserver) { var _bkRo = new ResizeObserver(bkosMaat); _bkRo.obs
 function bkosPas(){
   document.body.classList.toggle('bkos', bkosAan);
   document.getElementById('weergBtn').textContent = bkosAan ? 'BKOS' : 'KLASSIEK';
-  document.getElementById('bkSyncBtn').textContent = bkosSync ? 'SYNC' : 'ASYNC';
-  document.getElementById('bkSyncBtn').className = 'lock' + (bkosSync ? ' open' : '');
+  bkosWebStaat();
   bkosMaat();
   if (!bkosAan) { var w = document.querySelector('.wrap'); w.classList.remove('geblurd'); w.classList.remove('bkVolledig'); setTab(actieveTab === 'onbekend' ? 'info' : actieveTab); }
 }
@@ -2159,11 +2293,11 @@ function bkosWissel(){
   if (typeof BKS === 'undefined') return;
   bkosAan = !bkosAan; _bkLsSet('bkos_weergave', bkosAan ? 'bkos' : 'klassiek');
   bkosPas();
-  if (bkosAan) bkosToon(bkosSync && bkosBoardScherm >= 0 ? bkosBoardScherm : bkosScherm);
+  if (bkosAan) bkosToon(bkosSyncEff() && bkosBoardScherm >= 0 ? bkosBoardScherm : bkosScherm);
 }
 function bkosSyncWissel(){
   bkosSync = !bkosSync; _bkLsSet('bkos_sync', bkosSync ? '1' : '0'); bkosPas();
-  if (bkosSync && bkosBoardScherm >= 0) bkosToon(bkosBoardScherm);   // de boordcomputer leidt
+  if (bkosSyncEff() && bkosBoardScherm >= 0) bkosToon(bkosBoardScherm);   // de boordcomputer leidt
 }
 if (typeof BKS !== 'undefined') {
   BKS.init(document.getElementById('bkosCv'), {actie: bkosActie, opnieuw: bkosTeken});

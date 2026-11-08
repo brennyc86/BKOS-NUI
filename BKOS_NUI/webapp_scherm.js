@@ -234,7 +234,10 @@ var BKS = (function () {
   // ── Toestand (komt van het apparaat) ───────────────────────────────────────
   var S = {
     ui: null, modus: 0, licht: 0, h: 0, scherm: 0, paneel: [], bootnaam: '', versie: '', klok: '--:--',
-    toegang: 0
+    toegang: 0,
+    web: { ing: false, verb: false, sync: true },   // alleen webapp: ingelogd / verbonden / synchroon (gezet door de pagina)
+    info: null,                                     // INFO-scherm (bericht 'info_scherm' van de boordcomputer)
+    ber: null, berFlits: null                       // BERICHT-scherm: {presets, aan, nood, anker} + bevestigingsbalk
   };
 
   // ── Statusbalk (nav_bar.ino) ───────────────────────────────────────────────
@@ -271,6 +274,38 @@ var BKS = (function () {
   var SB_ICON_X0 = 10, SB_ICON_CY = SB_H / 2, SB_ICON_GAP = 12, SB_WIFI_W = 22, SB_HOTSPOT_W = 16,
       SB_HOTSPOT_X = SB_ICON_X0 + SB_WIFI_W + SB_ICON_GAP + 1, SB_UPDATE_W = 18, SB_BEL_W = 16, SB_TITEL_GAP = 18,
       SB_KLOK_X = W - 68, SB_KLOK_ZWART_X = SB_KLOK_X - 14;
+  // Webapp: het zwarte klokvenster loopt door over twee iconen (synchroon/asynchroon + slotje)
+  var WEB_ICON_W = 30, WEB_ZWART_X = SB_KLOK_ZWART_X - 2 * WEB_ICON_W;
+  function miniPijl(cx, cy, r, graden, k) {
+    var rad = graden * Math.PI / 180, trad = rad + Math.PI / 2, pX = cx + Math.trunc(r * Math.cos(rad)), pY = cy + Math.trunc(r * Math.sin(rad));
+    var tx = Math.round(Math.cos(trad) * 4), ty = Math.round(Math.sin(trad) * 4), rx = Math.round(Math.cos(rad) * 3), ry = Math.round(Math.sin(rad) * 3);
+    fillTriangle(pX + tx, pY + ty, pX - tx + rx, pY - ty + ry, pX - tx - rx, pY - ty - ry, k);
+  }
+  // Synchroon = twee ronddraaiende pijlen (cyaan; grijs zolang je niet ingelogd bent, dan staat sync stil).
+  // Asynchroon = twee losse pijlen die elk hun eigen kant op gaan.
+  function syncIcoon(cx, cy) {
+    var w = S.web || {}, k;
+    if (!w.sync) {
+      k = C_TEXT_DIM;
+      hl(cx - 8, cy - 4, 12, k); hl(cx - 8, cy - 3, 12, k); fillTriangle(cx + 4, cy - 8, cx + 4, cy + 1, cx + 9, cy - 4, k);
+      hl(cx - 3, cy + 4, 12, k); hl(cx - 3, cy + 5, 12, k); fillTriangle(cx - 4, cy, cx - 4, cy + 9, cx - 9, cy + 4, k);
+      return;
+    }
+    k = w.ing ? C_CYAN : C_DARK_GRAY;
+    fillArc(cx, cy, 9, 7, 25, 155, k); fillArc(cx, cy, 9, 7, 205, 335, k);
+    miniPijl(cx, cy, 8, 155, k); miniPijl(cx, cy, 8, 335, k);
+  }
+  // Slotje: groen en open = ingelogd, grijs en dicht = niet ingelogd, rood = geen verbinding met de boordcomputer
+  function slotIcoon(cx, cy) {
+    var w = S.web || {}, k = !w.verb ? C_RED_BRIGHT : w.ing ? C_GREEN : C_TEXT_DIM, o = w.ing ? 4 : 0;
+    var by = cy - 1;
+    vl(cx - 5, by - 6 - o, 6 + o, k); vl(cx - 4, by - 6 - o, 6 + o, k);
+    if (w.ing) { vl(cx + 4, by - 6 - o, 3, k); vl(cx + 5, by - 6 - o, 3, k); }
+    else { vl(cx + 4, by - 6, 6, k); vl(cx + 5, by - 6, 6, k); }
+    hl(cx - 3, by - 9 - o, 7, k); hl(cx - 3, by - 8 - o, 7, k); px(cx - 4, by - 7 - o, k); px(cx + 4, by - 7 - o, k);
+    fillRoundRect(cx - 7, by, 15, 11, 2, k);
+    fillRect(cx, by + 3, 1, 5, C_BLACK); fillRect(cx - 1, by + 3, 3, 2, C_BLACK);
+  }
   var sbIconenEindX = SB_HOTSPOT_X + SB_HOTSPOT_W;
   var tintFn = null;   // optioneel: HAVEN tint achtergrond (foto) — zie nbFill
   function nbFill(x, y, w, h, kleur, sterkte) { if (tintFn) tintFn(x, y, w, h, kleur, sterkte == null ? 165 : sterkte); else fillRect(x, y, w, h, kleur); }
@@ -279,7 +314,11 @@ var BKS = (function () {
     var ui = S.ui || {};
     nbFill(0, 0, W, SB_H, C_STATUSBAR, 165);
     hl(0, SB_H - 1, W, C_SURFACE2);
-    fillRect(SB_KLOK_ZWART_X, 0, W - SB_KLOK_ZWART_X, SB_H, C_BLACK);
+    fillRect(WEB_ZWART_X, 0, W - WEB_ZWART_X, SB_H, C_BLACK);
+    syncIcoon(WEB_ZWART_X + (WEB_ICON_W >> 1), SB_ICON_CY);
+    slotIcoon(WEB_ZWART_X + WEB_ICON_W + (WEB_ICON_W >> 1), SB_ICON_CY);
+    zone(WEB_ZWART_X, 0, WEB_ICON_W, SB_H, function () { return { sync: true }; });
+    zone(WEB_ZWART_X + WEB_ICON_W, 0, WEB_ICON_W, SB_H, function () { return { slot: true }; });
     wifiIcon(SB_ICON_X0, SB_ICON_CY, 1);
     hotspotIcon(SB_HOTSPOT_X, SB_ICON_CY, 1);
     var x = SB_HOTSPOT_X + SB_HOTSPOT_W;
@@ -377,7 +416,8 @@ var BKS = (function () {
   function navBar(actief) {
     var y = NAV_Y, cy = y + NAV_H / 2;
     nbFill(0, y, W, NAV_H, C_NAVBAR, 165); hl(0, y, W, C_SURFACE2);
-    navMidden = (S.ui && S.ui.nav) ? S.ui.nav : [];
+    navMidden = ((S.ui && S.ui.nav) ? S.ui.nav : []).slice();
+    if (!navMidden.some(function (it) { return it.s === SC.BERICHT; })) navMidden.unshift({ l: 'BERICHT', s: SC.BERICHT });
     function sysKnop(x, act, scherm) {
       if (act) nbFillActief(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE2); else nbFill(x + 1, y + 1, NB_SQ - 2, NAV_H - 2, C_SURFACE);
       if (act) { hl(x + 4, y, NB_SQ - 8, C_CYAN); hl(x + 4, y + 1, NB_SQ - 8, C_CYAN); }
@@ -720,7 +760,7 @@ var BKS = (function () {
     for (var ry = 0; ry < h; ry++) for (var rx = 0; rx < w; rx++) px(x + rx, y + ry, meng(fotoPx(x + rx, y + ry), r5, g6, b5, sterkte));
   }
   var HV_GAP = 8, HV_TILE_H = 72, HV_SECTIE_H = 18, HV_START_Y = CONTENT_Y, HV_LIST_BOT = NAV_Y - 8, UI_SB_W = 34, UI_SB_BTN = 40;
-  var HV_ALG_GAP_KL = 8, HV_ALG_GAP_GR = 24, HV_BACK_W = 112, HV_BACK_H = 26, HV_BACK_GAP = 8, HV_BACK_X = SB_KLOK_ZWART_X - HV_BACK_W - HV_BACK_GAP, HV_BACK_Y = HV_BACK_GAP;
+  var HV_ALG_GAP_KL = 8, HV_ALG_GAP_GR = 24, HV_BACK_W = 112, HV_BACK_H = 26, HV_BACK_GAP = 8, HV_BACK_X = WEB_ZWART_X - HV_BACK_W - HV_BACK_GAP, HV_BACK_Y = HV_BACK_GAP;
   var HV_CONTENT_UIT = 0, hvScroll = 0, hvMaxScroll = 0;
   S.lampen = { hoofdAanwezig: false, hoofdAan: false, kleur: 0, overrule: -1, items: [] };
   S.huis = [];
@@ -875,7 +915,7 @@ var BKS = (function () {
     // "< TERUG"-knop (ui_knop)
     fillRoundRect(HV_BACK_X, HV_BACK_Y, HV_BACK_W, HV_BACK_H, KNOP_R, C_SURFACE2);
     tekst('< TERUG', HV_BACK_X + ((HV_BACK_W - 7 * 12) >> 1), HV_BACK_Y + ((HV_BACK_H - 16) >> 1), 2, C_TEXT_DIM);
-    zone(HV_BACK_X, 0, W - HV_BACK_X, SB_H, function () { return { gaNaar: SC.MAIN }; });
+    zone(HV_BACK_X, 0, HV_BACK_W + HV_BACK_GAP, SB_H, function () { return { gaNaar: SC.MAIN }; });
 
     var colW = Math.trunc((W - UI_SB_W - 24) / 2), rightX = 8 + colW + HV_GAP;
     var cols = Math.max(1, Math.min(2, Math.trunc(colW / 150))), tileW = Math.trunc((colW - (cols - 1) * HV_GAP) / cols);
@@ -929,6 +969,127 @@ var BKS = (function () {
     navBar(SC.HAVEN);
     tintFn = null;
   }
+  // ── INFO (screen_info.ino) ─────────────────────────────────────────────────
+  var INFO_TAB_H = 36, INFO_TAB_W = (W / 3) | 0, VELD_START_Y = CONTENT_Y + INFO_TAB_H + 4, VELD_H = 50, VELD_LABEL_W = 120;
+  var infoTab = 0;
+  function meterNaarFt(v) {
+    var m = parseFloat(String(v).replace(',', '.')); if (isNaN(m)) return '';
+    var t = m * 3.28084, ft = Math.trunc(t), inch = Math.trunc((t - ft) * 12 + 0.5);
+    return '(' + ft + "'" + inch + '")';
+  }
+  function infoVeld(idx, y, label, waarde, numeriek, verborgen) {
+    fillRect(10, y, W - 20, VELD_H - 2, (idx % 2 === 0) ? C_SURFACE : C_BG);
+    tekst(label, 18, y + ((VELD_H - 8) >> 1), 1, C_TEXT_DIM);
+    if (verborgen) { tekst('(alleen voor de eigenaar)', VELD_LABEL_W + 18, y + ((VELD_H - 8) >> 1), 1, C_DARK_GRAY); return; }
+    if (numeriek && waarde) {
+      tekst(waarde + ' m', VELD_LABEL_W + 18, y + 6, 2, C_TEXT);
+      tekst(meterNaarFt(waarde), VELD_LABEL_W + 18, y + 28, 1, C_TEXT_DIM);
+    } else {
+      tekst(waarde ? waarde : '(niet ingevuld)', VELD_LABEL_W + 18, y + ((VELD_H - 16) >> 1), 2, waarde ? C_TEXT : C_DARK_GRAY);
+    }
+  }
+  var SYS_KLEUR = function (c) { return [C_TEXT, C_CYAN, C_GREEN, C_AMBER, C_RED_BRIGHT, C_TEXT_DIM][c] || C_TEXT; };
+  function sysRijen(rijen, x, w, y0) {
+    var y = y0, RH = 32;
+    for (var i = 0; i < rijen.length && y + RH < NAV_Y; i++) {
+      var r = rijen[i];
+      fillRect(x, y, w, RH, (i % 2 === 0) ? C_SURFACE : C_BG);
+      if (r[0]) { tekst(r[0], x + 8, y + 12, 1, C_TEXT_DIM); tekst(r[1], x + 8 + r[0].length * 6 + 6, y + 12, 1, SYS_KLEUR(r[2])); }
+      else tekst(r[1], x + 8, y + 12, 1, SYS_KLEUR(r[2]));
+      y += RH + 2;
+    }
+  }
+  function schermInfo() {
+    fillRect(0, 0, W, H, C_BG);
+    sbSchermTeken('BOOT & EIGENAAR', C_CYAN);
+    // Op de plek van de BEWERK-knop: terug naar de klassieke weergave van de webapp
+    var kx = WEB_ZWART_X - 120, ky = (SB_H - 26) >> 1;
+    fillRoundRect(kx, ky, 112, 26, KNOP_R, C_SURFACE2);
+    tekst('KLASSIEK', kx + ((112 - 8 * 12) >> 1), ky + 5, 2, C_TEXT_DIM);
+    zone(kx, 0, 112 + 8, SB_H, function () { return { weergave: true }; });
+    var labels = ['BOOT', 'EIGENAAR', 'SYSTEEM'];
+    for (var i = 0; i < 3; i++) {
+      var act = infoTab === i, x = i * INFO_TAB_W;
+      fillRect(x, CONTENT_Y, INFO_TAB_W, INFO_TAB_H, act ? C_SURFACE2 : C_SURFACE);
+      if (act) { hl(x + 10, CONTENT_Y, INFO_TAB_W - 20, C_CYAN); hl(x + 10, CONTENT_Y + 1, INFO_TAB_W - 20, C_CYAN); }
+      tekst(labels[i], x + ((INFO_TAB_W - labels[i].length * 12) >> 1), CONTENT_Y + ((INFO_TAB_H - 16) >> 1), 2, act ? C_CYAN : C_TEXT_DIM);
+      zone(x, CONTENT_Y, INFO_TAB_W, INFO_TAB_H, (function (t) { return function () { return { infoTab: t }; }; })(i));
+    }
+    hl(0, CONTENT_Y + INFO_TAB_H, W, C_SURFACE2);
+    var d = S.info, fy = VELD_START_Y;
+    if (!d) { tekst('Gegevens worden geladen...', 18, fy + 16, 2, C_TEXT_DIM); navBar(SC.INFO); return; }
+    if (infoTab === 0) {
+      (d.boot || []).forEach(function (v, k) { infoVeld(k, fy, v[0], v[1], !!v[2], false); fy += VELD_H; });
+    } else if (infoTab === 1) {
+      (d.eig || []).forEach(function (v, k) { infoVeld(k, fy, v[0], v[1] || '', false, v[1] === null); fy += VELD_H; });
+    } else if (!d.sys) {
+      fillRect(10, fy, W - 20, VELD_H - 2, C_SURFACE);
+      tekst('Alleen zichtbaar voor de eigenaar', 18, fy + ((VELD_H - 16) >> 1), 2, C_TEXT_DIM);
+      var bx = W - 10 - 150, by = fy + ((VELD_H - 2 - 30) >> 1);
+      fillRoundRect(bx, by, 140, 30, KNOP_R, C_CYAN); tekst('INLOGGEN', bx + ((140 - 96) >> 1), by + 7, 2, C_TEXT_DARK);
+      zone(bx, by, 140, 30, function () { return { slot: true }; });
+    } else {
+      var sy = d.sys, ny = VELD_START_Y;
+      fillRect(10, ny, W - 20, VELD_H - 2, C_SURFACE2);
+      tekst('Apparaatnaam', 18, ny + ((VELD_H - 8) >> 1) - 5, 1, C_TEXT_DIM);
+      var nm = sy.naam && sy.naam !== 'BKOS-NUI' ? sy.naam : '';
+      tekst(nm || '(niet ingesteld)', 18 + VELD_LABEL_W, ny + ((VELD_H - 16) >> 1) + 2, 2, nm ? C_CYAN : C_DARK_GRAY);
+      var ry = ny + VELD_H + 4;
+      for (var j = 0; j < 3; j++) vl(398 + j - 1, ry, NAV_Y - ry, j === 1 ? C_SURFACE2 : C_BG);
+      sysRijen(sy.l || [], 10, 370, ry);
+      sysRijen(sy.r || [], 402, 388, ry);
+    }
+    navBar(SC.INFO);
+  }
+
+  // ── BERICHT (screen_bericht.ino) ───────────────────────────────────────────
+  var BER_HDR_H = 28, BER_KOL = 2, BER_GAP = 8, BER_NOOD_LBL_H = 18;
+  function berNood() {
+    var b = S.ber || {}, uit = [];
+    (b.nood || []).forEach(function (n, i) { if (!n.alleenAnker || S.modus === 3) uit.push(i); });
+    return uit;
+  }
+  function berRect(i, nP, nN) {
+    var top = CONTENT_Y + BER_HDR_H + 22, rijenP = Math.ceil(nP / BER_KOL), rijen = rijenP + Math.ceil(nN / BER_KOL);
+    var gh = Math.trunc((NAV_Y - 6 - top - BER_NOOD_LBL_H - BER_GAP * (rijen - 1)) / rijen), gw = Math.trunc((W - BER_GAP * (BER_KOL + 1)) / BER_KOL);
+    var y0 = top, k = i;
+    if (i >= nP) { k = i - nP; y0 += rijenP * (gh + BER_GAP) + BER_NOOD_LBL_H; }
+    return { x: BER_GAP + (k % BER_KOL) * (gw + BER_GAP), y: y0 + Math.trunc(k / BER_KOL) * (gh + BER_GAP), w: gw, h: gh };
+  }
+  function berKnop(r, t, rand, aan) {
+    fillRoundRect(r.x, r.y, r.w, r.h, 6, C_SURFACE); drawRoundRect(r.x, r.y, r.w, r.h, 6, rand);
+    var size = 2, tw = t.length * 12;
+    if (tw > r.w - 12) { size = 1; tw = t.length * 6; }
+    if (tw > r.w - 8) { var mx = Math.trunc((r.w - 8) / 6); t = t.substr(0, mx - 1) + '.'; tw = t.length * 6; }
+    tekst(t, r.x + ((r.w - tw) >> 1), r.y + (r.h >> 1) - (size === 2 ? 8 : 4), size, aan ? C_TEXT : C_DARK_GRAY);
+  }
+  function schermBericht() {
+    fillRect(0, 0, W, H, C_BG);
+    sbSchermTeken('BERICHT', C_CYAN);
+    fillRect(0, CONTENT_Y, W, BER_HDR_H, C_SURFACE2);
+    tekst('BERICHT AAN EIGENAAR', 10, CONTENT_Y + ((BER_HDR_H - 16) >> 1), 2, C_CYAN);
+    var b = S.ber;
+    if (!b) { tekst('Berichten worden geladen...', 10, CONTENT_Y + BER_HDR_H + 5, 1, C_TEXT_DIM); navBar(SC.BERICHT); return; }
+    var aan = !!b.aan, presets = b.presets || [], nood = berNood(), nP = presets.length;
+    if (!aan) tekst('Berichten staan UIT op deze boordcomputer - de eigenaar kan ze aanzetten via CONFIG', 10, CONTENT_Y + BER_HDR_H + 5, 1, C_AMBER);
+    else tekst('Tik een bericht om het naar de eigenaar te sturen (je vult daarna je naam en telefoon in)', 10, CONTENT_Y + BER_HDR_H + 5, 1, C_TEXT_DIM);
+    presets.forEach(function (t, i) {
+      var r = berRect(i, nP, nood.length); berKnop(r, t, aan ? C_CYAN : C_SURFACE3, aan);
+      if (aan) zone(r.x, r.y, r.w, r.h, function () { return { bericht: i }; });
+    });
+    if (nood.length) {
+      var r0 = berRect(nP, nP, nood.length);
+      tekst('NOODGEVAL - gaat meteen als alarm naar de eigenaar', BER_GAP + 2, r0.y - BER_NOOD_LBL_H + ((BER_NOOD_LBL_H - 8) >> 1), 1, C_RED_BRIGHT);
+      nood.forEach(function (ni, k) {
+        var r = berRect(nP + k, nP, nood.length); berKnop(r, b.nood[ni].tekst, aan ? C_RED_BRIGHT : C_SURFACE3, aan);
+        if (aan) zone(r.x, r.y, r.w, r.h, function () { return { nood: ni }; });
+      });
+    }
+    var f = S.berFlits;
+    if (f && Date.now() < f.tot) { fillRect(0, NAV_Y - 20, W, 20, f.kl === 'fout' ? C_RED_BRIGHT : f.kl === 'nood' ? C_AMBER : C_GREEN); tekst(f.txt, 12, NAV_Y - 19, 2, C_BG); }
+    navBar(SC.BERICHT);
+  }
+
   // Foto laden uit een URL en terugbrengen naar RGB565 (r>>3, g>>2, b>>3 zoals de JPEG-decoder in de firmware)
   var fotoUrl = null;
   function laadFoto(url, klaar) {
@@ -961,6 +1122,7 @@ var BKS = (function () {
       var a = z.fn(); if (!a) return;
       if (a.navScroll) { navScroll = Math.max(0, navScroll + a.navScroll); teken(); return; }
       if (a.hvScroll) { hvScroll = Math.max(0, Math.min(hvMaxScroll, hvScroll + a.hvScroll)); teken(); return; }
+      if (a.infoTab != null) { infoTab = a.infoTab; teken(); return; }
       if (opties.actie) opties.actie(a);
       return;
     }
@@ -973,13 +1135,17 @@ var BKS = (function () {
     else if (m.t === 'state') { S.modus = m.m; S.licht = m.l; S.h = m.h; }
     else if (m.t === 'paneel') S.paneel = m.items || [];
     else if (m.t === 'info') { S.bootnaam = m.boot || ''; S.versie = m.ver || ''; }
+    else if (m.t === 'info_scherm') S.info = m;
+    else if (m.t === 'ber') S.ber = m;
   }
   // Geeft true terug als dit scherm volledig door de canvas getekend wordt
-  function volledig(scherm) { return scherm === SC.MAIN || scherm === SC.HAVEN; }
+  function volledig(scherm) { return scherm === SC.MAIN || scherm === SC.HAVEN || scherm === SC.INFO || scherm === SC.BERICHT; }
   function teken(scherm, titel) {
     if (scherm == null) scherm = S.scherm; S.scherm = scherm; zones = [];
     tintFn = null;
-    if (scherm === SC.MAIN) schermMain(); else if (scherm === SC.HAVEN) schermHaven(); else schermLeeg(titel || 'BKOS', scherm);
+    if (scherm === SC.MAIN) schermMain(); else if (scherm === SC.HAVEN) schermHaven();
+    else if (scherm === SC.INFO) schermInfo(); else if (scherm === SC.BERICHT) schermBericht();
+    else schermLeeg(titel || 'BKOS', scherm);
     u32.set(fb); ctx.putImageData(imgData, 0, 0);
   }
   return { _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };

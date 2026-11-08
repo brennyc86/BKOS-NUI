@@ -240,7 +240,8 @@ var BKS = (function () {
     ber: null, berFlits: null,                      // BERICHT-scherm: {presets, aan, nood, anker} + bevestigingsbalk
     io: null,                                       // IO-scherm: {o,i,r,n,lbl} uit io_full / io_delta
     meteo: null,                                    // METEO → WEER (bericht 'meteo_scherm')
-    meteoDag: null, getij: null                     // METEO dagdetail ('meteo_dag') en GETIJ ('meteo_getij')
+    meteoDag: null, getij: null,                    // METEO dagdetail ('meteo_dag') en GETIJ ('meteo_getij')
+    cfgSectie: null                                 // CONFIG: open onderdeel (gezet door de pagina), null = categorieën
   };
 
   // ── Statusbalk (nav_bar.ino) ───────────────────────────────────────────────
@@ -1358,6 +1359,40 @@ var BKS = (function () {
     }
   }
 
+  // ── CONFIG: categorieën in de stijl van het toestel; een categorie opent het bijbehorende
+  //    onderdeel (HTML) binnen het scherm, met < TERUG in de statusbalk ────────────────────
+  var CFG_CATS = [
+    { id: 'boot', t: 'BOOT & EIGENAAR', s: 'Bootgegevens, eigenaar' },
+    { id: 'verbindingen', t: 'VERBINDINGEN', s: 'Meldingen via Signal / WhatsApp' },
+    { id: 'toegang', t: 'TOEGANG', s: 'Pincode, gasten, geblokkeerde apparaten' },
+    { id: 'backup', t: 'BACKUP & UPDATES', s: 'Exporteren/importeren, updates, foutrapportage' },
+    { id: 'fotos', t: "FOTO'S & BESTANDEN", s: 'HAVEN-foto, webapp-achtergrond, opslag' }
+  ];
+  function schermConfig() {
+    fillRect(0, 0, W, H, C_BG);
+    sbSchermTeken('CONFIG', C_CYAN);
+    if (S.cfgSectie) {
+      var c = CFG_CATS.filter(function (x) { return x.id === S.cfgSectie; })[0];
+      if (c) tekst(c.t, sbIconenEindX + SB_TITEL_GAP + 7 * 12 + 12, (SB_H - 8) >> 1, 1, C_TEXT_DIM);
+      fillRoundRect(HV_BACK_X, HV_BACK_Y, HV_BACK_W, HV_BACK_H, KNOP_R, C_SURFACE2);
+      tekst('< TERUG', HV_BACK_X + ((HV_BACK_W - 7 * 12) >> 1), HV_BACK_Y + ((HV_BACK_H - 16) >> 1), 2, C_TEXT_DIM);
+      zone(HV_BACK_X, 0, HV_BACK_W + HV_BACK_GAP, SB_H, function () { return { cfgSectie: '' }; });
+      navBar(SC.CONFIG); return;
+    }
+    tekst('Kies een onderdeel', 12, CONTENT_Y + 10, 1, C_TEXT_DIM);
+    var kol = 2, gap = 10, top = CONTENT_Y + 28, bot = NAV_Y - 10, rijen = Math.ceil(CFG_CATS.length / kol);
+    var kw = Math.trunc((W - gap * (kol + 1)) / kol), kh = Math.trunc((bot - top - gap * (rijen - 1)) / rijen);
+    CFG_CATS.forEach(function (c, i) {
+      var x = gap + (i % kol) * (kw + gap), y = top + Math.trunc(i / kol) * (kh + gap);
+      fillRoundRect(x, y, kw, kh, KNOP_R, C_SURFACE2); drawRoundRect(x, y, kw, kh, KNOP_R, C_SURFACE3);
+      tekst(c.t, x + 16, y + (kh >> 1) - 14, 2, C_CYAN);
+      tekst(c.s, x + 16, y + (kh >> 1) + 8, 1, C_TEXT_DIM);
+      tekst('>', x + kw - 24, y + (kh >> 1) - 8, 2, C_TEXT_DIM);
+      zone(x, y, kw, kh, function () { return { cfgSectie: c.id }; });
+    });
+    navBar(SC.CONFIG);
+  }
+
   // ── BERICHT (screen_bericht.ino) ───────────────────────────────────────────
   var BER_HDR_H = 28, BER_KOL = 2, BER_GAP = 8, BER_NOOD_LBL_H = 18;
   function berNood() {
@@ -1488,13 +1523,14 @@ var BKS = (function () {
     else if (m.t === 'ber') S.ber = m;
   }
   // Geeft true terug als dit scherm volledig door de canvas getekend wordt
-  function volledig(scherm) { return scherm === SC.MAIN || scherm === SC.HAVEN || scherm === SC.INFO || scherm === SC.BERICHT || scherm === SC.IO || scherm === SC.METEO; }
+  function volledig(scherm) { return scherm === SC.MAIN || scherm === SC.HAVEN || scherm === SC.INFO || scherm === SC.BERICHT || scherm === SC.IO || scherm === SC.METEO || (scherm === SC.CONFIG && !S.cfgSectie); }
   function teken(scherm, titel) {
     if (scherm == null) scherm = S.scherm; S.scherm = scherm; zones = [];
     tintFn = null;
     if (scherm === SC.MAIN) schermMain(); else if (scherm === SC.HAVEN) schermHaven();
     else if (scherm === SC.INFO) schermInfo(); else if (scherm === SC.BERICHT) schermBericht();
     else if (scherm === SC.IO) schermIO(); else if (scherm === SC.METEO) schermMeteo();
+    else if (scherm === SC.CONFIG) schermConfig();
     else schermLeeg(titel || 'BKOS', scherm);
     u32.set(fb); ctx.putImageData(imgData, 0, 0);
   }

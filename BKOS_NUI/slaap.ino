@@ -146,8 +146,47 @@ void bkos_stack_meten() {
 #endif
 }
 
+// ─── Zwart-scherm-momentopname ───────────────────────────────────────────────
+// Het toestel "gaat plat" als het scherm zwart is, zonder crash of waakhond. Daarom bij zwart worden,
+// +30 s en +120 s een momentopname: in NVS (overleeft ook stekker eruit) én direct versturen als er
+// WiFi is. Na een herstart gaat de laatst opgeslagen opname alsnog mee (soort "zwart").
+static char _zwart_vorig[200] = "";
+#if PLATFORM_ESP32
+static void _zwart_opname(const char* fase, uint32_t gui_tik_delta) {
+    char t[200];
+    snprintf(t, sizeof(t), "%s | up %lus | gui-tikken %lu | WiFi st %d verb %d | hotspot %d stations %d | ws %d | touch %lus geleden | RAM int %lu (min %lu, blok %lu) | %s",
+             fase, (unsigned long)(millis() / 1000UL), (unsigned long)gui_tik_delta, (int)WiFi.status(), wifi_verbonden ? 1 : 0,
+             wifi_hotspot_actief() ? 1 : 0, (int)WiFi.softAPgetStationNum(), bkos_client_klanten(),
+             (unsigned long)((millis() - (unsigned long)scherm_touched) / 1000UL),
+             (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), BKOS_NUI_VERSIE);
+    Preferences p; p.begin("diag", false); p.putString("zwart", t); p.end();
+    if (wifi_verbonden) fout_log_stuur(FOUT_ALGEMEEN, t, "scherm zwart - momentopname", "zwart");
+}
+#endif
+
 void slaap_diag_loop() {
 #if PLATFORM_ESP32
+    // ── Zwart-scherm-momentopnames ──
+    {
+        static int fase = 0; static unsigned long zwart_ms = 0; static uint32_t tik_bij = 0;
+        bool zwart = !tft_actief && !tft_bijna_uit;
+        if (!zwart) { fase = 0; }
+        else {
+            if (fase == 0) { fase = 1; zwart_ms = millis(); tik_bij = _gui_tikken; _zwart_opname("zwart 0s", 0); }
+            else if (fase == 1 && millis() - zwart_ms > 30000UL)  { fase = 2; _zwart_opname("zwart 30s", _gui_tikken - tik_bij); }
+            else if (fase == 2 && millis() - zwart_ms > 120000UL) { fase = 3; _zwart_opname("zwart 120s", _gui_tikken - tik_bij); }
+        }
+    }
+    // Opname van vóór de vorige herstart nog niet verstuurd? Zodra er WiFi is (na de crashmelding).
+    if (_zwart_vorig[0] && !_crash_wacht && wifi_verbonden && millis() > 75000UL) {
+        static unsigned long zp = 0;
+        if (!zp || millis() - zp > 65000UL) {
+            zp = millis();
+            char t[230]; snprintf(t, sizeof(t), "VORIGE RUN: %s", _zwart_vorig);
+            if (fout_log_stuur(FOUT_ALGEMEEN, t, "scherm zwart - laatste opname voor herstart", "zwart")) _zwart_vorig[0] = '\0';
+        }
+    }
     // ── GUI-waakhond ──
     {
         static uint32_t vorige_tik = 0; static unsigned long stil_sinds = 0;
@@ -195,6 +234,12 @@ void slaap_reset_reden_verwerken() {
     }
     _gui_hang = 0;
     bkos_gui_spoor("opstarten");
+    {   // laatste zwart-scherm-opname van de vorige run ophalen en wissen
+        Preferences p; p.begin("diag", false);
+        String z = p.getString("zwart", "");
+        if (z.length()) { strncpy(_zwart_vorig, z.c_str(), sizeof(_zwart_vorig) - 1); p.remove("zwart"); }
+        p.end();
+    }
     _spoor_stack_min = 0;
     bkos_spoor("opstarten");
 

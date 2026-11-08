@@ -33,6 +33,12 @@ void tft_schermvullen(uint16_t kleur);
 uint8_t scherm_pclk_get();        // opgeslagen PCLK in MHz (default SCHERM_PCLK_DEFAULT)
 void    scherm_pclk_set(uint8_t mhz);  // opslaan (toegepast na herstart)
 
+// Toets-reactie: na het tekenen van de "ingedrukt"-kleur aanroepen i.p.v. een vaste delay of
+// while(ts_touched()). Wacht tot de vinger los is, maar houdt de kleur minstens twee volledige
+// beeldverversingen vast — bij een lage PCLK (4 MHz ≈ 146 ms per beeld) kwam een korte tik
+// anders nooit in beeld. Doet zelf de tft_flush() voor dubbele buffering.
+void    tft_druk_wacht();
+
 // ─── Dubbele buffering (S3 RGB paneel op core 2.x; experimenteel) ─────────────
 // Tekent naar een schaduw-buffer (Arduino_Canvas) i.p.v. rechtstreeks in de
 // buffer die de RGB-DMA continu uitleest; tft_flush() zet het resultaat pas

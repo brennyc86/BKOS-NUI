@@ -30,6 +30,20 @@ byte bkos_logo_200_75[] = { 80, 40, 80, 0, 70, 60, 70, 0, 63, 74, 63, 0, 57, 86,
 #define PCLK_BESTAND "/bkos_pclk.txt"
 static int _pclk_ram = -1;
 
+void tft_druk_wacht() {
+    tft_flush(true);
+    unsigned long start = millis();
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+    // RGB-paneel (S3): beeldtijd = (800+210+30+16) x (480+38+13+23) pixels / PCLK — zie tft_setup()
+    uint32_t beeld_ms = (1056UL * 554UL) / ((uint32_t)scherm_pclk_get() * 1000UL) + 1;
+    uint32_t min_ms = 2 * beeld_ms; if (min_ms < 80) min_ms = 80;
+#else
+    uint32_t min_ms = 80;   // SPI-schermen tonen een tekening meteen
+#endif
+    while (ts_touched()) delay(15);
+    while (millis() - start < min_ms) delay(10);
+}
+
 uint8_t scherm_pclk_get() {
     if (_pclk_ram < 0) {
         _pclk_ram = SCHERM_PCLK_DEFAULT;

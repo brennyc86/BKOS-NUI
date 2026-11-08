@@ -343,7 +343,7 @@ bool pico_screen_config_toetsenbord_run(int x, int y) {
                     tft.fillRoundRect(fkx + 2, ky + 2, num_tw - 4, PICO_KB_TOETS_H - 4, 4, C_CYAN);
                     tft.setTextSize(2); tft.setTextColor(C_TEXT_DARK);
                     tft.setCursor(fkx + (num_tw - 12) / 2, ky + (PICO_KB_TOETS_H - 16) / 2);
-                    tft.print(num_rijen[rij][k]); delay(60);
+                    tft.print(num_rijen[rij][k]); tft_druk_wacht();
                     int len = strlen(cfg_invoer);
                     if (len < CFG_INVOER_LEN - 1) { cfg_invoer[len] = num_rijen[rij][k]; cfg_invoer[len+1] = '\0'; }
                     pico_screen_config_toetsenbord_teken(); return false;
@@ -377,7 +377,7 @@ bool pico_screen_config_toetsenbord_run(int x, int y) {
                 tft.fillRoundRect(fkx + 1, ky + 1, tw_k - 2, PICO_KB_TOETS_H - 2, 3, C_CYAN);
                 tft.setTextSize(1); tft.setTextColor(C_TEXT_DARK);
                 tft.setCursor(fkx + (tw_k - 6) / 2, ky + (PICO_KB_TOETS_H - 8) / 2);
-                tft.print(c); delay(60);
+                tft.print(c); tft_druk_wacht();
                 int len = strlen(cfg_invoer);
                 if (len < CFG_INVOER_LEN - 1) { cfg_invoer[len] = c; cfg_invoer[len+1] = '\0'; }
                 pico_screen_config_toetsenbord_teken(); return false;
@@ -1085,7 +1085,7 @@ bool pin_overlay_run(int x, int y) {
                     tft.setCursor(bkx + (PICO_PIN_KW - 12) / 2, bky + (PICO_PIN_KH - 16) / 2);
                     tft.print(krows[r][k]);
                     tft_flush(true);
-                    while (ts_touched()) delay(15);   // ingedrukte-kleur blijft tot loslaten
+                    tft_druk_wacht();   // ingedrukte-kleur blijft tot loslaten (en minstens 2 beelden)
                     int len = strlen(pin_invoer);
                     pin_invoer[len] = krows[r][k]; pin_invoer[len+1] = '\0';
                     pico_pin_overlay_teken(); return false;
@@ -1101,7 +1101,7 @@ bool pin_overlay_run(int x, int y) {
             tft.setTextSize(2); tft.setTextColor(C_TEXT_DARK);
             tft.setCursor(kx + (PICO_PIN_KW - 6) / 2, ky4 + (PICO_PIN_KH - 16) / 2); tft.print("0");
             tft_flush(true);
-            while (ts_touched()) delay(15);
+            tft_druk_wacht();
             int len = strlen(pin_invoer); pin_invoer[len]='0'; pin_invoer[len+1]='\0';
             pico_pin_overlay_teken(); return false;
         }
@@ -1137,7 +1137,7 @@ bool pin_overlay_run(int x, int y) {
                     tft.setCursor(bkx + (PIN_KW - 18) / 2, bky + (PIN_KH - 24) / 2);
                     tft.print(krows[r][k]);
                     tft_flush(true);
-                    while (ts_touched()) delay(15);   // ingedrukte-kleur blijft tot loslaten
+                    tft_druk_wacht();   // ingedrukte-kleur blijft tot loslaten (en minstens 2 beelden)
                     int len = strlen(pin_invoer);
                     pin_invoer[len] = krows[r][k]; pin_invoer[len + 1] = '\0';
                     pin_overlay_teken(); return false;
@@ -1153,7 +1153,7 @@ bool pin_overlay_run(int x, int y) {
             tft.setTextSize(3); tft.setTextColor(C_TEXT_DARK);
             tft.setCursor(kx + PIN_KW - 9, ky4 + (PIN_KH - 24) / 2); tft.print("0");
             tft_flush(true);
-            while (ts_touched()) delay(15);
+            tft_druk_wacht();
             int len = strlen(pin_invoer);
             pin_invoer[len] = '0'; pin_invoer[len + 1] = '\0';
             pin_overlay_teken(); return false;
@@ -2740,7 +2740,7 @@ bool screen_config_toetsenbord_run(int x, int y) {
                     tft.fillRoundRect(fkx + 2, ky + 2, num_tw - 4, KB_TOETS_H - 4, 5, C_CYAN);
                     tft.setTextSize(3); tft.setTextColor(C_TEXT_DARK);
                     tft.setCursor(fkx + (num_tw - 18) / 2, ky + (KB_TOETS_H - 24) / 2);
-                    tft.print(keys[k]); delay(60);
+                    tft.print(keys[k]); tft_druk_wacht();
                     int len = strlen(cfg_invoer);
                     if (len < CFG_INVOER_LEN - 1) { cfg_invoer[len] = keys[k]; cfg_invoer[len + 1] = '\0'; }
                     screen_config_toetsenbord_teken();
@@ -2802,7 +2802,7 @@ bool screen_config_toetsenbord_run(int x, int y) {
                 tft.fillRoundRect(fkx + 2, ky + 2, tw - 4, KB_TOETS_H - 4, 5, C_CYAN);
                 tft.setTextSize(2); tft.setTextColor(C_TEXT_DARK);
                 tft.setCursor(fkx + (tw - 12) / 2, ky + (KB_TOETS_H - 16) / 2);
-                tft.print(c); delay(60);
+                tft.print(c); tft_druk_wacht();
                 int len = strlen(cfg_invoer);
                 if (len < CFG_INVOER_LEN - 1) { cfg_invoer[len] = c; cfg_invoer[len + 1] = '\0'; }
                 screen_config_toetsenbord_teken();

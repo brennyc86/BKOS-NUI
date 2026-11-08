@@ -280,8 +280,7 @@ static void _tijd_pin_run(int x, int y) {
     // normale GUI-taak, dus zonder dit blijft de gemarkeerde toets onzichtbaar
     // in de schaduw-buffer zolang dubbele buffering aan staat.
     ui_knop(kx, ky, TP_KW, TP_KH, _tp_toetsen[i], C_CYAN, C_BG);
-    tft_flush(true);
-    while (ts_touched()) delay(15);
+    tft_druk_wacht();
 
     if (i == 9) {   // ANNULEREN
         _tijd_stap = TIJD_ST_MENU;

@@ -718,6 +718,15 @@ static void _boten_ververs() {
     if (xTaskCreate(_boten_taak, "boten", 4096, nullptr, 1, nullptr) != pdPASS) _boten_bezig = false;
 }
 
+void bkos_diag_tekst(String& uit) {
+    uit += "mDNS: "; uit += _mdns_gestart ? "aan" : "UIT";
+    uit += ", host "; uit += (_mdns_modus == NET_MASTER || _mdns_modus == NET_STANDALONE) ? "bkos.local" : "eigen naam";
+    IPAddress mi(_mdns_ip); uit += ", gestart op IP "; uit += mi.toString(); uit += "\n";
+    int n = 0; for (int i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) if (_ws_klanten[i]) n++;
+    uit += "websocket: "; uit += _ws_gestart ? "draait" : "UIT"; uit += ", clients "; uit += n; uit += "\n";
+    uit += "andere boten gevonden: "; uit += _boten_n; uit += "\n";
+}
+
 int bkos_boten_aantal() { return WiFi.status() == WL_CONNECTED ? _boten_n : 0; }
 void bkos_boot_info(int i, char* naam, size_t naam_len, char* ip, size_t ip_len) {
     if (i < 0 || i >= _boten_n) { if (naam_len) naam[0] = 0; if (ip_len) ip[0] = 0; return; }

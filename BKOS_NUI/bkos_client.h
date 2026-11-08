@@ -33,6 +33,7 @@ void bkos_client_net_sturen();
 void bkos_client_paneel_sturen();
 
 // Andere masters in dezelfde haven (mDNS), voor de bootkeuze in de webapp
+void bkos_diag_tekst(String& uit);   // /status: mDNS- en websocket-toestand
 int  bkos_boten_aantal();
 void bkos_boot_info(int i, char* naam, size_t naam_len, char* ip, size_t ip_len);
 

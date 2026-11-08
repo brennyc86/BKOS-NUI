@@ -198,6 +198,23 @@ void webapp_setup() {
         _http.send_P(200, "text/html; charset=utf-8", WEBAPP_HTML);
     });
 
+    // Diagnose (platte tekst): toestand van netwerk, mDNS, Bluetooth en de laatste herstart
+    _http.on("/status", HTTP_GET, []() {
+        String s = "BKOS status\nversie: "; s += BKOS_NUI_VERSIE;
+        s += "\nin bedrijf: "; s += (unsigned long)(millis() / 1000UL); s += " s\n";
+        s += "laatste reset: "; s += (int)esp_reset_reason(); s += " ("; s += slaap_laatste_onverwachte_reset(); s += ")\n";
+        s += "heap vrij: "; s += ESP.getFreeHeap(); s += " (laagste "; s += ESP.getMinFreeHeap(); s += ")\n";
+        s += "wifi: status "; s += (int)WiFi.status();
+        s += ", ssid "; s += WiFi.SSID(); s += ", ip "; s += WiFi.localIP().toString();
+        s += ", rssi "; s += WiFi.RSSI(); s += "\n";
+        s += "hotspot: "; s += wifi_hotspot_actief() ? "aan" : "uit";
+        s += ", ap-ip "; s += WiFi.softAPIP().toString(); s += ", clients "; s += WiFi.softAPgetStationNum(); s += "\n";
+        s += "bluetooth-app: "; s += ble_app_status(); s += "\n";
+        s += "pinbewaking: zwart "; s += pin_bewaking_zwart_aantal(); s += ", wachtend "; s += pin_bewaking_geblokkeerd_aantal(); s += "\n";
+        bkos_diag_tekst(s);
+        _http.send(200, "text/plain; charset=utf-8", s);
+    });
+
     // Bootkeuze (bkos.local): deze boot + de andere masters die in dezelfde haven te zien zijn
     _http.on("/boten", HTTP_GET, []() {
         String eigen = info_boot_naam();

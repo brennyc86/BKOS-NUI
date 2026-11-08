@@ -387,7 +387,9 @@ void wifi_hotspot_starten() {
     // telefoon/computer bij het verbinden met de hotspot uit zichzelf een
     // "Log in op netwerk"-melding tonen die naar de webapp doorstuurt (samen
     // met webapp.ino's onNotFound()-redirect naar "/" voor élk verzoek).
-    _hs_dns.start(HS_DNS_POORT, "*", WiFi.softAPIP());
+    // DNS (captive portal), webapp en websocket-server worden NIET hier gestart maar in
+    // wifi_hotspot_tick() (hoofdlus): deze functie wordt ook vanuit andere taken aangeroepen
+    // (OTA-download, BESTANDEN-knop) en die servers zijn niet thread-safe.
 
     // Webapp + websocket-server: bkos_client_setup()/webapp_setup() draaiden
     // ooit synchroon in hw_setup() vóór de splash-vertraging, gelijktijdig met
@@ -396,15 +398,11 @@ void wifi_hotspot_starten() {
     // vertraagde auto-start (of een latere handmatige tik), ruim ná het
     // opstarten, met de GUI/wifi-taken allang in rust — dus buiten het venster
     // waarin die crash destijds optrad.
-    bkos_client_setup();
-    webapp_setup();
 }
 
 void wifi_hotspot_stoppen() {
     if (!_hs_actief) return;
-    _hs_dns.stop();
-    webapp_stop();
-    bkos_client_stop();
+    // DNS/webapp/websocket stoppen gebeurt in wifi_hotspot_tick() (hoofdlus), zie wifi_hotspot_starten()
     WiFi.softAPdisconnect(true);
     _hs_actief = false;
     WiFi.mode(wifi_verbonden ? WIFI_STA : WIFI_OFF);
@@ -419,7 +417,21 @@ void wifi_hotspot_tick() {
         auto_gedaan = true;
         wifi_hotspot_starten();
     }
-    if (_hs_actief) _hs_dns.processNextRequest();
+    // Servers volgen de hotspot-stand, uitsluitend hier in de hoofdlus (zelfde taak als
+    // bkos_client_loop/webapp_loop) — nooit vanuit een andere taak, zie wifi_hotspot_starten().
+    static bool servers = false;
+    if (_hs_actief && !servers) {
+        servers = true;
+        _hs_dns.start(HS_DNS_POORT, "*", WiFi.softAPIP());
+        bkos_client_setup();
+        webapp_setup();
+    } else if (!_hs_actief && servers) {
+        servers = false;
+        _hs_dns.stop();
+        webapp_stop();
+        bkos_client_stop();
+    }
+    if (_hs_actief && servers) _hs_dns.processNextRequest();
 }
 #else  // PLATFORM_PICO — geen concurrent AP+STA ondersteund, functie is een no-op
 bool     wifi_hotspot_actief() { return false; }

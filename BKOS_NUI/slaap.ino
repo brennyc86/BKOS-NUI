@@ -237,6 +237,13 @@ const char* slaap_laatste_onverwachte_reset() {
 void slaap_loop() {
 #if PLATFORM_ESP32
     if (slaap_modus == SLAAP_GEEN || slaap_tijd == 0) return;
+#if !SLAAP_LIGHT_TOEGESTAAN
+    // Light sleep staat voorlopig UIT (0.2.261108.17): het toestel werd er niet betrouwbaar uit
+    // wakker (GT911/EXT0) en tijdens de slaap is alles dood — geen WiFi, geen webapp, geen
+    // waakhond. Het scherm gaat wel gewoon zwart (tft_loop); alleen de chip blijft wakker.
+    slaap_actief = false;
+    return;
+#endif
 
     // Bijhouden wanneer scherm volledig zwart werd (fase 2: 0%, na fase 1 met 3%)
     static unsigned long scherm_uit_ms = 0;

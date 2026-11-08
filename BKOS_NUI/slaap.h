@@ -69,6 +69,9 @@ const char* bkos_spoor_vorig();               // spoor van vóór de laatste her
 uint32_t    bkos_stack_min_vorig();           // kleinste vrije loopTask-stack (bytes) vóór de laatste herstart, 0 = onbekend
 void        bkos_stack_meten();               // aanroepen vanuit de loopTask
 void        slaap_diag_loop();                // stuurt een uitgestelde crashmelding
+#ifndef SLAAP_LIGHT_TOEGESTAAN
+#define SLAAP_LIGHT_TOEGESTAAN 0   // light sleep voorlopig uit — zie slaap_loop()
+#endif
 // Waakhond voor de GUI-taak (touch + scherm): die roept bkos_gui_tik() elke ronde aan en zet met
 // bkos_gui_spoor() waar hij mee bezig is. Staat hij 30 s stil (niet tijdens OTA/appstore), dan
 // herstart slaap_diag_loop() het toestel — beter dan een zwart scherm dat niet meer reageert — en

@@ -279,8 +279,10 @@ static String _naar_jsdelivr(const String& raw_url) {
 void ota_git_check() {
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
-    _ota_hotspot_pauzeren();
-    _ota_hotspot_settle();
+    // Geen hotspot-pauze meer voor deze kleine versiecheck (bij opstarten en elke 30 min): die
+    // pauze stopte webapp, WebSocket en mDNS vanuit de netwerktaak terwijl de hoofdlus ze gebruikte
+    // (crash "spoor: lus:http", verbindingen vielen weg, bkos.local onvindbaar). Alleen de echte
+    // firmware-download (ota_download_toepassen) pauzeert de hotspot nog.
     String url_std = ota_beta_kanal ? OTA_GITHUB_VERSIE_URL : OTA_GITHUB_STABLE_VERSIE_URL;
 
     // Eigen WiFiClientSecure + setInsecure(), net als meteo http_get(). De
@@ -357,9 +359,7 @@ void ota_laad_releases() {
 #if PLATFORM_ESP32
     _ota_wacht_wifi();
     if (!wifi_verbonden) return;
-    _ota_hotspot_pauzeren();
-    _ota_hotspot_settle();
-    String json;
+    String json;   // (geen hotspot-pauze, zie ota_git_check)
     String bronnen[2] = { OTA_GITHUB_RELEASES_URL, _naar_jsdelivr(OTA_GITHUB_RELEASES_URL) };
     for (int bron = 0; bron < 2 && json.length() == 0; bron++) {
         if (bronnen[bron].length() == 0) continue;

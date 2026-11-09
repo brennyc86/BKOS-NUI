@@ -1183,11 +1183,22 @@ void net_loop() {
 
     // Lazy ESP-NOW initialisatie (wacht tot WiFi radio actief is)
     if (!_espnow_ok) {
-        WiFi.mode(WIFI_STA);
-        if (esp_now_init() != ESP_OK) return;  // probeer volgende loop
+        // Wacht tot netwerk_taak hotspot + eerste verbindingspoging klaar heeft (vangnet 60 s): twee
+        // taken die tegelijk de WiFi-modus/kanaal wijzigen liet 0.2.261108.21 vastlopen bij opstarten.
+        if (!wifi_opstart_klaar && millis() < 60000UL) return;
+        // Nooit terugschakelen: WIFI_STA zou de hotspot (AP_STA) uitzetten. ESP-NOW werkt ook in AP_STA.
+        wifi_mode_t m = WiFi.getMode();
+        if (m == WIFI_OFF) WiFi.mode(WIFI_STA);
+        else if (m == WIFI_AP) WiFi.mode(WIFI_AP_STA);
+        static unsigned long _espnow_poging = 0;          // bij mislukken niet elke 10 ms opnieuw
+        if (_espnow_poging && millis() - _espnow_poging < 5000UL) return;
+        _espnow_poging = millis();
+        if (esp_now_init() != ESP_OK) return;  // probeer over 5 s opnieuw
+        _espnow_poging = 0;
         esp_now_register_recv_cb(_net_ontvangen_cb);
-        // Zet vaste channel als geen WiFi verbinding (beide apparaten op ch.1)
-        if (WiFi.status() != WL_CONNECTED)
+        // Zet vaste channel als geen WiFi verbinding en geen hotspot (beide apparaten op ch.1);
+        // met hotspot bepaalt de softAP het kanaal.
+        if (WiFi.status() != WL_CONNECTED && !wifi_hotspot_actief())
             esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
         static const uint8_t broadcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
         _peer_registreren(broadcast);

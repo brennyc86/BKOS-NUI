@@ -231,10 +231,10 @@ static void _wifi_verbinden_intern() {
     // Brendan meldde. Een boordcomputer aan vaste voeding hoeft niet op
     // stroomverbruik te letten, dus uit voor consistent snel/responsief WiFi.
     WiFi.setSleep(false);
-    // Automatisch opnieuw verbinden AAN (was uit): WiFi moet altijd online blijven. Zonder dit bleef
-    // het toestel na één keer wegvallen offline tot de volgende weerupdate (tot 30 min) — geen
-    // webapp via het eigen netwerk, geen bkos.local, geen meldingen.
-    WiFi.setAutoReconnect(true);
+    // Automatisch opnieuw verbinden door de WiFi-driver blijft UIT: die roept WiFi.begin() aan vanuit
+    // de event-taak, dwars door de scan/begin-reeks hieronder heen. Opnieuw verbinden doet de
+    // bewaker in netwerk_taak (elke 5 s), in deze ene taak.
+    WiFi.setAutoReconnect(false);
     _wifi_kies_sterkste_ap();
 
     // Eenmalige migratie van oude opslag
@@ -416,7 +416,7 @@ void wifi_hotspot_tick() {
     // zelf (zie toelichting hierboven), maar hier vanuit de achtergrondlus,
     // die pas na de eerste paar seconden voor het eerst draait.
     static bool auto_gedaan = false;
-    if (!auto_gedaan && millis() > 15000) {   // vangnet: normaal start netwerk_taak de hotspot al
+    if (!auto_gedaan && millis() > 60000) {   // vangnet (alleen als netwerk_taak hangt): normaal start die de hotspot al
         auto_gedaan = true;
         wifi_hotspot_starten();
     }
@@ -466,6 +466,10 @@ static void _wifi_verbreken_intern() {
 }
 
 // ─── Achtergrond netwerk taak (Core 0) ───────────────────────────────────────
+// true zodra netwerk_taak hotspot + eerste verbindingspoging achter de rug heeft. Tot dan blijft
+// ESP-NOW (net_loop, hoofdlus) van de radio af: die deed WiFi.mode(WIFI_STA) + kanaal 1 terwijl
+// hier softAP/begin/scan liep -> vastloper bij het opstarten in 0.2.261108.21.
+volatile bool wifi_opstart_klaar = false;
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
 
@@ -474,6 +478,7 @@ static void netwerk_taak(void* param) {
     wifi_hotspot_starten();
 
     _wifi_verbinden_intern();
+    wifi_opstart_klaar = true;   // vanaf nu mag de hoofdlus ESP-NOW starten (net_loop), zie bkos_net.ino
     if (wifi_verbonden) {
         ntp_start_sync();
         for (int _ntp_i = 0; _ntp_i < 40 && time(nullptr) < 1000000UL; _ntp_i++)

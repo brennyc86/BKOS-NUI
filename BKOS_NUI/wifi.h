@@ -35,6 +35,7 @@ const char* tijdzone_tz_actief();   // actieve POSIX TZ-string (preset of custom
 void        tijdzone_toepassen();   // setenv+tzset op basis van bovenstaande, ververst klok_tijd
 
 extern volatile bool wifi_verbonden;
+extern volatile bool wifi_opstart_klaar;   // netwerk_taak klaar met hotspot + eerste verbindingspoging
 extern bool wifi_aangesloten;
 extern volatile bool wifi_ota_modus;   // true = OTA scherm actief, WiFi aanhouden
 extern TaskHandle_t  netwerk_task_handle;

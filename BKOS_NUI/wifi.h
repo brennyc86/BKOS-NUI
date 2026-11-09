@@ -35,6 +35,10 @@ const char* tijdzone_tz_actief();   // actieve POSIX TZ-string (preset of custom
 void        tijdzone_toepassen();   // setenv+tzset op basis van bovenstaande, ververst klok_tijd
 
 extern volatile bool wifi_verbonden;
+// TEST-opties (herstelmenu > TEST, Preferences "test"). In 0.2.261109.16 (halveringsbuild) alleen opgeslagen, nog niet toegepast.
+extern bool test_sta_uit, test_hotspot_uit, test_espnow_uit;
+void test_opties_laden();
+void test_opties_opslaan();
 extern bool wifi_aangesloten;
 extern volatile bool wifi_ota_modus;   // true = OTA scherm actief, WiFi aanhouden
 extern TaskHandle_t  netwerk_task_handle;

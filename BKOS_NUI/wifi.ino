@@ -463,6 +463,19 @@ static void _wifi_verbreken_intern() {
 }
 
 // ─── Achtergrond netwerk taak (Core 0) ───────────────────────────────────────
+bool test_sta_uit = false, test_hotspot_uit = false, test_espnow_uit = false;
+void test_opties_laden() {
+    Preferences p;
+    if (p.begin("test", true)) {
+        test_sta_uit = p.getBool("sta", false); test_hotspot_uit = p.getBool("hs", false); test_espnow_uit = p.getBool("en", false);
+        p.end();
+    }
+}
+void test_opties_opslaan() {
+    Preferences p; p.begin("test", false);
+    p.putBool("sta", test_sta_uit); p.putBool("hs", test_hotspot_uit); p.putBool("en", test_espnow_uit);
+    p.end();
+}
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
 

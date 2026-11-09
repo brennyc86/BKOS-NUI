@@ -6,8 +6,14 @@
 #include "hw_scherm.h"
 #include "ota.h"
 #include <stdarg.h>
-#if PLATFORM_ESP32
-#include "soc/rtc_wdt.h"
+#if PLATFORM_ESP32 && CONFIG_IDF_TARGET_ESP32S3
+#include "hal/wdt_hal.h"
+#include "soc/rtc.h"
+#define LB_RWDT 1
+static wdt_hal_context_t _lb_rwdt;
+static void _lb_rwdt_voeden() { wdt_hal_write_protect_disable(&_lb_rwdt); wdt_hal_feed(&_lb_rwdt); wdt_hal_write_protect_enable(&_lb_rwdt); }
+#else
+#define LB_RWDT 0
 #endif
 
 #if PLATFORM_ESP32
@@ -151,7 +157,9 @@ static void _lb_schrijftaak(void*) {
         // RTC-waakhond voeden zolang het scherm leeft (of een OTA bezig is). Staat alles stil — ook als
         // beide kernen vastzitten — dan herstart de RTC-waakhond na 30 s; RTC-geheugen (logboek-staart)
         // blijft daarbij bewaard, zodat de laatste regels vóór de vastloper te zien zijn.
-        if (slaap_gui_stil_s() < 20 || wifi_ota_modus) rtc_wdt_feed();
+#if LB_RWDT
+        if (slaap_gui_stil_s() < 20 || wifi_ota_modus) _lb_rwdt_voeden();
+#endif
         if (!tmp) continue;
         size_t n = 0; uint32_t verloren = 0;
         portENTER_CRITICAL(&_lb_mux);
@@ -228,14 +236,15 @@ void logboek_roteer() {
     }
     _lb_bestand_actief = true;
     logboek_log("opslag: %lu KB gebruikt van %lu KB", (unsigned long)(bkos_fs_gebruikt() / 1024), (unsigned long)(bkos_fs_totaal() / 1024));
-    rtc_wdt_protect_off();
-    rtc_wdt_disable();
-    rtc_wdt_set_length_of_reset_signal(RTC_WDT_SYS_RESET_SIG, RTC_WDT_LENGTH_3_2us);
-    rtc_wdt_set_stage(RTC_WDT_STAGE0, RTC_WDT_STAGE_ACTION_RESET_SYSTEM);   // RTC-geheugen blijft bewaard
-    rtc_wdt_set_time(RTC_WDT_STAGE0, 30000);
-    rtc_wdt_enable();
-    rtc_wdt_protect_on();
+#if LB_RWDT
+    wdt_hal_init(&_lb_rwdt, WDT_RWDT, 0, false);
+    wdt_hal_write_protect_disable(&_lb_rwdt);
+    wdt_hal_config_stage(&_lb_rwdt, WDT_STAGE0, 30000UL * (rtc_clk_slow_freq_get_hz() / 1000UL),
+                         WDT_STAGE_ACTION_RESET_SYSTEM);   // RTC-geheugen (logboek-staart) blijft bewaard
+    wdt_hal_enable(&_lb_rwdt);
+    wdt_hal_write_protect_enable(&_lb_rwdt);
     logboek_log("RTC-waakhond: aan (30 s)");
+#endif
     xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 4096, nullptr, 1, nullptr, 0);
     logboek_log("logboek: vorige start bewaard als %s", a);
 #endif

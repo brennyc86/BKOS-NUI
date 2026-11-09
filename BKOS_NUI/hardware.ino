@@ -88,6 +88,26 @@ int hw_touch_drag_dy = 0;  // y-delta (touch_start → huidig) vóór elke scree
 // en worden door deze taak gepreempt zodra er een aanraking is of het scherm hertekend
 // moet worden.
 #if PLATFORM_ESP32
+// Diagnose: oorzaak van de vorige onverwachte herstart (eerste 5 min na opstarten) — leesbaar zonder
+// WiFi, zodat Brendan er een foto van kan maken. Drie regels boven de navigatiebalk.
+static void _diag_balk_tekenen(bool nu) {
+    static unsigned long laatst = 0;
+    const char* db = slaap_diag_balk();
+    if (!db || !db[0]) return;
+    if (!nu && millis() - laatst < 2000UL) return;
+    laatst = millis();
+    int per = TFT_W / 6 - 2, len = strlen(db);
+    tft.fillRect(0, NAV_Y - 32, TFT_W, 32, C_RED_BRIGHT);
+    tft.setTextSize(1); tft.setTextColor(C_BG);
+    char r[160];
+    for (int k = 0; k < 3 && k * per < len; k++) {
+        int n = len - k * per; if (n > per) n = per; if (n > (int)sizeof(r) - 1) n = sizeof(r) - 1;
+        memcpy(r, db + k * per, n); r[n] = '\0';
+        tft.setCursor(4, NAV_Y - 30 + k * 10); tft.print(r);
+    }
+    if (!nu) tft_flush(true);
+}
+
 static void _gui_taak(void*) {
     for (;;) {
         bkos_gui_tik();   // waakhond (slaap_diag_loop)
@@ -197,21 +217,7 @@ static void _gui_taak(void*) {
                         break;
                 }
             }
-            {   // Diagnose: oorzaak van de vorige onverwachte herstart (eerste 3 min na opstarten) — leesbaar
-                // zonder WiFi, zodat Brendan er een foto van kan maken. Twee regels boven de navigatiebalk.
-                const char* db = slaap_diag_balk();
-                if (db && db[0]) {
-                    int per = TFT_W / 6 - 2, len = strlen(db);
-                    tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_RED_BRIGHT);
-                    tft.setTextSize(1); tft.setTextColor(C_BG);
-                    char r[160];
-                    for (int k = 0; k < 2 && k * per < len; k++) {
-                        int n = len - k * per; if (n > per) n = per; if (n > (int)sizeof(r) - 1) n = sizeof(r) - 1;
-                        memcpy(r, db + k * per, n); r[n] = '\0';
-                        tft.setCursor(4, NAV_Y - 20 + k * 10); tft.print(r);
-                    }
-                }
-            }
+            _diag_balk_tekenen(true);
             tft_flush(true);   // dubbele buffering (indien actief): volledige hertekening direct tonen
         }
 
@@ -397,10 +403,13 @@ static void _gui_taak(void*) {
                     default: break;
                 }
             }
+            bkos_gui_spoor("gui:na periodiek");
             tft_flush(false);   // dubbele buffering (indien actief): periodieke updates snelheidsbegrensd doorzetten
         }
+        _diag_balk_tekenen(false);   // diagnosebalk vorige herstart (elke 2 s opnieuw, zolang actief)
 
         vorige_touch = aanraking_vast;
+        bkos_gui_spoor("gui:delay");
 
         // Yield 5ms zodat de achtergrondlus (hw_loop) kans krijgt te draaien.
         // Bij aanraking of hertekenen wordt de taak daarna meteen hervat.
@@ -686,6 +695,7 @@ void hw_loop() {
 
     bkos_spoor("lus:net");
     net_loop();          // ESP-NOW queue verwerken + heartbeat
+    bkos_spoor("lus:hotspot");
     wifi_hotspot_tick();  // sluit de tijdelijke bestandsdeel-hotspot na afloop vanzelf af
     // Geen BKOS_REMOTE_ENABLED-guard meer op de loop-aanroepen zelf: beide
     // functies doen niets zolang ze niet gestart zijn (_gestart-vlag). Starten
@@ -701,7 +711,9 @@ void hw_loop() {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     brug_loop();       // WiFi-brug BLE verbindingscheck (core 3.x only)
 #endif
+    bkos_spoor("lus:provider");
     provider_loop();   // data-provider scheduler
+    bkos_spoor("lus:scherm-wissel");
 
     // OTA-modus aan/uit o.b.v. actief scherm (geen TFT-toegang)
     static int vorig_scherm = -1;
@@ -739,6 +751,7 @@ void hw_loop() {
     static unsigned long data_opgeslagen_ms = 0;
     if (millis() - data_opgeslagen_ms >= 60000) {
         data_opgeslagen_ms = millis();
+        bkos_spoor("lus:data");
         data_opslaan();  // no-op als data_vuil == false
     }
 
@@ -746,6 +759,7 @@ void hw_loop() {
     static unsigned long licht_auto_ms = 0;
     if (millis() - licht_auto_ms >= 60000) {
         licht_auto_ms = millis();
+        bkos_spoor("lus:licht");
         if (licht_instelling == LICHT_AUTO) io_verlichting_update();
     }
 
@@ -753,13 +767,16 @@ void hw_loop() {
     static unsigned long held_auto_ms = 0;
     if (millis() - held_auto_ms >= 5000) {
         held_auto_ms = millis();
+        bkos_spoor("lus:helderheid");
         tft_helderheid_auto_loop();
     }
 
     // Energie-besparende slaapstand (alleen als scherm volledig uit)
+    bkos_spoor("lus:slaap");
     slaap_loop();
 
     // Yield zodat _gui_taak (prioriteit 4) kans krijgt te preempten
+    bkos_spoor("lus:delay");
     delay(10);
 
 #else

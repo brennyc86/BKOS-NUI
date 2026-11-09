@@ -113,6 +113,9 @@ static RTC_NOINIT_ATTR uint32_t _rtc_up_s;         // uptime (s), elke seconde b
 static RTC_NOINIT_ATTR uint32_t _rtc_gui_up_s;     // uptime bij de laatste GUI-tik
 static RTC_NOINIT_ATTR uint32_t _rtc_ram_min;      // kleinste vrije interne RAM deze run
 static RTC_NOINIT_ATTR int32_t  _rtc_wifi_st;      // WiFi.status() bij de laatste update
+static RTC_NOINIT_ATTR char     _rtc_c0[16];       // taak die het laatst op kern 0 draaide (bemonsterd vanaf kern 1)
+static RTC_NOINIT_ATTR char     _rtc_c1[16];       // idem kern 1 (bemonsterd vanaf kern 0)
+static RTC_NOINIT_ATTR uint32_t _rtc_c0n, _rtc_c1n; // aantal keer op rij (x 0,5 s) dezelfde taak
 #define GUI_HANG_MAGIC 0x6A11DEADUL
 #endif
 static volatile uint32_t _gui_tikken = 0;
@@ -121,7 +124,7 @@ static bool _was_gui_hang = false;
 static char     _spoor_vorig[24] = "";
 static uint32_t _stack_min_vorig = 0;
 static bool     _crash_wacht     = false;
-static char     _crash_tekst[260] = "";
+static char     _crash_tekst[360] = "";
 static uint8_t  _crash_pogingen  = 0;
 
 void bkos_spoor(const char* stap) {
@@ -131,8 +134,29 @@ void bkos_spoor(const char* stap) {
     _spoor_magic = SPOOR_MAGIC;
 #endif
 }
-static char _diag_balk[200] = "";
-const char* slaap_diag_balk() { return (millis() < 180000UL) ? _diag_balk : ""; }
+static char _diag_balk[300] = "";
+const char* slaap_diag_balk() { return (millis() < 300000UL) ? _diag_balk : ""; }
+
+#if PLATFORM_ESP32
+// Kern-bewakers: elke 0,5 s noteert een taak op de ene kern welke taak er op de ANDERE kern draait.
+// Staat een taak een kern vast te houden (waakhond op IDLE0/loopTask), dan staat zijn naam hier met
+// een hoog aantal. Prioriteit 24: draait ook als de rest vastzit.
+static void _kern_bewaker(void* p) {
+    int andere = (int)(intptr_t)p;
+    char* dst = andere == 0 ? _rtc_c0 : _rtc_c1;
+    uint32_t* n = andere == 0 ? &_rtc_c0n : &_rtc_c1n;
+    char vorig[16] = "";
+    vTaskDelay(pdMS_TO_TICKS(andere * 250));   // verspringen, anders zien de twee bewakers elkaar
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        TaskHandle_t h = xTaskGetCurrentTaskHandleForCPU(andere);
+        const char* nm = h ? pcTaskGetName(h) : "?";
+        if (strncmp(nm, vorig, 15) == 0) (*n)++;
+        else { *n = 1; strncpy(vorig, nm, 15); vorig[15] = '\0'; }
+        strncpy(dst, nm, 15); dst[15] = '\0';
+    }
+}
+#endif
 void bkos_net_spoor(const char* stap) {
 #if PLATFORM_ESP32
     strncpy(_nspoor, stap ? stap : "", sizeof(_nspoor) - 1);
@@ -288,12 +312,17 @@ void slaap_reset_reden_verwerken() {
         strncpy(_gspoor_vorig, _gspoor, sizeof(_gspoor_vorig) - 1);
         _was_gui_hang = (_gui_hang == GUI_HANG_MAGIC);
     }
-    char nsp[24] = "?"; uint32_t up = 0, gup = 0, rmin = 0; int32_t wst = -1;
+    char nsp[24] = "?", c0[16] = "?", c1[16] = "?"; uint32_t up = 0, gup = 0, rmin = 0, c0n = 0, c1n = 0; int32_t wst = -1;
     if (_spoor_magic == SPOOR_MAGIC) {
         _nspoor[sizeof(_nspoor) - 1] = '\0'; strncpy(nsp, _nspoor, sizeof(nsp) - 1);
         up = _rtc_up_s; gup = _rtc_gui_up_s; rmin = _rtc_ram_min; wst = _rtc_wifi_st;
+        _rtc_c0[15] = _rtc_c1[15] = '\0'; strncpy(c0, _rtc_c0, 15); strncpy(c1, _rtc_c1, 15);
+        c0n = _rtc_c0n; c1n = _rtc_c1n;
     }
     _gui_hang = 0; _rtc_up_s = 0; _rtc_gui_up_s = 0; _rtc_ram_min = 0; _rtc_wifi_st = -1;
+    strcpy(_rtc_c0, "?"); strcpy(_rtc_c1, "?"); _rtc_c0n = _rtc_c1n = 0;
+    xTaskCreatePinnedToCore(_kern_bewaker, "bew0", 2048, (void*)(intptr_t)0, 24, NULL, 1);   // op kern 1, kijkt naar kern 0
+    xTaskCreatePinnedToCore(_kern_bewaker, "bew1", 2048, (void*)(intptr_t)1, 24, NULL, 0);   // op kern 0, kijkt naar kern 1
     bkos_net_spoor("start");
     bkos_gui_spoor("opstarten");
     {   // laatste zwart-scherm-opname van de vorige run ophalen en wissen
@@ -316,9 +345,9 @@ void slaap_reset_reden_verwerken() {
     if ((reden == ESP_RST_POWERON || reden == ESP_RST_SW) && !_was_gui_hang) return;
 
     const char* omschrijving = _was_gui_hang ? "GUI-taak hing (waakhond)" : _reset_reden_naam(reden);
-    snprintf(_diag_balk, sizeof(_diag_balk), "VORIGE HERSTART: %s | na %lus, gui tot %lus | gui: %s | lus: %s | net: %s | wifi %ld | RAM min %lu",
+    snprintf(_diag_balk, sizeof(_diag_balk), "VORIGE HERSTART: %s | na %lus, gui tot %lus | gui: %s | lus: %s | net: %s | wifi %ld | RAM min %lu | kern0: %s x%lu | kern1: %s x%lu",
              omschrijving, (unsigned long)up, (unsigned long)gup, _gspoor_vorig[0] ? _gspoor_vorig : "?",
-             _spoor_vorig[0] ? _spoor_vorig : "?", nsp, (long)wst, (unsigned long)rmin);
+             _spoor_vorig[0] ? _spoor_vorig : "?", nsp, (long)wst, (unsigned long)rmin, c0, (unsigned long)c0n, c1, (unsigned long)c1n);
 
     Preferences prefs;
     prefs.begin("diag", false);

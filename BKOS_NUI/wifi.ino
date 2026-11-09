@@ -507,6 +507,15 @@ void test_opties_opslaan() {
 }
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
+    // Logboek .12/.13 (meldingen 40, 41, 44): steeds vast terwijl WiFi.begin()/verbinden liep en de hoofdlus
+    // tegelijk de opstart-init deed (SPIFFS/NVS lezen: melding_setup, pin_bewaking, mac_record ...). Eerst die
+    // init laten afronden, dan pas hotspot + verbinden. Max 60 s wachten.
+    {
+        unsigned long w0 = millis();
+        while (!hw_achtergrond_init_klaar && millis() - w0 < 60000UL) vTaskDelay(100 / portTICK_PERIOD_MS);
+        logboek_log("net: opstart-init %s na %lu ms wachten | RAM %u", hw_achtergrond_init_klaar ? "klaar" : "NIET klaar",
+                    millis() - w0, _NET_RAM());
+    }
 
     // Hotspot hier starten, in DEZE taak, vóór het verbinden. Logboek 0.2.261109.9/.10: de hoofdlus startte
     // de hotspot terwijl deze taak midden in WiFi.begin() zat -> "hotspot start" + direct "hotspot stop" en

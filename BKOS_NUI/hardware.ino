@@ -483,6 +483,7 @@ static void _boot_stap(const char* stap_naam, bool teken_op_scherm) {
 // van wat er op dat moment toevallig actief is, voor het geval de gebruiker
 // al is doorgetikt naar een scherm dat van hier-geladen data afhangt (bv.
 // APPS-iconen, HAVEN-foto's, GAST/BERICHT-schermen).
+volatile bool hw_achtergrond_init_klaar = false;
 static void _hw_achtergrond_init_eenmalig() {
     logboek_log("init: haven_gebruikersfotos_scannen");
     haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload) — niet nodig voor het paneel zelf
@@ -532,6 +533,7 @@ static void _hw_achtergrond_init_eenmalig() {
 #endif
     scherm_bouwen = true;
     boot_log_stap("achtergrond-init klaar", millis() - _boot_stap_vorige_ms);
+    hw_achtergrond_init_klaar = true;   // netwerk_taak wacht hierop (zie wifi.ino)
 }
 
 void hw_setup() {

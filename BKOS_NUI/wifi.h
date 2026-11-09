@@ -36,6 +36,7 @@ void        tijdzone_toepassen();   // setenv+tzset op basis van bovenstaande, v
 
 extern volatile bool wifi_verbonden;
 extern volatile bool wifi_opstart_klaar;
+extern volatile bool hw_achtergrond_init_klaar;   // hardware.ino: opstart-init (bestanden/NVS lezen) klaar
 // TEST-opties (herstelmenu > TEST, Preferences "test"): onderdelen uitzetten om een vastloper te vinden
 extern bool test_sta_uit, test_hotspot_uit, test_espnow_uit;
 void test_opties_laden();

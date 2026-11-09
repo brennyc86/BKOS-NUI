@@ -130,12 +130,12 @@ int ts_herstarts = 0;       // aantal keer opnieuw geïnitialiseerd sinds opstar
 void ts_gezondheid() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     static unsigned long laatste = 0; static int fout_op_rij = 0;
-    if (millis() - laatste < 5000UL) return;
+    if (millis() < 60000UL || millis() - laatste < 5000UL) return;   // niet tijdens opstarten
     laatste = millis();
     Wire.beginTransmission(GT911_ADDR1);
     ts_i2c_fout = Wire.endTransmission();
     if (ts_i2c_fout == 0) { fout_op_rij = 0; return; }
-    if (++fout_op_rij >= 2) {
+    if (++fout_op_rij >= 3) {   // ±15 s geen antwoord
         fout_op_rij = 0;
         ts_herstarts++;
         ts.begin();            // GT911 resetten (RST-pin) en opnieuw instellen

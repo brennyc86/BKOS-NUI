@@ -157,7 +157,7 @@ static void _zwart_opname(const char* fase, uint32_t gui_tik_delta) { _zwart_opn
 static void _zwart_opname_nvs(const char* fase, uint32_t gui_tik_delta, const char* sleutel) {
     char t[260];
     snprintf(t, sizeof(t), "%s | up %lus | gui-tikken %lu | WiFi st %d verb %d rssi %d | hotspot %d stations %d | ws %d | touch %lus geleden, i2c %d, herinit %d | RAM int %lu (min %lu, blok %lu) | %s",
-             fase, (unsigned long)(millis() / 1000UL), (unsigned long)gui_tik_delta, (int)WiFi.status(), wifi_verbonden ? 1 : 0, (int)WiFi.RSSI(),
+             fase, (unsigned long)(millis() / 1000UL), (unsigned long)gui_tik_delta, (int)WiFi.status(), wifi_verbonden ? 1 : 0, wifi_verbonden ? (int)WiFi.RSSI() : 0,
              wifi_hotspot_actief() ? 1 : 0, (int)WiFi.softAPgetStationNum(), bkos_client_klanten(),
              (unsigned long)((millis() - (unsigned long)scherm_touched) / 1000UL), ts_i2c_fout, ts_herstarts,
              (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
@@ -172,8 +172,10 @@ void slaap_diag_loop() {
     // ── Elke 20 s een momentopname in NVS ("laatst"): na een herstart weten we de toestand vlak vóór het
     //    plat gaan, ook als WiFi toen al weg was. Tijdelijke diagnose (NVS-slijtage: ±4000 schrijfacties/dag).
     {
+        // Pas na 2 min en dan elke 60 s: in .20-.22 viel de eerste opname (WiFi-aanroepen + NVS-schrijven)
+        // precies in het venster waarin WiFi verbindt en het toestel vastliep.
         static unsigned long lm = 0; static uint32_t tik_vorig = 0;
-        if (millis() - lm > 20000UL) {
+        if (millis() > 120000UL && millis() - lm > 60000UL) {
             lm = millis();
             char fase[40]; snprintf(fase, sizeof(fase), "periodiek%s", (!tft_actief && !tft_bijna_uit) ? " (zwart)" : "");
             uint32_t t = _gui_tikken; _zwart_opname_nvs(fase, t - tik_vorig, "laatst"); tik_vorig = t;
@@ -184,7 +186,7 @@ void slaap_diag_loop() {
     {
         static unsigned long laag_sinds = 0;
         size_t vrij = heap_caps_get_free_size(MALLOC_CAP_INTERNAL), blok = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        if (vrij < 16000 || blok < 4000) {
+        if (millis() > 120000UL && (vrij < 12000 || blok < 3000)) {   // niet tijdens opstarten (dan geen herstartlus)
             if (!laag_sinds) laag_sinds = millis();
             else if (millis() - laag_sinds > 8000UL) {
                 char t[120]; snprintf(t, sizeof(t), "ZELFHERSTEL: intern RAM te laag (vrij %u, blok %u) na %lus", (unsigned)vrij, (unsigned)blok, (unsigned long)(millis() / 1000UL));
@@ -205,7 +207,7 @@ void slaap_diag_loop() {
         }
     }
     // Opname van vóór de vorige herstart nog niet verstuurd? Zodra er WiFi is (na de crashmelding).
-    if (_zwart_vorig[0] && wifi_verbonden && millis() > 20000UL) {
+    if (_zwart_vorig[0] && wifi_verbonden && millis() > 100000UL) {   // na de opstart-downloads (meteo/OTA), nooit tegelijk
         static unsigned long zp = 0;
         if (!zp || millis() - zp > 65000UL) {
             zp = millis();
@@ -239,7 +241,7 @@ void slaap_diag_loop() {
             if (fout_log_stuur(FOUT_ALGEMEEN, t, "gezondheid na opstarten", "gezondheid") || ++gpog >= 3) gezond_gestuurd = true;
         }
     }
-    if (!_crash_wacht || !wifi_verbonden || millis() < 15000UL) return;
+    if (!_crash_wacht || !wifi_verbonden || millis() < 90000UL) return;   // na de opstart-downloads (zoals t/m .18: 70 s)
     static unsigned long laatste = 0;
     if (laatste && millis() - laatste < 65000UL) return;
     laatste = millis();

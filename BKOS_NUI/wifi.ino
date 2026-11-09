@@ -416,7 +416,7 @@ void wifi_hotspot_tick() {
     // zelf (zie toelichting hierboven), maar hier vanuit de achtergrondlus,
     // die pas na de eerste paar seconden voor het eerst draait.
     static bool auto_gedaan = false;
-    if (!auto_gedaan && millis() > 60000) {   // vangnet (alleen als netwerk_taak hangt): normaal start die de hotspot al
+    if (!auto_gedaan && millis() > 3000) {
         auto_gedaan = true;
         wifi_hotspot_starten();
     }
@@ -473,9 +473,8 @@ volatile bool wifi_opstart_klaar = false;
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
 
-    // Hotspot EERST, in deze taak: niet meer tegelijk vanuit de hoofdlus terwijl hier de STA verbindt
-    // (twee taken die tegelijk WiFi.mode()/softAP()/begin()/scan aanroepen verstoren elkaar).
-    wifi_hotspot_starten();
+    // Hotspot start weer zoals t/m 0.2.261108.18 vanuit wifi_hotspot_tick() (hoofdlus, na ±3 s).
+    // De vroege start hier (.21/.22) viel samen met het vastlopen bij opstarten.
 
     _wifi_verbinden_intern();
     wifi_opstart_klaar = true;   // vanaf nu mag de hoofdlus ESP-NOW starten (net_loop), zie bkos_net.ino

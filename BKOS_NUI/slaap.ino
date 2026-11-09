@@ -138,7 +138,9 @@ void bkos_spoor(const char* stap) {
 static char _diag_balk[300] = "";
 const char* slaap_kern_taak(int kern) {
 #if PLATFORM_ESP32
-    return kern == 0 ? _rtc_c0 : _rtc_c1;
+    const char* t = kern == 0 ? _rtc_c0 : _rtc_c1;
+    for (int i = 0; i < 15 && t[i]; i++) if (t[i] < 32 || t[i] > 126) return "?";   // nog niet gemeten (RTC-rommel)
+    return t;
 #else
     return "";
 #endif

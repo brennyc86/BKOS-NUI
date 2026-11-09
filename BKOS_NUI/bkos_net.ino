@@ -1,3 +1,4 @@
+#include "logboek.h"
 #include "bkos_net.h"
 #include "platform_fs.h"
 #include "screen_info.h"  // info_boot_naam(), info_sync_verwerken(), net_info_sync_sturen()
@@ -1183,11 +1184,25 @@ void net_loop() {
 
     // Lazy ESP-NOW initialisatie (wacht tot WiFi radio actief is)
     if (!_espnow_ok) {
-        WiFi.mode(WIFI_STA);
-        if (esp_now_init() != ESP_OK) return;  // probeer volgende loop
+        // Logboek 0.2.261109.9: hier stond WiFi.mode(WIFI_STA) bij ELKE lusronde zolang esp_now_init()
+        // mislukte -> de hotspot ging direct na het starten weer uit ("hotspot start" + "hotspot stop" op
+        // 8,7 s) en de hoofdlus liep vast bij het starten van de webapp-servers. Nu: wachten tot de
+        // netwerktaak klaar is met de eerste verbindingspoging (max 60 s), nooit terugschakelen naar
+        // alleen-STA (ESP-NOW werkt ook in AP_STA) en een mislukte poging pas na 5 s herhalen.
+        if (!wifi_opstart_klaar && millis() < 60000UL) return;
+        static unsigned long _espnow_poging = 0;
+        if (_espnow_poging && millis() - _espnow_poging < 5000UL) return;
+        _espnow_poging = millis();
+        wifi_mode_t m = WiFi.getMode();
+        if (m == WIFI_OFF) WiFi.mode(WIFI_STA);
+        else if (m == WIFI_AP) WiFi.mode(WIFI_AP_STA);
+        esp_err_t er = esp_now_init();
+        if (er != ESP_OK) { logboek_log("ESP-NOW: start mislukt (%d), over 5 s opnieuw", (int)er); return; }
+        logboek_log("ESP-NOW: gestart");
+        _espnow_poging = 0;
         esp_now_register_recv_cb(_net_ontvangen_cb);
-        // Zet vaste channel als geen WiFi verbinding (beide apparaten op ch.1)
-        if (WiFi.status() != WL_CONNECTED)
+        // Vast kanaal 1 alleen zonder WiFi-verbinding én zonder hotspot (de hotspot bepaalt dan het kanaal)
+        if (WiFi.status() != WL_CONNECTED && !wifi_hotspot_actief())
             esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
         static const uint8_t broadcast[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
         _peer_registreren(broadcast);

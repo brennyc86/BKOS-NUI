@@ -1,5 +1,6 @@
 #include "wifi.h"
-#include "slaap.h"       // bkos_net_spoor() — diagnose netwerktaak
+#include "slaap.h"
+#include "logboek.h"       // bkos_net_spoor() — diagnose netwerktaak
 #include "ota.h"
 // ota_check_aangevraagd / ota_nieuwer_beschikbaar gedeclareerd in ota.h
 #include "hw_scherm.h"
@@ -428,11 +429,30 @@ void wifi_hotspot_tick() {
     // Servers volgen de hotspot-stand, uitsluitend hier in de hoofdlus (zelfde taak als
     // bkos_client_loop/webapp_loop) — nooit vanuit een andere taak, zie wifi_hotspot_starten().
     static bool servers = false;
+    // Hotspot hoort aan maar de radio staat niet (meer) in AP-modus (bv. iemand zette WiFi.mode(STA)):
+    // eerst de hotspot herstellen, pas daarna servers starten — nooit servers op een dode hotspot.
+    if (_hs_actief && !(WiFi.getMode() & WIFI_MODE_AP)) {
+        static unsigned long hs_herstel = 0;
+        if (!hs_herstel || millis() - hs_herstel > 5000UL) {
+            hs_herstel = millis();
+            logboek_log("hotspot: radio niet in AP-modus, hotspot opnieuw gestart");
+            WiFi.mode(WIFI_AP_STA);
+            WiFi.softAP(_hs_ssid);
+        }
+        return;
+    }
     if (_hs_actief && !servers) {
         servers = true;
+        logboek_log("hotspot: DNS starten (%s)", WiFi.softAPIP().toString().c_str());
+        bkos_spoor("hs:dns");
         _hs_dns.start(HS_DNS_POORT, "*", WiFi.softAPIP());
+        logboek_log("hotspot: websocket + mDNS starten");
+        bkos_spoor("hs:ws+mdns");
         bkos_client_setup();
+        logboek_log("hotspot: webapp starten");
+        bkos_spoor("hs:http");
         webapp_setup();
+        logboek_log("hotspot: servers draaien");
     } else if (!_hs_actief && servers) {
         servers = false;
         _hs_dns.stop();

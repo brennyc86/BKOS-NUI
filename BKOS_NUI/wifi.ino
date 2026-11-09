@@ -486,17 +486,36 @@ static void _wifi_verbreken_intern() {
 // ESP-NOW (net_loop, hoofdlus) van de radio af: die deed WiFi.mode(WIFI_STA) + kanaal 1 terwijl
 // hier softAP/begin/scan liep -> vastloper bij het opstarten in 0.2.261108.21.
 volatile bool wifi_opstart_klaar = false;
+bool test_sta_uit = false, test_hotspot_uit = false, test_espnow_uit = false;
+void test_opties_laden() {
+    Preferences p;
+    if (p.begin("test", true)) {
+        test_sta_uit = p.getBool("sta", false); test_hotspot_uit = p.getBool("hs", false); test_espnow_uit = p.getBool("en", false);
+        p.end();
+    }
+}
+void test_opties_opslaan() {
+    Preferences p; p.begin("test", false);
+    p.putBool("sta", test_sta_uit); p.putBool("hs", test_hotspot_uit); p.putBool("en", test_espnow_uit);
+    p.end();
+}
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
 
     // Hotspot hier starten, in DEZE taak, vóór het verbinden. Logboek 0.2.261109.9/.10: de hoofdlus startte
     // de hotspot terwijl deze taak midden in WiFi.begin() zat -> "hotspot start" + direct "hotspot stop" en
     // een vastgelopen hoofdlus. Alle WiFi-modus-wijzigingen bij het opstarten gebeuren nu in één taak.
-    bkos_net_spoor("net:hotspot");
-    wifi_hotspot_starten();
-    logboek_log("hotspot: gestart door netwerktaak (modus %d)", (int)WiFi.getMode());
-    bkos_net_spoor("net:verbinden");
-    _wifi_verbinden_intern();
+    logboek_log("TEST-opties: WiFi-verbinden %s | hotspot %s | ESP-NOW %s", test_sta_uit ? "UIT" : "aan",
+                test_hotspot_uit ? "UIT" : "aan", test_espnow_uit ? "UIT" : "aan");
+    if (!test_hotspot_uit) {
+        bkos_net_spoor("net:hotspot");
+        wifi_hotspot_starten();
+        logboek_log("hotspot: gestart door netwerktaak (modus %d)", (int)WiFi.getMode());
+    }
+    if (!test_sta_uit) {
+        bkos_net_spoor("net:verbinden");
+        _wifi_verbinden_intern();
+    }
     wifi_opstart_klaar = true;
     bkos_net_spoor(wifi_verbonden ? "net:verbonden" : "net:geen wifi");
     if (wifi_verbonden) {

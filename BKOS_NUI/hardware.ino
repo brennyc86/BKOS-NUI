@@ -536,6 +536,7 @@ static void _hw_achtergrond_init_eenmalig() {
 
 void hw_setup() {
     logboek_begin();   // allereerst: RTC-staart van de vorige start veiligstellen (zie logboek.h)
+    test_opties_laden();   // TEST-opties uit het herstelmenu (WiFi/hotspot/ESP-NOW uitzetten)
     boot_log_reset();
     _boot_stap_vorige_ms = millis();  // startpunt voor de splash-tijdmeting hierboven
     SPIFFS_BEGIN();   // vroeg mounten: tft_setup() leest de scherm-PCLK uit SPIFFS

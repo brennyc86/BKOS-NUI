@@ -530,6 +530,31 @@ static void _rc_logboek_tonen() {
     }
 }
 
+// ─── TEST: onderdelen uitzetten om een vastloper te vinden (Preferences "test") ──
+static void _rc_test_opties() {
+    for (;;) {
+        _rc_titel("TEST-OPTIES");
+        _rc_regel(0, "Zet onderdelen uit voor de volgende start (blijft bewaard).", C_TEXT_DIM, 1);
+        char l[3][40];
+        snprintf(l[0], 40, "WIFI VERBINDEN %s", test_sta_uit ? "UIT" : "AAN");
+        snprintf(l[1], 40, "HOTSPOT %s", test_hotspot_uit ? "UIT" : "AAN");
+        snprintf(l[2], 40, "ESP-NOW %s", test_espnow_uit ? "UIT" : "AAN");
+        const char* sub[3] = {"met je eigen netwerk", "eigen netwerk + webapp", "verbinding tussen schermen"};
+        bool uit[3] = {test_sta_uit, test_hotspot_uit, test_espnow_uit};
+        for (int i = 0; i < 3; i++)
+            ui_knop_groot(_rc_mx, RC_BTN_TOP + i * (RC_MENU_BTN_H + RC_MENU_GAP), _rc_bw, RC_MENU_BTN_H, l[i], sub[i],
+                          C_SURFACE, C_TEXT, uit[i] ? C_RED_BRIGHT : C_GREEN, true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + 3 * (RC_MENU_BTN_H + RC_MENU_GAP), _rc_bw, RC_MENU_BTN_H, "TERUG", "", C_SURFACE, C_TEXT, C_CYAN, true);
+        tft_flush(true);
+        int k = _rc_wacht_knop(RC_BTN_TOP, RC_MENU_BTN_H, 4, RC_MENU_GAP);
+        if (k == 3) return;
+        if (k == 0) test_sta_uit = !test_sta_uit;
+        if (k == 1) test_hotspot_uit = !test_hotspot_uit;
+        if (k == 2) test_espnow_uit = !test_espnow_uit;
+        test_opties_opslaan();
+    }
+}
+
 void recovery_menu() {
     _rc_layout();
     for (;;) {
@@ -542,15 +567,17 @@ void recovery_menu() {
         ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 3, _rc_bw, RC_MENU_BTN_H, "BETA",      "Nieuwste tussenversie", C_SURFACE, C_TEXT, C_ZEILEN, true);
         // LOGBOEK-knop in de ruimte tussen versieregel en de knoppen
         int lb_y = RC_MSG_Y0 + RC_MSG_LH + UI_SCY(6), lb_h = RC_BTN_TOP - lb_y - UI_SCY(8);
-        int lb_w = (_rc_bw * 2) / 3 - 4, dk_x = _rc_mx + lb_w + 8, dk_w = _rc_bw - lb_w - 8;
-        ui_knop_groot(_rc_mx, lb_y, lb_w, lb_h, "LOGBOEK", "Bekijken of delen", C_SURFACE, C_TEXT, C_AMBER, true);
+        int lb_w = (_rc_bw - 16) / 3, ts_x0 = _rc_mx + lb_w + 8, dk_x = _rc_mx + 2 * (lb_w + 8), dk_w = _rc_bw - 2 * (lb_w + 8);
+        bool test_actief = test_sta_uit || test_hotspot_uit || test_espnow_uit;
+        ui_knop_groot(_rc_mx, lb_y, lb_w, lb_h, "LOGBOEK", "bekijk/deel", C_SURFACE, C_TEXT, C_AMBER, true);
+        ui_knop_groot(ts_x0, lb_y, lb_w, lb_h, "TEST", test_actief ? "IETS STAAT UIT" : "alles aan", C_SURFACE, C_TEXT, test_actief ? C_RED_BRIGHT : C_TEXT_DIM, true);
         ui_knop_groot(dk_x, lb_y, dk_w, lb_h, "DONKER", "scherm uit", C_SURFACE, C_TEXT, C_TEXT_DIM, true);
         tft_flush(true);
 
         int keuze = -1;
         while (keuze < 0) {
             if (_rc_tik_gedebounced() && ts_x >= _rc_mx && ts_x < _rc_mx + _rc_bw) {
-                if (ts_y >= lb_y && ts_y < lb_y + lb_h) keuze = (ts_x < _rc_mx + lb_w + 4) ? 9 : 8;
+                if (ts_y >= lb_y && ts_y < lb_y + lb_h) keuze = (ts_x < ts_x0 - 4) ? 9 : (ts_x < dk_x - 4) ? 7 : 8;
                 for (int i = 0; i < 4 && keuze < 0; i++) {
                     int y = RC_BTN_TOP + i * (RC_MENU_BTN_H + RC_MENU_GAP);
                     if (ts_y >= y && ts_y < y + RC_MENU_BTN_H) keuze = i;
@@ -560,6 +587,7 @@ void recovery_menu() {
         }
         if (keuze == 9) { _rc_logboek_tonen(); continue; }
         if (keuze == 8) { _rc_scherm_uit(); continue; }
+        if (keuze == 7) { _rc_test_opties(); continue; }
         if (keuze == 0) return;              // gewoon opstarten
         else if (keuze == 1) _rc_verwijderen();
         else if (keuze == 2) _rc_versie_kiezen();

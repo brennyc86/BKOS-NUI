@@ -6,6 +6,9 @@
 #include "hw_scherm.h"
 #include "ota.h"
 #include <stdarg.h>
+#if PLATFORM_ESP32
+#include "soc/rtc_wdt.h"
+#endif
 
 #if PLATFORM_ESP32
 #include <WiFi.h>
@@ -145,6 +148,10 @@ static void _lb_schrijftaak(void*) {
                         (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
                         slaap_kern_taak(0), slaap_kern_taak(1), sp);
         }
+        // RTC-waakhond voeden zolang het scherm leeft (of een OTA bezig is). Staat alles stil — ook als
+        // beide kernen vastzitten — dan herstart de RTC-waakhond na 30 s; RTC-geheugen (logboek-staart)
+        // blijft daarbij bewaard, zodat de laatste regels vóór de vastloper te zien zijn.
+        if (slaap_gui_stil_s() < 20 || wifi_ota_modus) rtc_wdt_feed();
         if (!tmp) continue;
         size_t n = 0; uint32_t verloren = 0;
         portENTER_CRITICAL(&_lb_mux);
@@ -221,6 +228,14 @@ void logboek_roteer() {
     }
     _lb_bestand_actief = true;
     logboek_log("opslag: %lu KB gebruikt van %lu KB", (unsigned long)(bkos_fs_gebruikt() / 1024), (unsigned long)(bkos_fs_totaal() / 1024));
+    rtc_wdt_protect_off();
+    rtc_wdt_disable();
+    rtc_wdt_set_length_of_reset_signal(RTC_WDT_SYS_RESET_SIG, RTC_WDT_LENGTH_3_2us);
+    rtc_wdt_set_stage(RTC_WDT_STAGE0, RTC_WDT_STAGE_ACTION_RESET_SYSTEM);   // RTC-geheugen blijft bewaard
+    rtc_wdt_set_time(RTC_WDT_STAGE0, 30000);
+    rtc_wdt_enable();
+    rtc_wdt_protect_on();
+    logboek_log("RTC-waakhond: aan (30 s)");
     xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 4096, nullptr, 1, nullptr, 0);
     logboek_log("logboek: vorige start bewaard als %s", a);
 #endif

@@ -1174,6 +1174,7 @@ void net_setup() {
 
 void net_loop() {
     if (net_modus == NET_STANDALONE) return;
+    if (test_espnow_uit) return;   // TEST-optie (herstelmenu)
 
 #if PLATFORM_ESP32
     // Herstel als WiFi radio ondertussen uitgeschakeld werd

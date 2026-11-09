@@ -197,6 +197,21 @@ static void _gui_taak(void*) {
                         break;
                 }
             }
+            {   // Diagnose: oorzaak van de vorige onverwachte herstart (eerste 3 min na opstarten) — leesbaar
+                // zonder WiFi, zodat Brendan er een foto van kan maken. Twee regels boven de navigatiebalk.
+                const char* db = slaap_diag_balk();
+                if (db && db[0]) {
+                    int per = TFT_W / 6 - 2, len = strlen(db);
+                    tft.fillRect(0, NAV_Y - 22, TFT_W, 22, C_RED_BRIGHT);
+                    tft.setTextSize(1); tft.setTextColor(C_BG);
+                    char r[160];
+                    for (int k = 0; k < 2 && k * per < len; k++) {
+                        int n = len - k * per; if (n > per) n = per; if (n > (int)sizeof(r) - 1) n = sizeof(r) - 1;
+                        memcpy(r, db + k * per, n); r[n] = '\0';
+                        tft.setCursor(4, NAV_Y - 20 + k * 10); tft.print(r);
+                    }
+                }
+            }
             tft_flush(true);   // dubbele buffering (indien actief): volledige hertekening direct tonen
         }
 

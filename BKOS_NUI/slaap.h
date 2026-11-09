@@ -76,5 +76,7 @@ void        slaap_diag_loop();                // stuurt een uitgestelde crashmel
 // bkos_gui_spoor() waar hij mee bezig is. Staat hij 30 s stil (niet tijdens OTA/appstore), dan
 // herstart slaap_diag_loop() het toestel — beter dan een zwart scherm dat niet meer reageert — en
 // gaat het GUI-spoor mee in de crashmelding na de herstart.
+void        bkos_net_spoor(const char* stap); // netwerktaak: waar die mee bezig is (RTC, max 23 tekens)
+const char* slaap_diag_balk();                // tekst over de vorige onverwachte herstart, "" = niets te melden
 void        bkos_gui_tik();
 void        bkos_gui_spoor(const char* stap);

@@ -1,4 +1,5 @@
 #include "wifi.h"
+#include "slaap.h"       // bkos_net_spoor() — diagnose netwerktaak
 #include "ota.h"
 // ota_check_aangevraagd / ota_nieuwer_beschikbaar gedeclareerd in ota.h
 #include "hw_scherm.h"
@@ -241,6 +242,7 @@ static void _wifi_verbinden_intern() {
     _wifi_migreer_oud();
 
     // 1. Probeer intern gecachte credentials (ESP32 NVS — snel pad)
+    bkos_net_spoor("wifi:begin");
     WiFi.begin();
     for (int i = 0; i < 10 && WiFi.status() != WL_CONNECTED; i++)
         vTaskDelay(300 / portTICK_PERIOD_MS);
@@ -249,7 +251,9 @@ static void _wifi_verbinden_intern() {
     // 2. Eerst één keer scannen, dan alleen de opgeslagen netwerken proberen die er nu echt zijn,
     //    sterkste eerst. Blind alle netwerken af kost per afwezig netwerk ~9 s, op een boot die
     //    net in een haven aankomt is dat het verschil tussen seconden en minuten tot verbinding.
+    bkos_net_spoor("wifi:scan");
     int n_zicht = WiFi.scanNetworks(false, true);   // true = ook verborgen netwerken
+    bkos_net_spoor("wifi:na scan");
     {
         WifiCred wc[WIFI_MAX_CREDS];
         int cnt = _wc_laad(wc);
@@ -269,6 +273,7 @@ static void _wifi_verbinden_intern() {
             volg[b + 1] = v;
         }
         for (int k = 0; k < nv && WiFi.status() != WL_CONNECTED; k++) {
+            bkos_net_spoor("wifi:begin opgeslagen");
             WiFi.begin(wc[volg[k]].ssid, wc[volg[k]].pass);
             for (int i = 0; i < 45 && WiFi.status() != WL_CONNECTED; i++)
                 vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -476,16 +481,23 @@ static void netwerk_taak(void* param) {
     // Hotspot start weer zoals t/m 0.2.261108.18 vanuit wifi_hotspot_tick() (hoofdlus, na ±3 s).
     // De vroege start hier (.21/.22) viel samen met het vastlopen bij opstarten.
 
+    bkos_net_spoor("net:verbinden");
     _wifi_verbinden_intern();
-    wifi_opstart_klaar = true;   // vanaf nu mag de hoofdlus ESP-NOW starten (net_loop), zie bkos_net.ino
+    wifi_opstart_klaar = true;
+    bkos_net_spoor(wifi_verbonden ? "net:verbonden" : "net:geen wifi");   // vanaf nu mag de hoofdlus ESP-NOW starten (net_loop), zie bkos_net.ino
     if (wifi_verbonden) {
+        bkos_net_spoor("net:ntp");
         ntp_start_sync();
         for (int _ntp_i = 0; _ntp_i < 40 && time(nullptr) < 1000000UL; _ntp_i++)
             vTaskDelay(500 / portTICK_PERIOD_MS);
+        bkos_net_spoor("net:locatie");
         if (!meteo_geladen) meteo_locatie_ophalen();
+        bkos_net_spoor("net:weer");
         meteo_weer_ophalen();
         meteo_getij_berekenen();
+        bkos_net_spoor("net:getij");
         getijdata_update_alle(getijdata_station_idx);
+        bkos_net_spoor("net:ota");
         ota_git_check();
         if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
             ota_nieuwer_beschikbaar = true;
@@ -501,6 +513,7 @@ static void netwerk_taak(void* param) {
 #else
         vTaskDelay(5000 / portTICK_PERIOD_MS); uint32_t gewekt = 0;
 #endif
+        bkos_net_spoor("net:bewaker");
         bool verbonden_nu = (WiFi.status() == WL_CONNECTED);
         wifi_verbonden = verbonden_nu;                       // altijd de echte stand (was soms verouderd)
         if (!verbonden_nu && !wifi_ota_modus && (long)(millis() - volgende_poging) >= 0) {

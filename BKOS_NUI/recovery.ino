@@ -286,38 +286,107 @@ static void _rc_versie_kiezen() {
 // ota_beta_kanal tijdelijk om (en zet 'm terug) zodat ota_git_check() het
 // betakanaal leest zonder de normale schermvoorkeur van de gebruiker te
 // wijzigen.
+// Wacht (scherm zwart) tot er een NIEUWERE beta is dan `huidig_github`: elke 60 s controleren.
+// Nieuwe versie gevonden -> alarm: scherm helemaal wit, knipperend (0,5 s aan / 2 s uit) tot aanraking.
+// Aanraking tijdens het wachten (zonder nieuwe versie) stopt het wachten. Terug naar het BETA-scherm.
+static void _rc_beta_wachten(const String& huidig_github) {
+    tft.fillScreen(C_BG);
+    tft_flush(true);
+    tft_helderheid_zet(0);
+    unsigned long t = millis();
+    while (millis() - t < 400) { _rc_tik_gedebounced(); delay(15); }   // de knopdruk zelf loslaten
+    unsigned long laatste = millis();
+    bool nieuw = false;
+    while (!nieuw) {
+        if (_rc_tik_gedebounced()) { tft_helderheid_zet(tft_helderheid > 5 ? tft_helderheid : 60); return; }
+        if (millis() - laatste >= 60000UL) {
+            laatste = millis();
+            if (WiFi.status() != WL_CONNECTED) wifi_verbind_opgeslagen();
+            if (WiFi.status() == WL_CONNECTED) {
+                bool oud_kanaal = ota_beta_kanal;
+                ota_beta_kanal = true;
+                ota_git_check();
+                ota_beta_kanal = oud_kanaal;
+                if (ota_versie_github.length() > 0 && ota_versie_github != huidig_github && ota_versie_github != BKOS_NUI_VERSIE)
+                    nieuw = true;
+            }
+        }
+        delay(30);
+    }
+    // ALARM: wit scherm, 0,5 s aan / 2 s uit, tot aanraking
+    tft.fillScreen(0xFFFF);
+    tft.setTextSize(4); tft.setTextColor(0x0000);
+    char r[48]; snprintf(r, sizeof(r), "NIEUWE BETA: %s", ota_versie_github.c_str());
+    tft.setCursor((TFT_W - (int)strlen(r) * 24) / 2, TFT_H / 2 - 16); tft.print(r);
+    tft_flush(true);
+    for (;;) {
+        tft_helderheid_zet(100);
+        unsigned long a = millis();
+        while (millis() - a < 500)  { if (_rc_tik_gedebounced()) goto klaar; delay(15); }
+        tft_helderheid_zet(0);
+        a = millis();
+        while (millis() - a < 2000) { if (_rc_tik_gedebounced()) goto klaar; delay(15); }
+    }
+klaar:
+    tft_helderheid_zet(tft_helderheid > 5 ? tft_helderheid : 60);
+    unsigned long t2 = millis();
+    while (millis() - t2 < 350) { _rc_tik_gedebounced(); delay(15); }
+}
+
 static void _rc_beta_installeren() {
-    _rc_titel("BETA INSTALLEREN");
-    _rc_regel(0, "Huidige versie:", C_TEXT_DIM, 1);
-    _rc_regel(1, BKOS_NUI_VERSIE, C_TEXT, 1);
-    _rc_regel(3, "WiFi verbinden...", C_TEXT_DIM, 1);
-    if (!wifi_verbind_opgeslagen()) {
-        _rc_melding_terug("BETA INSTALLEREN", "Geen WiFi-verbinding.", "Controleer opgeslagen netwerk.", C_RED_BRIGHT);
+    for (;;) {
+        _rc_titel("BETA INSTALLEREN");
+        _rc_regel(0, "Huidige versie:", C_TEXT_DIM, 1);
+        _rc_regel(1, BKOS_NUI_VERSIE, C_TEXT, 1);
+        _rc_regel(3, "WiFi verbinden...", C_TEXT_DIM, 1);
+        if (WiFi.status() != WL_CONNECTED && !wifi_verbind_opgeslagen()) {
+            _rc_melding_terug("BETA INSTALLEREN", "Geen WiFi-verbinding.", "Controleer opgeslagen netwerk.", C_RED_BRIGHT);
+            return;
+        }
+
+        _rc_regel(3, "Nieuwste beta ophalen...", C_TEXT_DIM, 1);
+        bool oud_kanaal = ota_beta_kanal;
+        ota_beta_kanal = true;
+        ota_git_check();
+        ota_beta_kanal = oud_kanaal;
+
+        if (ota_versie_github.length() == 0) {
+            _rc_melding_terug("BETA INSTALLEREN", "Kon versie niet ophalen:", ota_status_tekst.c_str(), C_RED_BRIGHT);
+            return;
+        }
+        String beschikbaar = ota_versie_github;
+        bool anders = (beschikbaar != BKOS_NUI_VERSIE);
+
+        // Keuze: FLASHEN (alleen als er iets anders staat) / WACHTEN OP VOLGENDE VERSIE / TERUG
+        _rc_titel("BETA INSTALLEREN");
+        char r0[64]; snprintf(r0, sizeof(r0), "Huidig: %s", BKOS_NUI_VERSIE);
+        char r1[64]; snprintf(r1, sizeof(r1), "Nieuwste beta: %s%s", beschikbaar.c_str(), anders ? "" : " (= huidig)");
+        _rc_regel(0, r0, C_TEXT_DIM, 1);
+        _rc_regel(1, r1, anders ? C_GREEN : C_TEXT, 1);
+        const char* l1 = anders ? "FLASHEN" : "OPNIEUW";
+        const char* s1 = anders ? "deze beta installeren" : "nog eens controleren";
+        ui_knop_groot(_rc_mx, RC_BTN_TOP,                                 _rc_bw, RC_MENU_BTN_H, l1, s1, C_SURFACE, C_TEXT, anders ? C_AMBER : C_TEXT_DIM, true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP),     _rc_bw, RC_MENU_BTN_H, "WACHTEN", "op volgende versie (scherm zwart)", C_SURFACE, C_TEXT, C_CYAN, true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 2, _rc_bw, RC_MENU_BTN_H, "TERUG", "", C_SURFACE, C_TEXT, C_TEXT_DIM, true);
+        tft_flush(true);
+        int keuze = _rc_wacht_knop(RC_BTN_TOP, RC_MENU_BTN_H, 3, RC_MENU_GAP);
+        if (keuze == 2) return;
+        if (keuze == 1) { _rc_beta_wachten(beschikbaar); continue; }
+        if (!anders) continue;
+
+        char rb[40];
+        snprintf(rb, sizeof(rb), "Beta %s flashen?", beschikbaar.c_str());
+        bool ja = _rc_bevestig("BETA FLASHEN", rb, "Tussenversie - minder getest dan stabiel.", "FLASHEN", C_AMBER);
+        if (!ja) continue;
+
+        _rc_titel("BETA INSTALLEREN");
+        _rc_regel(0, "Downloaden en flashen...", C_TEXT_DIM, 1);
+        // ota_download_toepassen() tekent zijn eigen voortgangsscherm en herstart
+        // het apparaat bij succes — deze aanroep keert dan ook nooit terug.
+        ota_download_toepassen(String(OTA_GITHUB_FIRMWARE_URL));
+        _rc_melding_terug("BETA INSTALLEREN", "Downloaden/flashen mislukt:", ota_status_tekst.c_str(), C_RED_BRIGHT);
         return;
     }
-
-    _rc_regel(3, "Nieuwste beta ophalen...", C_TEXT_DIM, 1);
-    bool oud_kanaal = ota_beta_kanal;
-    ota_beta_kanal = true;
-    ota_git_check();
-    ota_beta_kanal = oud_kanaal;
-
-    if (ota_versie_github.length() == 0) {
-        _rc_melding_terug("BETA INSTALLEREN", "Kon versie niet ophalen:", ota_status_tekst.c_str(), C_RED_BRIGHT);
-        return;
-    }
-
-    char r1[40];
-    snprintf(r1, sizeof(r1), "Beta %s flashen?", ota_versie_github.c_str());
-    bool ja = _rc_bevestig("BETA FLASHEN", r1, "Tussenversie - minder getest dan stabiel.", "FLASHEN", C_AMBER);
-    if (!ja) return;
-
-    _rc_titel("BETA INSTALLEREN");
-    _rc_regel(0, "Downloaden en flashen...", C_TEXT_DIM, 1);
-    // ota_download_toepassen() tekent zijn eigen voortgangsscherm en herstart
-    // het apparaat bij succes — deze aanroep keert dan ook nooit terug.
-    ota_download_toepassen(String(OTA_GITHUB_FIRMWARE_URL));
-    _rc_melding_terug("BETA INSTALLEREN", "Downloaden/flashen mislukt:", ota_status_tekst.c_str(), C_RED_BRIGHT);
 }
 
 

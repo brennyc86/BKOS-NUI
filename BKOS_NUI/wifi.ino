@@ -418,28 +418,19 @@ void wifi_hotspot_stoppen() {
 }
 
 void wifi_hotspot_tick() {
-    // Eenmalige auto-start kort ná opstarten — niet synchroon in hw_setup()
-    // zelf (zie toelichting hierboven), maar hier vanuit de achtergrondlus,
-    // die pas na de eerste paar seconden voor het eerst draait.
-    static bool auto_gedaan = false;
-    if (!auto_gedaan && millis() > 3000) {
-        auto_gedaan = true;
-        wifi_hotspot_starten();
-    }
-    // Servers volgen de hotspot-stand, uitsluitend hier in de hoofdlus (zelfde taak als
-    // bkos_client_loop/webapp_loop) — nooit vanuit een andere taak, zie wifi_hotspot_starten().
+    // De hotspot wordt bij het opstarten door netwerk_taak gestart (vóór het verbinden), niet meer hier:
+    // twee taken die tegelijk de WiFi-modus wijzigen lieten het toestel vastlopen (logboek .9/.10).
+    // Servers (DNS, websocket+mDNS, webapp) volgen de hotspot-stand, uitsluitend hier in de hoofdlus —
+    // en pas als de netwerktaak klaar is met de eerste verbindingspoging (geen serverstart midden in
+    // WiFi.begin()/scan) en de radio echt in AP-modus staat.
     static bool servers = false;
-    // Hotspot hoort aan maar de radio staat niet (meer) in AP-modus (bv. iemand zette WiFi.mode(STA)):
-    // eerst de hotspot herstellen, pas daarna servers starten — nooit servers op een dode hotspot.
-    if (_hs_actief && !(WiFi.getMode() & WIFI_MODE_AP)) {
-        static unsigned long hs_herstel = 0;
-        if (!hs_herstel || millis() - hs_herstel > 5000UL) {
-            hs_herstel = millis();
-            logboek_log("hotspot: radio niet in AP-modus, hotspot opnieuw gestart");
-            WiFi.mode(WIFI_AP_STA);
-            WiFi.softAP(_hs_ssid);
+    static bool gemeld = false;
+    if (_hs_actief && !servers) {
+        if (!wifi_opstart_klaar && millis() < 90000UL) return;
+        if (!(WiFi.getMode() & WIFI_MODE_AP)) {
+            if (!gemeld) { gemeld = true; logboek_log("hotspot: hoort aan maar radio niet in AP-modus (%d) - servers niet gestart", (int)WiFi.getMode()); }
+            return;
         }
-        return;
     }
     if (_hs_actief && !servers) {
         servers = true;
@@ -498,6 +489,12 @@ volatile bool wifi_opstart_klaar = false;
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
 
+    // Hotspot hier starten, in DEZE taak, vóór het verbinden. Logboek 0.2.261109.9/.10: de hoofdlus startte
+    // de hotspot terwijl deze taak midden in WiFi.begin() zat -> "hotspot start" + direct "hotspot stop" en
+    // een vastgelopen hoofdlus. Alle WiFi-modus-wijzigingen bij het opstarten gebeuren nu in één taak.
+    bkos_net_spoor("net:hotspot");
+    wifi_hotspot_starten();
+    logboek_log("hotspot: gestart door netwerktaak (modus %d)", (int)WiFi.getMode());
     bkos_net_spoor("net:verbinden");
     _wifi_verbinden_intern();
     wifi_opstart_klaar = true;

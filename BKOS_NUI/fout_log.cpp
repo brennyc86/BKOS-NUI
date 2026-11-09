@@ -237,38 +237,6 @@ static void _flog_taak(void* param) {
     vTaskDelete(NULL);
 }
 
-int fout_log_stuur_direct(const char* soort, const char* inhoud) {
-#if defined(FOUTLOG_INGEST_KEY) && !PLATFORM_PICO
-    if (WiFi.status() != WL_CONNECTED) return -100;
-    size_t il = strlen(inhoud);
-    char* esc = (char*)malloc(il * 2 + 8);
-    char* body = (char*)malloc(il * 2 + 400);
-    if (!esc || !body) { free(esc); free(body); return -104; }
-    _json_escape(inhoud, esc, il * 2 + 8);
-    const char* bootnaam = info_boot_naam();
-    if (!bootnaam || !bootnaam[0]) bootnaam = "(naam niet ingesteld)";
-    char titel[80]; _json_escape(bootnaam, titel, sizeof(titel));
-    snprintf(body, il * 2 + 400, "{\"soort\":\"%s\",\"boot\":\"%s\",\"device\":\"%s\",\"versie\":\"%s\",\"inhoud\":\"%s\"}",
-             soort, titel, _device_id().c_str(), BKOS_NUI_VERSIE, esc);
-    free(esc);
-    int code;
-    {
-        WiFiClientSecure sc; sc.setInsecure();
-        HTTPClient http;
-        if (!http.begin(sc, FOUTLOG_INGEST_URL)) { free(body); return -101; }
-        http.setTimeout(15000);
-        http.addHeader("x-ingest-key", FOUTLOG_INGEST_KEY);
-        http.addHeader("Content-Type", "application/json");
-        code = http.POST(body);
-        http.end();
-    }
-    free(body);
-    return code;
-#else
-    return -105;   // geen meldingensleutel ingebakken
-#endif
-}
-
 bool fout_log_stuur(FoutType type, const char* bericht, const char* context, const char* soort) {
     if (!fout_rapportage)           { _reden = "uit";          return false; }
     if (!fout_log_token_aanwezig()) { _reden = "geen-sleutel"; return false; }

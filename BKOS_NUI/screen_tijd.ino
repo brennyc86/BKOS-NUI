@@ -139,14 +139,11 @@ static void _tijd_ophalen_status(const char* tekst) {
 static void _tijd_ophalen_uitvoeren() {
     _tijd_ophalen_status("Verbinden...");
 
-    // Niet meer zelf (blokkerend, vanuit de GUI-taak) verbinden: dat liep dwars door de WiFi-bewaker
-    // in netwerk_taak heen en liet het toestel vastlopen. WiFi blijft altijd verbonden; die taak
-    // verbindt zelf opnieuw.
     bool had_wifi = wifi_verbonden;
-    bool ok = had_wifi;
+    bool ok = had_wifi || wifi_verbind_opgeslagen();
 
     if (!ok) {
-        strncpy(_tijd_melding, "Nog geen WiFi (verbindt automatisch)", sizeof(_tijd_melding) - 1);
+        strncpy(_tijd_melding, "Geen WiFi-verbinding beschikbaar", sizeof(_tijd_melding) - 1);
         _tijd_melding_kleur = C_RED_BRIGHT;
         scherm_bouwen = true;
         return;
@@ -157,6 +154,7 @@ static void _tijd_ophalen_uitvoeren() {
     ntp_forceer_hersync();
     bool gelukt = ntp_wacht_op_sync(15000);
 
+    if (!had_wifi) wifi_ontkoppelen();   // energiebesparing: alleen ontkoppelen als wij verbonden hebben
 
     if (gelukt) {
         snprintf(_tijd_melding, sizeof(_tijd_melding), "Tijd bijgewerkt: %s", klok_tijd.c_str());

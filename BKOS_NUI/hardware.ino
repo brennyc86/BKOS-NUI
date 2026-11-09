@@ -3,7 +3,6 @@
 #include "screen_post.h"
 #include "boot_log.h"
 #include "slaap.h"
-#include "logboek.h"
 #if PLATFORM_ESP32
 #include "esp_task_wdt.h"   // hardware-waakhond op de hoofdlus
 #endif
@@ -89,32 +88,11 @@ int hw_touch_drag_dy = 0;  // y-delta (touch_start → huidig) vóór elke scree
 // en worden door deze taak gepreempt zodra er een aanraking is of het scherm hertekend
 // moet worden.
 #if PLATFORM_ESP32
-// Diagnose: oorzaak van de vorige onverwachte herstart (eerste 5 min na opstarten) — leesbaar zonder
-// WiFi, zodat Brendan er een foto van kan maken. Drie regels boven de navigatiebalk.
-static void _diag_balk_tekenen(bool nu) {
-    static unsigned long laatst = 0;
-    const char* db = slaap_diag_balk();
-    if (!db || !db[0]) return;
-    if (!nu && millis() - laatst < 2000UL) return;
-    laatst = millis();
-    int per = TFT_W / 6 - 2, len = strlen(db);
-    tft.fillRect(0, NAV_Y - 32, TFT_W, 32, C_RED_BRIGHT);
-    tft.setTextSize(1); tft.setTextColor(C_BG);
-    char r[160];
-    for (int k = 0; k < 3 && k * per < len; k++) {
-        int n = len - k * per; if (n > per) n = per; if (n > (int)sizeof(r) - 1) n = sizeof(r) - 1;
-        memcpy(r, db + k * per, n); r[n] = '\0';
-        tft.setCursor(4, NAV_Y - 30 + k * 10); tft.print(r);
-    }
-    if (!nu) tft_flush(true);
-}
-
 static void _gui_taak(void*) {
     for (;;) {
         bkos_gui_tik();   // waakhond (slaap_diag_loop)
         // Touch en scherm-wake altijd EERST lezen — vóór blokkerende achtergrond-calls
         bkos_gui_spoor("gui:touch");
-        // ts_gezondheid();   // TEST 261109.4: uit (zoals .18)
         bool aanraking = ts_touched();
         if (aanraking) touch_los_sinds_ms = 0;
         else if (touch_los_sinds_ms == 0) touch_los_sinds_ms = millis();
@@ -218,7 +196,6 @@ static void _gui_taak(void*) {
                         break;
                 }
             }
-            _diag_balk_tekenen(true);
             tft_flush(true);   // dubbele buffering (indien actief): volledige hertekening direct tonen
         }
 
@@ -404,13 +381,10 @@ static void _gui_taak(void*) {
                     default: break;
                 }
             }
-            bkos_gui_spoor("gui:na periodiek");
             tft_flush(false);   // dubbele buffering (indien actief): periodieke updates snelheidsbegrensd doorzetten
         }
-        _diag_balk_tekenen(false);   // diagnosebalk vorige herstart (elke 2 s opnieuw, zolang actief)
 
         vorige_touch = aanraking_vast;
-        bkos_gui_spoor("gui:delay");
 
         // Yield 5ms zodat de achtergrondlus (hw_loop) kans krijgt te draaien.
         // Bij aanraking of hertekenen wordt de taak daarna meteen hervat.
@@ -483,62 +457,37 @@ static void _boot_stap(const char* stap_naam, bool teken_op_scherm) {
 // van wat er op dat moment toevallig actief is, voor het geval de gebruiker
 // al is doorgetikt naar een scherm dat van hier-geladen data afhangt (bv.
 // APPS-iconen, HAVEN-foto's, GAST/BERICHT-schermen).
-volatile bool hw_achtergrond_init_klaar = false;
 static void _hw_achtergrond_init_eenmalig() {
-    logboek_log("init: haven_gebruikersfotos_scannen");
     haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload) — niet nodig voor het paneel zelf
-    logboek_log("init: data_setup");
     data_setup();       // gestructureerde data-opslag laden
-    logboek_log("init: meteo_setup");
     meteo_setup();      // laadt NVS-instellingen (snel, geen netwerk)
-    logboek_log("init: getijdata_init");
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
-    logboek_log("init: ota_setup");
     ota_setup();        // init OTA (snel)
-    logboek_log("init: fout_log_setup");
     fout_log_setup();   // laad foutrapportage token uit Preferences
-    logboek_log("init: post_setup");
     post_setup();       // berichten van de ontwikkelaar (belletje in de statusbalk)
-    logboek_log("init: slaap_reset_reden_verwerken");
     slaap_reset_reden_verwerken();  // onthoud/meld een eventuele onverwachte herstart
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    logboek_log("init: victron_setup");
     victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
 #endif                      // op core 2.x: BLE-init bij boot overslaan (hangt op Bluedroid) — zie Route A
-    logboek_log("init: brug_setup");
     brug_setup();           // laad WiFi-brug instellingen (alleen Preferences, geen BLE)
-    logboek_log("init: app_setup");
     app_setup();            // app-manifesten laden + Lua runtime initialiseren
-    logboek_log("init: net_setup");
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
-    logboek_log("init: melding_setup");
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
-    logboek_log("init: gast_laden");
     gast_laden();    // laad gasten-pincodes voor de webapp (HUIS/BOOT-toegang)
-    logboek_log("init: bericht_laden");
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
-    logboek_log("init: pin_bewaking_laden");
     pin_bewaking_laden();      // tellers/zwarte lijst foute pincodes
-    logboek_log("init: mac_record_laden");
     mac_record_laden();        // laad MAC-adres-onthouden-login + afzendergegevens
-    logboek_log("init: mac_record_limiet_laden");
     mac_record_limiet_laden(); // laad instelbare berichtlimieten (default 20/5/24u)
-    logboek_log("init: ble_app_setup");
     ble_app_setup();           // BLE-app: instelling + startgarantie lezen (geen BLE-init hier, die start later in een eigen taak)
 #if BKOS_REMOTE_ENABLED
-    logboek_log("init: bkos_client_setup");
     bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
-    logboek_log("init: webapp_setup");
     webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)
 #endif
     scherm_bouwen = true;
     boot_log_stap("achtergrond-init klaar", millis() - _boot_stap_vorige_ms);
-    hw_achtergrond_init_klaar = true;   // netwerk_taak wacht hierop (zie wifi.ino)
 }
 
 void hw_setup() {
-    logboek_begin();   // allereerst: RTC-staart van de vorige start veiligstellen (zie logboek.h)
-    test_opties_laden();   // TEST-opties uit het herstelmenu (WiFi/hotspot/ESP-NOW uitzetten)
     boot_log_reset();
     _boot_stap_vorige_ms = millis();  // startpunt voor de splash-tijdmeting hierboven
     SPIFFS_BEGIN();   // vroeg mounten: tft_setup() leest de scherm-PCLK uit SPIFFS
@@ -571,9 +520,6 @@ void hw_setup() {
         // het menu) mag niet meetellen bij de hierna gemeten IO-detectieduur.
         _boot_stap_vorige_ms = millis();
     }
-    // Pas NU (herstelmenu-venster voorbij) het logboek van de vorige start archiveren en een nieuw
-    // bestand beginnen — in het herstelmenu was de vorige start dus nog in te zien.
-    logboek_roteer();
 
     // Brendan wil het schakelpaneel zo snel mogelijk bruikbaar hebben (dit IS
     // zijn paneel om alles aan/uit te zetten) — alleen wat daar strikt voor
@@ -724,7 +670,6 @@ void hw_loop() {
 
     bkos_spoor("lus:net");
     net_loop();          // ESP-NOW queue verwerken + heartbeat
-    bkos_spoor("lus:hotspot");
     wifi_hotspot_tick();  // sluit de tijdelijke bestandsdeel-hotspot na afloop vanzelf af
     // Geen BKOS_REMOTE_ENABLED-guard meer op de loop-aanroepen zelf: beide
     // functies doen niets zolang ze niet gestart zijn (_gestart-vlag). Starten
@@ -740,9 +685,7 @@ void hw_loop() {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     brug_loop();       // WiFi-brug BLE verbindingscheck (core 3.x only)
 #endif
-    bkos_spoor("lus:provider");
     provider_loop();   // data-provider scheduler
-    bkos_spoor("lus:scherm-wissel");
 
     // OTA-modus aan/uit o.b.v. actief scherm (geen TFT-toegang)
     static int vorig_scherm = -1;
@@ -780,7 +723,6 @@ void hw_loop() {
     static unsigned long data_opgeslagen_ms = 0;
     if (millis() - data_opgeslagen_ms >= 60000) {
         data_opgeslagen_ms = millis();
-        bkos_spoor("lus:data");
         data_opslaan();  // no-op als data_vuil == false
     }
 
@@ -788,7 +730,6 @@ void hw_loop() {
     static unsigned long licht_auto_ms = 0;
     if (millis() - licht_auto_ms >= 60000) {
         licht_auto_ms = millis();
-        bkos_spoor("lus:licht");
         if (licht_instelling == LICHT_AUTO) io_verlichting_update();
     }
 
@@ -796,16 +737,13 @@ void hw_loop() {
     static unsigned long held_auto_ms = 0;
     if (millis() - held_auto_ms >= 5000) {
         held_auto_ms = millis();
-        bkos_spoor("lus:helderheid");
         tft_helderheid_auto_loop();
     }
 
     // Energie-besparende slaapstand (alleen als scherm volledig uit)
-    bkos_spoor("lus:slaap");
     slaap_loop();
 
     // Yield zodat _gui_taak (prioriteit 4) kans krijgt te preempten
-    bkos_spoor("lus:delay");
     delay(10);
 
 #else

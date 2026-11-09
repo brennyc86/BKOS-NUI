@@ -240,11 +240,10 @@ body.bkos .wrap{
 }
 body.bkos #bkosCv{display:block;position:absolute;left:0;top:0;width:100%;height:100%;z-index:1;cursor:pointer;}
 body.bkos .wrap > .tabbar{display:none;}
-body.bkos #tabInstellingen > .tabbar{display:none;}   /* in de BKOS-weergave kies je het onderdeel via de CONFIG-categorieën */
 /* schermen die nog niet nagebouwd zijn: de gewone inhoud staat tussen de echte statusbalk (42px) en navigatiebalk (42px) */
-body.bkos .wrap .tabpane{position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;z-index:2;overflow-y:auto;padding:0 12px 12px;background:var(--bg);}
-body.bkos .wrap.bkVolledig .tabpane{display:none !important;}
-body.bkos .wrap.geblurd .tabpane{filter:blur(8px);pointer-events:none;overflow:hidden;}
+body.bkos .wrap > .tabpane{position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;z-index:2;overflow-y:auto;padding:0 12px 12px;background:var(--bg);}
+body.bkos .wrap.bkVolledig > .tabpane{display:none !important;}
+body.bkos .wrap.geblurd > .tabpane{filter:blur(8px);pointer-events:none;overflow:hidden;}
 body.bkos .wrap.geblurd #bkosToegang{display:flex;}
 #bkosNiet{display:none;position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;align-items:center;justify-content:center;padding:16px;z-index:4;background:var(--bg);}
 body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
@@ -2181,16 +2180,12 @@ function bkosTeken(){
   });
 }
 function bkosToon(s){
-  if (s !== 3) BKS.S.cfgSectie = null;   // CONFIG verlaten: volgende keer weer bij de categorieën
   bkosScherm = s;
   var d = bkosInfoVoor(s), wrap = document.querySelector('.wrap');
   var volledig = BKS.volledig(s);
   wrap.classList.toggle('bkVolledig', volledig);
   if (!volledig) {
-    if (s === 3 && BKS.S.cfgSectie) {
-      if (BKS.S.cfgSectie === 'fotos') setTab('fotos');
-      else { setTab('instellingen'); setSubTab(BKS.S.cfgSectie); }
-    } else setTab(d.tab);
+    setTab(d.tab);
     if (d.tab === 'onbekend') document.getElementById('bkOnbekendKop').textContent = d.n;
     if (s === 15) { var el = document.getElementById('paneelSection'); if (el && el.scrollIntoView) el.scrollIntoView(); }
   }
@@ -2245,7 +2240,6 @@ function bkosActie(a){
   if (a.sync) { bkosSyncWissel(); return; }
   if (a.volscherm) { volschermWissel(); return; }
   if (a.weergave) { bkosWissel(); return; }
-  if (a.cfgSectie != null) { BKS.S.cfgSectie = a.cfgSectie || null; bkosToon(3); return; }   // CONFIG-onderdeel openen/sluiten
   if (a.bericht != null) { berKies(a.bericht); return; }
   if (a.nood != null) { noodKies(a.nood); return; }
   if (a.gaNaar != null) { bkosGa(a.gaNaar); return; }

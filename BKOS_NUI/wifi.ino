@@ -1,6 +1,4 @@
 #include "wifi.h"
-#include "slaap.h"
-#include "logboek.h"       // bkos_net_spoor() — diagnose netwerktaak
 #include "ota.h"
 // ota_check_aangevraagd / ota_nieuwer_beschikbaar gedeclareerd in ota.h
 #include "hw_scherm.h"
@@ -9,12 +7,6 @@
 #include "meteo.h"
 #include "getijdata.h"
 #include "bkos_net.h"
-#if PLATFORM_ESP32
-#include <esp_heap_caps.h>
-#define _NET_RAM() ((unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL))
-#else
-#define _NET_RAM() 0u
-#endif
 #include "melding.h"
 #include "bkos_client.h"    // bkos_client_setup/stop() — alleen actief tijdens de tijdelijke hotspot
 #include "webapp.h"         // webapp_setup/stop()
@@ -239,9 +231,6 @@ static void _wifi_verbinden_intern() {
     // Brendan meldde. Een boordcomputer aan vaste voeding hoeft niet op
     // stroomverbruik te letten, dus uit voor consistent snel/responsief WiFi.
     WiFi.setSleep(false);
-    // Automatisch opnieuw verbinden door de WiFi-driver blijft UIT: die roept WiFi.begin() aan vanuit
-    // de event-taak, dwars door de scan/begin-reeks hieronder heen. Opnieuw verbinden doet de
-    // bewaker in netwerk_taak (elke 5 s), in deze ene taak.
     WiFi.setAutoReconnect(false);
     _wifi_kies_sterkste_ap();
 
@@ -249,7 +238,6 @@ static void _wifi_verbinden_intern() {
     _wifi_migreer_oud();
 
     // 1. Probeer intern gecachte credentials (ESP32 NVS — snel pad)
-    bkos_net_spoor("wifi:begin");
     WiFi.begin();
     for (int i = 0; i < 10 && WiFi.status() != WL_CONNECTED; i++)
         vTaskDelay(300 / portTICK_PERIOD_MS);
@@ -258,9 +246,7 @@ static void _wifi_verbinden_intern() {
     // 2. Eerst één keer scannen, dan alleen de opgeslagen netwerken proberen die er nu echt zijn,
     //    sterkste eerst. Blind alle netwerken af kost per afwezig netwerk ~9 s, op een boot die
     //    net in een haven aankomt is dat het verschil tussen seconden en minuten tot verbinding.
-    bkos_net_spoor("wifi:scan");
     int n_zicht = WiFi.scanNetworks(false, true);   // true = ook verborgen netwerken
-    bkos_net_spoor("wifi:na scan");
     {
         WifiCred wc[WIFI_MAX_CREDS];
         int cnt = _wc_laad(wc);
@@ -280,7 +266,6 @@ static void _wifi_verbinden_intern() {
             volg[b + 1] = v;
         }
         for (int k = 0; k < nv && WiFi.status() != WL_CONNECTED; k++) {
-            bkos_net_spoor("wifi:begin opgeslagen");
             WiFi.begin(wc[volg[k]].ssid, wc[volg[k]].pass);
             for (int i = 0; i < 45 && WiFi.status() != WL_CONNECTED; i++)
                 vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -424,32 +409,22 @@ void wifi_hotspot_stoppen() {
 }
 
 void wifi_hotspot_tick() {
-    // De hotspot wordt bij het opstarten door netwerk_taak gestart (vóór het verbinden), niet meer hier:
-    // twee taken die tegelijk de WiFi-modus wijzigen lieten het toestel vastlopen (logboek .9/.10).
-    // Servers (DNS, websocket+mDNS, webapp) volgen de hotspot-stand, uitsluitend hier in de hoofdlus —
-    // en pas als de netwerktaak klaar is met de eerste verbindingspoging (geen serverstart midden in
-    // WiFi.begin()/scan) en de radio echt in AP-modus staat.
-    static bool servers = false;
-    static bool gemeld = false;
-    if (_hs_actief && !servers) {
-        if (!wifi_opstart_klaar && millis() < 120000UL) return;
-        if (!(WiFi.getMode() & WIFI_MODE_AP)) {
-            if (!gemeld) { gemeld = true; logboek_log("hotspot: hoort aan maar radio niet in AP-modus (%d) - servers niet gestart", (int)WiFi.getMode()); }
-            return;
-        }
+    // Eenmalige auto-start kort ná opstarten — niet synchroon in hw_setup()
+    // zelf (zie toelichting hierboven), maar hier vanuit de achtergrondlus,
+    // die pas na de eerste paar seconden voor het eerst draait.
+    static bool auto_gedaan = false;
+    if (!auto_gedaan && millis() > 3000) {
+        auto_gedaan = true;
+        wifi_hotspot_starten();
     }
+    // Servers volgen de hotspot-stand, uitsluitend hier in de hoofdlus (zelfde taak als
+    // bkos_client_loop/webapp_loop) — nooit vanuit een andere taak, zie wifi_hotspot_starten().
+    static bool servers = false;
     if (_hs_actief && !servers) {
         servers = true;
-        logboek_log("hotspot: DNS starten (%s)", WiFi.softAPIP().toString().c_str());
-        bkos_spoor("hs:dns");
         _hs_dns.start(HS_DNS_POORT, "*", WiFi.softAPIP());
-        logboek_log("hotspot: websocket + mDNS starten");
-        bkos_spoor("hs:ws+mdns");
         bkos_client_setup();
-        logboek_log("hotspot: webapp starten");
-        bkos_spoor("hs:http");
         webapp_setup();
-        logboek_log("hotspot: servers draaien");
     } else if (!_hs_actief && servers) {
         servers = false;
         _hs_dns.stop();
@@ -488,73 +463,22 @@ static void _wifi_verbreken_intern() {
 }
 
 // ─── Achtergrond netwerk taak (Core 0) ───────────────────────────────────────
-// true zodra netwerk_taak hotspot + eerste verbindingspoging achter de rug heeft. Tot dan blijft
-// ESP-NOW (net_loop, hoofdlus) van de radio af: die deed WiFi.mode(WIFI_STA) + kanaal 1 terwijl
-// hier softAP/begin/scan liep -> vastloper bij het opstarten in 0.2.261108.21.
-volatile bool wifi_opstart_klaar = false;
-bool test_sta_uit = false, test_hotspot_uit = false, test_espnow_uit = false;
-void test_opties_laden() {
-    Preferences p;
-    if (p.begin("test", true)) {
-        test_sta_uit = p.getBool("sta", false); test_hotspot_uit = p.getBool("hs", false); test_espnow_uit = p.getBool("en", false);
-        p.end();
-    }
-}
-void test_opties_opslaan() {
-    Preferences p; p.begin("test", false);
-    p.putBool("sta", test_sta_uit); p.putBool("hs", test_hotspot_uit); p.putBool("en", test_espnow_uit);
-    p.end();
-}
 static void netwerk_taak(void* param) {
     vTaskDelay(1800 / portTICK_PERIOD_MS);
-    // Logboek .12/.13 (meldingen 40, 41, 44): steeds vast terwijl WiFi.begin()/verbinden liep en de hoofdlus
-    // tegelijk de opstart-init deed (SPIFFS/NVS lezen: melding_setup, pin_bewaking, mac_record ...). Eerst die
-    // init laten afronden, dan pas hotspot + verbinden. Max 60 s wachten.
-    {
-        unsigned long w0 = millis();
-        while (!hw_achtergrond_init_klaar && millis() - w0 < 60000UL) vTaskDelay(100 / portTICK_PERIOD_MS);
-        logboek_log("net: opstart-init %s na %lu ms wachten | RAM %u", hw_achtergrond_init_klaar ? "klaar" : "NIET klaar",
-                    millis() - w0, _NET_RAM());
-    }
 
-    // Hotspot hier starten, in DEZE taak, vóór het verbinden. Logboek 0.2.261109.9/.10: de hoofdlus startte
-    // de hotspot terwijl deze taak midden in WiFi.begin() zat -> "hotspot start" + direct "hotspot stop" en
-    // een vastgelopen hoofdlus. Alle WiFi-modus-wijzigingen bij het opstarten gebeuren nu in één taak.
-    logboek_log("TEST-opties: WiFi-verbinden %s | hotspot %s | ESP-NOW %s", test_sta_uit ? "UIT" : "aan",
-                test_hotspot_uit ? "UIT" : "aan", test_espnow_uit ? "UIT" : "aan");
-    if (!test_hotspot_uit) {
-        bkos_net_spoor("net:hotspot");
-        wifi_hotspot_starten();
-        logboek_log("hotspot: gestart door netwerktaak (modus %d)", (int)WiFi.getMode());
-    }
-    if (!test_sta_uit) {
-        bkos_net_spoor("net:verbinden");
-        _wifi_verbinden_intern();
-    }
-    bkos_net_spoor(wifi_verbonden ? "net:verbonden" : "net:geen wifi");
-    // Logboek 0.2.261109.12 (#41): hotspot-servers + ESP-NOW startten terwijl hier nog HTTPS-downloads liepen
-    // -> intern RAM 164 KB -> 33 KB en vastloper in bkos_client_setup. wifi_opstart_klaar (= sein voor servers
-    // en ESP-NOW) gaat nu pas aan NA de opstart-downloads, en elke download logt het vrije RAM.
+    _wifi_verbinden_intern();
     if (wifi_verbonden) {
-        bkos_net_spoor("net:boot-downloads");
         ntp_start_sync();
         for (int _ntp_i = 0; _ntp_i < 40 && time(nullptr) < 1000000UL; _ntp_i++)
             vTaskDelay(500 / portTICK_PERIOD_MS);
-        logboek_log("dl: tijd %s | RAM %u", time(nullptr) > 1000000UL ? "ok" : "NIET", _NET_RAM());
         if (!meteo_geladen) meteo_locatie_ophalen();
-        logboek_log("dl: locatie klaar | RAM %u", _NET_RAM());
         meteo_weer_ophalen();
         meteo_getij_berekenen();
-        logboek_log("dl: weer klaar | RAM %u", _NET_RAM());
         getijdata_update_alle(getijdata_station_idx);
-        logboek_log("dl: getij klaar | RAM %u", _NET_RAM());
         ota_git_check();
         if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
             ota_nieuwer_beschikbaar = true;
-        logboek_log("dl: versiecheck klaar (%s) | RAM %u", ota_versie_github.c_str(), _NET_RAM());
     }
-    wifi_opstart_klaar = true;
-    logboek_log("net: opstart klaar, servers + ESP-NOW mogen starten");
     _wifi_verbreken_intern();
 
     for (;;) {
@@ -564,7 +488,6 @@ static void netwerk_taak(void* param) {
         vTaskDelay(60000 / portTICK_PERIOD_MS);
 #endif
 
-        bkos_net_spoor("net:cyclus");
         unsigned long nu = millis();
         bool update_nodig = (!meteo_geladen) ||
                             (nu - meteo_laatste_update > 1800000UL);
@@ -730,19 +653,7 @@ void ntp_setup() {
 // staan en wordt alleen de TZ-omgevingsvariabele apart gezet.
 void ntp_start_sync() {
 #if PLATFORM_ESP32
-    // Eén tegelijk en niet vlak na elkaar: netwerk_taak (na verbinden) en ntp_loop() (GUI-taak, bij
-    // de overgang naar verbonden) riepen dit tegelijk aan. configTzTime() doet sntp_stop/init zonder
-    // vergrendeling; twee tegelijk geeft een lwIP-assert ("Operating mode must not be set while SNTP
-    // client is running") = crash/herstart precies op het moment dat WiFi verbindt.
-    static SemaphoreHandle_t mtx = xSemaphoreCreateMutex();   // C++ function-static: thread-safe init
-    static unsigned long laatste = 0;
-    if (!mtx || xSemaphoreTake(mtx, pdMS_TO_TICKS(3000)) != pdTRUE) return;
-    if (!laatste || millis() - laatste > 3000UL) {
-        bkos_net_spoor("ntp:start");
-        configTzTime(tijdzone_tz_actief(), NTP_SERVER1, NTP_SERVER2);
-        laatste = millis();
-    }
-    xSemaphoreGive(mtx);
+    configTzTime(tijdzone_tz_actief(), NTP_SERVER1, NTP_SERVER2);
 #else
     configTime(NTP_GMT_OFFSET, NTP_DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
     tijdzone_toepassen();

@@ -1,4 +1,3 @@
-#include "logboek.h"
 #include "boot_log.h"
 #include <string.h>
 
@@ -13,7 +12,6 @@ static int          _boot_log_cnt = 0;
 void boot_log_reset() { _boot_log_cnt = 0; }
 
 void boot_log_stap(const char* naam, unsigned long duur_ms) {
-    logboek_log("opstartstap: %s (%lu ms)", naam, duur_ms);
     if (_boot_log_cnt >= BOOT_LOG_MAX) return;
     strncpy(_boot_log[_boot_log_cnt].naam, naam, BOOT_LOG_NAAM_LEN - 1);
     _boot_log[_boot_log_cnt].naam[BOOT_LOG_NAAM_LEN - 1] = '\0';

@@ -1,4 +1,3 @@
-#include "logboek.h"
 #include "slaap.h"
 #include "app_state.h"
 #include "hw_scherm.h"
@@ -109,14 +108,6 @@ static RTC_NOINIT_ATTR char     _spoor[24];
 static RTC_NOINIT_ATTR uint32_t _spoor_stack_min;
 static RTC_NOINIT_ATTR char     _gspoor[24];       // GUI-taak
 static RTC_NOINIT_ATTR uint32_t _gui_hang;         // != 0: vorige herstart was de GUI-waakhond
-static RTC_NOINIT_ATTR char     _nspoor[24];       // netwerktaak
-static RTC_NOINIT_ATTR uint32_t _rtc_up_s;         // uptime (s), elke seconde bijgewerkt door de hoofdlus
-static RTC_NOINIT_ATTR uint32_t _rtc_gui_up_s;     // uptime bij de laatste GUI-tik
-static RTC_NOINIT_ATTR uint32_t _rtc_ram_min;      // kleinste vrije interne RAM deze run
-static RTC_NOINIT_ATTR int32_t  _rtc_wifi_st;      // WiFi.status() bij de laatste update
-static RTC_NOINIT_ATTR char     _rtc_c0[16];       // taak die het laatst op kern 0 draaide (bemonsterd vanaf kern 1)
-static RTC_NOINIT_ATTR char     _rtc_c1[16];       // idem kern 1 (bemonsterd vanaf kern 0)
-static RTC_NOINIT_ATTR uint32_t _rtc_c0n, _rtc_c1n; // aantal keer op rij (x 0,5 s) dezelfde taak
 #define GUI_HANG_MAGIC 0x6A11DEADUL
 #endif
 static volatile uint32_t _gui_tikken = 0;
@@ -125,7 +116,7 @@ static bool _was_gui_hang = false;
 static char     _spoor_vorig[24] = "";
 static uint32_t _stack_min_vorig = 0;
 static bool     _crash_wacht     = false;
-static char     _crash_tekst[360] = "";
+static char     _crash_tekst[180] = "";
 static uint8_t  _crash_pogingen  = 0;
 
 void bkos_spoor(const char* stap) {
@@ -135,73 +126,9 @@ void bkos_spoor(const char* stap) {
     _spoor_magic = SPOOR_MAGIC;
 #endif
 }
-static char _diag_balk[300] = "";
-const char* slaap_kern_taak(int kern) {
-#if PLATFORM_ESP32
-    const char* t = kern == 0 ? _rtc_c0 : _rtc_c1;
-    for (int i = 0; i < 15 && t[i]; i++) if (t[i] < 32 || t[i] > 126) return "?";   // nog niet gemeten (RTC-rommel)
-    return t;
-#else
-    return "";
-#endif
-}
-void slaap_sporen(char* buf, size_t n) {
-#if PLATFORM_ESP32
-    char a[24], b[24], c[24];
-    strncpy(a, _spoor, 23); a[23] = 0; strncpy(b, _gspoor, 23); b[23] = 0; strncpy(c, _nspoor, 23); c[23] = 0;
-    snprintf(buf, n, "%s | %s | %s", a, b, c);
-#else
-    if (n) buf[0] = 0;
-#endif
-}
-uint32_t slaap_gui_stil_s() {
-#if PLATFORM_ESP32
-    uint32_t nu = millis() / 1000UL;
-    return nu > _rtc_gui_up_s ? nu - _rtc_gui_up_s : 0;
-#else
-    return 0;
-#endif
-}
-const char* slaap_diag_balk() { return (millis() < 300000UL) ? _diag_balk : ""; }
-
-#if PLATFORM_ESP32
-// Kern-bewakers: elke 0,5 s noteert een taak op de ene kern welke taak er op de ANDERE kern draait.
-// Staat een taak een kern vast te houden (waakhond op IDLE0/loopTask), dan staat zijn naam hier met
-// een hoog aantal. Prioriteit 24: draait ook als de rest vastzit.
-static void _kern_bewaker(void* p) {
-    int andere = (int)(intptr_t)p;
-    char* dst = andere == 0 ? _rtc_c0 : _rtc_c1;
-    uint32_t* n = andere == 0 ? &_rtc_c0n : &_rtc_c1n;
-    char vorig[16] = "";
-    vTaskDelay(pdMS_TO_TICKS(andere * 250));   // verspringen, anders zien de twee bewakers elkaar
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(500));
-        TaskHandle_t h = xTaskGetCurrentTaskHandleForCPU(andere);
-        const char* nm = h ? pcTaskGetName(h) : "?";
-        if (strncmp(nm, vorig, 15) == 0) (*n)++;
-        else { *n = 1; strncpy(vorig, nm, 15); vorig[15] = '\0'; }
-        strncpy(dst, nm, 15); dst[15] = '\0';
-    }
-}
-#endif
-void bkos_net_spoor(const char* stap) {
-#if PLATFORM_ESP32
-    if (stap && strncmp(_nspoor, stap, sizeof(_nspoor) - 1) != 0 && strcmp(stap, "net:bewaker") != 0 && strcmp(stap, "net:cyclus") != 0)
-        logboek_log("%s", stap);
-    strncpy(_nspoor, stap ? stap : "", sizeof(_nspoor) - 1);
-    _nspoor[sizeof(_nspoor) - 1] = '\0';
-#endif
-}
-void bkos_gui_tik() {
-    _gui_tikken++;
-#if PLATFORM_ESP32
-    _rtc_gui_up_s = millis() / 1000UL;
-#endif
-}
+void bkos_gui_tik() { _gui_tikken++; }
 void bkos_gui_spoor(const char* stap) {
 #if PLATFORM_ESP32
-    if (stap && (strncmp(stap, "gui:teken", 9) == 0 || strncmp(stap, "gui:tik", 7) == 0 || strcmp(stap, "opstarten") == 0))
-        logboek_log("%s", stap);
     strncpy(_gspoor, stap ? stap : "", sizeof(_gspoor) - 1);
     _gspoor[sizeof(_gspoor) - 1] = '\0';
 #endif
@@ -219,85 +146,8 @@ void bkos_stack_meten() {
 #endif
 }
 
-// ─── Zwart-scherm-momentopname ───────────────────────────────────────────────
-// Het toestel "gaat plat" als het scherm zwart is, zonder crash of waakhond. Daarom bij zwart worden,
-// +30 s en +120 s een momentopname: in NVS (overleeft ook stekker eruit) én direct versturen als er
-// WiFi is. Na een herstart gaat de laatst opgeslagen opname alsnog mee (soort "zwart").
-static char _zwart_vorig[520] = "";
-#if PLATFORM_ESP32
-static void _zwart_opname_nvs(const char* fase, uint32_t gui_tik_delta, const char* sleutel);
-static void _zwart_opname(const char* fase, uint32_t gui_tik_delta) { _zwart_opname_nvs(fase, gui_tik_delta, "zwart"); }
-static void _zwart_opname_nvs(const char* fase, uint32_t gui_tik_delta, const char* sleutel) {
-    char t[260];
-    snprintf(t, sizeof(t), "%s | up %lus | gui-tikken %lu | WiFi st %d verb %d rssi %d | hotspot %d stations %d | ws %d | touch %lus geleden, i2c %d, herinit %d | RAM int %lu (min %lu, blok %lu) | %s",
-             fase, (unsigned long)(millis() / 1000UL), (unsigned long)gui_tik_delta, (int)WiFi.status(), wifi_verbonden ? 1 : 0, wifi_verbonden ? (int)WiFi.RSSI() : 0,
-             wifi_hotspot_actief() ? 1 : 0, (int)WiFi.softAPgetStationNum(), bkos_client_klanten(),
-             (unsigned long)((millis() - (unsigned long)scherm_touched) / 1000UL), ts_i2c_fout, ts_herstarts,
-             (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), BKOS_NUI_VERSIE);
-    Preferences p; p.begin("diag", false); p.putString(sleutel, t); p.end();
-    if (strcmp(sleutel, "zwart") == 0 && wifi_verbonden) fout_log_stuur(FOUT_ALGEMEEN, t, "scherm zwart - momentopname", "zwart");
-}
-#endif
-
 void slaap_diag_loop() {
 #if PLATFORM_ESP32
-    {   // elke seconde in RTC (geen flash, geen WiFi-API behalve status): na een herstart op het scherm
-        static unsigned long rs = 0;
-        if (millis() - rs >= 1000UL) {
-            rs = millis();
-            _rtc_up_s = millis() / 1000UL;
-            _rtc_wifi_st = (int32_t)WiFi.status();
-            uint32_t vrij = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-            if (_rtc_ram_min == 0 || vrij < _rtc_ram_min) _rtc_ram_min = vrij;
-        }
-    }
-    // ── Elke 20 s een momentopname in NVS ("laatst"): na een herstart weten we de toestand vlak vóór het
-    //    plat gaan, ook als WiFi toen al weg was. Tijdelijke diagnose (NVS-slijtage: ±4000 schrijfacties/dag).
-    {
-        // Pas na 2 min en dan elke 60 s: in .20-.22 viel de eerste opname (WiFi-aanroepen + NVS-schrijven)
-        // precies in het venster waarin WiFi verbindt en het toestel vastliep.
-        static unsigned long lm = 0; static uint32_t tik_vorig = 0;
-        if (false && millis() > 120000UL && millis() - lm > 60000UL) {   // TEST 261109.4: uit (zoals .18)
-            lm = millis();
-            char fase[40]; snprintf(fase, sizeof(fase), "periodiek%s", (!tft_actief && !tft_bijna_uit) ? " (zwart)" : "");
-            uint32_t t = _gui_tikken; _zwart_opname_nvs(fase, t - tik_vorig, "laatst"); tik_vorig = t;
-        }
-    }
-    // ── Zelfherstel bij geheugentekort: WiFi en de aanraaksensor werken dan niet meer terwijl de taken
-    //    doorlopen (geen waakhond grijpt in). Liever een nette herstart met reden dan een "dood" toestel.
-    {
-        static unsigned long laag_sinds = 0;
-        size_t vrij = heap_caps_get_free_size(MALLOC_CAP_INTERNAL), blok = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        if (millis() > 120000UL && (vrij < 12000 || blok < 3000)) {   // niet tijdens opstarten (dan geen herstartlus)
-            if (!laag_sinds) laag_sinds = millis();
-            else if (millis() - laag_sinds > 8000UL) {
-                char t[120]; snprintf(t, sizeof(t), "ZELFHERSTEL: intern RAM te laag (vrij %u, blok %u) na %lus", (unsigned)vrij, (unsigned)blok, (unsigned long)(millis() / 1000UL));
-                Preferences p; p.begin("diag", false); p.putString("herstel", t); p.end();
-                delay(50); esp_restart();
-            }
-        } else laag_sinds = 0;
-    }
-    // ── Zwart-scherm-momentopnames ──
-    {
-        static int fase = 0; static unsigned long zwart_ms = 0; static uint32_t tik_bij = 0;
-        bool zwart = !tft_actief && !tft_bijna_uit;
-        if (!zwart) { fase = 0; }
-        else {
-            if (fase == 0) { fase = 1; zwart_ms = millis(); tik_bij = _gui_tikken; _zwart_opname("zwart 0s", 0); }
-            else if (fase == 1 && millis() - zwart_ms > 30000UL)  { fase = 2; _zwart_opname("zwart 30s", _gui_tikken - tik_bij); }
-            else if (fase == 2 && millis() - zwart_ms > 120000UL) { fase = 3; _zwart_opname("zwart 120s", _gui_tikken - tik_bij); }
-        }
-    }
-    // Opname van vóór de vorige herstart nog niet verstuurd? Zodra er WiFi is (na de crashmelding).
-    if (_zwart_vorig[0] && wifi_verbonden && millis() > 100000UL) {   // na de opstart-downloads (meteo/OTA), nooit tegelijk
-        static unsigned long zp = 0;
-        if (!zp || millis() - zp > 65000UL) {
-            zp = millis();
-            char t[560]; snprintf(t, sizeof(t), "VORIGE RUN: %s", _zwart_vorig);
-            if (fout_log_stuur(FOUT_ALGEMEEN, t, "scherm zwart - laatste opname voor herstart", "zwart")) _zwart_vorig[0] = '\0';
-        }
-    }
     // ── GUI-waakhond ──
     {
         static uint32_t vorige_tik = 0; static unsigned long stil_sinds = 0;
@@ -324,7 +174,7 @@ void slaap_diag_loop() {
             if (fout_log_stuur(FOUT_ALGEMEEN, t, "gezondheid na opstarten", "gezondheid") || ++gpog >= 3) gezond_gestuurd = true;
         }
     }
-    if (!_crash_wacht || !wifi_verbonden || millis() < 90000UL) return;   // na de opstart-downloads (zoals t/m .18: 70 s)
+    if (!_crash_wacht || !wifi_verbonden || millis() < 70000UL) return;
     static unsigned long laatste = 0;
     if (laatste && millis() - laatste < 65000UL) return;
     laatste = millis();
@@ -343,29 +193,8 @@ void slaap_reset_reden_verwerken() {
         strncpy(_gspoor_vorig, _gspoor, sizeof(_gspoor_vorig) - 1);
         _was_gui_hang = (_gui_hang == GUI_HANG_MAGIC);
     }
-    char nsp[24] = "?", c0[16] = "?", c1[16] = "?"; uint32_t up = 0, gup = 0, rmin = 0, c0n = 0, c1n = 0; int32_t wst = -1;
-    if (_spoor_magic == SPOOR_MAGIC) {
-        _nspoor[sizeof(_nspoor) - 1] = '\0'; strncpy(nsp, _nspoor, sizeof(nsp) - 1);
-        up = _rtc_up_s; gup = _rtc_gui_up_s; rmin = _rtc_ram_min; wst = _rtc_wifi_st;
-        _rtc_c0[15] = _rtc_c1[15] = '\0'; strncpy(c0, _rtc_c0, 15); strncpy(c1, _rtc_c1, 15);
-        c0n = _rtc_c0n; c1n = _rtc_c1n;
-    }
-    _gui_hang = 0; _rtc_up_s = 0; _rtc_gui_up_s = 0; _rtc_ram_min = 0; _rtc_wifi_st = -1;
-    strcpy(_rtc_c0, "?"); strcpy(_rtc_c1, "?"); _rtc_c0n = _rtc_c1n = 0;
-    xTaskCreatePinnedToCore(_kern_bewaker, "bew0", 2048, (void*)(intptr_t)0, 24, NULL, 1);   // op kern 1, kijkt naar kern 0
-    xTaskCreatePinnedToCore(_kern_bewaker, "bew1", 2048, (void*)(intptr_t)1, 24, NULL, 0);   // op kern 0, kijkt naar kern 1
-    bkos_net_spoor("start");
+    _gui_hang = 0;
     bkos_gui_spoor("opstarten");
-    {   // laatste zwart-scherm-opname van de vorige run ophalen en wissen
-        Preferences p; p.begin("diag", false);
-        String z = p.getString("zwart", ""), l = p.getString("laatst", ""), h = p.getString("herstel", "");
-        String alles = h.length() ? h + " || " : String();
-        if (z.length()) alles += "zwart: " + z + " || ";
-        if (l.length()) alles += "laatst: " + l;
-        if (alles.length()) strncpy(_zwart_vorig, alles.c_str(), sizeof(_zwart_vorig) - 1);
-        p.remove("zwart"); p.remove("laatst"); p.remove("herstel");
-        p.end();
-    }
     _spoor_stack_min = 0;
     bkos_spoor("opstarten");
 
@@ -376,10 +205,6 @@ void slaap_reset_reden_verwerken() {
     if ((reden == ESP_RST_POWERON || reden == ESP_RST_SW) && !_was_gui_hang) return;
 
     const char* omschrijving = _was_gui_hang ? "GUI-taak hing (waakhond)" : _reset_reden_naam(reden);
-    snprintf(_diag_balk, sizeof(_diag_balk), "VORIGE HERSTART: %s | na %lus, gui tot %lus | gui: %s | lus: %s | net: %s | wifi %ld | RAM min %lu | kern0: %s x%lu | kern1: %s x%lu",
-             omschrijving, (unsigned long)up, (unsigned long)gup, _gspoor_vorig[0] ? _gspoor_vorig : "?",
-             _spoor_vorig[0] ? _spoor_vorig : "?", nsp, (long)wst, (unsigned long)rmin, c0, (unsigned long)c0n, c1, (unsigned long)c1n);
-    logboek_log("%s", _diag_balk);
 
     Preferences prefs;
     prefs.begin("diag", false);
@@ -388,7 +213,8 @@ void slaap_reset_reden_verwerken() {
 
     // Niet nu versturen (de 60s-cooldown van fout_log weigert dat bij het opstarten altijd);
     // slaap_diag_loop() stuurt hem zodra er WiFi is.
-    snprintf(_crash_tekst, sizeof(_crash_tekst), "%s | stack %luB | %s", _diag_balk, (unsigned long)_stack_min_vorig, BKOS_NUI_VERSIE);
+    snprintf(_crash_tekst, sizeof(_crash_tekst), "%s | spoor: %s | gui: %s | min. vrije loopstack: %lu B | versie %s",
+             omschrijving, _spoor_vorig[0] ? _spoor_vorig : "?", _gspoor_vorig[0] ? _gspoor_vorig : "?", (unsigned long)_stack_min_vorig, BKOS_NUI_VERSIE);
     _crash_wacht = true;
 #endif
 }

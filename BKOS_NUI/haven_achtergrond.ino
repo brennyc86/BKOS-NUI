@@ -1,5 +1,3 @@
-#include "logboek.h"
-#include <Preferences.h>
 #include "haven_achtergrond.h"
 #include "haven_fotos.h"
 #include "ui_draw.h"
@@ -109,49 +107,17 @@ static volatile bool _hav_scan_bezig = false;
 
 bool haven_gebruikersfoto_scan_klaar() { return _hav_scan_klaar; }
 
-// Scan in één doorloop van de map i.p.v. tot 90 losse SPIFFS.exists()/rename()-aanroepen: op de
-// 9,5 MB-partitie doorzoekt elke exists() de hele partitie. In 0.2.261109.6 liet het logboek zien dat
-// deze taak bij het opstarten kern 0 bezet hield terwijl scherm, netwerktaak en logboek (allemaal
-// wachtend op het bestandssysteem) stilstonden -> vastloper + taak-waakhond. De naam-migratie draait
-// nu nog maar één keer (vlag in Preferences).
 static void _hav_scan_uitvoeren() {
-    unsigned long t0 = millis();
-    logboek_log("haven: fotoscan start");
-    // De naam-migratie (oude bestandsnamen van vóór sept. 2026) is uitgeschakeld: het logboek van
-    // 0.2.261109.7 liet zien dat die bij het opstarten >10 s bleef hangen (kern 1 stilgezet door
-    // flash-schrijfacties, ipc1) en scherm, WiFi en hoofdlus meesleurde. Oude namen worden niet meer gezocht.
-    (void)_hav_map_migreren;
-    int cnt = 0;
-    File dir = SPIFFS.open("/fotos");
-    if (dir && dir.isDirectory()) {
-        File f = dir.openNextFile();
-        while (f && cnt < HAVEN_USER_FOTO_MAX) {
-            const char* nm = f.name();
-            const char* b = strrchr(nm, '/'); b = b ? b + 1 : nm;
-            int slot = -1;
-            if (sscanf(b, "foto_%d.jpg", &slot) == 1 && slot >= 0 && slot < HAVEN_USER_FOTO_MAX) {
-                bool dubbel = false;
-                for (int i = 0; i < cnt; i++) if (hav_user_slot[i] == slot) dubbel = true;
-                if (!dubbel) hav_user_slot[cnt++] = slot;
-            }
-            f.close();
-            vTaskDelay(1);                 // IDLE0/andere taken laten draaien
-            f = dir.openNextFile();
-        }
-        if (f) f.close();
+    _hav_map_migreren();
+    hav_user_cnt = 0;
+    char naam[24];
+    for (int slot = 0; slot < HAVEN_USER_FOTO_MAX; slot++) {
+        _hav_user_naam(slot, naam, sizeof(naam));
+        if (SPIFFS.exists(naam)) hav_user_slot[hav_user_cnt++] = slot;
     }
-    if (dir) dir.close();
-    for (int a = 1; a < cnt; a++) {        // op slotnummer sorteren (zelfde volgorde als voorheen)
-        int v = hav_user_slot[a], b = a - 1;
-        while (b >= 0 && hav_user_slot[b] > v) { hav_user_slot[b + 1] = hav_user_slot[b]; b--; }
-        hav_user_slot[b + 1] = v;
-    }
-    hav_user_cnt = cnt;
-    logboek_log("haven: fotoscan klaar, %d eigen foto's (%lu ms)", cnt, millis() - t0);
 }
 
 static void _hav_scan_taak(void*) {
-    vTaskDelay(pdMS_TO_TICKS(20000));   // niet tijdens het opstarten/WiFi-verbinden; tot dan de voorbeeldfoto
     _hav_scan_uitvoeren();
     _hav_scan_bezig = false;
     _hav_scan_klaar = true;

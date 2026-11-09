@@ -35,12 +35,6 @@ const char* tijdzone_tz_actief();   // actieve POSIX TZ-string (preset of custom
 void        tijdzone_toepassen();   // setenv+tzset op basis van bovenstaande, ververst klok_tijd
 
 extern volatile bool wifi_verbonden;
-extern volatile bool wifi_opstart_klaar;
-extern volatile bool hw_achtergrond_init_klaar;   // hardware.ino: opstart-init (bestanden/NVS lezen) klaar
-// TEST-opties (herstelmenu > TEST, Preferences "test"): onderdelen uitzetten om een vastloper te vinden
-extern bool test_sta_uit, test_hotspot_uit, test_espnow_uit;
-void test_opties_laden();
-void test_opties_opslaan();   // netwerk_taak klaar met hotspot + eerste verbindingspoging
 extern bool wifi_aangesloten;
 extern volatile bool wifi_ota_modus;   // true = OTA scherm actief, WiFi aanhouden
 extern TaskHandle_t  netwerk_task_handle;

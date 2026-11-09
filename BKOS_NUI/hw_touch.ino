@@ -121,29 +121,6 @@ static void _gt911_int_level_mode() {
 }
 #endif
 
-// ─── Gezondheid aanraaksensor (S3/GT911) ─────────────────────────────────────
-// Elke 5 s een I2C-ping naar de GT911 (vanuit de GUI-taak, dezelfde taak die de sensor uitleest).
-// Antwoordt hij 2x op rij niet (±10 s), dan wordt hij opnieuw geïnitialiseerd — een vastgelopen
-// sensor betekende tot nu toe: scherm wordt nooit meer wakker op aanraking.
-int ts_i2c_fout = 0;        // laatste Wire.endTransmission()-resultaat (0 = ok)
-int ts_herstarts = 0;       // aantal keer opnieuw geïnitialiseerd sinds opstarten
-void ts_gezondheid() {
-#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
-    static unsigned long laatste = 0; static int fout_op_rij = 0;
-    if (millis() < 60000UL || millis() - laatste < 5000UL) return;   // niet tijdens opstarten
-    laatste = millis();
-    Wire.beginTransmission(GT911_ADDR1);
-    ts_i2c_fout = Wire.endTransmission();
-    if (ts_i2c_fout == 0) { fout_op_rij = 0; return; }
-    if (++fout_op_rij >= 3) {   // ±15 s geen antwoord
-        fout_op_rij = 0;
-        ts_herstarts++;
-        ts.begin();            // GT911 resetten (RST-pin) en opnieuw instellen
-        ts.setRotation(0);
-    }
-#endif
-}
-
 void ts_setup() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
     // Wire timeout VOOR ts.begin() zodat GT911-init niet hangt bij verkeerd I2C-adres
@@ -151,7 +128,7 @@ void ts_setup() {
     Wire.setTimeout(50);
     ts.begin();
     ts.setRotation(0);
-    _gt911_int_level_mode();   // TEST 261109.4: weer zoals .18
+    _gt911_int_level_mode();
     // GT911 INT pin als INPUT_PULLUP: hoog als scherm niet aangeraakt, laag bij aanraking.
     // TAMC_GT911 gebruikt intPin=-1 (geen adres-selectie via INT), wij gebruiken de pin
     // alleen als EXT0 wake source. Pull-up voorkomt willekeurige wakeups bij zwevende pin.

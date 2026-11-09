@@ -3,6 +3,7 @@
 #include "screen_post.h"
 #include "boot_log.h"
 #include "slaap.h"
+#include "logboek.h"
 #if PLATFORM_ESP32
 #include "esp_task_wdt.h"   // hardware-waakhond op de hoofdlus
 #endif
@@ -513,6 +514,7 @@ static void _hw_achtergrond_init_eenmalig() {
 }
 
 void hw_setup() {
+    logboek_begin();   // allereerst: RTC-staart van de vorige start veiligstellen (zie logboek.h)
     boot_log_reset();
     _boot_stap_vorige_ms = millis();  // startpunt voor de splash-tijdmeting hierboven
     SPIFFS_BEGIN();   // vroeg mounten: tft_setup() leest de scherm-PCLK uit SPIFFS
@@ -545,6 +547,9 @@ void hw_setup() {
         // het menu) mag niet meetellen bij de hierna gemeten IO-detectieduur.
         _boot_stap_vorige_ms = millis();
     }
+    // Pas NU (herstelmenu-venster voorbij) het logboek van de vorige start archiveren en een nieuw
+    // bestand beginnen — in het herstelmenu was de vorige start dus nog in te zien.
+    logboek_roteer();
 
     // Brendan wil het schakelpaneel zo snel mogelijk bruikbaar hebben (dit IS
     // zijn paneel om alles aan/uit te zetten) — alleen wat daar strikt voor

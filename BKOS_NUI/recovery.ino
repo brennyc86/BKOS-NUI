@@ -1,3 +1,5 @@
+#include "logboek.h"
+#include "platform_fs.h"
 #include "recovery.h"
 #include "hw_scherm.h"
 #include "hw_touch.h"
@@ -317,6 +319,97 @@ static void _rc_beta_installeren() {
     _rc_melding_terug("BETA INSTALLEREN", "Downloaden/flashen mislukt:", ota_status_tekst.c_str(), C_RED_BRIGHT);
 }
 
+
+// ─── LOGBOEK: het logboek van de vorige start bekijken (zie logboek.h) ──────
+// Wordt hier nog niet overschreven: logboek_roteer() draait pas ná het herstelmenu.
+// Kleine letters (6x8) zodat er veel op één foto past; nieuwste pagina eerst.
+static void _rc_logboek_tonen() {
+    bool oudere = false;   // false = vorige start (/log_huidig.txt + RTC-staart), true = de start daarvoor
+    for (;;) {
+        // Tekst laden
+        const char* pad = oudere ? LOGBOEK_VORIG : LOGBOEK_HUIDIG;
+        size_t fgrootte = 0;
+        File f = SPIFFS.open(pad, "r");
+        if (f) fgrootte = f.size();
+        const char* rtc = oudere ? "" : logboek_rtc_vorig();
+        size_t cap = fgrootte + strlen(rtc) + 128;
+        char* txt = (char*)PLATFORM_MALLOC(cap);
+        size_t n = 0;
+        if (txt) {
+            if (f) n = f.read((uint8_t*)txt, fgrootte);
+            if (!f || n == 0) n = snprintf(txt, cap, "(geen logboek gevonden: %s)\n", pad);
+            if (rtc[0]) n += snprintf(txt + n, cap - n, "--- laatste regels (RTC, overleeft herstart) ---\n%s", rtc);
+            txt[n] = '\0';
+        }
+        if (f) f.close();
+        if (!txt) { _rc_melding_terug("LOGBOEK", "Te weinig geheugen", "", C_RED_BRIGHT); return; }
+
+        // Opdelen in schermregels (afbreken op schermbreedte)
+        const int kol = (TFT_W - 8) / 6, lh = 9, top = UI_SCY(26);
+        const int knop_h = UI_SCY(44), knop_y = TFT_H - knop_h - 4;
+        const int per_pag = (knop_y - 4 - top) / lh;
+        int regels = 0;
+        for (size_t i = 0; i < n; ) {
+            size_t e = i; int c = 0;
+            while (e < n && txt[e] != '\n' && c < kol) { e++; c++; }
+            regels++;
+            i = (e < n && txt[e] == '\n') ? e + 1 : e;
+            if (e == n) break;
+        }
+        int paginas = (regels + per_pag - 1) / per_pag; if (paginas < 1) paginas = 1;
+        int pag = paginas - 1;   // nieuwste eerst
+
+        for (;;) {
+            tft.fillScreen(C_BG);
+            tft.setTextSize(1);
+            tft.setTextColor(C_CYAN, C_BG);
+            char kop[96];
+            snprintf(kop, sizeof(kop), "LOGBOEK %s   pagina %d/%d   (%s)", oudere ? "START DAARVOOR" : "VORIGE START",
+                     pag + 1, paginas, BKOS_NUI_VERSIE);
+            tft.setCursor(4, 6); tft.print(kop);
+            // regels van deze pagina tekenen
+            int r = 0, eerste = pag * per_pag;
+            char buf[160];
+            for (size_t i = 0; i < n && r < eerste + per_pag; ) {
+                size_t e = i; int c = 0;
+                while (e < n && txt[e] != '\n' && c < kol) { e++; c++; }
+                if (r >= eerste) {
+                    int l = (int)(e - i); if (l > (int)sizeof(buf) - 1) l = sizeof(buf) - 1;
+                    memcpy(buf, txt + i, l); buf[l] = '\0';
+                    uint16_t kl = C_TEXT;
+                    if (strstr(buf, "===") || strstr(buf, "HERSTART") || strstr(buf, "CRASH") || strstr(buf, "waakhond")) kl = C_AMBER;
+                    else if (strstr(buf, " st ")) kl = C_TEXT_DIM;
+                    tft.setTextColor(kl, C_BG);
+                    tft.setCursor(4, top + (r - eerste) * lh); tft.print(buf);
+                }
+                r++;
+                i = (e < n && txt[e] == '\n') ? e + 1 : e;
+                if (e == n) break;
+            }
+            // knoppen: < OUDER | NIEUWER > | ANDERE START | TERUG
+            const char* lbl[4] = {"< OUDER", "NIEUWER >", oudere ? "VORIGE START" : "START DAARVOOR", "TERUG"};
+            int bw = (TFT_W - 5 * 6) / 4;
+            for (int k = 0; k < 4; k++)
+                ui_knop_groot(6 + k * (bw + 6), knop_y, bw, knop_h, lbl[k], "", C_SURFACE, C_TEXT, k == 3 ? C_CYAN : C_TEXT_DIM, true);
+            tft_flush(true);
+
+            int keuze = -1;
+            while (keuze < 0) {
+                if (_rc_tik_gedebounced() && ts_y >= knop_y && ts_y < knop_y + knop_h) {
+                    int k = (ts_x - 6) / (bw + 6);
+                    if (k >= 0 && k < 4) keuze = k;
+                }
+                delay(15);
+            }
+            if (keuze == 0 && pag > 0) pag--;
+            else if (keuze == 1 && pag < paginas - 1) pag++;
+            else if (keuze == 2) { oudere = !oudere; break; }
+            else if (keuze == 3) { free(txt); return; }
+        }
+        free(txt);
+    }
+}
+
 void recovery_menu() {
     _rc_layout();
     for (;;) {
@@ -327,9 +420,23 @@ void recovery_menu() {
         ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP),     _rc_bw, RC_MENU_BTN_H, "VERWIJDER", "Wist BKOS",   C_SURFACE, C_TEXT, C_RED_BRIGHT, true);
         ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 2, _rc_bw, RC_MENU_BTN_H, "UPDATE",    "Kies versie", C_SURFACE, C_TEXT, C_AMBER,      true);
         ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 3, _rc_bw, RC_MENU_BTN_H, "BETA",      "Nieuwste tussenversie", C_SURFACE, C_TEXT, C_ZEILEN, true);
+        // LOGBOEK-knop in de ruimte tussen versieregel en de knoppen
+        int lb_y = RC_MSG_Y0 + RC_MSG_LH + UI_SCY(6), lb_h = RC_BTN_TOP - lb_y - UI_SCY(8);
+        ui_knop_groot(_rc_mx, lb_y, _rc_bw, lb_h, "LOGBOEK", "Vorige start bekijken", C_SURFACE, C_TEXT, C_AMBER, true);
         tft_flush(true);
 
-        int keuze = _rc_wacht_knop(RC_BTN_TOP, RC_MENU_BTN_H, 4, RC_MENU_GAP);
+        int keuze = -1;
+        while (keuze < 0) {
+            if (_rc_tik_gedebounced() && ts_x >= _rc_mx && ts_x < _rc_mx + _rc_bw) {
+                if (ts_y >= lb_y && ts_y < lb_y + lb_h) keuze = 9;
+                for (int i = 0; i < 4 && keuze < 0; i++) {
+                    int y = RC_BTN_TOP + i * (RC_MENU_BTN_H + RC_MENU_GAP);
+                    if (ts_y >= y && ts_y < y + RC_MENU_BTN_H) keuze = i;
+                }
+            }
+            if (keuze < 0) delay(15);
+        }
+        if (keuze == 9) { _rc_logboek_tonen(); continue; }
         if (keuze == 0) return;              // gewoon opstarten
         else if (keuze == 1) _rc_verwijderen();
         else if (keuze == 2) _rc_versie_kiezen();

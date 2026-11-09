@@ -1,3 +1,4 @@
+#include "logboek.h"
 #include "slaap.h"
 #include "app_state.h"
 #include "hw_scherm.h"
@@ -135,6 +136,21 @@ void bkos_spoor(const char* stap) {
 #endif
 }
 static char _diag_balk[300] = "";
+const char* slaap_kern_taak(int kern) {
+#if PLATFORM_ESP32
+    return kern == 0 ? _rtc_c0 : _rtc_c1;
+#else
+    return "";
+#endif
+}
+uint32_t slaap_gui_stil_s() {
+#if PLATFORM_ESP32
+    uint32_t nu = millis() / 1000UL;
+    return nu > _rtc_gui_up_s ? nu - _rtc_gui_up_s : 0;
+#else
+    return 0;
+#endif
+}
 const char* slaap_diag_balk() { return (millis() < 300000UL) ? _diag_balk : ""; }
 
 #if PLATFORM_ESP32
@@ -159,6 +175,8 @@ static void _kern_bewaker(void* p) {
 #endif
 void bkos_net_spoor(const char* stap) {
 #if PLATFORM_ESP32
+    if (stap && strncmp(_nspoor, stap, sizeof(_nspoor) - 1) != 0 && strcmp(stap, "net:bewaker") != 0 && strcmp(stap, "net:cyclus") != 0)
+        logboek_log("%s", stap);
     strncpy(_nspoor, stap ? stap : "", sizeof(_nspoor) - 1);
     _nspoor[sizeof(_nspoor) - 1] = '\0';
 #endif
@@ -171,6 +189,8 @@ void bkos_gui_tik() {
 }
 void bkos_gui_spoor(const char* stap) {
 #if PLATFORM_ESP32
+    if (stap && (strncmp(stap, "gui:teken", 9) == 0 || strncmp(stap, "gui:tik", 7) == 0 || strcmp(stap, "opstarten") == 0))
+        logboek_log("%s", stap);
     strncpy(_gspoor, stap ? stap : "", sizeof(_gspoor) - 1);
     _gspoor[sizeof(_gspoor) - 1] = '\0';
 #endif
@@ -348,6 +368,7 @@ void slaap_reset_reden_verwerken() {
     snprintf(_diag_balk, sizeof(_diag_balk), "VORIGE HERSTART: %s | na %lus, gui tot %lus | gui: %s | lus: %s | net: %s | wifi %ld | RAM min %lu | kern0: %s x%lu | kern1: %s x%lu",
              omschrijving, (unsigned long)up, (unsigned long)gup, _gspoor_vorig[0] ? _gspoor_vorig : "?",
              _spoor_vorig[0] ? _spoor_vorig : "?", nsp, (long)wst, (unsigned long)rmin, c0, (unsigned long)c0n, c1, (unsigned long)c1n);
+    logboek_log("%s", _diag_balk);
 
     Preferences prefs;
     prefs.begin("diag", false);

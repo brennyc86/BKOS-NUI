@@ -9,6 +9,12 @@
 #include "meteo.h"
 #include "getijdata.h"
 #include "bkos_net.h"
+#if PLATFORM_ESP32
+#include <esp_heap_caps.h>
+#define _NET_RAM() ((unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL))
+#else
+#define _NET_RAM() 0u
+#endif
 #include "melding.h"
 #include "bkos_client.h"    // bkos_client_setup/stop() — alleen actief tijdens de tijdelijke hotspot
 #include "webapp.h"         // webapp_setup/stop()
@@ -426,7 +432,7 @@ void wifi_hotspot_tick() {
     static bool servers = false;
     static bool gemeld = false;
     if (_hs_actief && !servers) {
-        if (!wifi_opstart_klaar && millis() < 90000UL) return;
+        if (!wifi_opstart_klaar && millis() < 120000UL) return;
         if (!(WiFi.getMode() & WIFI_MODE_AP)) {
             if (!gemeld) { gemeld = true; logboek_log("hotspot: hoort aan maar radio niet in AP-modus (%d) - servers niet gestart", (int)WiFi.getMode()); }
             return;
@@ -516,21 +522,30 @@ static void netwerk_taak(void* param) {
         bkos_net_spoor("net:verbinden");
         _wifi_verbinden_intern();
     }
-    wifi_opstart_klaar = true;
     bkos_net_spoor(wifi_verbonden ? "net:verbonden" : "net:geen wifi");
+    // Logboek 0.2.261109.12 (#41): hotspot-servers + ESP-NOW startten terwijl hier nog HTTPS-downloads liepen
+    // -> intern RAM 164 KB -> 33 KB en vastloper in bkos_client_setup. wifi_opstart_klaar (= sein voor servers
+    // en ESP-NOW) gaat nu pas aan NA de opstart-downloads, en elke download logt het vrije RAM.
     if (wifi_verbonden) {
         bkos_net_spoor("net:boot-downloads");
         ntp_start_sync();
         for (int _ntp_i = 0; _ntp_i < 40 && time(nullptr) < 1000000UL; _ntp_i++)
             vTaskDelay(500 / portTICK_PERIOD_MS);
+        logboek_log("dl: tijd %s | RAM %u", time(nullptr) > 1000000UL ? "ok" : "NIET", _NET_RAM());
         if (!meteo_geladen) meteo_locatie_ophalen();
+        logboek_log("dl: locatie klaar | RAM %u", _NET_RAM());
         meteo_weer_ophalen();
         meteo_getij_berekenen();
+        logboek_log("dl: weer klaar | RAM %u", _NET_RAM());
         getijdata_update_alle(getijdata_station_idx);
+        logboek_log("dl: getij klaar | RAM %u", _NET_RAM());
         ota_git_check();
         if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
             ota_nieuwer_beschikbaar = true;
+        logboek_log("dl: versiecheck klaar (%s) | RAM %u", ota_versie_github.c_str(), _NET_RAM());
     }
+    wifi_opstart_klaar = true;
+    logboek_log("net: opstart klaar, servers + ESP-NOW mogen starten");
     _wifi_verbreken_intern();
 
     for (;;) {

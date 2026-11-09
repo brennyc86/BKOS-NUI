@@ -1190,7 +1190,7 @@ void net_loop() {
         // 8,7 s) en de hoofdlus liep vast bij het starten van de webapp-servers. Nu: wachten tot de
         // netwerktaak klaar is met de eerste verbindingspoging (max 60 s), nooit terugschakelen naar
         // alleen-STA (ESP-NOW werkt ook in AP_STA) en een mislukte poging pas na 5 s herhalen.
-        if (!wifi_opstart_klaar && millis() < 60000UL) return;
+        if (!wifi_opstart_klaar && millis() < 120000UL) return;
         static unsigned long _espnow_poging = 0;
         if (_espnow_poging && millis() - _espnow_poging < 5000UL) return;
         _espnow_poging = millis();

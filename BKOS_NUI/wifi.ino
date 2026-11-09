@@ -691,7 +691,19 @@ void ntp_setup() {
 // staan en wordt alleen de TZ-omgevingsvariabele apart gezet.
 void ntp_start_sync() {
 #if PLATFORM_ESP32
-    configTzTime(tijdzone_tz_actief(), NTP_SERVER1, NTP_SERVER2);
+    // Eén tegelijk en niet vlak na elkaar: netwerk_taak (na verbinden) en ntp_loop() (GUI-taak, bij
+    // de overgang naar verbonden) riepen dit tegelijk aan. configTzTime() doet sntp_stop/init zonder
+    // vergrendeling; twee tegelijk geeft een lwIP-assert ("Operating mode must not be set while SNTP
+    // client is running") = crash/herstart precies op het moment dat WiFi verbindt.
+    static SemaphoreHandle_t mtx = xSemaphoreCreateMutex();   // C++ function-static: thread-safe init
+    static unsigned long laatste = 0;
+    if (!mtx || xSemaphoreTake(mtx, pdMS_TO_TICKS(3000)) != pdTRUE) return;
+    if (!laatste || millis() - laatste > 3000UL) {
+        bkos_net_spoor("ntp:start");
+        configTzTime(tijdzone_tz_actief(), NTP_SERVER1, NTP_SERVER2);
+        laatste = millis();
+    }
+    xSemaphoreGive(mtx);
 #else
     configTime(NTP_GMT_OFFSET, NTP_DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
     tijdzone_toepassen();

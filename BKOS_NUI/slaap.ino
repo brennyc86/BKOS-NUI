@@ -143,6 +143,15 @@ const char* slaap_kern_taak(int kern) {
     return "";
 #endif
 }
+void slaap_sporen(char* buf, size_t n) {
+#if PLATFORM_ESP32
+    char a[24], b[24], c[24];
+    strncpy(a, _spoor, 23); a[23] = 0; strncpy(b, _gspoor, 23); b[23] = 0; strncpy(c, _nspoor, 23); c[23] = 0;
+    snprintf(buf, n, "%s | %s | %s", a, b, c);
+#else
+    if (n) buf[0] = 0;
+#endif
+}
 uint32_t slaap_gui_stil_s() {
 #if PLATFORM_ESP32
     uint32_t nu = millis() / 1000UL;

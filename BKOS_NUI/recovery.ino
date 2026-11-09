@@ -321,14 +321,27 @@ static void _rc_beta_installeren() {
 }
 
 
+// Scherm donker (achtergrondverlichting uit) tot er weer wordt aangeraakt — om het toestel in het
+// herstelmenu aan te laten staan zonder dat het scherm inbrandt.
+static void _rc_scherm_uit() {
+    tft_helderheid_zet(0);
+    unsigned long t = millis();
+    while (_rc_tik_gedebounced() || millis() - t < 400) delay(15);    // eerst de huidige tik loslaten
+    while (!_rc_tik_gedebounced()) delay(30);
+    tft_helderheid_zet(tft_helderheid > 5 ? tft_helderheid : 60);
+    // de wek-tik zelf niet als knopdruk laten tellen
+    unsigned long t2 = millis();
+    while (millis() - t2 < 350) { _rc_tik_gedebounced(); delay(15); }
+}
+
 // ─── LOGBOEK: logboeken van eerdere starts bekijken en delen (zie logboek.h) ──
 // Wordt hier nog niet overschreven: logboek_roteer() draait pas ná het herstelmenu.
 // Kleine letters (6x8) zodat er veel op één foto past; nieuwste regels eerst in beeld.
 // Bovenaan staat duidelijk WELK logboek (1 = vorige start, 2 = de start daarvoor, …) en welke pagina.
 
 // Logboek in stukken (max ±7000 tekens, grens van de meldingen-server) versturen.
-static void _rc_logboek_delen(int idx, const char* txt, size_t n) {
-    _rc_titel("LOGBOEK DELEN");
+static void _rc_logboek_delen(int idx, const char* txt, size_t n, bool werk = false) {
+    _rc_titel(werk ? "CLAUDE WAARSCHUWEN" : "LOGBOEK DELEN");
     _rc_regel(0, "WiFi verbinden...", C_TEXT, 1);
     if (!wifi_verbind_opgeslagen()) {
         _rc_melding_terug("LOGBOEK DELEN", "Geen WiFi-verbinding.", "Delen lukt alleen met WiFi.", C_RED_BRIGHT);
@@ -343,11 +356,12 @@ static void _rc_logboek_delen(int idx, const char* txt, size_t n) {
     int ok = 0, laatste = 0;
     for (int d = 0; d < delen; d++) {
         size_t a = start + d * STUK, l = n - a; if (l > STUK) l = STUK;
-        int k = snprintf(stuk, 120, "LOGBOEK %d (%s) deel %d/%d\n", idx + 1, idx == 0 ? "vorige start" : "eerdere start", d + 1, delen);
+        int k = snprintf(stuk, 120, "%sLOGBOEK %d (%s) deel %d/%d\n", werk ? "WERK AAN DE WINKEL | " : "",
+                         idx + 1, idx == 0 ? "vorige start" : "eerdere start", d + 1, delen);
         memcpy(stuk + k, txt + a, l); stuk[k + l] = '\0';
         char st[48]; snprintf(st, sizeof(st), "Versturen: deel %d van %d...", d + 1, delen);
         _rc_regel(1, st, C_TEXT, 1);
-        laatste = fout_log_stuur_direct("feedback", stuk);
+        laatste = fout_log_stuur_direct(werk ? "suggestie" : "feedback", stuk);
         if (laatste == 200) ok++;
         delay(300);
     }
@@ -372,7 +386,8 @@ static void _rc_logboek_tonen() {
         if (ks) { const char* ke = strchr(ks, '\n'); size_t kl = ke ? (size_t)(ke - ks) : strlen(ks); if (kl > sizeof(kopstart) - 1) kl = sizeof(kopstart) - 1; memcpy(kopstart, ks, kl); kopstart[kl] = '\0'; }
 
         const int kol = (TFT_W - 8) / 6, lh = 9, top = 28;
-        const int knop_h = UI_SCY(52), knop_y = TFT_H - knop_h - 4;
+        const int knop_h = UI_SCY(46), knop_gap = 6;
+        const int knop_y2 = TFT_H - knop_h - 4, knop_y = knop_y2 - knop_h - knop_gap;   // twee rijen knoppen
         const int per_pag = (knop_y - 4 - top) / lh;
         int regels = 0;
         for (size_t i = 0; i < n; ) {
@@ -412,21 +427,24 @@ static void _rc_logboek_tonen() {
                 i = (e < n && txt[e] == '\n') ? e + 1 : e;
                 if (e == n) break;
             }
-            // Knoppen: logboek kiezen | bladeren | delen | terug
-            const char* lbl[6] = {"< LOG", "LOG >", "PAG ^", "PAG v", "DELEN", "TERUG"};
-            const char* sub[6] = {"nieuwer", "ouder", "eerder", "later", "verstuur", ""};
-            bool aan[6] = {idx > 0, idx < aantal - 1, pag > 0, pag < paginas - 1, true, true};
-            const int nk = 6, gap = 6, bw = (TFT_W - (nk + 1) * gap) / nk;
-            for (int k = 0; k < nk; k++)
-                ui_knop_groot(gap + k * (bw + gap), knop_y, bw, knop_h, lbl[k], sub[k], C_SURFACE,
-                              aan[k] ? C_TEXT : C_SURFACE3, k == 4 ? C_GREEN : (k == 5 ? C_CYAN : C_TEXT_DIM), aan[k]);
+            // Rij 1: logboek kiezen + bladeren. Rij 2: delen, Claude waarschuwen, scherm uit, terug.
+            const char* lbl[8] = {"< LOG", "LOG >", "PAG ^", "PAG v", "DELEN", "CLAUDE", "DONKER", "TERUG"};
+            const char* sub[8] = {"nieuwer logboek", "ouder logboek", "eerdere regels", "latere regels",
+                                  "versturen", "werk aan winkel", "scherm uit", ""};
+            bool aan[8] = {idx > 0, idx < aantal - 1, pag > 0, pag < paginas - 1, true, true, true, true};
+            uint16_t acc[8] = {C_TEXT_DIM, C_TEXT_DIM, C_TEXT_DIM, C_TEXT_DIM, C_GREEN, C_AMBER, C_TEXT_DIM, C_CYAN};
+            const int nk = 4, gap = 6, bw = (TFT_W - (nk + 1) * gap) / nk;
+            for (int k = 0; k < 8; k++)
+                ui_knop_groot(gap + (k % nk) * (bw + gap), k < nk ? knop_y : knop_y2, bw, knop_h, lbl[k], sub[k], C_SURFACE,
+                              aan[k] ? C_TEXT : C_SURFACE3, acc[k], aan[k]);
             tft_flush(true);
 
             int keuze = -1;
             while (keuze < 0) {
-                if (_rc_tik_gedebounced() && ts_y >= knop_y && ts_y < knop_y + knop_h) {
+                if (_rc_tik_gedebounced()) {
+                    int rij = (ts_y >= knop_y && ts_y < knop_y + knop_h) ? 0 : (ts_y >= knop_y2 && ts_y < knop_y2 + knop_h) ? 1 : -1;
                     int k = (ts_x - gap) / (bw + gap);
-                    if (k >= 0 && k < nk && aan[k]) keuze = k;
+                    if (rij >= 0 && k >= 0 && k < nk && aan[rij * nk + k]) keuze = rij * nk + k;
                 }
                 delay(15);
             }
@@ -435,6 +453,8 @@ static void _rc_logboek_tonen() {
             else if (keuze == 2) pag--;
             else if (keuze == 3) pag++;
             else if (keuze == 4) _rc_logboek_delen(idx, txt, n);
+            else if (keuze == 5) _rc_logboek_delen(idx, txt, n, true);
+            else if (keuze == 6) _rc_scherm_uit();
             else { free(txt); return; }
         }
         free(txt);
@@ -453,13 +473,15 @@ void recovery_menu() {
         ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 3, _rc_bw, RC_MENU_BTN_H, "BETA",      "Nieuwste tussenversie", C_SURFACE, C_TEXT, C_ZEILEN, true);
         // LOGBOEK-knop in de ruimte tussen versieregel en de knoppen
         int lb_y = RC_MSG_Y0 + RC_MSG_LH + UI_SCY(6), lb_h = RC_BTN_TOP - lb_y - UI_SCY(8);
-        ui_knop_groot(_rc_mx, lb_y, _rc_bw, lb_h, "LOGBOEK", "Bekijken of delen met Claude", C_SURFACE, C_TEXT, C_AMBER, true);
+        int lb_w = (_rc_bw * 2) / 3 - 4, dk_x = _rc_mx + lb_w + 8, dk_w = _rc_bw - lb_w - 8;
+        ui_knop_groot(_rc_mx, lb_y, lb_w, lb_h, "LOGBOEK", "Bekijken of delen", C_SURFACE, C_TEXT, C_AMBER, true);
+        ui_knop_groot(dk_x, lb_y, dk_w, lb_h, "DONKER", "scherm uit", C_SURFACE, C_TEXT, C_TEXT_DIM, true);
         tft_flush(true);
 
         int keuze = -1;
         while (keuze < 0) {
             if (_rc_tik_gedebounced() && ts_x >= _rc_mx && ts_x < _rc_mx + _rc_bw) {
-                if (ts_y >= lb_y && ts_y < lb_y + lb_h) keuze = 9;
+                if (ts_y >= lb_y && ts_y < lb_y + lb_h) keuze = (ts_x < _rc_mx + lb_w + 4) ? 9 : 8;
                 for (int i = 0; i < 4 && keuze < 0; i++) {
                     int y = RC_BTN_TOP + i * (RC_MENU_BTN_H + RC_MENU_GAP);
                     if (ts_y >= y && ts_y < y + RC_MENU_BTN_H) keuze = i;
@@ -468,6 +490,7 @@ void recovery_menu() {
             if (keuze < 0) delay(15);
         }
         if (keuze == 9) { _rc_logboek_tonen(); continue; }
+        if (keuze == 8) { _rc_scherm_uit(); continue; }
         if (keuze == 0) return;              // gewoon opstarten
         else if (keuze == 1) _rc_verwijderen();
         else if (keuze == 2) _rc_versie_kiezen();

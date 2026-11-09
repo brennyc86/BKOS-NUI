@@ -100,7 +100,7 @@ const char* logboek_rtc_vorig() {
 
 void logboek_log(const char* fmt, ...) {
 #if PLATFORM_ESP32
-    char regel[200];
+    char regel[320];
     unsigned long ms = millis();
     int k = snprintf(regel, sizeof(regel), "%5lu.%lu ", ms / 1000UL, (ms / 100UL) % 10UL);
     va_list ap; va_start(ap, fmt);
@@ -132,17 +132,18 @@ static void _lb_schrijftaak(void*) {
     if (!tmp && _lb_ram_cap) tmp = (char*)malloc(_lb_ram_cap);
     unsigned long laatste_status = 0;
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(millis() < 120000UL ? 500 : 2000));   // eerste 2 min vaker wegschrijven
         unsigned long nu = millis();
         unsigned long interval = (nu < 300000UL) ? 2000UL : 30000UL;
         if (nu - laatste_status >= interval) {
             laatste_status = nu;
-            logboek_log("st gui-tik %lu s geleden | wifi %d verb %d | hotspot %d (%d) | ws %d | scherm %s | RAM %u (min %u) | kern0 %s | kern1 %s",
+            char sp[80]; slaap_sporen(sp, sizeof(sp));
+            logboek_log("st gui-tik %lu s geleden | wifi %d verb %d | hotspot %d (%d) | ws %d | scherm %s | RAM %u (min %u) | kern0 %s | kern1 %s | %s",
                         (unsigned long)slaap_gui_stil_s(), (int)WiFi.status(), wifi_verbonden ? 1 : 0,
                         wifi_hotspot_actief() ? 1 : 0, (int)WiFi.softAPgetStationNum(), bkos_client_klanten(),
                         tft_actief ? "aan" : "uit",
                         (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-                        slaap_kern_taak(0), slaap_kern_taak(1));
+                        slaap_kern_taak(0), slaap_kern_taak(1), sp);
         }
         if (!tmp) continue;
         size_t n = 0; uint32_t verloren = 0;

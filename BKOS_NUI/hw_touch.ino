@@ -151,9 +151,7 @@ void ts_setup() {
     Wire.setTimeout(50);
     ts.begin();
     ts.setRotation(0);
-#if SLAAP_LIGHT_TOEGESTAAN
-    _gt911_int_level_mode();   // alleen nodig voor wekken uit light sleep (EXT0); die staat voorlopig uit
-#endif
+    _gt911_int_level_mode();   // TEST 261109.4: weer zoals .18
     // GT911 INT pin als INPUT_PULLUP: hoog als scherm niet aangeraakt, laag bij aanraking.
     // TAMC_GT911 gebruikt intPin=-1 (geen adres-selectie via INT), wij gebruiken de pin
     // alleen als EXT0 wake source. Pull-up voorkomt willekeurige wakeups bij zwevende pin.

@@ -203,7 +203,7 @@ void slaap_diag_loop() {
         // Pas na 2 min en dan elke 60 s: in .20-.22 viel de eerste opname (WiFi-aanroepen + NVS-schrijven)
         // precies in het venster waarin WiFi verbindt en het toestel vastliep.
         static unsigned long lm = 0; static uint32_t tik_vorig = 0;
-        if (millis() > 120000UL && millis() - lm > 60000UL) {
+        if (false && millis() > 120000UL && millis() - lm > 60000UL) {   // TEST 261109.4: uit (zoals .18)
             lm = millis();
             char fase[40]; snprintf(fase, sizeof(fase), "periodiek%s", (!tft_actief && !tft_bijna_uit) ? " (zwart)" : "");
             uint32_t t = _gui_tikken; _zwart_opname_nvs(fase, t - tik_vorig, "laatst"); tik_vorig = t;

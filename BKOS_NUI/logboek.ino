@@ -173,6 +173,7 @@ void logboek_roteer() {
         File f = SPIFFS.open(LOGBOEK_VORIG, "a");
         if (f) { f.print("--- laatste regels (RTC, overleeft herstart) ---\n"); f.print(_lb_vorig_rtc); f.close(); }
     }
+    logboek_log("opslag: %lu KB gebruikt van %lu KB", (unsigned long)(bkos_fs_gebruikt() / 1024), (unsigned long)(bkos_fs_totaal() / 1024));
     _lb_bestand_actief = true;
     xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 4096, nullptr, 1, nullptr, 0);
     logboek_log("logboek: vorige start bewaard als %s", LOGBOEK_VORIG);

@@ -1,3 +1,4 @@
+#include "fout_log.h"
 #include "logboek.h"
 #include "platform_fs.h"
 #include "recovery.h"
@@ -320,33 +321,58 @@ static void _rc_beta_installeren() {
 }
 
 
-// ─── LOGBOEK: het logboek van de vorige start bekijken (zie logboek.h) ──────
+// ─── LOGBOEK: logboeken van eerdere starts bekijken en delen (zie logboek.h) ──
 // Wordt hier nog niet overschreven: logboek_roteer() draait pas ná het herstelmenu.
-// Kleine letters (6x8) zodat er veel op één foto past; nieuwste pagina eerst.
+// Kleine letters (6x8) zodat er veel op één foto past; nieuwste regels eerst in beeld.
+// Bovenaan staat duidelijk WELK logboek (1 = vorige start, 2 = de start daarvoor, …) en welke pagina.
+
+// Logboek in stukken (max ±7000 tekens, grens van de meldingen-server) versturen.
+static void _rc_logboek_delen(int idx, const char* txt, size_t n) {
+    _rc_titel("LOGBOEK DELEN");
+    _rc_regel(0, "WiFi verbinden...", C_TEXT, 1);
+    if (!wifi_verbind_opgeslagen()) {
+        _rc_melding_terug("LOGBOEK DELEN", "Geen WiFi-verbinding.", "Delen lukt alleen met WiFi.", C_RED_BRIGHT);
+        return;
+    }
+    const size_t STUK = 6800;
+    int delen = (int)((n + STUK - 1) / STUK); if (delen < 1) delen = 1;
+    if (delen > 12) delen = 12;                       // max ±80 KB: de nieuwste stukken gaan voor
+    size_t start = (n > STUK * delen) ? n - STUK * delen : 0;
+    char* stuk = (char*)malloc(STUK + 120);
+    if (!stuk) { _rc_melding_terug("LOGBOEK DELEN", "Te weinig geheugen", "", C_RED_BRIGHT); return; }
+    int ok = 0, laatste = 0;
+    for (int d = 0; d < delen; d++) {
+        size_t a = start + d * STUK, l = n - a; if (l > STUK) l = STUK;
+        int k = snprintf(stuk, 120, "LOGBOEK %d (%s) deel %d/%d\n", idx + 1, idx == 0 ? "vorige start" : "eerdere start", d + 1, delen);
+        memcpy(stuk + k, txt + a, l); stuk[k + l] = '\0';
+        char st[48]; snprintf(st, sizeof(st), "Versturen: deel %d van %d...", d + 1, delen);
+        _rc_regel(1, st, C_TEXT, 1);
+        laatste = fout_log_stuur_direct("feedback", stuk);
+        if (laatste == 200) ok++;
+        delay(300);
+    }
+    free(stuk);
+    char r1[48], r2[48];
+    snprintf(r1, sizeof(r1), "%d van %d delen verstuurd", ok, delen);
+    snprintf(r2, sizeof(r2), ok == delen ? "Claude kan het nu lezen." : "Laatste serverantwoord: %d", laatste);
+    _rc_melding_terug("LOGBOEK DELEN", r1, r2, ok == delen ? C_GREEN : C_AMBER);
+}
+
 static void _rc_logboek_tonen() {
-    bool oudere = false;   // false = vorige start (/log_huidig.txt + RTC-staart), true = de start daarvoor
+    int idx = 0;
+    int aantal = logboek_aantal();
     for (;;) {
-        // Tekst laden
-        const char* pad = oudere ? LOGBOEK_VORIG : LOGBOEK_HUIDIG;
-        size_t fgrootte = 0;
-        File f = SPIFFS.open(pad, "r");
-        if (f) fgrootte = f.size();
-        const char* rtc = oudere ? "" : logboek_rtc_vorig();
-        size_t cap = fgrootte + strlen(rtc) + 128;
-        char* txt = (char*)PLATFORM_MALLOC(cap);
         size_t n = 0;
-        if (txt) {
-            if (f) n = f.read((uint8_t*)txt, fgrootte);
-            if (!f || n == 0) n = snprintf(txt, cap, "(geen logboek gevonden: %s)\n", pad);
-            if (rtc[0]) n += snprintf(txt + n, cap - n, "--- laatste regels (RTC, overleeft herstart) ---\n%s", rtc);
-            txt[n] = '\0';
-        }
-        if (f) f.close();
+        char* txt = logboek_laad(idx, &n);
         if (!txt) { _rc_melding_terug("LOGBOEK", "Te weinig geheugen", "", C_RED_BRIGHT); return; }
 
-        // Opdelen in schermregels (afbreken op schermbreedte)
-        const int kol = (TFT_W - 8) / 6, lh = 9, top = UI_SCY(26);
-        const int knop_h = UI_SCY(44), knop_y = TFT_H - knop_h - 4;
+        // Kopregel van dit logboek ("=== START … reden … ===") voor in de titel
+        char kopstart[100] = "";
+        const char* ks = strstr(txt, "=== START");
+        if (ks) { const char* ke = strchr(ks, '\n'); size_t kl = ke ? (size_t)(ke - ks) : strlen(ks); if (kl > sizeof(kopstart) - 1) kl = sizeof(kopstart) - 1; memcpy(kopstart, ks, kl); kopstart[kl] = '\0'; }
+
+        const int kol = (TFT_W - 8) / 6, lh = 9, top = 28;
+        const int knop_h = UI_SCY(52), knop_y = TFT_H - knop_h - 4;
         const int per_pag = (knop_y - 4 - top) / lh;
         int regels = 0;
         for (size_t i = 0; i < n; ) {
@@ -357,17 +383,17 @@ static void _rc_logboek_tonen() {
             if (e == n) break;
         }
         int paginas = (regels + per_pag - 1) / per_pag; if (paginas < 1) paginas = 1;
-        int pag = paginas - 1;   // nieuwste eerst
+        int pag = paginas - 1;   // nieuwste regels eerst
 
-        for (;;) {
+        bool wissel = false;
+        while (!wissel) {
             tft.fillScreen(C_BG);
             tft.setTextSize(1);
-            tft.setTextColor(C_CYAN, C_BG);
-            char kop[96];
-            snprintf(kop, sizeof(kop), "LOGBOEK %s   pagina %d/%d   (%s)", oudere ? "START DAARVOOR" : "VORIGE START",
-                     pag + 1, paginas, BKOS_NUI_VERSIE);
-            tft.setCursor(4, 6); tft.print(kop);
-            // regels van deze pagina tekenen
+            char kop[140];
+            snprintf(kop, sizeof(kop), "LOGBOEK %d VAN %d  (%s)      PAGINA %d VAN %d", idx + 1, aantal,
+                     idx == 0 ? "vorige start" : (idx == 1 ? "start daarvoor" : "eerdere start"), pag + 1, paginas);
+            tft.setTextColor(C_CYAN, C_BG); tft.setCursor(4, 4); tft.print(kop);
+            tft.setTextColor(C_TEXT_DIM, C_BG); tft.setCursor(4, 15); tft.print(kopstart[0] ? kopstart : "(geen startregel)");
             int r = 0, eerste = pag * per_pag;
             char buf[160];
             for (size_t i = 0; i < n && r < eerste + per_pag; ) {
@@ -386,25 +412,30 @@ static void _rc_logboek_tonen() {
                 i = (e < n && txt[e] == '\n') ? e + 1 : e;
                 if (e == n) break;
             }
-            // knoppen: < OUDER | NIEUWER > | ANDERE START | TERUG
-            const char* lbl[4] = {"< OUDER", "NIEUWER >", oudere ? "VORIGE START" : "START DAARVOOR", "TERUG"};
-            int bw = (TFT_W - 5 * 6) / 4;
-            for (int k = 0; k < 4; k++)
-                ui_knop_groot(6 + k * (bw + 6), knop_y, bw, knop_h, lbl[k], "", C_SURFACE, C_TEXT, k == 3 ? C_CYAN : C_TEXT_DIM, true);
+            // Knoppen: logboek kiezen | bladeren | delen | terug
+            const char* lbl[6] = {"< LOG", "LOG >", "PAG ^", "PAG v", "DELEN", "TERUG"};
+            const char* sub[6] = {"nieuwer", "ouder", "eerder", "later", "verstuur", ""};
+            bool aan[6] = {idx > 0, idx < aantal - 1, pag > 0, pag < paginas - 1, true, true};
+            const int nk = 6, gap = 6, bw = (TFT_W - (nk + 1) * gap) / nk;
+            for (int k = 0; k < nk; k++)
+                ui_knop_groot(gap + k * (bw + gap), knop_y, bw, knop_h, lbl[k], sub[k], C_SURFACE,
+                              aan[k] ? C_TEXT : C_SURFACE3, k == 4 ? C_GREEN : (k == 5 ? C_CYAN : C_TEXT_DIM), aan[k]);
             tft_flush(true);
 
             int keuze = -1;
             while (keuze < 0) {
                 if (_rc_tik_gedebounced() && ts_y >= knop_y && ts_y < knop_y + knop_h) {
-                    int k = (ts_x - 6) / (bw + 6);
-                    if (k >= 0 && k < 4) keuze = k;
+                    int k = (ts_x - gap) / (bw + gap);
+                    if (k >= 0 && k < nk && aan[k]) keuze = k;
                 }
                 delay(15);
             }
-            if (keuze == 0 && pag > 0) pag--;
-            else if (keuze == 1 && pag < paginas - 1) pag++;
-            else if (keuze == 2) { oudere = !oudere; break; }
-            else if (keuze == 3) { free(txt); return; }
+            if      (keuze == 0) { idx--; wissel = true; }
+            else if (keuze == 1) { idx++; wissel = true; }
+            else if (keuze == 2) pag--;
+            else if (keuze == 3) pag++;
+            else if (keuze == 4) _rc_logboek_delen(idx, txt, n);
+            else { free(txt); return; }
         }
         free(txt);
     }
@@ -422,7 +453,7 @@ void recovery_menu() {
         ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 3, _rc_bw, RC_MENU_BTN_H, "BETA",      "Nieuwste tussenversie", C_SURFACE, C_TEXT, C_ZEILEN, true);
         // LOGBOEK-knop in de ruimte tussen versieregel en de knoppen
         int lb_y = RC_MSG_Y0 + RC_MSG_LH + UI_SCY(6), lb_h = RC_BTN_TOP - lb_y - UI_SCY(8);
-        ui_knop_groot(_rc_mx, lb_y, _rc_bw, lb_h, "LOGBOEK", "Vorige start bekijken", C_SURFACE, C_TEXT, C_AMBER, true);
+        ui_knop_groot(_rc_mx, lb_y, _rc_bw, lb_h, "LOGBOEK", "Bekijken of delen met Claude", C_SURFACE, C_TEXT, C_AMBER, true);
         tft_flush(true);
 
         int keuze = -1;

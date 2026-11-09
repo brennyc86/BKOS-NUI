@@ -117,15 +117,10 @@ bool haven_gebruikersfoto_scan_klaar() { return _hav_scan_klaar; }
 static void _hav_scan_uitvoeren() {
     unsigned long t0 = millis();
     logboek_log("haven: fotoscan start");
-    {
-        Preferences p; p.begin("haven", false);
-        if (!p.getBool("mig2", false)) {
-            logboek_log("haven: eenmalige naam-migratie");
-            _hav_map_migreren();
-            p.putBool("mig2", true);
-        }
-        p.end();
-    }
+    // De naam-migratie (oude bestandsnamen van vóór sept. 2026) is uitgeschakeld: het logboek van
+    // 0.2.261109.7 liet zien dat die bij het opstarten >10 s bleef hangen (kern 1 stilgezet door
+    // flash-schrijfacties, ipc1) en scherm, WiFi en hoofdlus meesleurde. Oude namen worden niet meer gezocht.
+    (void)_hav_map_migreren;
     int cnt = 0;
     File dir = SPIFFS.open("/fotos");
     if (dir && dir.isDirectory()) {
@@ -156,6 +151,7 @@ static void _hav_scan_uitvoeren() {
 }
 
 static void _hav_scan_taak(void*) {
+    vTaskDelay(pdMS_TO_TICKS(20000));   // niet tijdens het opstarten/WiFi-verbinden; tot dan de voorbeeldfoto
     _hav_scan_uitvoeren();
     _hav_scan_bezig = false;
     _hav_scan_klaar = true;

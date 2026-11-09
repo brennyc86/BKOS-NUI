@@ -484,29 +484,50 @@ static void _boot_stap(const char* stap_naam, bool teken_op_scherm) {
 // al is doorgetikt naar een scherm dat van hier-geladen data afhangt (bv.
 // APPS-iconen, HAVEN-foto's, GAST/BERICHT-schermen).
 static void _hw_achtergrond_init_eenmalig() {
+    logboek_log("init: haven_gebruikersfotos_scannen");
     haven_gebruikersfotos_scannen();  // eigen HAVEN-foto's uit SPIFFS (indien geüpload) — niet nodig voor het paneel zelf
+    logboek_log("init: data_setup");
     data_setup();       // gestructureerde data-opslag laden
+    logboek_log("init: meteo_setup");
     meteo_setup();      // laadt NVS-instellingen (snel, geen netwerk)
+    logboek_log("init: getijdata_init");
     getijdata_init();   // getijdata module klarmaken (SPIFFS al actief)
+    logboek_log("init: ota_setup");
     ota_setup();        // init OTA (snel)
+    logboek_log("init: fout_log_setup");
     fout_log_setup();   // laad foutrapportage token uit Preferences
+    logboek_log("init: post_setup");
     post_setup();       // berichten van de ontwikkelaar (belletje in de statusbalk)
+    logboek_log("init: slaap_reset_reden_verwerken");
     slaap_reset_reden_verwerken();  // onthoud/meld een eventuele onverwachte herstart
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
+    logboek_log("init: victron_setup");
     victron_setup();        // laad geconfigureerde Victron apparaten, initialiseert BLE, start evt. scan
 #endif                      // op core 2.x: BLE-init bij boot overslaan (hangt op Bluedroid) — zie Route A
+    logboek_log("init: brug_setup");
     brug_setup();           // laad WiFi-brug instellingen (alleen Preferences, geen BLE)
+    logboek_log("init: app_setup");
     app_setup();            // app-manifesten laden + Lua runtime initialiseren
+    logboek_log("init: net_setup");
     net_setup();     // laad netwerk config; ESP-NOW init volgt in net_loop()
+    logboek_log("init: melding_setup");
     melding_setup(); // laad meldingen-config; plant opstartbericht (volgt zodra WiFi op is)
+    logboek_log("init: gast_laden");
     gast_laden();    // laad gasten-pincodes voor de webapp (HUIS/BOOT-toegang)
+    logboek_log("init: bericht_laden");
     bericht_laden(); // laad preset-berichten aan eigenaar (default = 6 standaardteksten)
+    logboek_log("init: pin_bewaking_laden");
     pin_bewaking_laden();      // tellers/zwarte lijst foute pincodes
+    logboek_log("init: mac_record_laden");
     mac_record_laden();        // laad MAC-adres-onthouden-login + afzendergegevens
+    logboek_log("init: mac_record_limiet_laden");
     mac_record_limiet_laden(); // laad instelbare berichtlimieten (default 20/5/24u)
+    logboek_log("init: ble_app_setup");
     ble_app_setup();           // BLE-app: instelling + startgarantie lezen (geen BLE-init hier, die start later in een eigen taak)
 #if BKOS_REMOTE_ENABLED
+    logboek_log("init: bkos_client_setup");
     bkos_client_setup(); // WebSocket server (status/besturing, poort 8080) + mDNS
+    logboek_log("init: webapp_setup");
     webapp_setup();      // HTTP server (afstandsbediening-pagina, poort 80)
 #endif
     scherm_bouwen = true;

@@ -12,7 +12,7 @@
 
 #define LB_RTC_GROOTTE   2048          // RTC-staart (bytes)
 #define LB_RAM_GROOTTE   16384         // nog niet weggeschreven regels
-#define LB_BESTAND_MAX   (96 * 1024)   // bestand niet groter laten worden
+#define LB_BESTAND_MAX   (64 * 1024)   // bestand niet groter laten worden
 #define LB_RTC_MAGIC     0x10B0E4A1UL
 
 static RTC_NOINIT_ATTR uint32_t _lb_rtc_magic;
@@ -163,19 +163,64 @@ static void _lb_schrijftaak(void*) {
 }
 #endif
 
+static void _lb_archief_naam(int i, char* buf, size_t n) { snprintf(buf, n, "/log_%d.txt", i); }
+
+int logboek_aantal() {
+#if PLATFORM_ESP32
+    int n = 1;
+    char nm[20];
+    for (int i = 1; i <= LOGBOEK_ARCHIEF; i++) { _lb_archief_naam(i, nm, sizeof(nm)); if (SPIFFS.exists(nm)) n = i + 1; else break; }
+    return n;
+#else
+    return 1;
+#endif
+}
+
+char* logboek_laad(int idx, size_t* len) {
+    *len = 0;
+#if PLATFORM_ESP32
+    char nm[20];
+    if (idx == 0) strcpy(nm, LOGBOEK_HUIDIG); else _lb_archief_naam(idx, nm, sizeof(nm));
+    const char* rtc = (idx == 0) ? logboek_rtc_vorig() : "";
+    size_t fg = 0;
+    File f = SPIFFS.open(nm, "r");
+    if (f) fg = f.size();
+    size_t cap = fg + strlen(rtc) + 160;
+    char* t = (char*)heap_caps_malloc(cap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!t) t = (char*)malloc(cap);
+    if (!t) { if (f) f.close(); return nullptr; }
+    size_t n = 0;
+    if (f) { n = f.read((uint8_t*)t, fg); f.close(); }
+    if (n == 0) n = snprintf(t, cap, "(geen logboek gevonden: %s)\n", nm);
+    if (rtc[0]) n += snprintf(t + n, cap - n, "--- laatste regels (RTC, overleeft herstart) ---\n%s", rtc);
+    t[n] = '\0';
+    *len = n;
+    return t;
+#else
+    return nullptr;
+#endif
+}
+
 void logboek_roteer() {
 #if PLATFORM_ESP32
     if (_lb_bestand_actief) return;
-    SPIFFS.remove(LOGBOEK_VORIG);
-    if (SPIFFS.exists(LOGBOEK_HUIDIG)) SPIFFS.rename(LOGBOEK_HUIDIG, LOGBOEK_VORIG);
+    char a[20], b[20];
+    SPIFFS.remove("/log_vorig.txt");                       // oude naam uit 0.2.261109.6/.7
+    _lb_archief_naam(LOGBOEK_ARCHIEF, a, sizeof(a)); SPIFFS.remove(a);
+    for (int i = LOGBOEK_ARCHIEF - 1; i >= 1; i--) {
+        _lb_archief_naam(i, a, sizeof(a)); _lb_archief_naam(i + 1, b, sizeof(b));
+        if (SPIFFS.exists(a)) SPIFFS.rename(a, b);
+    }
+    _lb_archief_naam(1, a, sizeof(a));
+    if (SPIFFS.exists(LOGBOEK_HUIDIG)) SPIFFS.rename(LOGBOEK_HUIDIG, a);
     // RTC-staart van de vorige start erachter: die bevat ook de laatste seconden vóór een vastloper
     if (_lb_vorig_rtc && _lb_vorig_rtc[0]) {
-        File f = SPIFFS.open(LOGBOEK_VORIG, "a");
+        File f = SPIFFS.open(a, "a");
         if (f) { f.print("--- laatste regels (RTC, overleeft herstart) ---\n"); f.print(_lb_vorig_rtc); f.close(); }
     }
-    logboek_log("opslag: %lu KB gebruikt van %lu KB", (unsigned long)(bkos_fs_gebruikt() / 1024), (unsigned long)(bkos_fs_totaal() / 1024));
     _lb_bestand_actief = true;
+    logboek_log("opslag: %lu KB gebruikt van %lu KB", (unsigned long)(bkos_fs_gebruikt() / 1024), (unsigned long)(bkos_fs_totaal() / 1024));
     xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 4096, nullptr, 1, nullptr, 0);
-    logboek_log("logboek: vorige start bewaard als %s", LOGBOEK_VORIG);
+    logboek_log("logboek: vorige start bewaard als %s", a);
 #endif
 }

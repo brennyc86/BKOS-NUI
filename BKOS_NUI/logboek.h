@@ -1,4 +1,6 @@
 #pragma once
+#include <stddef.h>
+#include <stdint.h>
 // ─── Logboek (diagnose) ──────────────────────────────────────────────────────
 // Houdt bij wat er gebeurt (opstartstappen, WiFi-gebeurtenissen, netwerktaak-stappen,
 // schermwissels, en elke 2 s een statusregel) in:

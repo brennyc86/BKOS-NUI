@@ -1,3 +1,4 @@
+#include "logboek.h"
 #include "wifi.h"
 #include "ota.h"
 // ota_check_aangevraagd / ota_nieuwer_beschikbaar gedeclareerd in ota.h
@@ -11,6 +12,13 @@
 #include "bkos_client.h"    // bkos_client_setup/stop() — alleen actief tijdens de tijdelijke hotspot
 #include "webapp.h"         // webapp_setup/stop()
 #include "mac_record.h"     // mac_record_opschonen() — dagelijkse opruiming
+#if PLATFORM_ESP32
+#include <esp_heap_caps.h>
+#define _NET_RAM() ((unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL))
+#else
+#define _NET_RAM() 0u
+#endif
+static volatile bool _wifi_boot_klaar = false;   // netwerk_taak: opstart-downloads klaar -> hotspot mag starten
 
 bool wifi_aangesloten     = false;
 volatile bool wifi_ota_modus = false;
@@ -413,7 +421,7 @@ void wifi_hotspot_tick() {
     // zelf (zie toelichting hierboven), maar hier vanuit de achtergrondlus,
     // die pas na de eerste paar seconden voor het eerst draait.
     static bool auto_gedaan = false;
-    if (!auto_gedaan && millis() > 3000) {
+    if (!auto_gedaan && (_wifi_boot_klaar || millis() > 120000UL)) {   // pas na de opstart-downloads (zie netwerk_taak)
         auto_gedaan = true;
         wifi_hotspot_starten();
     }
@@ -492,6 +500,12 @@ static void netwerk_taak(void* param) {
         if (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE)
             ota_nieuwer_beschikbaar = true;
     }
+    // 0.2.261109.17: hotspot (met DNS/websocket/webapp) start pas NA de opstart-downloads (logboek .16: beide
+    // tegelijk -> intern RAM zakte tot 1,8 KB). Even wachten tot de hoofdlus hem gestart heeft, anders zou
+    // _wifi_verbreken_intern() hieronder de WiFi uitzetten vóór de hotspot er is.
+    logboek_log("net: opstart-downloads klaar | RAM %u", _NET_RAM());
+    _wifi_boot_klaar = true;
+    for (int i = 0; i < 50 && !wifi_hotspot_actief(); i++) vTaskDelay(100 / portTICK_PERIOD_MS);
     _wifi_verbreken_intern();
 
     for (;;) {

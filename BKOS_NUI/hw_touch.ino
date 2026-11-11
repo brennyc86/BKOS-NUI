@@ -1,3 +1,4 @@
+#include "logboek.h"
 #include "hw_touch.h"
 #include "hw_scherm.h"
 #include <Preferences.h>
@@ -120,6 +121,32 @@ static void _gt911_int_level_mode() {
     _gt911_schrijf_byte(_GT911_CFG_FRESH, 1);
 }
 #endif
+
+// ─── Gezondheid aanraaksensor (S3/GT911) ─────────────────────────────────────
+// Elke 5 s een I2C-ping naar de GT911 (vanuit de GUI-taak, dezelfde taak die de sensor uitleest).
+// Antwoordt hij 2x op rij niet (±10 s), dan wordt hij opnieuw geïnitialiseerd — een vastgelopen
+// sensor betekende tot nu toe: scherm wordt nooit meer wakker op aanraking.
+int ts_i2c_fout = 0;        // laatste Wire.endTransmission()-resultaat (0 = ok)
+int ts_herstarts = 0;       // aantal keer opnieuw geïnitialiseerd sinds opstarten
+void ts_gezondheid() {
+#if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD
+    static unsigned long laatste = 0; static int fout_op_rij = 0;
+    if (millis() < 60000UL || millis() - laatste < 5000UL) return;   // niet tijdens opstarten
+    laatste = millis();
+    Wire.beginTransmission(GT911_ADDR1);
+    ts_i2c_fout = Wire.endTransmission();
+    if (ts_i2c_fout == 0) { fout_op_rij = 0; return; }
+    logboek_log("touch: GT911 antwoordt niet (i2c %d, %d keer op rij)", ts_i2c_fout, fout_op_rij + 1);
+    if (++fout_op_rij >= 3) {   // ±15 s geen antwoord
+        fout_op_rij = 0;
+        ts_herstarts++;
+        ts.begin();            // GT911 resetten (RST-pin) en opnieuw instellen
+        ts.setRotation(0);
+        _gt911_int_level_mode();
+        logboek_log("touch: GT911 opnieuw gestart (%d)", ts_herstarts);
+    }
+#endif
+}
 
 void ts_setup() {
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD

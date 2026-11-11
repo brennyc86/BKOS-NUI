@@ -94,6 +94,7 @@ static void _gui_taak(void*) {
         bkos_gui_tik();   // waakhond (slaap_diag_loop)
         // Touch en scherm-wake altijd EERST lezen — vóór blokkerende achtergrond-calls
         bkos_gui_spoor("gui:touch");
+        ts_gezondheid();   // GT911 elke 5 s pingen, na ±15 s zonder antwoord opnieuw starten (scherm wekt anders niet meer)
         bool aanraking = ts_touched();
         if (aanraking) touch_los_sinds_ms = 0;
         else if (touch_los_sinds_ms == 0) touch_los_sinds_ms = millis();

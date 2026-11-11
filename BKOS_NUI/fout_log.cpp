@@ -1,3 +1,5 @@
+#include "logboek.h"
+#include <esp_heap_caps.h>
 #include "fout_log.h"
 #include "platform.h"
 #include "app_state.h"
@@ -144,6 +146,17 @@ static void _flog_taak(void* param) {
     // en de appstore kreeg dan "HTTP fout -1". Wachten (max 90 s) tot wifi_ota_modus weer uit is.
     for (int i = 0; i < 90 && wifi_ota_modus; i++) vTaskDelay(1000 / portTICK_PERIOD_MS);
 
+    // Geen TLS-sessie openen als het interne geheugen te krap is (hotspot + webapp + TLS liet het toestel vastlopen).
+    {
+        size_t vrij = heap_caps_get_free_size(MALLOC_CAP_INTERNAL), blok = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        logboek_log("melding: versturen (%s) | RAM %u, blok %u", p->soort ? p->soort : "fout", (unsigned)vrij, (unsigned)blok);
+        if (vrij < 60000 || blok < 30000) {
+            logboek_log("melding: overgeslagen, te weinig geheugen");
+            _laatste_http = -104; _reden = "geheugen";
+            free(p->bericht); free(p->context);
+            _bezig = false; vTaskDelete(NULL); return;
+        }
+    }
     WiFiClientSecure sc;
     sc.setInsecure();
     HTTPClient http;

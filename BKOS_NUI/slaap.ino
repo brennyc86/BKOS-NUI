@@ -160,7 +160,9 @@ void slaap_diag_loop() {
         }
     }
     static bool gezond_gestuurd = false;
-    if (!gezond_gestuurd && !_crash_wacht && wifi_verbonden && millis() > 120000UL) {
+    // 0.2.261111.1: UIT. Logboeken .16 (meldingen 49/50): toestel liep 2x vast op precies 120 s, het moment van deze
+    // HTTPS-melding (er is er nooit één aangekomen). Puur diagnose, dus weg.
+    if (false && !gezond_gestuurd && !_crash_wacht && wifi_verbonden && millis() > 120000UL) {
         static unsigned long gp = 0;
         if (!gp || millis() - gp > 65000UL) {
             gp = millis();

@@ -534,6 +534,7 @@ static void netwerk_taak(void* param) {
 
         if (WiFi.status() != WL_CONNECTED) _wifi_verbinden_intern();
 
+        logboek_log("net: cyclus (weer %d ota %d getij %d melding %d) | RAM %u", update_nodig, ota_gevraagd, getij_gevraagd || meer_gevraagd, melding_gevraagd, _NET_RAM());
         if (wifi_verbonden) {
             if (meer_gevraagd) {
                 getijdata_meer_ophalen_nu(getij_station);
@@ -554,6 +555,7 @@ static void netwerk_taak(void* param) {
                     ota_nieuwer_beschikbaar = true;
             }
             melding_netwerk_verwerk();             // verstuur wachtende berichten
+            logboek_log("net: cyclus klaar | RAM %u", _NET_RAM());
         } else if (getij_gevraagd || meer_gevraagd) {
             getijdata_ophalen_klaar = true;
         }

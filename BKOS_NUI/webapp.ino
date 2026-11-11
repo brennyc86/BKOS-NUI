@@ -663,9 +663,13 @@ void webapp_setup() {
     _http.on("/instellingen/export", HTTP_GET, []() {
         bkos_spoor("http:/instellingen/export");
         if (!_pin_eigenaar(_http.arg("pin"))) { _http.send(403, "application/json", "{\"ok\":false}"); return; }
-        String s = "{\"bkosBackup\":1,\"boot\":\""; s += _wa_json_escape(info_boot_naam()); s += "\",\"files\":{";
+        // ?alleen=io -> alleen IO-namen + IO-configuratie (import schrijft alleen de bestanden die in het bestand staan)
+        bool alleen_io = _http.arg("alleen") == "io";
+        String s = "{\"bkosBackup\":1,"; if (alleen_io) s += "\"alleen\":\"io\",";
+        s += "\"boot\":\""; s += _wa_json_escape(info_boot_naam()); s += "\",\"files\":{";
         bool first = true;
         for (size_t i = 0; i < BACKUP_BESTANDEN_N; i++) {
+            if (alleen_io && strcmp(BACKUP_BESTANDEN[i], "/io_cfg.csv") != 0 && strcmp(BACKUP_BESTANDEN[i], "/io_namen.csv") != 0) continue;
             if (!SPIFFS.exists(BACKUP_BESTANDEN[i])) continue;
             File f = SPIFFS.open(BACKUP_BESTANDEN[i], "r");
             if (!f) continue;
@@ -677,7 +681,7 @@ void webapp_setup() {
             s += '"';
         }
         s += "}}";
-        _http.sendHeader("Content-Disposition", "attachment; filename=\"bkos_backup.json\"");
+        _http.sendHeader("Content-Disposition", alleen_io ? "attachment; filename=\"bkos_io.json\"" : "attachment; filename=\"bkos_backup.json\"");
         _http.send(200, "application/json", s);
     });
 

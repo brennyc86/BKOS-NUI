@@ -240,10 +240,11 @@ body.bkos .wrap{
 }
 body.bkos #bkosCv{display:block;position:absolute;left:0;top:0;width:100%;height:100%;z-index:1;cursor:pointer;}
 body.bkos .wrap > .tabbar{display:none;}
+body.bkos #tabInstellingen > .tabbar{display:none;}   /* in de BKOS-weergave kies je het onderdeel via de CONFIG-categorieën */
 /* schermen die nog niet nagebouwd zijn: de gewone inhoud staat tussen de echte statusbalk (42px) en navigatiebalk (42px) */
-body.bkos .wrap > .tabpane{position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;z-index:2;overflow-y:auto;padding:0 12px 12px;background:var(--bg);}
-body.bkos .wrap.bkVolledig > .tabpane{display:none !important;}
-body.bkos .wrap.geblurd > .tabpane{filter:blur(8px);pointer-events:none;overflow:hidden;}
+body.bkos .wrap .tabpane{position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;z-index:2;overflow-y:auto;padding:0 12px 12px;background:var(--bg);}
+body.bkos .wrap.bkVolledig .tabpane{display:none !important;}
+body.bkos .wrap.geblurd .tabpane{filter:blur(8px);pointer-events:none;overflow:hidden;}
 body.bkos .wrap.geblurd #bkosToegang{display:flex;}
 #bkosNiet{display:none;position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;align-items:center;justify-content:center;padding:16px;z-index:4;background:var(--bg);}
 body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
@@ -508,9 +509,10 @@ body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
           <h2>Instellingen exporteren/importeren</h2>
           <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Download alle instellingen (boot &amp; eigenaar, IO-namen/configuratie, PANEEL/LAMPEN, meldingen, gasten pincodes, WiFi, pincode — geen foto's) als één bestand. Handig bij het wisselen van bestandssysteem (SPIFFS/FATFS) of het overzetten naar een nieuwe boordcomputer.</p>
           <button class="mbtn" onclick="instellingenExport()">EXPORTEREN (DOWNLOAD)</button>
+          <button class="mbtn" style="margin-top:8px;" onclick="instellingenExport('io')">ALLEEN IO EXPORTEREN (namen + configuratie)</button>
           <input type="file" id="instImportInput" accept="application/json" style="display:none" onchange="instellingenImportUpload(this)">
           <button class="mbtn" style="margin-top:8px;" onclick="document.getElementById('instImportInput').click()">IMPORTEREN (BESTAND KIEZEN)</button>
-          <p style="font-size:.72rem;color:var(--text-dim);margin-top:8px;">Importeren overschrijft de huidige instellingen en herstart het apparaat automatisch.</p>
+          <p style="font-size:.72rem;color:var(--text-dim);margin-top:8px;">Importeren overschrijft alleen de instellingen die in het gekozen bestand staan (een IO-bestand raakt dus alleen de IO) en herstart het apparaat automatisch.</p>
           <div id="instBackupMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
         </section>
         <section>
@@ -1803,17 +1805,18 @@ function instellingenOpslaan(){
   setTimeout(function(){ el.textContent = ''; }, 3000);
 }
 
-function instellingenExport(){
+function instellingenExport(soort){
   if (needAuth()) return;
   var pin = localStorage.getItem(PIN_KEY) || '';
+  var io = soort === 'io';
   var el = document.getElementById('instBackupMelding');
   el.style.color = 'var(--text-dim)'; el.textContent = 'Bezig met voorbereiden...';
-  fetch('/instellingen/export?pin=' + encodeURIComponent(pin))
+  fetch('/instellingen/export?pin=' + encodeURIComponent(pin) + (io ? '&alleen=io' : ''))
     .then(function(r){ if (!r.ok) throw new Error('status ' + r.status); return r.blob(); })
     .then(function(blob){
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
-      a.href = url; a.download = 'bkos_backup.json';
+      a.href = url; a.download = io ? 'bkos_io.json' : 'bkos_backup.json';
       document.body.appendChild(a);
       a.click();
       // Direct verwijderen kan in sommige browsers de download afbreken —
@@ -2180,12 +2183,16 @@ function bkosTeken(){
   });
 }
 function bkosToon(s){
+  if (s !== 3) BKS.S.cfgSectie = null;   // CONFIG verlaten: volgende keer weer bij de categorieën
   bkosScherm = s;
   var d = bkosInfoVoor(s), wrap = document.querySelector('.wrap');
   var volledig = BKS.volledig(s);
   wrap.classList.toggle('bkVolledig', volledig);
   if (!volledig) {
-    setTab(d.tab);
+    if (s === 3 && BKS.S.cfgSectie) {
+      if (BKS.S.cfgSectie === 'fotos') setTab('fotos');
+      else { setTab('instellingen'); setSubTab(BKS.S.cfgSectie); }
+    } else setTab(d.tab);
     if (d.tab === 'onbekend') document.getElementById('bkOnbekendKop').textContent = d.n;
     if (s === 15) { var el = document.getElementById('paneelSection'); if (el && el.scrollIntoView) el.scrollIntoView(); }
   }
@@ -2240,6 +2247,7 @@ function bkosActie(a){
   if (a.sync) { bkosSyncWissel(); return; }
   if (a.volscherm) { volschermWissel(); return; }
   if (a.weergave) { bkosWissel(); return; }
+  if (a.cfgSectie != null) { BKS.S.cfgSectie = a.cfgSectie || null; bkosToon(3); return; }   // CONFIG-onderdeel openen/sluiten
   if (a.bericht != null) { berKies(a.bericht); return; }
   if (a.nood != null) { noodKies(a.nood); return; }
   if (a.gaNaar != null) { bkosGa(a.gaNaar); return; }

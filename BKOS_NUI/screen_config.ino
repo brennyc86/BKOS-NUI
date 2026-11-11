@@ -1371,8 +1371,25 @@ static void _slot_icoon(int cx, int cy, bool dicht, uint16_t k, uint16_t bg) {
 // categorieknoppen kunnen op een klein/liggend scherm zoals CYD40H — dat de
 // 800×480-referentielayout ongeschaald hergebruikt — buiten NAV_Y vallen)
 #define CFG_HOOFD_TOP        (HLD_Y + HLD_H + 4)
-#define CFG_HOOFD_INHOUD_H   (44 + 5 * 72 + 4 * 8)   // WiFi-rij-gat + 5 categorieknoppen (72px elk)
-#define CFG_HOOFD_MAX_SCROLL max(0, CFG_HOOFD_TOP + CFG_HOOFD_INHOUD_H - (int)NAV_Y)
+// Categorieën als tegels in de stijl van de webapp (CONFIG daar): 2 kolommen, titel + omschrijving + ">".
+#define CFG_TEGEL_N          5
+#define CFG_TEGEL_KOL        2
+#define CFG_TEGEL_H          90
+#define CFG_TEGEL_GAP        10
+#define CFG_TEGEL_RIJEN      ((CFG_TEGEL_N + CFG_TEGEL_KOL - 1) / CFG_TEGEL_KOL)
+#define CFG_HOOFD_INHOUD_H   (44 + CFG_TEGEL_RIJEN * CFG_TEGEL_H + (CFG_TEGEL_RIJEN - 1) * CFG_TEGEL_GAP)   // WiFi-rij + tegels
+#define CFG_HOOFD_MAX_SCROLL_RAW (CFG_HOOFD_TOP + CFG_HOOFD_INHOUD_H - (int)NAV_Y)
+#define CFG_HOOFD_MAX_SCROLL max(0, CFG_HOOFD_MAX_SCROLL_RAW)
+static const char* const CFG_TEGEL_TITEL[CFG_TEGEL_N] = {"BOOT & EIGENAAR", "WEERGAVE & ENERGIE", "VERBINDINGEN", "TOEGANG", "FOTO'S & BESTANDEN"};
+static const char* const CFG_TEGEL_SUB[CFG_TEGEL_N]   = {"Bootgegevens, IO, paneel, lampen", "Kleuren, helderheid, slaap", "Updates, meldingen, webtoegang", "Pincode wijzigen", "Foto's, opslag, hotspot"};
+// Tegel i: positie (y = bovenkant van het tegelgebied)
+static void _cfg_tegel_rect(int i, int y0, int& x, int& y, int& w, int& h) {
+    int bruikbaar = TFT_W - 16 - (CFG_HOOFD_MAX_SCROLL_RAW > 0 ? UI_SB_W : 0);
+    w = (bruikbaar - (CFG_TEGEL_KOL - 1) * CFG_TEGEL_GAP) / CFG_TEGEL_KOL;
+    h = CFG_TEGEL_H;
+    x = 8 + (i % CFG_TEGEL_KOL) * (w + CFG_TEGEL_GAP);
+    y = y0 + (i / CFG_TEGEL_KOL) * (h + CFG_TEGEL_GAP);
+}
 
 static void cfg_hoofd_teken() {
     tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
@@ -1380,29 +1397,34 @@ static void cfg_hoofd_teken() {
     bool ontg = config_ontgrendeld;
     int fr_y = CFG_HOOFD_TOP - cfg_hoofd_scroll_y;
 
-    // WiFi row (altijd vrij)
-    tft.fillRoundRect(8, fr_y + 2, TFT_W - 16, 34, 6, C_SURFACE);
+    // WiFi row (altijd vrij, ook zonder pincode)
+    tft.fillRoundRect(8, fr_y + 2, TFT_W - 16, 34, 6, C_SURFACE2);
+    tft.drawRoundRect(8, fr_y + 2, TFT_W - 16, 34, 6, C_SURFACE3);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN  >");
+    tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN");
+    tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(TFT_W - 16 - 24, fr_y + 2 + (34 - 16) / 2); tft.print(">");
 
-    // ── Categorieknoppen ──────────────────────────────────────────────────
-    const char* cats[]   = {"BOOT  >", "WEERGAVE & ENERGIE  >", "VERBINDINGEN  >", "BESTANDEN  >", "PINCODE WIJZIGEN  >"};
-    uint16_t cat_kleur[] = {C_CYAN, C_CYAN, C_CYAN, C_CYAN, C_AMBER};
+    // ── Categorietegels (zelfde opmaak als CONFIG in de webapp) ───────────
     int cat_y = fr_y + 44;
-    int cat_h = 72, cat_gap = 8;
-    for (int i = 0; i < 5; i++) {
-        int cy = cat_y + i * (cat_h + cat_gap);
-        tft.fillRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE);
-        tft.drawRoundRect(8, cy, TFT_W - 16, cat_h, 8, C_SURFACE3);
-        tft.setTextSize(2); tft.setTextColor(cat_kleur[i]);
-        tft.setCursor(24, cy + (cat_h - 16) / 2);
-        tft.print(cats[i]);
+    for (int i = 0; i < CFG_TEGEL_N; i++) {
+        int tx, ty, tw, th; _cfg_tegel_rect(i, cat_y, tx, ty, tw, th);
+        tft.fillRoundRect(tx, ty, tw, th, 8, C_SURFACE2);
+        tft.drawRoundRect(tx, ty, tw, th, 8, C_SURFACE3);
+        uint16_t tk = (i == 3) ? C_AMBER : C_CYAN;
+        int tmax = (tw - 16 - 30) / 12;   // tekens die in size 2 passen
+        tft.setTextSize(strlen(CFG_TEGEL_TITEL[i]) <= (size_t)tmax ? 2 : 1); tft.setTextColor(tk);
+        tft.setCursor(tx + 16, ty + th / 2 - 14); tft.print(CFG_TEGEL_TITEL[i]);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(tx + 16, ty + th / 2 + 8); tft.print(CFG_TEGEL_SUB[i]);
+        tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(tx + tw - 24, ty + th / 2 - 8); tft.print(">");
     }
 
     if (!ontg) {
         // ── VERGRENDELD: waas over knoppen + BEVEILIGD-paneel gecentreerd ──
         int waas_top = cat_y;
-        int waas_bot = cat_y + 5 * cat_h + 4 * cat_gap;
+        int waas_bot = cat_y + CFG_TEGEL_RIJEN * CFG_TEGEL_H + (CFG_TEGEL_RIJEN - 1) * CFG_TEGEL_GAP;
         for (int dy = waas_top; dy < waas_bot; dy += 2)
             tft.drawFastHLine(0, dy, TFT_W, C_BG);
 
@@ -2013,7 +2035,7 @@ static void cfg_hoofd_run(int x, int y) {
         return;
     }
     // Scrollbar pijlen (rechts)
-    if (x >= TFT_W - UI_SB_W && y >= CFG_HOOFD_TOP) {
+    if (CFG_HOOFD_MAX_SCROLL > 0 && x >= TFT_W - UI_SB_W && y >= CFG_HOOFD_TOP) {
         int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_HOOFD_TOP, NAV_Y - CFG_HOOFD_TOP);
         if (dir == -1 && cfg_hoofd_scroll_y > 0) {
             cfg_hoofd_scroll_y = max(0, cfg_hoofd_scroll_y - 30);
@@ -2031,29 +2053,27 @@ static void cfg_hoofd_run(int x, int y) {
         actief_scherm = SCREEN_WIFI; scherm_bouwen = true; return;
     }
 
-    // Categorieknop-gebied (vergrendeld of niet)
+    // Categorietegels (vergrendeld of niet)
     int cat_y = fr_y + 44;
-    int cat_h = 72, cat_gap = 8;
-    int cat_bot = cat_y + 5 * cat_h + 4 * cat_gap;
+    int cat_bot = cat_y + CFG_TEGEL_RIJEN * CFG_TEGEL_H + (CFG_TEGEL_RIJEN - 1) * CFG_TEGEL_GAP;
 
     if (!ontg) {
-        // Vergrendeld: elk tik in het knopgebied vraagt om pincode
+        // Vergrendeld: elk tik in het tegelgebied vraagt om pincode
         if (y >= cat_y && y < cat_bot) {
             pin_vereist_tonen(); return;
         }
         return;
     }
 
-    // Ontgrendeld: categorieknoppen (0=BOOT,1=WEERGAVE,2=VERBINDINGEN,3=BESTANDEN,4=PIN)
-    for (int i = 0; i < 5; i++) {
-        int cy = cat_y + i * (cat_h + cat_gap);
-        if (y >= cy && y < cy + cat_h) {
+    // Ontgrendeld: 0=BOOT & EIGENAAR, 1=WEERGAVE & ENERGIE, 2=VERBINDINGEN, 3=TOEGANG (pincode), 4=FOTO'S & BESTANDEN
+    for (int i = 0; i < CFG_TEGEL_N; i++) {
+        int tx, ty, tw, th; _cfg_tegel_rect(i, cat_y, tx, ty, tw, th);
+        if (x >= tx && x < tx + tw && y >= ty && y < ty + th) {
             if (i < 3) {
                 cfg_deelscherm = i + 1;      // 1=BOOT, 2=WEERGAVE, 3=VERBINDINGEN
-                // begin bovenaan bij het openen van een tabblad
                 cfg_boot_scroll_y = cfg_we_scroll_y = cfg_update_scroll_y = 0;
                 cfg_instellingen_teken();
-            } else if (i == 3) {
+            } else if (i == 4) {
                 screen_bestanden_reset();
                 actief_scherm = SCREEN_BESTANDEN; scherm_bouwen = true;
             } else {

@@ -428,6 +428,7 @@ body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
     <div id="tabInstellingen" class="tabpane" style="display:none">
       <div class="tabbar" style="margin-top:0;">
         <button class="tabbtn active" data-subtab="boot" onclick="setSubTab('boot')">BOOT</button>
+        <button class="tabbtn" data-subtab="weergave" onclick="setSubTab('weergave')">WEERGAVE</button>
         <button class="tabbtn" data-subtab="verbindingen" onclick="setSubTab('verbindingen')">VERBINDINGEN</button>
         <button class="tabbtn" data-subtab="toegang" onclick="setSubTab('toegang')">TOEGANG</button>
         <button class="tabbtn" data-subtab="backup" onclick="setSubTab('backup')">BACKUP</button>
@@ -443,6 +444,14 @@ body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
           <div id="instEig"></div>
           <button class="mbtn" style="margin-top:8px;" onclick="instellingenOpslaan()">OPSLAAN</button>
           <div id="instMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+        </section>
+      </div>
+
+      <div id="instSubWeergave" class="tabpane" style="display:none">
+        <section>
+          <h2>Weergave &amp; energie</h2>
+          <p style="font-size:.85rem;color:var(--text);margin-bottom:8px;">Helderheid, automatische helderheid (dag/nacht), dimtijd, kleurenschema, scherm draaien en slaapstand stel je in op de boordcomputer zelf: <b>CONFIG &gt; WEERGAVE &amp; ENERGIE</b>.</p>
+          <p style="font-size:.78rem;color:var(--text-dim);">Dit is bewust per boordcomputer: elk scherm hangt op een andere plek. Ook bij het importeren van een backup houdt elke boordcomputer zijn eigen helderheid en dimtijd.</p>
         </section>
       </div>
 
@@ -752,7 +761,7 @@ function setTab(naam){
 var subTab = 'boot';
 function setSubTab(naam){
   subTab = naam;
-  ['boot','verbindingen','toegang','backup'].forEach(function(t){
+  ['boot','weergave','verbindingen','toegang','backup'].forEach(function(t){
     var pane = document.getElementById('instSub' + t.charAt(0).toUpperCase() + t.slice(1));
     if (pane) pane.style.display = (t === naam) ? '' : 'none';
   });
@@ -780,7 +789,14 @@ function handleMsg(msg){
       if (msg.ch < ioData.o.length) { ioData.o[msg.ch]=msg.o; ioData.i[msg.ch]=msg.i; renderIO(); }
       break;
     case 'scherm':
-      bkosBoardScherm = msg.s; if (bkosAan && bkosSyncEff()) bkosToon(msg.s); break;
+      bkosBoardScherm = msg.s;
+      if (bkosAan && bkosSyncEff()) {
+        // FOTO'S & BESTANDEN is op de boordcomputer een eigen scherm (21); in de app blijft het een CONFIG-onderdeel
+        if (msg.s === 21 && bkosScherm === 3 && BKS.S.cfgSectie === 'fotos') break;
+        if (msg.s === 3 && msg.c != null) BKS.S.cfgSectie = CFG_IDS[msg.c - 1] || null;
+        bkosToon(msg.s);
+      }
+      break;
     case 'state':
       stateData = msg; renderState(); break;
     case 'net':
@@ -2164,6 +2180,7 @@ var BK_SCHERMEN = {
   5:  {n:'INFO',      tab:'info',         min:NIVEAU_GEEN},
   16: {n:'BERICHT',   tab:'info',         min:NIVEAU_GEEN}
 };
+var CFG_IDS = ['boot','weergave','verbindingen','toegang','fotos','backup'];   // = CFG_CATS / tegels op de boordcomputer
 var BK_NAAM = {4:'WIFI',6:'UPDATE',7:'IO CFG',8:'APPS',11:'VICTRON',12:'NETWERK',13:'BRUG',14:'MELDINGEN',16:'BERICHT',17:'TIJD',18:'LAMPEN',19:'KLEUR',22:'GASTEN',23:'APPSTORE',25:'POST'};
 function _bkLs(k,d){ try{ var v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } }
 function _bkLsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
@@ -2249,7 +2266,11 @@ function bkosActie(a){
   if (a.sync) { bkosSyncWissel(); return; }
   if (a.volscherm) { volschermWissel(); return; }
   if (a.weergave) { bkosWissel(); return; }
-  if (a.cfgSectie != null) { BKS.S.cfgSectie = a.cfgSectie || null; bkosToon(3); return; }   // CONFIG-onderdeel openen/sluiten
+  if (a.cfgSectie != null) {   // CONFIG-onderdeel openen/sluiten — synchroon: de boordcomputer opent hetzelfde onderdeel
+    BKS.S.cfgSectie = a.cfgSectie || null; bkosToon(3);
+    if (bkosSyncEff() && niveau >= NIVEAU_EIGENAAR) send({t:'set_cfg', c: CFG_IDS.indexOf(a.cfgSectie) + 1});
+    return;
+  }
   if (a.bericht != null) { berKies(a.bericht); return; }
   if (a.nood != null) { noodKies(a.nood); return; }
   if (a.gaNaar != null) { bkosGa(a.gaNaar); return; }
@@ -2269,16 +2290,25 @@ function volschermPas(){
   document.body.classList.toggle('volscherm', volschermActief());
   bkosMaat(); bkosWebStaat();
 }
-function volToast(t){
+function volToast(t, ms){
   var el = document.getElementById('volToast'); el.textContent = t; el.style.display = 'block';
-  clearTimeout(volToast._t); volToast._t = setTimeout(function(){ el.style.display = 'none'; }, 5000);
+  el.onclick = function(){ el.style.display = 'none'; };   // tik = sluiten (lange uitleg op de iPhone)
+  clearTimeout(volToast._t); volToast._t = setTimeout(function(){ el.style.display = 'none'; }, ms || 5000);
 }
 function volschermWissel(){
   var d = document, el = d.documentElement;
   if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
   if (volschermActief()) { volToast('Schermvullend via de browser: verlaat het met F11 (of Esc).'); return; }
   var req = el.requestFullscreen || el.webkitRequestFullscreen;
-  if (!req) { volToast('Deze browser kan niet schermvullend vanuit de pagina. Op een iPhone: deel-knop \u2192 "Zet op beginscherm" en open BKOS vanaf daar.'); return; }
+  if (!req) {
+    // iPhone: Apple staat schermvullend alleen toe voor video (daarom kan YouTube het wel), in ELKE browser —
+    // ook Chrome draait op iOS op Apple's WebKit. Een webpagina kan het alleen als app vanaf het beginscherm.
+    var ua = navigator.userAgent || '';
+    if (/CriOS/.test(ua)) volToast('Op een iPhone laat Apple een webpagina niet schermvullend gaan, ook niet in Chrome (alleen video, zoals bij YouTube). Wel zo: tik in Chrome op het deel-icoon (vierkant met pijl, rechts in de adresbalk) \u2192 "Zet op beginscherm" en open BKOS daarna vanaf je beginscherm: dan zonder adresbalk, schermvullend.', 15000);
+    else if (/iPhone|iPod/.test(ua)) volToast('Op een iPhone laat Apple een webpagina niet schermvullend gaan (alleen video). Wel zo: tik op de deel-knop (vierkant met pijl) \u2192 "Zet op beginscherm" en open BKOS daarna vanaf je beginscherm: dan zonder adresbalk, schermvullend.', 15000);
+    else volToast('Deze browser kan niet schermvullend vanuit de pagina. Zet BKOS op je beginscherm en open het vanaf daar.');
+    return;
+  }
   try { var p = req.call(el, {navigationUI: 'hide'}); if (p && p.catch) p.catch(function(){ volToast('Schermvullend werd geweigerd door de browser.'); }); } catch(e){}
 }
 document.addEventListener('fullscreenchange', volschermPas);

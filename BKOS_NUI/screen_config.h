@@ -49,3 +49,9 @@ void pin_vereist_tonen();
 bool pin_overlay_run(int x, int y);
 void pin_lezen_pub(char* buf, int len);    // public wrapper
 void pin_schrijven_pub(const char* pin);   // public wrapper
+
+// CONFIG-sectie voor de synchronisatie met de webapp: 0 = categorieën, 1 BOOT & EIGENAAR, 2 WEERGAVE & ENERGIE,
+// 3 VERBINDINGEN, 4 TOEGANG, 5 FOTO'S & BESTANDEN (eigen scherm), 6 BACKUP & UPDATES.
+int  cfg_sectie_huidig();
+void cfg_sectie_zet(int n);
+void cfg_sectie_reset();

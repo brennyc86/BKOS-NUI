@@ -1361,12 +1361,15 @@ var BKS = (function () {
 
   // ── CONFIG: categorieën in de stijl van het toestel; een categorie opent het bijbehorende
   //    onderdeel (HTML) binnen het scherm, met < TERUG in de statusbalk ────────────────────
+  // Zelfde volgorde + namen als de tegels op de boordcomputer (CFG_TEGEL_TITEL in screen_config.ino);
+  // positie i+1 is het sectienummer dat beide kanten elkaar sturen ({t:'set_cfg',c} / scherm.c).
   var CFG_CATS = [
     { id: 'boot', t: 'BOOT & EIGENAAR', s: 'Bootgegevens, eigenaar' },
+    { id: 'weergave', t: 'WEERGAVE & ENERGIE', s: 'Helderheid, dimtijd, kleuren (op het scherm)' },
     { id: 'verbindingen', t: 'VERBINDINGEN', s: 'Meldingen via Signal / WhatsApp' },
     { id: 'toegang', t: 'TOEGANG', s: 'Pincode, gasten, geblokkeerde apparaten' },
-    { id: 'backup', t: 'BACKUP & UPDATES', s: 'Exporteren/importeren, updates, foutrapportage' },
-    { id: 'fotos', t: "FOTO'S & BESTANDEN", s: 'HAVEN-foto, webapp-achtergrond, opslag' }
+    { id: 'fotos', t: "FOTO'S & BESTANDEN", s: "Foto's uploaden, achtergrond, opslag" },
+    { id: 'backup', t: 'BACKUP & UPDATES', s: 'Exporteren/importeren, updates, foutrapportage' }
   ];
   function schermConfig() {
     fillRect(0, 0, W, H, C_BG);

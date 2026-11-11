@@ -52,7 +52,7 @@ char cfg_kb_label[24]           = "Naam:";
 static unsigned long cfg_kb_sloot = 0;
 static bool cfg_preset_menu     = false;
 static int  cfg_ins_scroll_y    = 0;
-static int  cfg_deelscherm      = 0;  // 0=hoofd, 1=boot, 2=weergave, 3=update
+static int  cfg_deelscherm      = 0;  // 0=hoofd, 1=boot, 2=weergave, 3=verbindingen, 4=toegang, 6=backup&updates (5 = BESTANDEN-scherm)
 static int  cfg_we_scroll_y     = 0;  // scroll-offset WEERGAVE & ENERGIE-tabblad
 static int  cfg_hoofd_scroll_y  = 0;  // scroll-offset hoofdtabblad (WiFi-rij + categorieknoppen)
 static int  cfg_boot_scroll_y   = 0;  // scroll-offset BOOT-tabblad
@@ -1372,7 +1372,7 @@ static void _slot_icoon(int cx, int cy, bool dicht, uint16_t k, uint16_t bg) {
 // 800×480-referentielayout ongeschaald hergebruikt — buiten NAV_Y vallen)
 #define CFG_HOOFD_TOP        (HLD_Y + HLD_H + 4)
 // Categorieën als tegels in de stijl van de webapp (CONFIG daar): 2 kolommen, titel + omschrijving + ">".
-#define CFG_TEGEL_N          5
+#define CFG_TEGEL_N          6
 #define CFG_TEGEL_KOL        2
 #define CFG_TEGEL_H          90
 #define CFG_TEGEL_GAP        10
@@ -1380,8 +1380,10 @@ static void _slot_icoon(int cx, int cy, bool dicht, uint16_t k, uint16_t bg) {
 #define CFG_HOOFD_INHOUD_H   (44 + CFG_TEGEL_RIJEN * CFG_TEGEL_H + (CFG_TEGEL_RIJEN - 1) * CFG_TEGEL_GAP)   // WiFi-rij + tegels
 #define CFG_HOOFD_MAX_SCROLL_RAW (CFG_HOOFD_TOP + CFG_HOOFD_INHOUD_H - (int)NAV_Y)
 #define CFG_HOOFD_MAX_SCROLL max(0, CFG_HOOFD_MAX_SCROLL_RAW)
-static const char* const CFG_TEGEL_TITEL[CFG_TEGEL_N] = {"BOOT & EIGENAAR", "WEERGAVE & ENERGIE", "VERBINDINGEN", "TOEGANG", "FOTO'S & BESTANDEN"};
-static const char* const CFG_TEGEL_SUB[CFG_TEGEL_N]   = {"Bootgegevens, IO, paneel, lampen", "Kleuren, helderheid, slaap", "Updates, meldingen, webtoegang", "Pincode wijzigen", "Foto's, opslag, hotspot"};
+// Zelfde volgorde + namen als de categorieën in de webapp (CFG_CATS in webapp_scherm.js); het nummer
+// i+1 is ook het sectienummer dat de webapp en de boordcomputer elkaar sturen (cfg_sectie_huidig/_zet).
+static const char* const CFG_TEGEL_TITEL[CFG_TEGEL_N] = {"BOOT & EIGENAAR", "WEERGAVE & ENERGIE", "VERBINDINGEN", "TOEGANG", "FOTO'S & BESTANDEN", "BACKUP & UPDATES"};
+static const char* const CFG_TEGEL_SUB[CFG_TEGEL_N]   = {"Bootgegevens, IO, paneel, lampen", "Kleuren, helderheid, slaap", "Meldingen, berichten, bluetooth", "Pincode, geblokkeerde apparaten", "Foto's, opslag, hotspot", "Firmware-updates, foutrapportage"};
 // Tegel i: positie (y = bovenkant van het tegelgebied)
 static void _cfg_tegel_rect(int i, int y0, int& x, int& y, int& w, int& h) {
     int bruikbaar = TFT_W - 16 - (CFG_HOOFD_MAX_SCROLL_RAW > 0 ? UI_SB_W : 0);
@@ -1938,7 +1940,7 @@ static void cfg_we_teken() {
 
 // Vaste inhoud onafhankelijk van de (runtime) TOKEN-rij: FIRMWARE UPDATEN,
 // ruimte voor TOKEN, BRUG @ +100, BERICHTEN @ +150 (+44 rijhoogte).
-#define CFG_UPDATE_INHOUD_H   300
+#define CFG_UPDATE_INHOUD_H   150
 #define CFG_UPDATE_MAX_SCROLL max(0, CFG_SUB_Y0 + CFG_UPDATE_INHOUD_H - (int)NAV_Y)
 
 static void cfg_update_teken() {
@@ -1946,43 +1948,19 @@ static void cfg_update_teken() {
     cfg_sub_header("VERBINDINGEN");
     bool ontg = config_ontgrendeld;
     int y0 = CFG_SUB_Y0 - cfg_update_scroll_y;
-    int y  = y0;
 
-    ui_knop(10, y + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
-            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
-
-    if (fout_rapportage && ontg) {
-        y += 50;
-        bool tok = fout_log_token_aanwezig();
-        ui_knop(10, y + 4, TFT_W - 20, 38,
-                tok ? "TOKEN WIJZIGEN  >" : "TOKEN INSTELLEN  >",
-                tok ? C_SURFACE2 : RGB565(28, 8, 0),
-                tok ? C_CYAN : C_AMBER);
-    }
-
-    // BRUG (voorlopig uitgeschakeld — grijs, niet klikbaar) + BERICHTEN
-    ui_knop(10, y0 + 100 + 4, TFT_W - 20, 38, "BRUG  (uitgeschakeld)",
-            C_SURFACE, C_DARK_GRAY);
-    ui_knop(10, y0 + 150 + 4, TFT_W - 20, 38, "BERICHTEN  >",
+    // Firmware-update + foutrapportage staan sinds 0.2.261111.8 onder BACKUP & UPDATES, web-toegang onder
+    // TOEGANG (zelfde indeling als de webapp). BRUG (uitgeschakeld) is weggelaten.
+    ui_knop(10, y0 + 0 + 4, TFT_W - 20, 38, "MELDINGEN (SIGNAL / WHATSAPP)  >",
             ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
 
     if (ble_app_beschikbaar()) {
         char bl[44];
         snprintf(bl, sizeof(bl), "BLUETOOTH-APP: %s", ble_app_status());
         bool bl_aan = ble_app_ingeschakeld();
-        ui_knop(10, y0 + 200 + 4, TFT_W - 20, 38, bl,
+        ui_knop(10, y0 + 50 + 4, TFT_W - 20, 38, bl,
                 bl_aan ? RGB565(0, 24, 12) : (ontg ? C_SURFACE2 : C_SURFACE),
                 bl_aan ? C_GREEN : (ontg ? C_CYAN : C_TEXT_DIM));
-    }
-
-    {   // WEB-TOEGANG: foute pincodes (vertraging + zwarte lijst), tikken = alles leegmaken
-        int zw = pin_bewaking_zwart_aantal(), gb = pin_bewaking_geblokkeerd_aantal();
-        char wl[48];
-        if (zw || gb) snprintf(wl, sizeof(wl), "WEB-TOEGANG: %d GEBLOKKEERD, %d ZWART  [WISSEN]", gb, zw);
-        else          snprintf(wl, sizeof(wl), "WEB-TOEGANG: GEEN BLOKKADES");
-        ui_knop(10, y0 + 250 + 4, TFT_W - 20, 38, wl,
-                (zw || gb) ? RGB565(28, 8, 0) : C_SURFACE,
-                (zw || gb) ? C_AMBER : C_TEXT_DIM);
     }
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_update_scroll_y, CFG_UPDATE_MAX_SCROLL);
@@ -2001,6 +1979,8 @@ static void cfg_instellingen_teken() {
     if      (cfg_deelscherm == 1) cfg_boot_teken();
     else if (cfg_deelscherm == 2) cfg_we_teken();
     else if (cfg_deelscherm == 3) cfg_update_teken();
+    else if (cfg_deelscherm == 4) cfg_toegang_teken();
+    else if (cfg_deelscherm == 6) cfg_backup_teken();
     else                          cfg_hoofd_teken();
 }
 
@@ -2065,20 +2045,17 @@ static void cfg_hoofd_run(int x, int y) {
         return;
     }
 
-    // Ontgrendeld: 0=BOOT & EIGENAAR, 1=WEERGAVE & ENERGIE, 2=VERBINDINGEN, 3=TOEGANG (pincode), 4=FOTO'S & BESTANDEN
+    // Ontgrendeld: tegel i = sectie i+1 (zie CFG_TEGEL_TITEL); 5 = FOTO'S & BESTANDEN is een eigen scherm
     for (int i = 0; i < CFG_TEGEL_N; i++) {
         int tx, ty, tw, th; _cfg_tegel_rect(i, cat_y, tx, ty, tw, th);
         if (x >= tx && x < tx + tw && y >= ty && y < ty + th) {
-            if (i < 3) {
-                cfg_deelscherm = i + 1;      // 1=BOOT, 2=WEERGAVE, 3=VERBINDINGEN
-                cfg_boot_scroll_y = cfg_we_scroll_y = cfg_update_scroll_y = 0;
-                cfg_instellingen_teken();
-            } else if (i == 4) {
+            if (i == 4) {
                 screen_bestanden_reset();
                 actief_scherm = SCREEN_BESTANDEN; scherm_bouwen = true;
             } else {
-                pin_stap = 1; pin_invoer[0] = '\0';
-                pin_overlay_actief = true; pin_overlay_teken();
+                cfg_deelscherm = i + 1;      // 1=BOOT 2=WEERGAVE 3=VERBINDINGEN 4=TOEGANG 6=BACKUP & UPDATES
+                cfg_boot_scroll_y = cfg_we_scroll_y = cfg_update_scroll_y = 0;
+                cfg_instellingen_teken();
             }
             return;
         }
@@ -2439,28 +2416,10 @@ static void cfg_update_run(int x, int y) {
         return;
     }
 
-    int cy = CFG_SUB_Y0 - cfg_update_scroll_y;
-    int upd_y = cy;
-
-    if (y >= upd_y && y < upd_y + 50) {
-        if (!ontg) { pin_vereist_tonen(); return; }
-        actief_scherm = SCREEN_OTA;
-        scherm_bouwen = true;
-        return;
-    }
-
-    {   // WEB-TOEGANG: blokkades/zwarte lijst leegmaken (PIN-beveiligd)
-        int wt_y = upd_y + 250;
-        if (y >= wt_y && y < wt_y + 50) {
-            if (!ontg) { pin_vereist_tonen(); return; }
-            pin_bewaking_wis_alles();
-            cfg_update_teken();
-            return;
-        }
-    }
+    int upd_y = CFG_SUB_Y0 - cfg_update_scroll_y;
 
     if (ble_app_beschikbaar()) {   // BLUETOOTH-APP aan/uit (PIN-beveiligd)
-        int bl_y = upd_y + 200;
+        int bl_y = upd_y + 50;
         if (y >= bl_y && y < bl_y + 50) {
             if (!ontg) { pin_vereist_tonen(); return; }
             ble_app_zet(!ble_app_ingeschakeld());
@@ -2469,34 +2428,113 @@ static void cfg_update_run(int x, int y) {
         }
     }
 
-    {   // BRUG + BERICHTEN (vaste posities)
-        int brug_y = upd_y + 100;
-        if (y >= brug_y && y < brug_y + 50) { return; }   // BRUG uitgeschakeld (grijs)
-        int ber_y = upd_y + 150;
-        if (y >= ber_y && y < ber_y + 50) {
-            if (!ontg) { pin_vereist_tonen(); return; }
-            actief_scherm = SCREEN_MELDING; scherm_bouwen = true; return;
-        }
+    if (y >= upd_y && y < upd_y + 50) {   // BERICHTEN
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_MELDING; scherm_bouwen = true; return;
+    }
+}
+
+// ─── TOEGANG (sectie 4) en BACKUP & UPDATES (sectie 6) — zelfde indeling als in de webapp ──────────
+static void cfg_toegang_teken() {
+    tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
+    cfg_sub_header("TOEGANG");
+    bool ontg = config_ontgrendeld;
+    int y0 = CFG_SUB_Y0;
+    ui_knop(10, y0 + 4, TFT_W - 20, 38, "PINCODE WIJZIGEN  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    {   // WEB-TOEGANG: foute pincodes (vertraging + zwarte lijst), tikken = alles leegmaken
+        int zw = pin_bewaking_zwart_aantal(), gb = pin_bewaking_geblokkeerd_aantal();
+        char wl[48];
+        if (zw || gb) snprintf(wl, sizeof(wl), "WEB-TOEGANG: %d GEBLOKKEERD, %d ZWART  [WISSEN]", gb, zw);
+        else          snprintf(wl, sizeof(wl), "WEB-TOEGANG: GEEN BLOKKADES");
+        ui_knop(10, y0 + 50 + 4, TFT_W - 20, 38, wl,
+                (zw || gb) ? RGB565(28, 8, 0) : C_SURFACE,
+                (zw || gb) ? C_AMBER : C_TEXT_DIM);
     }
 
-    if (fout_rapportage && ontg) {
-        int tok_y = upd_y + 50;
-        if (y >= tok_y && y < tok_y + 50) {
-            cfg_invoer[0] = '\0';
-            strncpy(cfg_kb_label, "GitHub Token:", sizeof(cfg_kb_label) - 1);
-            cfg_kb_numeriek = false; cfg_kb_info_mode = false;
-            cfg_kb_opgeslagen = false; cfg_kb_wachtwoord = false;
-            cfg_kb_foutlog_token = true;
-            cfg_toetsenbord_actief = true;
-            screen_config_toetsenbord_teken();
-        }
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(14, y0 + 112); tft.print("Gastcodes en berichtlimiet stel je in via de webapp.");
+    nav_bar_teken();
+}
+
+static void cfg_toegang_run(int x, int y) {
+    bool ontg = config_ontgrendeld;
+    if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
+        cfg_deelscherm = 0; cfg_hoofd_scroll_y = 0; cfg_instellingen_teken(); return;
     }
+    int y0 = CFG_SUB_Y0;
+    if (y >= y0 && y < y0 + 50) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        pin_stap = 1; pin_invoer[0] = '\0';
+        pin_overlay_actief = true; pin_overlay_teken();
+        return;
+    }
+    if (y >= y0 + 50 && y < y0 + 100) {   // WEB-TOEGANG: blokkades/zwarte lijst leegmaken
+        if (!ontg) { pin_vereist_tonen(); return; }
+        pin_bewaking_wis_alles();
+        cfg_toegang_teken();
+    }
+}
+
+static void cfg_backup_teken() {
+    tft.fillRect(0, CFG_CONT_Y, TFT_W, NAV_Y - CFG_CONT_Y, C_BG);
+    cfg_sub_header("BACKUP & UPDATES");
+    bool ontg = config_ontgrendeld;
+    int y0 = CFG_SUB_Y0, y = y0;
+    ui_knop(10, y + 4, TFT_W - 20, 38, "FIRMWARE UPDATEN  >",
+            ontg ? C_SURFACE2 : C_SURFACE, ontg ? C_CYAN : C_TEXT_DIM);
+    if (fout_rapportage && ontg) {
+        y += 50;
+        bool tok = fout_log_token_aanwezig();
+        ui_knop(10, y + 4, TFT_W - 20, 38,
+                tok ? "TOKEN WIJZIGEN  >" : "TOKEN INSTELLEN  >",
+                tok ? C_SURFACE2 : RGB565(28, 8, 0),
+                tok ? C_CYAN : C_AMBER);
+    }
+    tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+    tft.setCursor(14, y + 62); tft.print("Instellingen exporteren/importeren gaat via de webapp (CONFIG > BACKUP & UPDATES).");
+    nav_bar_teken();
+}
+
+static void cfg_backup_run(int x, int y) {
+    bool ontg = config_ontgrendeld;
+    if (y >= CFG_CONT_Y && y < CFG_CONT_Y + CFG_SUB_HDR_H && x < 100) {
+        cfg_deelscherm = 0; cfg_hoofd_scroll_y = 0; cfg_instellingen_teken(); return;
+    }
+    int y0 = CFG_SUB_Y0;
+    if (y >= y0 && y < y0 + 50) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        actief_scherm = SCREEN_OTA; scherm_bouwen = true; return;
+    }
+    if (fout_rapportage && ontg && y >= y0 + 50 && y < y0 + 100) {
+        cfg_invoer[0] = '\0';
+        strncpy(cfg_kb_label, "GitHub Token:", sizeof(cfg_kb_label) - 1);
+        cfg_kb_numeriek = false; cfg_kb_info_mode = false;
+        cfg_kb_opgeslagen = false; cfg_kb_wachtwoord = false;
+        cfg_kb_foutlog_token = true;
+        cfg_toetsenbord_actief = true;
+        screen_config_toetsenbord_teken();
+    }
+}
+
+// Sectienummer voor de webapp-synchronisatie: 0 = categorieën, 1..6 = CFG_TEGEL_TITEL[n-1].
+int cfg_sectie_huidig() { return cfg_deelscherm; }
+void cfg_sectie_reset() { cfg_deelscherm = 0; }
+void cfg_sectie_zet(int n) {
+    if (n == 5) { screen_bestanden_reset(); hw_scherm_ga(SCREEN_BESTANDEN); return; }
+    if (n < 0 || n > 6) n = 0;
+    cfg_deelscherm = n;
+    cfg_hoofd_scroll_y = cfg_boot_scroll_y = cfg_we_scroll_y = cfg_update_scroll_y = 0;
+    if (actief_scherm != SCREEN_CONFIG) hw_scherm_ga(SCREEN_CONFIG);
+    else scherm_bouwen = true;
 }
 
 static void cfg_instellingen_run(int x, int y) {
     if      (cfg_deelscherm == 1) cfg_boot_run(x, y);
     else if (cfg_deelscherm == 2) cfg_we_run(x, y);
     else if (cfg_deelscherm == 3) cfg_update_run(x, y);
+    else if (cfg_deelscherm == 4) cfg_toegang_run(x, y);
+    else if (cfg_deelscherm == 6) cfg_backup_run(x, y);
     else                          cfg_hoofd_run(x, y);
 }
 

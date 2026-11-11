@@ -650,10 +650,12 @@ static String _meteo_getij_json() {
 }
 
 static String _scherm_json() {
-    String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm; s += '}';
+    String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm;
+    if (actief_scherm == SCREEN_CONFIG) { s += F(",\"c\":"); s += cfg_sectie_huidig(); }   // open CONFIG-onderdeel
+    s += '}';
     return s;
 }
-static int _ws_prev_scherm = -1;
+static int _ws_prev_scherm = -1, _ws_prev_cfg = -1;
 
 // _verwerk_cmd: alleen Arduino-types in handtekening → prototype OK
 static void _verwerk_cmd(uint8_t num, const String& t) {
@@ -732,8 +734,16 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         int sc = (idx >= 0) ? (int)t.substring(idx + 4).toInt() : -1;
         if (!_scherm_toegestaan(sc)) return;
         if (_ws_niveau[num] < _scherm_min_niveau(sc)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
+        cfg_sectie_reset();   // CONFIG opent (of later: heropent) altijd bij de categorieën, net als in de webapp
+        if (sc == actief_scherm) scherm_bouwen = true;
         hw_scherm_ga(sc);
         _ws_prev_scherm = -1;   // loop meldt de wijziging aan alle clients
+
+    } else if (t.indexOf(F("\"set_cfg\"")) >= 0) {   // CONFIG-onderdeel openen (synchroon met de webapp)
+        if (_ws_niveau[num] < _scherm_min_niveau(SCREEN_CONFIG)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
+        int idx = t.indexOf(F("\"c\":"));
+        cfg_sectie_zet(idx >= 0 ? (int)t.substring(idx + 4).toInt() : 0);
+        _ws_prev_scherm = -1;
 
     } else if (t.indexOf(F("\"io_toggle\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
@@ -1247,9 +1257,10 @@ void bkos_client_loop() {
         }
     }
 
-    if (actief_scherm != _ws_prev_scherm) {
+    int cfg_nu = (actief_scherm == SCREEN_CONFIG) ? cfg_sectie_huidig() : -1;
+    if (actief_scherm != _ws_prev_scherm || cfg_nu != _ws_prev_cfg) {
         String sc = _scherm_json(); _bc(sc);
-        _ws_prev_scherm = actief_scherm;
+        _ws_prev_scherm = actief_scherm; _ws_prev_cfg = cfg_nu;
     }
 
     {   // BKOS-weergave: hooguit 1x/s, alleen als er een client is, en alleen sturen als er iets veranderd is

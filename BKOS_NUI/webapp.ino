@@ -15,6 +15,7 @@
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
 #include "bericht.h"        // bericht_preset/bericht_verzend — "iets is los"-berichtje, openbaar
 #include "melding.h"        // melding_aan — BERICHT-scherm in de webapp toont of berichten aan staan
+#include "hw_scherm.h"      // helderheid (per apparaat behouden bij import)
 #include "app_state.h"      // vaar_modus, MODE_ANKER — noodgeval "op drift" alleen tonen/sturen in ankermodus
 #include "platform_fs.h"    // SPIFFS-macro (SPIFFS-óf-FATFS) — /fotos/foto, webapp-achtergrond
 #include "gast.h"           // pin_niveau() — eigenaar vs. gastcode (HUIS/BOOT-toegang)
@@ -59,6 +60,27 @@ static const char* const BACKUP_BESTANDEN[] = {
     "/net_config.csv", "/bkos_nui.json", "/bkos_data.json",
 };
 #define BACKUP_BESTANDEN_N (sizeof(BACKUP_BESTANDEN) / sizeof(BACKUP_BESTANDEN[0]))
+
+// Verwijdert de helderheidsregels uit een geïmporteerde bkos_config.csv en voegt de huidige
+// (eigen) waarden van dit apparaat toe.
+static const char* const _WA_HELD_SLEUTELS[] = {"helderh=", "timer=", "held_auto=", "held_dag=", "held_na=", "held_nv="};
+static String _wa_config_eigen_helderheid(const String& in) {
+    String uit; uit.reserve(in.length() + 96);
+    int start = 0;
+    while (start < (int)in.length()) {
+        int eind = in.indexOf('\n', start); if (eind < 0) eind = in.length();
+        String regel = in.substring(start, eind);
+        bool weg = false;
+        for (const char* k : _WA_HELD_SLEUTELS) if (regel.startsWith(k)) { weg = true; break; }
+        if (!weg && regel.length()) { uit += regel; uit += '\n'; }
+        start = eind + 1;
+    }
+    char b[160];
+    snprintf(b, sizeof(b), "helderh=%d\ntimer=%ld\nheld_auto=%d\nheld_dag=%d\nheld_na=%d\nheld_nv=%d\n",
+             tft_helderheid, (long)scherm_timer, (int)helderheid_auto, held_dag, held_nacht_anker, held_nacht_varend);
+    uit += b;
+    return uit;
+}
 
 static String _wa_json_escape(const String& in) {
     String out; out.reserve(in.length() + 8);
@@ -699,6 +721,9 @@ void webapp_setup() {
             if (p < 0) continue;
             p += zoek.length();
             String inhoud = _wa_json_unescape(body, p);
+            // Helderheid + dimtijd zijn per boordcomputer (elk scherm hangt anders): bij een import uit een
+            // ander apparaat de eigen waarden behouden i.p.v. die uit het bestand over te nemen.
+            if (strcmp(BACKUP_BESTANDEN[i], "/bkos_config.csv") == 0) inhoud = _wa_config_eigen_helderheid(inhoud);
             File f = SPIFFS.open(BACKUP_BESTANDEN[i], "w");
             if (!f) continue;
             f.print(inhoud);

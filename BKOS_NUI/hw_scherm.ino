@@ -177,6 +177,9 @@ void tft_setup() {
 #endif
 
     pinMode(TFT_BL, OUTPUT);
+#if PLATFORM_ESP32
+    analogWriteResolution(12);   // 12-bit PWM: fijne stapjes in het donkere bereik (zie _held_pwm)
+#endif
 #if PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD && ESP_ARDUINO_VERSION_MAJOR < 3
     if (!tft_p->begin() && _tft_canvas) {
         // ps_malloc voor de canvas-buffer mislukte (te weinig PSRAM) — terugvallen
@@ -206,9 +209,27 @@ void tft_rotatie_toepassen() {
     doel->setRotation((basis + (tft_gedraaid ? 2 : 0)) % 4);
 }
 
+// Ervaren helderheid -> lichtsterkte. Het oog ervaart licht niet lineair: 25% stroom voelt veel
+// feller dan "een kwart". Daarom wordt het percentage gelezen als ERVAREN helderheid (CIE L*, 0-100)
+// en omgerekend naar de werkelijke lichtsterkte Y: 25% -> ±4,4%, 50% -> ±18%, 75% -> ±48%, 100% -> 100%.
+// Zo voelt elke stap van 5% ongeveer even groot, ook in het donkere (nacht)bereik.
+static uint32_t _held_pwm(int pct, uint32_t max_pwm) {
+    pct = constrain(pct, 0, 100);
+    if (pct == 0) return 0;
+    float L = (float)pct;
+    float Y = (L > 8.0f) ? powf((L + 16.0f) / 116.0f, 3.0f) : (L / 903.3f);
+    uint32_t pwm = (uint32_t)lroundf(Y * (float)max_pwm);
+    uint32_t vloer = max_pwm / 600 + 1;          // nooit helemaal uit zolang pct > 0
+    return pwm < vloer ? vloer : pwm;
+}
+
 void tft_helderheid_zet(int pct) {
     // Pas ALLEEN de PWM aan — tft_helderheid bewaart de gebruikersinstelling
-    analogWrite(TFT_BL, map(constrain(pct, 0, 100), 0, 100, 0, 255));
+#if PLATFORM_ESP32
+    analogWrite(TFT_BL, _held_pwm(pct, 4095));
+#else
+    analogWrite(TFT_BL, _held_pwm(pct, 255));
+#endif
 }
 
 static int _sec_sinds_middernacht(time_t t) {
@@ -226,13 +247,8 @@ static int _sec_sinds_middernacht(time_t t) {
 //     overgang vanzelf in kleine stapjes, zonder aparte smoothing-logica nodig.
 // De nacht-waarde zelf (anker vs. varend) wordt elke aanroep vers bepaald, dus
 // een vaarmodus-wissel werkt direct door — bewust GEEN gladstrijken daarvan.
-void tft_helderheid_auto_loop() {
-    if (!helderheid_auto) return;
-
-    bool navigeert = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR);
-    int  nacht_doel = navigeert ? held_nacht_varend : held_nacht_anker;
-
-    int doel;
+// 1 = volledig dag, 0 = volledig nacht, daartussen schemer (zie curve hierboven).
+static float _held_dagfactor() {
     if (meteo_zonsopgang > 0 && meteo_zonsondergang > 0) {
         int nu_s   = _sec_sinds_middernacht(time(nullptr));
         int sr_s   = _sec_sinds_middernacht(meteo_zonsopgang);
@@ -241,23 +257,49 @@ void tft_helderheid_auto_loop() {
         int dag1   = ss_s - 60 * 60;   // 1u voor zonsondergang: einde volledig dag
         int nacht0 = ss_s + 30 * 60;   // 30min na zonsondergang: volledig nacht
         int nacht1 = sr_s - 30 * 60;   // 30min voor zonsopgang: einde volledig nacht
-
-        float factor;   // 1 = volledig dag, 0 = volledig nacht
-        if (nu_s >= dag0 && nu_s <= dag1) factor = 1.0f;
-        else if (nu_s >= nacht0 || nu_s <= nacht1) factor = 0.0f;
-        else if (nu_s < dag0) factor = (float)(nu_s - nacht1) / (float)(dag0 - nacht1);      // ochtendschemer
-        else                  factor = 1.0f - (float)(nu_s - dag1) / (float)(nacht0 - dag1); // avondschemer
-
-        doel = (int)roundf(nacht_doel + factor * (held_dag - nacht_doel));
-    } else {
-        // Geen zontijden bekend (nog geen weer opgehaald) — alleen dag/nacht, geen schemer
-        doel = meteo_is_dag ? held_dag : nacht_doel;
+        if (nu_s >= dag0 && nu_s <= dag1) return 1.0f;
+        if (nu_s >= nacht0 || nu_s <= nacht1) return 0.0f;
+        if (nu_s < dag0) return (float)(nu_s - nacht1) / (float)(dag0 - nacht1);      // ochtendschemer
+        return 1.0f - (float)(nu_s - dag1) / (float)(nacht0 - dag1);                   // avondschemer
     }
+    return meteo_is_dag ? 1.0f : 0.0f;   // geen zontijden: alleen dag/nacht
+}
 
-    doel = constrain(doel, 5, 100);
+static int* _held_nacht_ptr() {
+    bool navigeert = (vaar_modus == MODE_ZEILEN || vaar_modus == MODE_MOTOR);
+    return navigeert ? &held_nacht_varend : &held_nacht_anker;
+}
+
+static int _held_auto_doel() {
+    float f = _held_dagfactor();
+    int nacht_doel = *_held_nacht_ptr();
+    return constrain((int)roundf(nacht_doel + f * (held_dag - nacht_doel)), 5, 100);
+}
+
+void tft_helderheid_auto_loop() {
+    if (!helderheid_auto) return;
+    int doel = _held_auto_doel();
     if (doel == tft_helderheid) return;
     tft_helderheid = doel;
     if (tft_actief) tft_helderheid_zet(tft_helderheid);   // niet overschrijven tijdens idle-dimmen
+}
+
+// +/- vanaf het scherm. Met automatische helderheid aan werd tot nu toe alleen tft_helderheid gewijzigd,
+// waarna tft_helderheid_auto_loop() die binnen 5 s weer terugzette ("springt ineens een eind terug").
+// Nu past +/- de instelling aan die op dit moment geldt: overdag de dagwaarde, 's nachts de nachtwaarde
+// (anker of varend, naar vaarmodus), in de schemer beide — zodat de curve zelf meeschuift.
+void tft_helderheid_stap(int delta) {
+    if (!helderheid_auto) {
+        tft_helderheid = constrain(tft_helderheid + delta, 5, 100);
+    } else {
+        float f = _held_dagfactor();
+        int* nacht = _held_nacht_ptr();
+        if (f >= 0.999f)      held_dag = constrain(held_dag + delta, 5, 100);
+        else if (f <= 0.001f) *nacht   = constrain(*nacht + delta, 5, 100);
+        else { held_dag = constrain(held_dag + delta, 5, 100); *nacht = constrain(*nacht + delta, 5, 100); }
+        tft_helderheid = _held_auto_doel();
+    }
+    tft_helderheid_zet(tft_helderheid);
 }
 
 void tft_schermvullen(uint16_t kleur) {

@@ -24,6 +24,7 @@ void tft_setup();
 void tft_loop();
 void tft_rotatie_toepassen();   // past tft_gedraaid toe op de schermrotatie
 void tft_helderheid_zet(int pct);
+void tft_helderheid_stap(int delta);   // +/- vanaf het scherm; met AUTO aan schuift de geldende dag-/nachtwaarde mee
 void tft_schermvullen(uint16_t kleur);
 
 // ─── Instelbare PCLK (S3 RGB paneel op core 2.x; anti-flikker) ────────────────

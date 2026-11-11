@@ -769,11 +769,9 @@ static void pico_cfg_instellingen_run(int x, int y) {
     // Helderheid
     if (y >= y0 && y < y0 + 32) {
         if (x >= 8 && x < 40) {
-            tft_helderheid = max(5, tft_helderheid - 5);
-            tft_helderheid_zet(tft_helderheid); state_save(); pico_cfg_instellingen_teken();
+            tft_helderheid_stap(-5); state_save(); pico_cfg_instellingen_teken();
         } else if (x >= 112 && x < 144) {
-            tft_helderheid = min(100, tft_helderheid + 5);
-            tft_helderheid_zet(tft_helderheid); state_save(); pico_cfg_instellingen_teken();
+            tft_helderheid_stap(5); state_save(); pico_cfg_instellingen_teken();
         } else if (x >= 148) {
             long staps[] = {15, 30, 60, 120, 0};
             int hui = 0;
@@ -1990,14 +1988,12 @@ static void cfg_hoofd_run(int x, int y) {
     // Helderheid (altijd vrij, vaste positie — scrolt niet mee)
     if (y >= HLD_Y && y < HLD_Y + HLD_H) {
         if (x >= 12 && x < 12 + HLD_BTN_W) {
-            tft_helderheid = max(5, tft_helderheid - 5);
-            tft_helderheid_zet(tft_helderheid);
+            tft_helderheid_stap(-5);
             state_save(); helderheid_balk_teken(); return;
         }
         int plus_x = TFT_W - 12 - HLD_BTN_W - 120 - 4;
         if (x >= plus_x && x < plus_x + HLD_BTN_W) {
-            tft_helderheid = min(100, tft_helderheid + 5);
-            tft_helderheid_zet(tft_helderheid);
+            tft_helderheid_stap(5);
             state_save(); helderheid_balk_teken(); return;
         }
         if (x >= TFT_W - 12 - 120) {

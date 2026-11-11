@@ -244,6 +244,8 @@ body.bkos #tabInstellingen > .tabbar{display:none;}   /* in de BKOS-weergave kie
 /* schermen die nog niet nagebouwd zijn: de gewone inhoud staat tussen de echte statusbalk (42px) en navigatiebalk (42px) */
 body.bkos .wrap .tabpane{position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;z-index:2;overflow-y:auto;padding:0 12px 12px;background:var(--bg);}
 body.bkos .wrap.bkVolledig .tabpane{display:none !important;}
+/* onderdelen BINNEN Instellingen (instSub*) gewoon in de stroom van hun ouder, niet nogmaals los over het scherm */
+body.bkos #tabInstellingen .tabpane{position:static;padding:0;background:transparent;overflow:visible;}
 body.bkos .wrap.geblurd .tabpane{filter:blur(8px);pointer-events:none;overflow:hidden;}
 body.bkos .wrap.geblurd #bkosToegang{display:flex;}
 #bkosNiet{display:none;position:absolute;left:0;right:0;top:8.75%;bottom:8.75%;align-items:center;justify-content:center;padding:16px;z-index:4;background:var(--bg);}

@@ -1,3 +1,5 @@
+#include "instellingen_sync.h"   // inst_gui_loop()
+#include "lettertype.h"          // lettertype_actief
 #include "hardware.h"
 #include "post.h"
 #include "screen_post.h"
@@ -108,6 +110,8 @@ static void _gui_taak(void*) {
         ntp_loop();
         ota_loop();
         post_loop();
+
+        inst_gui_loop();   // instellingen van master/webapp: opslaan + palet + hertekenen (instellingen_sync.h)
 
         // Scherm (her)bouwen
         if (scherm_bouwen) {
@@ -621,6 +625,9 @@ void hw_setup() {
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
+    // Vanaf hier het gekozen lettertype (+ LEXEND EXA voor veldnamen in de instellingen). Opstartlogo en
+    // herstelmenu hierboven bleven bewust klassiek: daar mag niets geladen zijn (lettertype.h).
+    lettertype_actief = true;
     _boot_stap("hw_setup klaar", false);
 
     // Geen losse `delay(1000)` meer om de splash te tonen: het herstelmenu-

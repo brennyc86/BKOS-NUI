@@ -27,6 +27,7 @@
 #include "getijdata.h"       // GETIJ-tab in de webapp (getijdata_get/naam/lat_offset)
 #include "victron_ble.h"     // mini-widget interieurbalk
 #include "lettertype.h"     // lettertype_keuze in het ui-bericht
+#include "instellingen_sync.h"   // WEERGAVE & ENERGIE in de webapp (weergave / weergave_set)
 #include "screen_meteo.h"    // METEO-tab + STROOM-weergave in de webapp
 #include "screen_victron.h"  // VICTRON-tab in de webapp
 #include "data_store.h"
@@ -1033,6 +1034,14 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         if (idx >= 0) gast_verwijderen((int)idx);
         String lijst = _gast_json(); _tx(num, lijst);
 
+    } else if (t.indexOf(F("\"weergave_get\"")) >= 0) {
+        String r = inst_json(); _tx(num, r);
+
+    } else if (t.indexOf(F("\"weergave_set\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
+        inst_uit_json(t);   // wijziging gaat via bkos_client_loop naar alle webapps en via ESP-NOW naar de andere boordcomputers
+        String r = inst_json(); _tx(num, r);
+
     } else if (t.indexOf(F("\"melding_get\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
         String s = _melding_json(); _tx(num, s);
@@ -1315,6 +1324,18 @@ void bkos_client_loop() {
     if (_ws_gestart) {
         _ws.loop();
         _ws_init_sturen();
+        {   // WEERGAVE & ENERGIE gewijzigd (op het scherm, door de master of een andere webapp): alle webapps bijwerken
+            static InstSet w_laatst; static bool w_geldig = false; static unsigned long w_ms = 0;
+            if (millis() - w_ms >= 500UL) {
+                w_ms = millis();
+                InstSet h; inst_huidig(h);
+                if (!w_geldig || memcmp(&h, &w_laatst, sizeof(h)) != 0) {
+                    bool eerste = !w_geldig;
+                    w_laatst = h; w_geldig = true;
+                    if (!eerste) { String m = inst_json(); _bc(m); }
+                }
+            }
+        }
         if (_herteken_na_ms && (long)(millis() - _herteken_na_ms) >= 0) { _herteken_na_ms = 0; scherm_bouwen = true; }
         // Opnieuw starten zodra het IP-adres verandert: mDNS dat al draaide vóór de WiFi-verbinding
         // (opstart) of tijdens een herverbinding blijft anders op het netwerk onzichtbaar.

@@ -4,8 +4,10 @@
 // ============================================================
 // Alle tekst loopt via Print::write(). BkosTekst<B> wikkelt het echte scherm-object (RGB-paneel of
 // canvas) en tekent tekst van grootte 2/3/4 met het gekozen lettertype (lettertypen_data.h, 4-bit
-// dekking, gladde randen door te mengen met wat al in de framebuffer staat). Grootte 1 en het
-// klassieke lettertype (keuze 0) gaan ongewijzigd naar Arduino_GFX.
+// dekking, gladde randen door te mengen met wat al in de framebuffer staat). Het klassieke lettertype
+// (keuze 0) gaat ongewijzigd naar Arduino_GFX. In de instellingen staan veldnamen (grootte 1) altijd in
+// het systeemlettertype (LEXEND EXA) en waarden (grootte 2+) in het gekozen lettertype. Opstartlogo en
+// herstelmenu blijven klassiek (lettertype_actief = false): daar mag niets geladen zijn.
 //
 // Indeling blijft gelijk: een tekst wordt gecentreerd in het vak dat hij met het klassieke lettertype
 // zou innemen (6*s per teken) en de cursor schuift ook precies dat vak op. Alle bestaande
@@ -17,9 +19,13 @@
 #define BKOS_LETTERTYPEN (PLATFORM_ESP32 && !PLATFORM_WROOM && !PLATFORM_CYD)
 
 extern uint8_t lettertype_keuze;     // 0 = klassiek; 1..N = BK_LETTERTYPEN[keuze-1]
+extern bool    lettertype_actief;    // false tijdens opstartlogo + herstelmenu: dan altijd klassiek (niets geladen)
+extern int     lettertype_forceer;   // >= 0: tijdelijk dit lettertype (kiesoverzicht), -1 = normaal
 int         lettertype_aantal();     // inclusief klassiek
 const char* lettertype_naam(int i);
 void        lettertype_zet(int i);   // + opslaan via state_save() door de aanroeper
+bool        lettertype_instellingen_scherm();   // actief scherm hoort bij de instellingen (veldnamen in systeemletter)
+int         lettertype_voor(uint8_t grootte);   // welk lettertype (0 = klassiek) voor deze tekstgrootte, nu
 
 #if BKOS_LETTERTYPEN
 #include <Arduino_GFX_Library.h>
@@ -50,12 +56,12 @@ private:
         return (r << 11) | (g << 5) | bl;
     }
     bool _tekst(const uint8_t* buf, size_t n) {
-        int k = lettertype_keuze;
-        if (k <= 0 || k > BK_LETTERTYPEN_N || n == 0) return false;
         uint8_t s = this->textsize_x;
-        if (s < 2 || s > 4 || this->textsize_y != s) return false;
+        if (s < 1 || s > 4 || this->textsize_y != s || n == 0) return false;
+        int k = lettertype_voor(s);
+        if (k <= 0 || k > BK_LETTERTYPEN_N) return false;
         for (size_t i = 0; i < n; i++) if (buf[i] == '\n' || buf[i] == '\r') return false;
-        const BkMaat& m = BK_LETTERTYPEN[k - 1].m[s - 2];
+        const BkMaat& m = BK_LETTERTYPEN[k - 1].m[s - 1];
         int tot = 0;
         for (size_t i = 0; i < n; i++) { const BkGlyph* g = _gl(m, buf[i]); tot += g ? g->adv : 6 * s; }
         int box = 6 * s * (int)n;

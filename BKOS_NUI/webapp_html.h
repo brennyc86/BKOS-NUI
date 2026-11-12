@@ -459,8 +459,10 @@ body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
       <div id="instSubWeergave" class="tabpane" style="display:none">
         <section>
           <h2>Weergave &amp; energie</h2>
-          <p style="font-size:.85rem;color:var(--text);margin-bottom:8px;">Helderheid, automatische helderheid (dag/nacht), dimtijd, kleurenschema, scherm draaien en slaapstand stel je in op de boordcomputer zelf: <b>CONFIG &gt; WEERGAVE &amp; ENERGIE</b>.</p>
-          <p style="font-size:.78rem;color:var(--text-dim);">Dit is bewust per boordcomputer: elk scherm hangt op een andere plek. Ook bij het importeren van een backup houdt elke boordcomputer zijn eigen helderheid en dimtijd.</p>
+          <p id="weergSyncInfo" style="font-size:.78rem;color:var(--text-dim);margin-bottom:10px;"></p>
+          <div id="weergVelden"><p style="font-size:.85rem;color:var(--text-dim);">Laden&hellip;</p></div>
+          <div id="weergMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
+          <p style="font-size:.72rem;color:var(--text-dim);margin-top:10px;">Niet gedeeld (hangt van dit ene scherm af): scherm 180&deg; draaien, SCHERM PCLK en dubbele buffering. Die stel je in op de boordcomputer zelf.</p>
         </section>
       </div>
 
@@ -768,7 +770,7 @@ function setTab(naam){
     if (pane) pane.style.display = (t === naam) ? '' : 'none';
   });
   if (naam === 'fotos') { fotosInfo(); fotosLijst(); bfInfo(); bfLijst(); }
-  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); berichtlimietLaden(); blokLaden(); setSubTab(subTab); }
+  if (naam === 'instellingen') { instellingenLaden(); gastLaden(); meldingLaden(); weergaveLaden(); berichtlimietLaden(); blokLaden(); setSubTab(subTab); }
   document.querySelectorAll('.tabbar')[0].querySelectorAll('.tabbtn').forEach(function(btn){
     btn.classList.toggle('active', btn.getAttribute('data-tab') === naam);
   });
@@ -850,6 +852,8 @@ function handleMsg(msg){
       renderGastBewerkt(msg); break;
     case 'melding':
       meldingData = msg; renderMelding(); break;
+    case 'weergave':
+      weergData = msg; renderWeergave(); break;
     case 'berichtlimiet':
       renderBerichtlimiet(msg); break;
     case 'blok_lijst':
@@ -2034,6 +2038,61 @@ function gastVerwijderen(i){
 // ─── INSTELLINGEN → VERBINDINGEN: Meldingen (CallMeBot Signal/WhatsApp) ────
 // De lange Signal-/WhatsApp-code is vervelend intypen op het scherm van de
 // boordcomputer — vanaf hier gewoon te plakken.
+// ─── WEERGAVE & ENERGIE (instellingen_sync.h op het toestel) ─────────────────
+// Altijd synchroon met de boordcomputer waarmee de webapp verbonden is; die geeft het via
+// ESP-NOW door aan de andere boordcomputers (als daar WEERGAVE SYNCHROON aan staat).
+var weergData = null;
+function weergaveLaden(){ send({t:'weergave_get'}); }
+function weergaveSet(veld, waarde){
+  if (needAuth()) { renderWeergave(); return; }
+  var o = {t:'weergave_set'}; o[veld] = waarde; send(o);
+  var m = document.getElementById('weergMelding'); if (m) { m.style.color = 'var(--text-dim)'; m.textContent = 'Opgeslagen op de boordcomputer'; }
+}
+function _wKeuze(label, veld, opties, huidig){
+  var h = '<label style="font-size:.72rem;color:var(--text-dim);display:block;margin:10px 0 4px;">' + label + '</label>';
+  h += '<div style="display:grid;grid-template-columns:repeat(' + Math.min(opties.length, 4) + ',1fr);gap:6px;">';
+  opties.forEach(function(o){
+    h += '<button class="mbtn' + (o[0] === huidig ? ' active' : '') + '" style="padding:10px 4px;" onclick="weergaveSet(\'' + veld + '\',' + o[0] + ')">' + o[1] + '</button>';
+  });
+  return h + '</div>';
+}
+function _wVink(label, veld, aan){
+  return '<label style="display:flex;align-items:center;gap:8px;margin:10px 0;"><input type="checkbox"' + (aan ? ' checked' : '') +
+         ' onchange="weergaveSet(\'' + veld + '\', this.checked ? 1 : 0)"> ' + label + '</label>';
+}
+function _wSchuif(label, veld, w){
+  return '<label style="font-size:.72rem;color:var(--text-dim);display:flex;justify-content:space-between;margin:10px 0 4px;"><span>' + label +
+         '</span><b id="wv_' + veld + '" style="color:var(--text);">' + w + '%</b></label>' +
+         '<input type="range" min="5" max="100" step="5" value="' + w + '" style="width:100%;" oninput="document.getElementById(\'wv_' + veld +
+         '\').textContent=this.value+\'%\'" onchange="weergaveSet(\'' + veld + '\', parseInt(this.value,10))">';
+}
+function renderWeergave(){
+  var d = weergData, el = document.getElementById('weergVelden'); if (!el || !d) return;
+  var info = document.getElementById('weergSyncInfo');
+  if (info) info.textContent = d.rol === 2
+      ? (d.instSync ? 'Deze boordcomputer volgt de master: een wijziging hier geldt voor alle gekoppelde boordcomputers.' : 'WEERGAVE SYNCHROON staat uit op deze boordcomputer: wijzigingen gelden alleen hier.')
+      : d.rol === 1 ? 'Wijzigingen gelden voor deze master en alle gekoppelde boordcomputers met WEERGAVE SYNCHROON aan.'
+      : 'Wijzigingen gelden voor deze boordcomputer.';
+  var h = '';
+  h += _wKeuze('Lettertype', 'fnt', (d.fntNamen || []).map(function(n, i){ return [i, n]; }), d.fnt);
+  h += _wKeuze('Kleurenschema', 'schema', (d.schemaNamen || []).map(function(n, i){ return [i, n]; }), d.schema);
+  h += _wKeuze('Scherm dimmen na', 'timer', [[15,'15 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[0,'NOOIT']], d.timer);
+  h += _wVink('Helderheid automatisch (dag/nacht + varen)', 'heldAuto', d.heldAuto);
+  h += _wSchuif('Overdag', 'heldDag', d.heldDag);
+  h += _wSchuif('Nacht (haven / anker)', 'heldNa', d.heldNa);
+  h += _wSchuif('Nacht (varend)', 'heldNv', d.heldNv);
+  h += _wKeuze('Opstart vaarmodus', 'bootVm', [[0,'HAVEN'],[1,'ZEILEN'],[2,'MOTOR'],[3,'ANKER']], d.bootVm);
+  h += _wVink('Ook automatisch wisselen (automodus)', 'bootAuto', d.bootAuto);
+  h += _wVink('Opstarten in HAVEN/ANKER opent het HAVEN-dashboard', 'bootHaven', d.bootHaven);
+  h += _wKeuze('Opstart verlichting', 'bootLt', [[0,'UIT'],[1,'AAN'],[2,'AUTO']], d.bootLt);
+  h += _wVink('Vaarmodus + verlichting onthouden na herstart', 'onthoud', d.onthoud);
+  h += _wKeuze('Slaap', 'slaapM', [[0,'GEEN'],[1,'LICHT']], d.slaapM);
+  h += _wKeuze('Slaap na', 'slaapT', [[0,'NOOIT'],[30,'30 s'],[60,'1 min'],[300,'5 min'],[600,'10 min']], d.slaapT);
+  h += _wKeuze('IO + netwerk interval', 'slaapI', [[10,'10 s'],[30,'30 s'],[60,'1 min'],[300,'5 min']], d.slaapI);
+  h += _wVink('Automatisch verbinden met open netwerken', 'wifiOpen', d.wifiOpen);
+  h += _wVink('Foutrapportage naar de ontwikkelaar', 'foutrap', d.foutrap);
+  el.innerHTML = h;
+}
 function meldingLaden(){ send({t:'melding_get'}); }
 var MEL_HARTSLAG_LBL = ['UIT', 'DAGELIJKS', 'WEKELIJKS'];
 function renderMelHartslag(){

@@ -45,7 +45,8 @@ def raster(pad, wght, s):
         asc = hb - min(f.getbbox(c)[1] for c in 'bdfhklH')
         desc = max(f.getbbox(c)[3] for c in 'gjpqy') - hb
         gem = f.getlength(proef) / len(proef)
-        if cap <= round(0.78 * h) and asc + desc <= h and gem <= 1.08 * 6 * s:
+        capmax = 7 if s == 1 else round(0.78 * h)          # grootte 1: net als het klassieke lettertype 7 px hoofdletters
+        if cap <= capmax and asc + desc <= h and gem <= 1.08 * 6 * s:
             best = pt
     f = laad(pad, best, wght); bbH = f.getbbox('H'); hb = bbH[3]
     desc = max(f.getbbox(c)[3] for c in 'gjpqy') - hb
@@ -73,7 +74,7 @@ def main():
     data = []
     for naam, bestand, wght in LETTERTYPEN:
         pad = os.path.join(DIR, bestand)
-        data.append((naam, {s: raster(pad, wght, s) for s in (2, 3, 4)}))
+        data.append((naam, {s: raster(pad, wght, s) for s in (1, 2, 3, 4)}))
 
     # ── firmware ──
     o = ['// GEGENEREERD door tools/genereer_lettertypen.py — niet met de hand wijzigen.',
@@ -81,7 +82,8 @@ def main():
          '#pragma once', '#include <Arduino.h>', '',
          'typedef struct { uint8_t adv; uint8_t xo; uint8_t yo; uint8_t w; uint8_t h; uint32_t off; } BkGlyph;   // off = nibble-index in d[]',
          'typedef struct { const BkGlyph* g; const uint8_t* d; } BkMaat;',
-         'typedef struct { const char* naam; BkMaat m[3]; } BkLettertype;   // m[0..2] = tekstgrootte 2..4',
+         'typedef struct { const char* naam; BkMaat m[4]; } BkLettertype;   // m[0..3] = tekstgrootte 1..4',
+         '#define BK_LETTERTYPE_SYSTEEM 1   // LEXEND EXA: veldnamen in de instellingen',
          '#define BK_GLYPH_N %d' % len(TEKENS), '']
     totaal = 0
     for fi, (naam, maten) in enumerate(data):
@@ -100,7 +102,7 @@ def main():
             o.append('};')
     o.append('static const BkLettertype BK_LETTERTYPEN[] = {')
     for fi, (naam, _) in enumerate(data):
-        o.append('  {"%s", {{BKL_%d_2_G, BKL_%d_2_D}, {BKL_%d_3_G, BKL_%d_3_D}, {BKL_%d_4_G, BKL_%d_4_D}}},' % ((naam,) + (fi,) * 6))
+        o.append('  {"%s", {{BKL_%d_1_G, BKL_%d_1_D}, {BKL_%d_2_G, BKL_%d_2_D}, {BKL_%d_3_G, BKL_%d_3_D}, {BKL_%d_4_G, BKL_%d_4_D}}},' % ((naam,) + (fi,) * 8))
     o.append('};')
     o.append('#define BK_LETTERTYPEN_N %d' % len(data))
     open(os.path.join(ROOT, 'BKOS_NUI', 'lettertypen_data.h'), 'w').write('\n'.join(o) + '\n')

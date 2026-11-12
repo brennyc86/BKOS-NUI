@@ -10,6 +10,7 @@
 #include "screen_config.h"   // cfg_sectie_huidig/zet — synchrone weergave
 #include "screen_meteo.h"    // meteo_tab/_web_tab — synchrone weergave
 #include "screen_victron.h"  // victron_tab — synchrone weergave
+#include "instellingen_sync.h"  // net_inst_sync, InstSet — gedeelde WEERGAVE & ENERGIE
 
 #if PLATFORM_ESP32
 #include <esp_now.h>
@@ -174,6 +175,7 @@ void net_laden() {
         if (lijn.startsWith("master:"))        _mac_van_str(lijn.substring(7).c_str(), net_master_mac);
         if (lijn.startsWith("auto_verbinden:")) net_auto_verbinden = (lijn.substring(15).toInt() != 0);
         if (lijn.startsWith("scherm_sync:"))   net_scherm_sync    = (lijn.substring(12).toInt() != 0);
+        if (lijn.startsWith("inst_sync:"))     net_inst_sync      = (lijn.substring(10).toInt() != 0);
     }
     f.close();
 
@@ -209,6 +211,7 @@ void net_opslaan() {
     f.printf("naam:%s\n",           net_eigen_naam);
     f.printf("auto_verbinden:%d\n", (int)net_auto_verbinden);
     f.printf("scherm_sync:%d\n",    (int)net_scherm_sync);
+    f.printf("inst_sync:%d\n",      (int)net_inst_sync);
     if (net_master_bekend()) f.printf("master:%s\n", net_mac_str(net_master_mac).c_str());
     f.close();
 
@@ -380,6 +383,78 @@ static void _sync_loop() {
         _sync_periodiek = nu;
         _sync_stuur(b, nullptr);
     }
+}
+
+
+// ─── Gedeelde instellingen (NET_MSG_INST_SYNC) ─────────────────────────────────
+// WEERGAVE & ENERGIE + lettertype (InstSet, zie instellingen_sync.h). De master is de bron: hij stuurt
+// zijn set bij elke wijziging en elke 10 s naar alle slaves. Een slave met net_inst_sync vraagt na het
+// koppelen eerst de set van de master op (v = 0) en neemt die over; pas daarna stuurt hij eigen
+// wijzigingen naar de master, die ze toepast en weer aan álle slaves doorgeeft (ook de afzender, zodat
+// een kruisend periodiek bericht met oude waarden nooit blijft hangen).
+static InstSet       _inst_laatst;
+static bool          _inst_laatst_geldig = false;
+static bool          _inst_van_master = false;   // slave: set van de master al ontvangen
+static unsigned long _inst_periodiek = 0, _inst_verzoek = 0, _inst_rust_tot = 0;
+
+static bool _inst_doet_mee() {
+    if (net_modus == NET_MASTER) return true;
+    return net_modus == NET_SLAVE && net_gepaard && net_inst_sync && net_master_bekend();
+}
+static void _inst_stuur(const InstSet& s, const uint8_t* naar) {
+    NetPaket p = {};
+    p.versie = NET_PROTOCOL_VERSIE; p.type = NET_MSG_INST_SYNC; p.modus = net_modus;
+    strncpy(p.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    memcpy(p.data, &s, sizeof(InstSet));
+    if (naar) { _stuur(naar, p, sizeof(InstSet)); return; }
+    if (net_modus == NET_MASTER) {
+        for (int i = 0; i < net_peers_cnt; i++) if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, p, sizeof(InstSet));
+    } else {
+        _stuur(net_master_mac, p, sizeof(InstSet));
+    }
+}
+static void _inst_ontvangen(const uint8_t* mac, const NetPaket& pkt) {
+    if (!_inst_doet_mee()) return;
+    InstSet s; memcpy(&s, pkt.data, sizeof(InstSet));
+    if (net_modus == NET_MASTER) {
+        int idx = -1;
+        for (int i = 0; i < net_peers_cnt; i++) if (_mac_gelijk(net_peers[i].mac, mac)) { idx = i; break; }
+        if (idx < 0 || !net_peers[idx].bevestigd) return;
+        if (s.v == 0) { InstSet h; inst_huidig(h); _inst_stuur(h, mac); return; }   // verzoek van een slave
+        if (s.v != INST_VERSIE) return;
+        inst_toepassen(s);
+        inst_huidig(_inst_laatst); _inst_laatst_geldig = true;
+        _inst_stuur(_inst_laatst, nullptr);
+        _inst_periodiek = millis();
+    } else {
+        if (!_mac_gelijk(mac, net_master_mac) || s.v != INST_VERSIE) return;
+        if (_inst_van_master && (long)(millis() - _inst_rust_tot) < 0) return;   // eigen wijziging onderweg naar de master
+        inst_toepassen(s);
+        _inst_van_master = true;
+        inst_huidig(_inst_laatst); _inst_laatst_geldig = true;   // na toepassen: alleen échte lokale wijzigingen tellen
+    }
+}
+static void _inst_loop() {
+    if (!_inst_doet_mee()) { _inst_van_master = false; _inst_laatst_geldig = false; return; }
+    unsigned long nu = millis();
+    InstSet h; inst_huidig(h);
+    if (net_modus == NET_SLAVE && !_inst_van_master) {
+        if (nu - _inst_verzoek >= 3000UL) {
+            _inst_verzoek = nu;
+            InstSet vraag; memset(&vraag, 0, sizeof(vraag));   // v = 0: verzoek
+            _inst_stuur(vraag, nullptr);
+        }
+        return;
+    }
+    if (!_inst_laatst_geldig) { _inst_laatst = h; _inst_laatst_geldig = true; _inst_periodiek = nu; return; }
+    if (memcmp(&h, &_inst_laatst, sizeof(InstSet)) != 0) {
+        _inst_laatst = h;
+        _inst_stuur(h, nullptr);
+        _inst_periodiek = nu;
+        _inst_rust_tot = nu + 1500UL;
+        return;
+    }
+    if (net_modus == NET_MASTER && nu - _inst_periodiek >= 10000UL) { _inst_periodiek = nu; _inst_stuur(h, nullptr); }
 }
 
 #if ESP_IDF_VERSION_MAJOR >= 5
@@ -751,6 +826,10 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
 
     case NET_MSG_SCHERM_SYNC:
         _sync_ontvangen(mac, pkt);
+        break;
+
+    case NET_MSG_INST_SYNC:
+        _inst_ontvangen(mac, pkt);
         break;
 
     case NET_MSG_CMD_ACK:
@@ -1396,6 +1475,7 @@ void net_loop() {
 
     // Synchrone weergave (zie _sync_loop)
     _sync_loop();
+    _inst_loop();   // gedeelde WEERGAVE & ENERGIE + lettertype
 
     // Uitgaande IO-commando's die nog niet bevestigd zijn opnieuw proberen — dekt
     // het geval dat de master aan het slapen was toen we voor het eerst stuurden.

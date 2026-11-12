@@ -26,6 +26,7 @@
 #define NET_MSG_PEER_INFO   0x33  // slave → master: lokale IO telling
 #define NET_MSG_SCHERM_STATUS 0x25 // slave → master: eigen scherm actief (data[0]=1/0), herhaald zolang actief
 #define NET_MSG_CMD_ACK     0x26  // master → slave: bevestiging van IO_TOGGLE/IO_NAAM (data[0]=req_id)
+#define NET_MSG_INST_SYNC   0x28  // beide kanten: WEERGAVE & ENERGIE + lettertype (InstSet, instellingen_sync.h)
 #define NET_MSG_SCHERM_SYNC 0x27  // beide kanten: actief scherm + subtoestand (synchrone weergave), zie net_scherm_sync_*
 
 // App-gerelateerde berichten

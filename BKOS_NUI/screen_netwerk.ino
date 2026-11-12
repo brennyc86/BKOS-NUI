@@ -1,3 +1,4 @@
+#include "instellingen_sync.h"   // net_inst_sync
 #include "screen_netwerk.h"
 #include "nav_bar.h"
 #include "platform.h"
@@ -141,6 +142,24 @@ static void _snw_modus_tab_teken() {
 #else
         tft.print(sy ? "SCHERM SYNCHROON AAN  (slave toont hetzelfde scherm als de master)"
                      : "SCHERM SYNCHROON UIT  (slave kiest zelf zijn scherm)");
+#endif
+        fy += 34;
+    }
+
+    // Instellingen synchroon: WEERGAVE & ENERGIE + lettertype (zie instellingen_sync.h)
+    {
+        bool sy = net_inst_sync;
+        uint16_t tbg  = sy ? RGB565(0,20,10) : C_SURFACE2;
+        uint16_t tacc = sy ? C_GREEN : C_TEXT_DIM;
+        tft.fillRoundRect(4, fy, TFT_W-8, 30, 5, tbg);
+        tft.drawRoundRect(4, fy, TFT_W-8, 30, 5, tacc);
+        tft.setTextSize(1); tft.setTextColor(tacc);
+        tft.setCursor(16, fy + 11);
+#if SCREEN_SMALL
+        tft.print(sy ? "WEERGAVE SYNCHROON AAN" : "WEERGAVE SYNCHROON UIT");
+#else
+        tft.print(sy ? "WEERGAVE & ENERGIE SYNCHROON AAN  (incl. lettertype; zelfde als de master)"
+                     : "WEERGAVE & ENERGIE SYNCHROON UIT  (eigen instellingen op deze boordcomputer)");
 #endif
         fy += 34;
     }
@@ -697,7 +716,13 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
             net_opslaan();
             scherm_bouwen = true; return;
         }
-        int knop_y = sync_y + 34;
+        int isync_y = sync_y + 34;
+        if (y >= isync_y && y < isync_y + 30) {
+            net_inst_sync = !net_inst_sync;
+            net_opslaan();
+            scherm_bouwen = true; return;
+        }
+        int knop_y = isync_y + 34;
         if (y >= knop_y && y < knop_y + 36) {
             if (snw_opgeslagen_modus != 0xFF) {
 #if SCREEN_SMALL

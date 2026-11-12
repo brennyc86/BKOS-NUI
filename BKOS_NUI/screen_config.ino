@@ -52,9 +52,17 @@ bool cfg_kb_foutlog_token       = false;
 char cfg_kb_label[24]           = "Naam:";
 static unsigned long cfg_kb_sloot = 0;
 static bool cfg_preset_menu     = false;
+static bool cfg_fnt_menu        = false;  // kiesoverzicht lettertype (WEERGAVE & ENERGIE)
+#if BKOS_LETTERTYPEN
+static void fnt_menu_teken();
+static bool fnt_menu_run(int x, int y);
+#endif
 static int  cfg_ins_scroll_y    = 0;
 static int  cfg_deelscherm      = 0;  // 0=hoofd, 1=boot, 2=weergave, 3=verbindingen, 4=toegang, 6=backup&updates (5 = BESTANDEN-scherm)
 static int  cfg_we_scroll_y     = 0;  // scroll-offset WEERGAVE & ENERGIE-tabblad
+// Scrolstap voor de ^/v-knoppen: een derde van het totale scrolbereik (min. 30 px),
+// zodat je met 3 tikken van boven naar onder bent, hoe lang het tabblad ook is.
+static int cfg_scroll_stap(int max_scroll) { return max(30, (max_scroll + 2) / 3); }
 static int  cfg_hoofd_scroll_y  = 0;  // scroll-offset hoofdtabblad (WiFi-rij + categorieknoppen)
 static int  cfg_boot_scroll_y   = 0;  // scroll-offset BOOT-tabblad
 static int  cfg_update_scroll_y = 0;  // scroll-offset VERBINDINGEN-tabblad
@@ -756,10 +764,10 @@ static void pico_cfg_instellingen_run(int x, int y) {
         int max_scroll = max(0, CFG_CONT_Y + 2 + PICO_CFG_INS_H - (int)NAV_Y);
         int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CONTENT_Y, CONTENT_H);
         if (dir == -1 && pico_cfg_scroll_y > 0) {
-            pico_cfg_scroll_y = max(0, pico_cfg_scroll_y - 30);
+            pico_cfg_scroll_y = max(0, pico_cfg_scroll_y - cfg_scroll_stap(max_scroll));
             pico_cfg_instellingen_teken();
         } else if (dir == 1 && pico_cfg_scroll_y < max_scroll) {
-            pico_cfg_scroll_y = min(max_scroll, pico_cfg_scroll_y + 30);
+            pico_cfg_scroll_y = min(max_scroll, pico_cfg_scroll_y + cfg_scroll_stap(max_scroll));
             pico_cfg_instellingen_teken();
         }
         return;
@@ -1929,7 +1937,7 @@ static void cfg_we_teken() {
     _held_slider_teken(y, "NACHT (VAREND)", held_nacht_varend);
 
 #if BKOS_LETTERTYPEN
-    // LETTERTYPE (tekstgrootte 2..4; grootte 1 blijft klassiek). Tik = volgende. PIN vereist (zoals kleuren).
+    // LETTERTYPE. Tik = kiesoverzicht (fnt_menu_teken). PIN vereist (zoals kleuren).
     y += 44;
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
@@ -1941,7 +1949,7 @@ static void cfg_we_teken() {
         tft.setCursor(150 + (240 - (int)strlen(ln) * 12) / 2, y + 4 + (32 - 16) / 2);
         tft.print(ln);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(400, y + (40 - 8) / 2); tft.print("tik om te wisselen; webapp volgt mee");
+        tft.setCursor(400, y + (40 - 8) / 2); tft.print("tik om te kiezen; geldt voor alle schermen");
     }
 #endif
 
@@ -2037,10 +2045,10 @@ static void cfg_hoofd_run(int x, int y) {
     if (CFG_HOOFD_MAX_SCROLL > 0 && x >= TFT_W - UI_SB_W && y >= CFG_HOOFD_TOP) {
         int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_HOOFD_TOP, NAV_Y - CFG_HOOFD_TOP);
         if (dir == -1 && cfg_hoofd_scroll_y > 0) {
-            cfg_hoofd_scroll_y = max(0, cfg_hoofd_scroll_y - 30);
+            cfg_hoofd_scroll_y = max(0, cfg_hoofd_scroll_y - cfg_scroll_stap(CFG_HOOFD_MAX_SCROLL));
             cfg_hoofd_teken();
         } else if (dir == 1 && cfg_hoofd_scroll_y < CFG_HOOFD_MAX_SCROLL) {
-            cfg_hoofd_scroll_y = min(CFG_HOOFD_MAX_SCROLL, cfg_hoofd_scroll_y + 30);
+            cfg_hoofd_scroll_y = min(CFG_HOOFD_MAX_SCROLL, cfg_hoofd_scroll_y + cfg_scroll_stap(CFG_HOOFD_MAX_SCROLL));
             cfg_hoofd_teken();
         }
         return;
@@ -2098,10 +2106,10 @@ static void cfg_boot_run(int x, int y) {
     if (x >= TFT_W - UI_SB_W && y >= CFG_SUB_Y0) {
         int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0);
         if (dir == -1 && cfg_boot_scroll_y > 0) {
-            cfg_boot_scroll_y = max(0, cfg_boot_scroll_y - 30);
+            cfg_boot_scroll_y = max(0, cfg_boot_scroll_y - cfg_scroll_stap(CFG_BOOT_MAX_SCROLL));
             cfg_boot_teken();
         } else if (dir == 1 && cfg_boot_scroll_y < CFG_BOOT_MAX_SCROLL) {
-            cfg_boot_scroll_y = min(CFG_BOOT_MAX_SCROLL, cfg_boot_scroll_y + 30);
+            cfg_boot_scroll_y = min(CFG_BOOT_MAX_SCROLL, cfg_boot_scroll_y + cfg_scroll_stap(CFG_BOOT_MAX_SCROLL));
             cfg_boot_teken();
         }
         return;
@@ -2234,10 +2242,10 @@ static void cfg_we_run(int x, int y) {
     if (x >= TFT_W - UI_SB_W) {
         int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0);
         if (dir == -1 && cfg_we_scroll_y > 0) {
-            cfg_we_scroll_y = max(0, cfg_we_scroll_y - 30);
+            cfg_we_scroll_y = max(0, cfg_we_scroll_y - cfg_scroll_stap(CFG_WE_MAX_SCROLL));
             cfg_we_teken();
         } else if (dir == 1 && cfg_we_scroll_y < CFG_WE_MAX_SCROLL) {
-            cfg_we_scroll_y = min(CFG_WE_MAX_SCROLL, cfg_we_scroll_y + 30);
+            cfg_we_scroll_y = min(CFG_WE_MAX_SCROLL, cfg_we_scroll_y + cfg_scroll_stap(CFG_WE_MAX_SCROLL));
             cfg_we_teken();
         }
         return;
@@ -2411,9 +2419,8 @@ static void cfg_we_run(int x, int y) {
     int fnt_y = hnv_y + 44;
     if (y >= fnt_y && y < fnt_y + 40 && x >= 150 && x < 390) {
         if (!ontg) { pin_vereist_tonen(); return; }
-        lettertype_zet((lettertype_keuze + 1) % lettertype_aantal());
-        state_save();
-        scherm_bouwen = true;   // alles opnieuw in het nieuwe lettertype
+        cfg_fnt_menu = true;
+        fnt_menu_teken();
         return;
     }
 #endif
@@ -2436,10 +2443,10 @@ static void cfg_update_run(int x, int y) {
     if (x >= TFT_W - UI_SB_W && y >= CFG_SUB_Y0) {
         int dir = ui_scrollbar_klik(x, y, TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0);
         if (dir == -1 && cfg_update_scroll_y > 0) {
-            cfg_update_scroll_y = max(0, cfg_update_scroll_y - 30);
+            cfg_update_scroll_y = max(0, cfg_update_scroll_y - cfg_scroll_stap(CFG_UPDATE_MAX_SCROLL));
             cfg_update_teken();
         } else if (dir == 1 && cfg_update_scroll_y < CFG_UPDATE_MAX_SCROLL) {
-            cfg_update_scroll_y = min(CFG_UPDATE_MAX_SCROLL, cfg_update_scroll_y + 30);
+            cfg_update_scroll_y = min(CFG_UPDATE_MAX_SCROLL, cfg_update_scroll_y + cfg_scroll_stap(CFG_UPDATE_MAX_SCROLL));
             cfg_update_teken();
         }
         return;
@@ -3041,6 +3048,64 @@ static void preset_toepassen(int idx) {
     hw_io_namen_opslaan();
 }
 
+// ─── Kiesoverzicht lettertype ───────────────────────────────────────────
+// Raster van 2 kolommen; elke tegel toont de naam + een proefregel in dat lettertype zelf
+// (lettertype_forceer). Onderaan ANNULEREN. Tik op een tegel = kiezen + alles opnieuw tekenen.
+#if BKOS_LETTERTYPEN
+#define FM_KOL   2
+#define FM_GAP   10
+#define FM_TOP   (CONTENT_Y + 34)
+#define FM_ANN_H 44
+static void _fm_tegel(int i, int& x, int& y, int& w, int& h) {
+    int n = lettertype_aantal(), rijen = (n + FM_KOL - 1) / FM_KOL;
+    int beschikbaar = NAV_Y - FM_TOP - FM_ANN_H - 2 * FM_GAP;
+    w = (TFT_W - FM_GAP * (FM_KOL + 1)) / FM_KOL;
+    h = min(110, (beschikbaar - FM_GAP * (rijen - 1)) / rijen);
+    x = FM_GAP + (i % FM_KOL) * (w + FM_GAP);
+    y = FM_TOP + (i / FM_KOL) * (h + FM_GAP);
+}
+static int _fm_ann_y() { return NAV_Y - FM_GAP - FM_ANN_H; }
+
+static void fnt_menu_teken() {
+    tft.fillRect(0, CONTENT_Y, TFT_W, NAV_Y - CONTENT_Y, C_BG);
+    tft.setTextSize(2); tft.setTextColor(C_CYAN);
+    tft.setCursor(FM_GAP + 4, CONTENT_Y + 10); tft.print("KIES LETTERTYPE");
+    int n = lettertype_aantal();
+    for (int i = 0; i < n; i++) {
+        int x, y, w, h; _fm_tegel(i, x, y, w, h);
+        bool sel = (i == lettertype_keuze);
+        tft.fillRoundRect(x, y, w, h, 8, sel ? C_SURFACE3 : C_SURFACE2);
+        tft.drawRoundRect(x, y, w, h, 8, sel ? C_CYAN : C_SURFACE3);
+        lettertype_forceer = i;   // naam + proef in het lettertype zelf
+        const char* nm = lettertype_naam(i);
+        tft.setTextSize(3); tft.setTextColor(sel ? C_CYAN : C_TEXT);
+        tft.setCursor(x + (w - (int)strlen(nm) * 18) / 2, y + h / 2 - 30); tft.print(nm);
+        tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
+        const char* proef = "HAVEN 12:45 Wind 4 Bft";
+        tft.setCursor(x + (w - (int)strlen(proef) * 12) / 2, y + h / 2 + 6); tft.print(proef);
+        lettertype_forceer = -1;
+    }
+    ui_knop(FM_GAP, _fm_ann_y(), TFT_W - 2 * FM_GAP, FM_ANN_H, "ANNULEREN", C_SURFACE2, C_TEXT_DIM);
+}
+
+// true = overzicht gesloten (aanroeper tekent alles opnieuw)
+static bool fnt_menu_run(int x, int y) {
+    int n = lettertype_aantal();
+    for (int i = 0; i < n; i++) {
+        int tx, ty, tw, th; _fm_tegel(i, tx, ty, tw, th);
+        if (x >= tx && x < tx + tw && y >= ty && y < ty + th) {
+            lettertype_zet(i);
+            state_save();
+            cfg_fnt_menu = false;
+            return true;
+        }
+    }
+    int ay = _fm_ann_y();
+    if (y >= ay && y < ay + FM_ANN_H) { cfg_fnt_menu = false; return true; }
+    return false;
+}
+#endif
+
 #define PM_X     60
 #define PM_W     (TFT_W - 120)
 #define PM_BTN_H 62
@@ -3130,6 +3195,9 @@ void screen_config_teken() {
     pico_cfg_instellingen_teken();
 #else
     cfg_instellingen_teken();
+#if BKOS_LETTERTYPEN
+    if (cfg_fnt_menu) fnt_menu_teken();
+#endif
 #endif
     nav_bar_teken();
 }
@@ -3171,6 +3239,15 @@ void screen_config_run(int x, int y, bool aanraking) {
         return;
     }
 
+#if BKOS_LETTERTYPEN
+    if (cfg_fnt_menu) {
+        if (fnt_menu_run(x, y)) {
+            cfg_kb_sloot = millis();
+            scherm_bouwen = true;   // alles opnieuw in het (nieuwe) lettertype
+        }
+        return;
+    }
+#endif
     if (cfg_preset_menu) {
         if (preset_menu_run(x, y)) {
             cfg_kb_sloot = millis();
@@ -3191,6 +3268,7 @@ void screen_config_run(int x, int y, bool aanraking) {
     if (nav >= 0 && nav != actief_scherm) {
         config_ontgrendeld    = false;  // vergrendel bij verlaten CONFIG scherm
         cfg_toetsenbord_actief = false;
+        cfg_fnt_menu          = false;
         pin_overlay_actief    = false;
         pin_stap              = 0;
         cfg_ins_scroll_y      = 0;

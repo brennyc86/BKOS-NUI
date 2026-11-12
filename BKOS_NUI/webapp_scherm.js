@@ -219,9 +219,19 @@ var BKS = (function () {
       }
     }
   }
-  // Kiesbaar lettertype (lettertype.h op het toestel): tekstgrootte 2..4 met 4-bit dekking, gecentreerd in het
+  // Kiesbaar lettertype (lettertype.h op het toestel): tekstgrootte 1..4 met 4-bit dekking, gecentreerd in het
   // vak van het klassieke lettertype (6*s per teken) — zelfde regels als BkosTekst::_tekst(), pixel voor pixel.
-  var ALTF = null, altNr = 0, altCache = {};
+  // Welk lettertype per tekstgrootte: zelfde regels als lettertype_voor() (lettertype.ino). Grootte 1 op de
+  // instellingenschermen = systeemlettertype LEXEND EXA (BK_LETTERTYPE_SYSTEEM), verder het gekozen lettertype.
+  var altNr = 0, altCache = {}, altGevraagd = {}, ALT_SYSTEEM = 1;
+  var ALT_INST = {3: 1, 4: 1, 6: 1, 7: 1, 12: 1, 13: 1, 14: 1, 15: 1, 17: 1, 18: 1, 19: 1, 21: 1, 22: 1, 24: 1};
+  function altLaad(nr) { if (nr && !altCache[nr] && !altGevraagd[nr] && opties.lettertype) { altGevraagd[nr] = 1; opties.lettertype(nr); } }
+  function altVoor(size) {
+    var nr = (size === 1 && ALT_INST[S.scherm]) ? ALT_SYSTEEM : altNr;
+    if (!nr || size < 1 || size > 4) return null;
+    if (!altCache[nr]) { altLaad(nr); return null; }
+    return altCache[nr][size] || null;
+  }
   function altPx(x, y, c, a) {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     if (a >= 15) { px(x, y, c); return; }
@@ -235,7 +245,7 @@ var BKS = (function () {
   }
   function altGlyph(A, ch) { var i = (ch >= 32 && ch <= 126) ? ch - 32 : (ch === 247 ? 95 : -1); return i < 0 ? null : A[i]; }
   function print(s) {
-    var A = ALTF && T.size >= 2 && T.size <= 4 ? ALTF[T.size] : null;
+    var A = altVoor(T.size);
     if (A && s.indexOf('\n') < 0 && s.length) {
       var tot = 0, i, ch, gl;
       for (i = 0; i < s.length; i++) { gl = altGlyph(A, s.charCodeAt(i) & 0xFF); tot += gl ? gl[0] : 6 * T.size; }
@@ -1812,10 +1822,7 @@ var BKS = (function () {
     if (m.t === 'ui') {
       S.ui = m; if (m.pal) zetPalet(m.pal);
       var nf = m.fnt | 0;
-      if (nf !== altNr) {
-        altNr = nf; ALTF = nf ? (altCache[nf] || null) : null;
-        if (nf && !altCache[nf] && opties.lettertype) opties.lettertype(nf);   // letterdata ophalen (/bkos_font.js?f=N)
-      }
+      if (nf !== altNr) { altNr = nf; altLaad(nf); }   // letterdata ophalen (/bkos_font.js?f=N)
     }   // foto: pas bij het HAVEN-scherm (schermHaven)
     else if (m.t === 'lampen') S.lampen = m;
     else if (m.t === 'huispaneel') S.huis = m.items || [];
@@ -1855,6 +1862,6 @@ var BKS = (function () {
     return -1;
   }
   function zetVicTab(t) { if (t == null || t === vicTab || t < 0 || t > 1) return false; vicTab = t; return true; }
-  function zetLettertype(nr, data) { altCache[nr] = data; if (nr === altNr) { ALTF = data; if (opties.opnieuw) opties.opnieuw(); } }
+  function zetLettertype(nr, data) { altCache[nr] = data; if ((nr === altNr || nr === ALT_SYSTEEM) && opties.opnieuw) opties.opnieuw(); }
   return { zetLettertype: zetLettertype, zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
 })();

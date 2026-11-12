@@ -1412,7 +1412,7 @@ static void cfg_hoofd_teken() {
     tft.fillRoundRect(8, fr_y + 2, TFT_W - 16, 34, 6, C_SURFACE2);
     tft.drawRoundRect(8, fr_y + 2, TFT_W - 16, 34, 6, C_SURFACE3);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); tft.print("WIFI NETWERKEN");
+    tft.setCursor(18, fr_y + 2 + (34 - 16) / 2); TFT_BASIS(tft.print("WIFI NETWERKEN"));
     tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
     tft.setCursor(TFT_W - 16 - 24, fr_y + 2 + (34 - 16) / 2); tft.print(">");
 
@@ -1427,7 +1427,7 @@ static void cfg_hoofd_teken() {
         tft.setTextSize(strlen(CFG_TEGEL_TITEL[i]) <= (size_t)tmax ? 2 : 1); tft.setTextColor(tk);
         tft.setCursor(tx + 16, ty + th / 2 - 14); tft.print(CFG_TEGEL_TITEL[i]);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(tx + 16, ty + th / 2 + 8); tft.print(CFG_TEGEL_SUB[i]);
+        tft.setCursor(tx + 16, ty + th / 2 + 8); TFT_BASIS(tft.print(CFG_TEGEL_SUB[i]));
         tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
         tft.setCursor(tx + tw - 24, ty + th / 2 - 8); tft.print(">");
     }
@@ -1486,7 +1486,7 @@ static void cfg_boot_teken() {
     // Stap 1 — Categorie
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, y + (40 - 8) / 2); tft.print("CATEGORIE");
+    tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("CATEGORIE"));
     {
         int bw = 110, bx_off = 116;
         for (int i = 0; i < BCAT_N; i++) {
@@ -1507,7 +1507,7 @@ static void cfg_boot_teken() {
     // Stap 2 — Model (van de gekozen categorie), met silhouet-preview
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, y + (40 - 8) / 2); tft.print("MODEL");
+    tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("MODEL"));
     {
         const BootCategorie& cat = boot_categorien[boot_cat < BCAT_N ? boot_cat : 0];
         int n = cat.model_cnt;
@@ -1531,7 +1531,7 @@ static void cfg_boot_teken() {
     // Zeilnummer
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, y + (40 - 8) / 2); tft.print("ZEILNR");
+    tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("ZEILNR"));
     tft.fillRoundRect(90, y + 4, 320, 32, 5, ontg ? C_SURFACE2 : C_SURFACE);
     tft.drawRoundRect(90, y + 4, 320, 32, 5, C_SURFACE3);
     tft.setTextSize(2);
@@ -1543,7 +1543,7 @@ static void cfg_boot_teken() {
     // Naam module
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(ontg ? C_TEXT_DIM : C_DARK_GRAY);
-    tft.setCursor(18, y + (40 - 8) / 2); tft.print("NAAM MODULE");
+    tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("NAAM MODULE"));
     tft.fillRoundRect(130, y + 4, 300, 32, 5, ontg ? C_SURFACE2 : C_SURFACE);
     tft.drawRoundRect(130, y + 4, 300, 32, 5, C_SURFACE3);
     tft.setTextSize(2);
@@ -1640,7 +1640,7 @@ static void cfg_boot_teken() {
 static void _held_slider_teken(int y, const char* label, int waarde) {
     tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
     tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-    tft.setCursor(18, y + (40 - 8) / 2); tft.print(label);
+    tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print(label));
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
     char pb[8]; snprintf(pb, sizeof(pb), "%d%%", waarde);
     tft.setCursor(150, y + (40 - 16) / 2); tft.print(pb);
@@ -1713,7 +1713,7 @@ static void cfg_we_teken() {
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("OPSTART VAARMODUS");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("OPSTART VAARMODUS"));
         const char* mlbl[]  = {"HAVEN", "ZEILEN", "MOTOR", "ANKER"};
         uint16_t    mkl[]   = {C_HAVEN, C_ZEILEN, C_MOTOR, C_ANKER};
         for (int i = 0; i < 4; i++) {
@@ -1762,7 +1762,7 @@ static void cfg_we_teken() {
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("OPSTART VERLICHTING");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("OPSTART VERLICHTING"));
         const char* llbl[] = {"UIT", "AAN", "AUTO"};
         for (int i = 0; i < 3; i++) {
             bool sel = (boot_licht_instelling == i);
@@ -1782,7 +1782,7 @@ static void cfg_we_teken() {
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SLAAP");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("SLAAP"));
         const char* modi[]    = {"GEEN", "LIGHT"};
         const char* uitleg[]  = {"", " CPU pauze  (~2mA)  touch + slave-scherm wekt"};
         uint16_t   mkleuren[] = {C_TEXT_DIM, C_CYAN};
@@ -1809,7 +1809,7 @@ static void cfg_we_teken() {
         bool dis = (slaap_modus == SLAAP_GEEN);
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SLAAP NA");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("SLAAP NA"));
         const uint32_t stps[] = {0, 30, 60, 120, 300, 600};
         const char* slbls[]   = {"NOOIT", "30s", "1 min", "2 min", "5 min", "10 min"};
         for (int i = 0; i < 6; i++) {
@@ -1831,7 +1831,7 @@ static void cfg_we_teken() {
         bool dis = (slaap_modus == SLAAP_GEEN);
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(dis ? C_DARK_GRAY : C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("IO+NET");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("IO+NET"));
         const uint32_t ivals[] = {10, 30, 60, 300};
         const char* ilbls[]    = {"10s", "30s", "1 min", "5 min"};
         for (int i = 0; i < 4; i++) {
@@ -1862,7 +1862,7 @@ static void cfg_we_teken() {
         uint8_t pclk = scherm_pclk_get();
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SCHERM PCLK");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("SCHERM PCLK"));
         tft.setTextSize(2); tft.setTextColor(C_CYAN);
         char pb[12]; snprintf(pb, sizeof(pb), "%d MHz", pclk);
         tft.setCursor(150, y + (40 - 16) / 2); tft.print(pb);
@@ -1875,7 +1875,7 @@ static void cfg_we_teken() {
         tft.setTextSize(1); tft.setTextColor(C_BG);
         tft.setCursor(394 + (150 - 8 * 6) / 2, y + 4 + (32 - 8) / 2); tft.print("HERSTART");
         tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(556, y + (40 - 8) / 2); tft.print("lager = minder flikker");
+        tft.setCursor(556, y + (40 - 8) / 2); TFT_BASIS(tft.print("lager = minder flikker"));
     }
     y += 44;
 
@@ -1888,14 +1888,14 @@ static void cfg_we_teken() {
         bool aan = scherm_dubbele_buffer_get();
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("DUBBELE BUFFERING");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("DUBBELE BUFFERING"));
         tft.fillRoundRect(280, y + 4, 110, 32, 5, aan ? C_GREEN : C_SURFACE3);
         tft.setTextSize(2); tft.setTextColor(aan ? C_BG : C_TEXT);
         const char* dblbl = aan ? "AAN" : "UIT";
         tft.setCursor(280 + (110 - (int)strlen(dblbl) * 12) / 2, y + 4 + (32 - 16) / 2);
         tft.print(dblbl);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(400, y + (40 - 8) / 2); tft.print("experimenteel tegen trillen, na HERSTART");
+        tft.setCursor(400, y + (40 - 8) / 2); TFT_BASIS(tft.print("experimenteel tegen trillen, na HERSTART"));
     }
     y += 44;
 #endif
@@ -1904,7 +1904,7 @@ static void cfg_we_teken() {
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("SCHERM 180\xF8 DRAAIEN");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("SCHERM 180\xF8 DRAAIEN"));
         bool aan = tft_gedraaid;
         tft.fillRoundRect(280, y + 4, 110, 32, 5, aan ? C_GREEN : C_SURFACE3);
         tft.setTextSize(2); tft.setTextColor(aan ? C_BG : C_TEXT);
@@ -1912,7 +1912,7 @@ static void cfg_we_teken() {
         tft.setCursor(280 + (110 - (int)strlen(lbl) * 12) / 2, y + 4 + (32 - 16) / 2);
         tft.print(lbl);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(400, y + (40 - 8) / 2); tft.print("ondersteboven gemonteerd scherm");
+        tft.setCursor(400, y + (40 - 8) / 2); TFT_BASIS(tft.print("ondersteboven gemonteerd scherm"));
     }
     y += 44;
 
@@ -1920,7 +1920,7 @@ static void cfg_we_teken() {
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("HELDERHEID AUTO");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("HELDERHEID AUTO"));
         bool aan = helderheid_auto;
         tft.fillRoundRect(280, y + 4, 110, 32, 5, aan ? C_GREEN : C_SURFACE3);
         tft.setTextSize(2); tft.setTextColor(aan ? C_BG : C_TEXT);
@@ -1928,7 +1928,7 @@ static void cfg_we_teken() {
         tft.setCursor(280 + (110 - (int)strlen(halbl) * 12) / 2, y + 4 + (32 - 16) / 2);
         tft.print(halbl);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(400, y + (40 - 8) / 2); tft.print("volgt dag/nacht + varen, glijdt geleidelijk mee");
+        tft.setCursor(400, y + (40 - 8) / 2); TFT_BASIS(tft.print("volgt dag/nacht + varen, glijdt geleidelijk mee"));
     }
     y += 44;
 
@@ -1942,14 +1942,14 @@ static void cfg_we_teken() {
     {
         tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(18, y + (40 - 8) / 2); tft.print("LETTERTYPE");
+        tft.setCursor(18, y + (40 - 8) / 2); TFT_BASIS(tft.print("LETTERTYPE"));
         tft.fillRoundRect(150, y + 4, 240, 32, 5, ontg ? C_SURFACE3 : C_SURFACE2);
         tft.setTextSize(2); tft.setTextColor(ontg ? C_CYAN : C_TEXT_DIM);
         const char* ln = lettertype_naam(lettertype_keuze);
         tft.setCursor(150 + (240 - (int)strlen(ln) * 12) / 2, y + 4 + (32 - 16) / 2);
         tft.print(ln);
         tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
-        tft.setCursor(400, y + (40 - 8) / 2); tft.print("tik om te kiezen; geldt voor alle schermen");
+        tft.setCursor(400, y + (40 - 8) / 2); TFT_BASIS(tft.print("tik om te kiezen; geldt voor alle schermen"));
     }
 #endif
 

@@ -1,11 +1,11 @@
 // lettertype.ino — keuze van het lettertype (zie lettertype.h)
 #include "lettertype.h"
-#include "app_state.h"   // actief_scherm, SCREEN_*
 
 uint8_t lettertype_keuze   = 0;
 bool    lettertype_actief  = false;
 int     lettertype_forceer = -1;
 bool    lettertype_opstart = false;
+uint8_t lettertype_basis   = 0;
 
 int lettertype_aantal() {
 #if BKOS_LETTERTYPEN
@@ -24,15 +24,6 @@ void lettertype_zet(int i) {
     lettertype_keuze = (i >= 0 && i < lettertype_aantal()) ? i : 0;
 }
 
-bool lettertype_instellingen_scherm() {
-    switch (actief_scherm) {
-        case SCREEN_CONFIG: case SCREEN_WIFI: case SCREEN_OTA: case SCREEN_IO_CFG: case SCREEN_NETWERK:
-        case SCREEN_BRUG: case SCREEN_MELDING: case SCREEN_PANEEL: case SCREEN_TIJD: case SCREEN_LAMPEN:
-        case SCREEN_KLEUR: case SCREEN_BESTANDEN: case SCREEN_GAST: case SCREEN_HUISPANEEL:
-            return true;
-        default: return false;
-    }
-}
 // Zelfde regels als print() in webapp_scherm.js
 int lettertype_voor(uint8_t grootte) {
 #if BKOS_LETTERTYPEN
@@ -42,7 +33,7 @@ int lettertype_voor(uint8_t grootte) {
 #endif
     if (lettertype_forceer >= 0) return lettertype_forceer;
 #if BKOS_LETTERTYPEN
-    if (grootte == 1 && lettertype_instellingen_scherm()) return BK_LETTERTYPE_SYSTEEM;
+    if (lettertype_basis) return BK_LETTERTYPE_SYSTEEM;
 #endif
     return lettertype_keuze;
 }

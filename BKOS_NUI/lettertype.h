@@ -6,7 +6,7 @@
 // canvas) en tekent tekst van grootte 2/3/4 met het gekozen lettertype (lettertypen_data.h, 4-bit
 // dekking, gladde randen door te mengen met wat al in de framebuffer staat). Het klassieke lettertype
 // (keuze 0) gaat ongewijzigd naar Arduino_GFX. In de instellingen staan veldnamen (grootte 1) altijd in
-// het systeemlettertype (LEXEND EXA) en waarden (grootte 2+) in het gekozen lettertype. Opstartlogo en
+// het basislettertype (LEXEND EXA, via TFT_BASIS) en al het andere in het gekozen lettertype. Opstartlogo en
 // herstelmenu: alleen LEXEND EXA (vaste flash-data, er wordt niets geladen). Als ultieme terugval
 // staan ze in het klassieke lettertype zodra de boordcomputer 2x achter elkaar niet volledig opstartte.
 //
@@ -28,8 +28,13 @@ void        lettertype_opstart_geslaagd();   // na een volledige opstart (±30 s
 int         lettertype_aantal();     // inclusief klassiek
 const char* lettertype_naam(int i);
 void        lettertype_zet(int i);   // + opslaan via state_save() door de aanroeper
-bool        lettertype_instellingen_scherm();   // actief scherm hoort bij de instellingen (veldnamen in systeemletter)
+extern uint8_t lettertype_basis;     // > 0: tekst in het basislettertype (TFT_BASIS), anders het gekozen lettertype
 int         lettertype_voor(uint8_t grootte);   // welk lettertype (0 = klassiek) voor deze tekstgrootte, nu
+// Twee lettertypen: het BASISlettertype (LEXEND EXA, vast in de firmware; leesbaarheid boven uiterlijk) voor het
+// opstartscherm/herstelmenu en de veldnamen + toelichtingen in de instellingen, en het GEKOZEN lettertype voor
+// al het andere (ook de navigatiebalk en alles wat je in de instellingen kunt veranderen). Veldnamen worden
+// expliciet gemarkeerd:  TFT_BASIS(tft.print("OPSTART VAARMODUS"));
+#define TFT_BASIS(opdracht) do { lettertype_basis++; opdracht; lettertype_basis--; } while (0)
 
 #if BKOS_LETTERTYPEN
 #include <Arduino_GFX_Library.h>

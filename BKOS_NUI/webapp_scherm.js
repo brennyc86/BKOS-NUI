@@ -221,13 +221,15 @@ var BKS = (function () {
   }
   // Kiesbaar lettertype (lettertype.h op het toestel): tekstgrootte 1..4 met 4-bit dekking, gecentreerd in het
   // vak van het klassieke lettertype (6*s per teken) — zelfde regels als BkosTekst::_tekst(), pixel voor pixel.
-  // Welk lettertype per tekstgrootte: zelfde regels als lettertype_voor() (lettertype.ino). Grootte 1 op de
-  // instellingenschermen = systeemlettertype LEXEND EXA (BK_LETTERTYPE_SYSTEEM), verder het gekozen lettertype.
-  var altNr = 0, altCache = {}, altGevraagd = {}, ALT_SYSTEEM = 1;
-  var ALT_INST = {3: 1, 4: 1, 6: 1, 7: 1, 12: 1, 13: 1, 14: 1, 15: 1, 17: 1, 18: 1, 19: 1, 21: 1, 22: 1, 24: 1};
+  // Welk lettertype: zelfde regels als lettertype_voor() (lettertype.ino). Twee lettertypen: het BASISlettertype
+  // (LEXEND EXA, vast) voor veldnamen/toelichtingen in de instellingen (tekstBasis(), = TFT_BASIS op het toestel)
+  // en het GEKOZEN lettertype voor al het andere, ook de navigatiebalk.
+  var altNr = 0, altCache = {}, altGevraagd = {}, ALT_SYSTEEM = 1, altBasis = 0;
   function altLaad(nr) { if (nr && !altCache[nr] && !altGevraagd[nr] && opties.lettertype) { altGevraagd[nr] = 1; opties.lettertype(nr); } }
+  // Laden mislukt of onvolledig aangekomen (hotspot): na een pauze opnieuw (anders bleef het klassiek)
+  function fontOpnieuw(nr) { if (!altCache[nr]) { altGevraagd[nr] = 0; altLaad(nr); } }
   function altVoor(size) {
-    var nr = (size === 1 && ALT_INST[S.scherm]) ? ALT_SYSTEEM : altNr;
+    var nr = altBasis ? ALT_SYSTEEM : altNr;
     if (!nr || size < 1 || size > 4) return null;
     if (!altCache[nr]) { altLaad(nr); return null; }
     return altCache[nr][size] || null;
@@ -270,6 +272,7 @@ var BKS = (function () {
     }
   }
   function tekst(s, x, y, size, color) { setTextSize(size); setTextColor(color); setCursor(x, y); print(s); }
+  function tekstBasis(s, x, y, size, color) { altBasis++; tekst(s, x, y, size, color); altBasis--; }
   var DEG = '\xF7';
 
   // ── Toestand (komt van het apparaat) ───────────────────────────────────────
@@ -1672,14 +1675,14 @@ var BKS = (function () {
       zone(HV_BACK_X, 0, HV_BACK_W + HV_BACK_GAP, SB_H, function () { return { cfgSectie: '' }; });
       navBar(SC.CONFIG); return;
     }
-    tekst('Kies een onderdeel', 12, CONTENT_Y + 10, 1, C_TEXT_DIM);
+    tekstBasis('Kies een onderdeel', 12, CONTENT_Y + 10, 1, C_TEXT_DIM);
     var kol = 2, gap = 10, top = CONTENT_Y + 28, bot = NAV_Y - 10, rijen = Math.ceil(CFG_CATS.length / kol);
     var kw = Math.trunc((W - gap * (kol + 1)) / kol), kh = Math.trunc((bot - top - gap * (rijen - 1)) / rijen);
     CFG_CATS.forEach(function (c, i) {
       var x = gap + (i % kol) * (kw + gap), y = top + Math.trunc(i / kol) * (kh + gap);
       fillRoundRect(x, y, kw, kh, KNOP_R, C_SURFACE2); drawRoundRect(x, y, kw, kh, KNOP_R, C_SURFACE3);
       tekst(c.t, x + 16, y + (kh >> 1) - 14, 2, C_CYAN);
-      tekst(c.s, x + 16, y + (kh >> 1) + 8, 1, C_TEXT_DIM);
+      tekstBasis(c.s, x + 16, y + (kh >> 1) + 8, 1, C_TEXT_DIM);
       tekst('>', x + kw - 24, y + (kh >> 1) - 8, 2, C_TEXT_DIM);
       zone(x, y, kw, kh, function () { return { cfgSectie: c.id }; });
     });
@@ -1863,5 +1866,6 @@ var BKS = (function () {
   }
   function zetVicTab(t) { if (t == null || t === vicTab || t < 0 || t > 1) return false; vicTab = t; return true; }
   function zetLettertype(nr, data) { altCache[nr] = data; if ((nr === altNr || nr === ALT_SYSTEEM) && opties.opnieuw) opties.opnieuw(); }
-  return { zetLettertype: zetLettertype, zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
+  function heeftLettertype(nr) { return !!altCache[nr]; }
+  return { zetLettertype: zetLettertype, fontOpnieuw: fontOpnieuw, heeftLettertype: heeftLettertype, zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
 })();

@@ -25,7 +25,7 @@ const char WEBAPP_HTML[] PROGMEM = R"HTMLPAGE(<!DOCTYPE html>
 html,body{height:100%;}
 body{
   background:var(--bg);color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  font-family:var(--fnt-gekozen,-apple-system),-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;
   padding-bottom:env(safe-area-inset-bottom);
 }
@@ -77,6 +77,10 @@ section h2{
 .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
 @media (max-width:400px){ .grid4{grid-template-columns:repeat(2,1fr);} }
 
+button,input,select,textarea{font-family:inherit;}
+/* Basislettertype (LEXEND EXA) voor veldnamen, kopjes en toelichtingen in de instellingen; wat je kunt
+   veranderen (knoppen, invoer) blijft het gekozen lettertype — zelfde regels als TFT_BASIS op het toestel */
+#tabInstellingen h2,#tabInstellingen label,#tabInstellingen p{font-family:var(--fnt-basis,inherit),-apple-system,system-ui,sans-serif;}
 button.mbtn{
   background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
   border-radius:10px;padding:14px 6px;font-size:.82rem;font-weight:600;letter-spacing:.5px;
@@ -776,6 +780,31 @@ function setTab(naam){
   });
 }
 
+// ─── Lettertype van de HTML-delen = lettertype van de boordcomputer ──────────────────────────
+// Het toestel heeft alleen bitmapletters (geen TTF: past niet in flash); de HTML-delen halen hetzelfde
+// lettertype bij Google Fonts zodra er internet is (anders blijft het systeemlettertype).
+// Volgorde = LETTERTYPEN in tools/genereer_lettertypen.py (index 1..18; 0 = klassiek).
+var CSS_LETTERTYPEN = [null, ['Lexend Exa',550], ['Russo One',400], ['Texturina',600], ['Atkinson Hyperlegible',400],
+  ['Lexend',600], ['Quicksand',700], ['Comfortaa',700], ['Michroma',400], ['Orbitron',600], ['Zilla Slab',400],
+  ['Dancing Script',700], ['Pacifico',400], ['Great Vibes',400], ['Allura',400], ['Grenze Gotisch',650],
+  ['UnifrakturMaguntia',400], ['Germania One',400], ['Oswald',500]];
+var _cssFnt = -1, _cssGeladen = {};
+function _cssLaad(i){
+  var f = CSS_LETTERTYPEN[i]; if (!f || _cssGeladen[i]) return;
+  _cssGeladen[i] = 1;
+  var l = document.createElement('link'); l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css2?family=' + f[0].replace(/ /g, '+') + ':wght@' + f[1] + '&display=swap';
+  document.head.appendChild(l);
+}
+function zetCssLettertype(i){
+  i = i | 0; if (i === _cssFnt) return; _cssFnt = i;
+  _cssLaad(1); _cssLaad(i);
+  var r = document.documentElement.style;
+  r.setProperty('--fnt-basis', "'Lexend Exa'");
+  if (CSS_LETTERTYPEN[i]) r.setProperty('--fnt-gekozen', "'" + CSS_LETTERTYPEN[i][0] + "'");
+  else r.setProperty('--fnt-gekozen', "monospace");   // KLASSIEK
+}
+
 var subTab = 'boot';
 function setSubTab(naam){
   subTab = naam;
@@ -798,6 +827,7 @@ function lockClick(){
 function handleMsg(msg){
   if (typeof BKS !== 'undefined') {
     BKS.zet(msg);
+    if (msg.t === 'ui' && msg.fnt != null) zetCssLettertype(msg.fnt);
     if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'meteo_dag' || msg.t === 'meteo_getij' || msg.t === 'meteo_stroom' || msg.t === 'victron' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
   }
   switch(msg.t){
@@ -2539,7 +2569,11 @@ var _bkLaadPog = 0;
 function bkosInit(){
   BKS.init(document.getElementById('bkosCv'), {actie: bkosActie, opnieuw: bkosTeken, lettertype: function(nr){
     // letterdata van het gekozen lettertype (gzip, ±15 KB); het script roept zelf BKS.zetLettertype() aan
-    var sc = document.createElement('script'); sc.src = '/bkos_font.js?f=' + nr; document.body.appendChild(sc);
+    // mislukt of half aangekomen (dan wel geladen maar zonder zetLettertype-aanroep): na 4 s opnieuw
+    var sc = document.createElement('script'); sc.src = '/bkos_font.js?f=' + nr + '&t=' + Date.now();
+    var weer = function(){ sc.remove(); setTimeout(function(){ BKS.fontOpnieuw(nr); }, 4000); };
+    sc.onerror = weer; sc.onload = function(){ if (!BKS.heeftLettertype(nr)) weer(); };
+    document.body.appendChild(sc);
   }});
   document.getElementById('weergBtn').classList.remove('laden');
 }

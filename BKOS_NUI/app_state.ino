@@ -1,3 +1,4 @@
+#include "lettertype.h"   // lettertype_keuze (fnt=)
 #include "app_state.h"
 #include "hw_io.h"
 #include "io.h"
@@ -54,6 +55,7 @@ void state_save() {
     f.printf("intmodus=%d\n",(int)interieur_modus);
     f.printf("helderh=%d\n", tft_helderheid);
     f.printf("draai=%d\n",   tft_gedraaid ? 1 : 0);
+    f.printf("fnt=%d\n",     (int)lettertype_keuze);
     f.printf("timer=%ld\n",  scherm_timer);
     f.printf("schema=%d\n",  (int)kleurenschema);
     f.printf("cpbg=%u\n",  custom_palette.bg);
@@ -106,6 +108,7 @@ void state_load() {
     interieur_modus       = INTERIEUR_AUTO;
     tft_helderheid        = 75;
     tft_gedraaid          = false;
+    lettertype_keuze      = 0;
     scherm_timer          = 30;
     kleurenschema         = 0;
     custom_palette_reset_default();  // overschreven hieronder als er een opgeslagen eigen kleurpatroon is
@@ -153,6 +156,7 @@ void state_load() {
         if (key == "intmodus") interieur_modus  = (byte)constrain(val.toInt(), 0, 3);
         if (key == "helderh") tft_helderheid    = (int)val.toInt();
         if (key == "draai")   tft_gedraaid      = (val.toInt() != 0);
+        if (key == "fnt")     lettertype_zet(val.toInt());
         if (key == "timer")   scherm_timer      = val.toInt();
         if (key == "schema")  kleurenschema     = (byte)val.toInt();
         if (key == "cpbg") custom_palette.bg        = (uint16_t)val.toInt();

@@ -1,3 +1,4 @@
+#include "lettertype.h"   // LETTERTYPE-rij in WEERGAVE & ENERGIE
 #include "screen_config.h"
 #include "boot_modellen.h"
 #include "nav_bar.h"
@@ -1619,7 +1620,8 @@ static void cfg_boot_teken() {
   // palette(62) kleurpatroon(44) open-wifi(34) foutrap/lichtmodus(42) opstart-vaarmodus(44)
   // opstart-naar-haven(34) opstart-verlichting(44) slaap(44) slaap-na(44) io+net(44) scherm-pclk(44)
   // dubbele-buffering(44,S3) scherm-180(44) helderheid-auto(44) overdag(44) nacht-anker(44) nacht-varend(44)
-  #define CFG_WE_INHOUD_H (62+44+34+42+44+34+44+44+44+44+44+44+44+44+44+44+44)
+  // lettertype(44,S3)
+  #define CFG_WE_INHOUD_H (62+44+34+42+44+34+44+44+44+44+44+44+44+44+44+44+44+44)
 #else
   #define CFG_WE_INHOUD_H (62+44+34+42+44+34+44+44+44+44+44+44+44+44+44)
 #endif
@@ -1925,6 +1927,23 @@ static void cfg_we_teken() {
     _held_slider_teken(y, "OVERDAG",        held_dag);          y += 44;
     _held_slider_teken(y, "NACHT (ANKER)",  held_nacht_anker);   y += 44;
     _held_slider_teken(y, "NACHT (VAREND)", held_nacht_varend);
+
+#if BKOS_LETTERTYPEN
+    // LETTERTYPE (tekstgrootte 2..4; grootte 1 blijft klassiek). Tik = volgende. PIN vereist (zoals kleuren).
+    y += 44;
+    {
+        tft.fillRoundRect(8, y, TFT_W - 16, 40, 6, C_SURFACE);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(18, y + (40 - 8) / 2); tft.print("LETTERTYPE");
+        tft.fillRoundRect(150, y + 4, 240, 32, 5, ontg ? C_SURFACE3 : C_SURFACE2);
+        tft.setTextSize(2); tft.setTextColor(ontg ? C_CYAN : C_TEXT_DIM);
+        const char* ln = lettertype_naam(lettertype_keuze);
+        tft.setCursor(150 + (240 - (int)strlen(ln) * 12) / 2, y + 4 + (32 - 16) / 2);
+        tft.print(ln);
+        tft.setTextSize(1); tft.setTextColor(C_TEXT_DIM);
+        tft.setCursor(400, y + (40 - 8) / 2); tft.print("tik om te wisselen; webapp volgt mee");
+    }
+#endif
 
     ui_scrollbar(TFT_W - UI_SB_W, CFG_SUB_Y0, NAV_Y - CFG_SUB_Y0, cfg_we_scroll_y, CFG_WE_MAX_SCROLL);
 
@@ -2388,6 +2407,16 @@ static void cfg_we_run(int x, int y) {
         else if (x >= 334 && x < 382) { held_nacht_varend = min(100, held_nacht_varend + 5); state_save(); cfg_we_teken(); }
         return;
     }
+#if BKOS_LETTERTYPEN
+    int fnt_y = hnv_y + 44;
+    if (y >= fnt_y && y < fnt_y + 40 && x >= 150 && x < 390) {
+        if (!ontg) { pin_vereist_tonen(); return; }
+        lettertype_zet((lettertype_keuze + 1) % lettertype_aantal());
+        state_save();
+        scherm_bouwen = true;   // alles opnieuw in het nieuwe lettertype
+        return;
+    }
+#endif
 }
 
 static void cfg_update_run(int x, int y) {

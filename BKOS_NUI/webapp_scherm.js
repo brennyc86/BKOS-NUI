@@ -219,7 +219,38 @@ var BKS = (function () {
       }
     }
   }
+  // Kiesbaar lettertype (lettertype.h op het toestel): tekstgrootte 2..4 met 4-bit dekking, gecentreerd in het
+  // vak van het klassieke lettertype (6*s per teken) — zelfde regels als BkosTekst::_tekst(), pixel voor pixel.
+  var ALTF = null, altNr = 0, altCache = {};
+  function altPx(x, y, c, a) {
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    if (a >= 15) { px(x, y, c); return; }
+    var i = y * W + x, o = fb[i], n = LUT[c & 0xFFFF];
+    // zelfde rekenwijze als het toestel: mengen in RGB565-stappen
+    var o565 = ((o & 0xF8) << 8) | (((o >> 8) & 0xFC) << 3) | (((o >> 16) & 0xF8) >> 3);
+    var r = Math.trunc((((o565 >> 11) & 31) * (15 - a) + ((c >> 11) & 31) * a) / 15),
+        g = Math.trunc((((o565 >> 5) & 63) * (15 - a) + ((c >> 5) & 63) * a) / 15),
+        b = Math.trunc(((o565 & 31) * (15 - a) + (c & 31) * a) / 15);
+    fb[i] = LUT[(r << 11) | (g << 5) | b];
+  }
+  function altGlyph(A, ch) { var i = (ch >= 32 && ch <= 126) ? ch - 32 : (ch === 247 ? 95 : -1); return i < 0 ? null : A[i]; }
   function print(s) {
+    var A = ALTF && T.size >= 2 && T.size <= 4 ? ALTF[T.size] : null;
+    if (A && s.indexOf('\n') < 0 && s.length) {
+      var tot = 0, i, ch, gl;
+      for (i = 0; i < s.length; i++) { gl = altGlyph(A, s.charCodeAt(i) & 0xFF); tot += gl ? gl[0] : 6 * T.size; }
+      var x = T.cx + Math.trunc((6 * T.size * s.length - tot) / 2);
+      for (i = 0; i < s.length; i++) {
+        ch = s.charCodeAt(i) & 0xFF; gl = altGlyph(A, ch);
+        if (!gl) { drawChar(x, T.cy, ch, T.color, T.size); x += 6 * T.size; continue; }
+        var gw = gl[3], gh = gl[4], d = gl[5], k = 0;
+        for (var yy = 0; yy < gh; yy++) for (var xx = 0; xx < gw; xx++, k++) {
+          var a = parseInt(d.charAt(k), 16); if (a) altPx(x + gl[1] + xx, T.cy + gl[2] + yy, T.color, a);
+        }
+        x += gl[0];
+      }
+      T.cx += 6 * T.size * s.length; return;
+    }
     for (var i = 0; i < s.length; i++) {
       var ch = s.charCodeAt(i) & 0xFF;
       if (ch === 10) { T.cx = 0; T.cy += 8 * T.size; continue; }
@@ -1778,7 +1809,14 @@ var BKS = (function () {
   }
   function zet(m) {
     if (!m || !m.t) return;
-    if (m.t === 'ui') { S.ui = m; if (m.pal) zetPalet(m.pal); }   // foto: pas bij het HAVEN-scherm (schermHaven)
+    if (m.t === 'ui') {
+      S.ui = m; if (m.pal) zetPalet(m.pal);
+      var nf = m.fnt | 0;
+      if (nf !== altNr) {
+        altNr = nf; ALTF = nf ? (altCache[nf] || null) : null;
+        if (nf && !altCache[nf] && opties.lettertype) opties.lettertype(nf);   // letterdata ophalen (/bkos_font.js?f=N)
+      }
+    }   // foto: pas bij het HAVEN-scherm (schermHaven)
     else if (m.t === 'lampen') S.lampen = m;
     else if (m.t === 'huispaneel') S.huis = m.items || [];
     else if (m.t === 'state') { S.modus = m.m; S.licht = m.l; S.h = m.h; }
@@ -1817,5 +1855,6 @@ var BKS = (function () {
     return -1;
   }
   function zetVicTab(t) { if (t == null || t === vicTab || t < 0 || t > 1) return false; vicTab = t; return true; }
-  return { zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
+  function zetLettertype(nr, data) { altCache[nr] = data; if (nr === altNr) { ALTF = data; if (opties.opnieuw) opties.opnieuw(); } }
+  return { zetLettertype: zetLettertype, zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
 })();

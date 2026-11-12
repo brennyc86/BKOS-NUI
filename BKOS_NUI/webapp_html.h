@@ -536,6 +536,13 @@ body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
           <div id="instBackupMelding" style="font-size:.78rem;min-height:1.1em;margin-top:8px;"></div>
         </section>
         <section>
+          <h2>Firmware bijwerken</h2>
+          <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Start de update op de boordcomputer: die zoekt de nieuwste versie in het ingestelde kanaal (beta of stabiel), downloadt hem en herstart. De voortgang zie je hier en op het scherm. De webapp verbindt na de herstart vanzelf opnieuw.</p>
+          <button class="mbtn" onclick="otaWebStart()">FIRMWARE NU BIJWERKEN</button>
+          <div id="otaWebMelding" style="font-size:.85rem;min-height:1.1em;margin-top:8px;"></div>
+          <div id="otaWebBalk" style="display:none;height:10px;border-radius:5px;background:var(--surface2);margin-top:6px;overflow:hidden;"><div id="otaWebVul" style="height:100%;width:0;background:var(--green);"></div></div>
+        </section>
+        <section>
           <h2>Firmware-updates zonder pincode</h2>
           <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">Staat dit <b>uit</b> (standaard), dan vraagt de boordcomputer de pincode voordat een update uit de Post of via CONFIG wordt gestart. Zet dit <b>aan</b> als iedereen aan boord een update mag starten. Voorgestelde <i>instellingen</i> vragen altijd de pincode.</p>
           <div id="updpinStatus" style="font-size:.85rem;margin-bottom:8px;"></div>
@@ -797,11 +804,20 @@ function handleMsg(msg){
     case 'io_delta':
       if (msg.ch < ioData.o.length) { ioData.o[msg.ch]=msg.o; ioData.i[msg.ch]=msg.i; renderIO(); }
       break;
+    case 'ota_web':
+      document.getElementById('otaWebMelding').textContent = 'Update gestart: de boordcomputer zoekt de nieuwste versie...';
+      break;
+    case 'ota_st':
+      document.getElementById('otaWebBalk').style.display = 'block';
+      document.getElementById('otaWebVul').style.width = msg.p + '%';
+      document.getElementById('otaWebMelding').textContent = 'Downloaden: ' + msg.p + '%' + (msg.p >= 100 ? ' — klaar, de boordcomputer herstart.' : '');
+      break;
     case 'scherm':
       bkosBoardScherm = msg.s;
       if (bkosAan && bkosSyncEff()) {
         // FOTO'S & BESTANDEN is op de boordcomputer een eigen scherm (21); in de app blijft het een CONFIG-onderdeel
         if (msg.s === 21 && bkosScherm === 3 && BKS.S.cfgSectie === 'fotos') break;
+        if (msg.s === 6) { BKS.S.cfgSectie = 'backup'; bkosToon(3); break; }   // UPDATE-scherm: in de app = BACKUP & UPDATES (met voortgang)
         if (msg.s === 3 && msg.c != null) BKS.S.cfgSectie = CFG_IDS[msg.c - 1] || null;
         if (msg.s === 2 && msg.m != null) {   // METEO-tabblad (+ WEER: dagdetail/dagen) volgt de boordcomputer
           var _mtVoor = BKS.meteoTabNu(), _md = BKS.zetMeteoTab(msg.m, msg.md, msg.mo);
@@ -2299,6 +2315,14 @@ function bkosActie(a){
   if (a.stuur) { if (needAuth()) return; send(a.stuur); }
 }
 function bkosAchtergrond(){}
+// Firmware-update starten op de boordcomputer (vanuit BACKUP & UPDATES)
+function otaWebStart(){
+  if (needAuth()) return;
+  if (niveau < NIVEAU_EIGENAAR) { document.getElementById('otaWebMelding').textContent = 'Alleen de eigenaar kan een update starten.'; return; }
+  if (!confirm('Firmware nu bijwerken? De boordcomputer downloadt de nieuwste versie en herstart.')) return;
+  document.getElementById('otaWebMelding').textContent = 'Opdracht verstuurd...';
+  send({t:'ota_start'});
+}
 
 // ─── Schermvullend ───────────────────────────────────────────────────────────
 // Via de knop (Fullscreen-API), via F11 (browser-volledig scherm: geen API-event, dus herkend aan de
@@ -2454,7 +2478,10 @@ function bkosSyncWissel(){
 // stil te laten verdwijnen. Zolang hij ontbreekt staat de schuifknop half doorzichtig; erop tikken probeert het opnieuw.
 var _bkLaadPog = 0;
 function bkosInit(){
-  BKS.init(document.getElementById('bkosCv'), {actie: bkosActie, opnieuw: bkosTeken});
+  BKS.init(document.getElementById('bkosCv'), {actie: bkosActie, opnieuw: bkosTeken, lettertype: function(nr){
+    // letterdata van het gekozen lettertype (gzip, ±15 KB); het script roept zelf BKS.zetLettertype() aan
+    var sc = document.createElement('script'); sc.src = '/bkos_font.js?f=' + nr; document.body.appendChild(sc);
+  }});
   document.getElementById('weergBtn').classList.remove('laden');
 }
 function bkosScriptLaden(enAanzetten){

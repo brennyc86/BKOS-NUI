@@ -5,6 +5,7 @@
 #include "app_state.h"     // vaar_modus/MODE_* voor tft_helderheid_auto_loop()
 #include "meteo.h"         // meteo_zonsopgang/-ondergang/-is_dag
 #include "haven_achtergrond.h"   // haven_achtergrond_idle_wissel() — onzichtbaar foto-wisselmoment
+#include "lettertype.h"          // BkosTekst: kiesbaar lettertype voor tekstgrootte 2..4
 
 Arduino_GFX *tft_p = nullptr;  // aangemaakt in tft_setup()
 
@@ -141,12 +142,12 @@ void tft_setup() {
         0, 210, 30, 16, 0, 22, 13, 23, 1, // sync parameters + pclk_active_neg
         (uint32_t)_pclk_mhz * 1000000UL);  // prefer_speed uit instelling
 #endif
-    _tft_echt_display = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
+    _tft_echt_display = new BkosTekst<Arduino_RGB_Display>(800, 480, rgbpanel, 0, true);   // lettertype.h
 #if ESP_ARDUINO_VERSION_MAJOR < 3
     // Dubbele buffering alleen zinvol op het core-2.x-pad (core 3.x lost
     // dezelfde PSRAM-bus-contentie al op met de bounce buffer hierboven).
     if (scherm_dubbele_buffer_get())
-        _tft_canvas = new Arduino_Canvas(800, 480, _tft_echt_display, 0, 0);
+        _tft_canvas = new BkosTekst<Arduino_Canvas>(800, 480, _tft_echt_display, 0, 0);
 #endif
     tft_p = _tft_canvas ? (Arduino_GFX*)_tft_canvas : _tft_echt_display;
 

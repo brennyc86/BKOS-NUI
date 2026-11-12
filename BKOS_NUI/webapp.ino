@@ -10,6 +10,7 @@
 #include "webapp_html.h"
 #include "webapp_haven_html.h"
 #include "webapp_scherm_js.h"   // BKOS-weergave: renderer van het boordcomputerscherm (gegenereerd)
+#include "webapp_lettertypen_js.h"   // letterdata per lettertype voor de BKOS-weergave (gegenereerd, gzip)
 #include "haven_achtergrond.h"
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
@@ -245,6 +246,17 @@ void webapp_setup() {
         // gzip (±5x kleiner): het platte script (>120 KB) kwam over de hotspot niet altijd heel aan -> BKOS-weergave weg
         _http.sendHeader("Content-Encoding", "gzip");
         _http.send_P(200, "application/javascript; charset=utf-8", (PGM_P)WEBAPP_SCHERM_JS_GZ, WEBAPP_SCHERM_JS_GZ_LEN);
+    });
+
+    // Letterdata van één lettertype (?f=1..N) voor de BKOS-weergave; roept BKS.zetLettertype() aan
+    _http.on("/bkos_font.js", HTTP_GET, []() {
+        bkos_spoor("http:/bkos_font.js");
+        int f = _http.hasArg("f") ? _http.arg("f").toInt() : 0;
+        int n = (int)(sizeof(BKL_WEB_LEN) / sizeof(BKL_WEB_LEN[0]));
+        if (f < 1 || f > n) { _http.send(404, "text/plain", "onbekend lettertype"); return; }
+        _http.sendHeader("Cache-Control", "max-age=86400");
+        _http.sendHeader("Content-Encoding", "gzip");
+        _http.send_P(200, "application/javascript; charset=utf-8", (PGM_P)BKL_WEB[f - 1], BKL_WEB_LEN[f - 1]);
     });
 
     // Diagnose (platte tekst): toestand van netwerk, mDNS, Bluetooth en de laatste herstart

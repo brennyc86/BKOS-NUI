@@ -26,6 +26,7 @@
 #include "meteo.h"           // weerstrook op het hoofdscherm
 #include "getijdata.h"       // GETIJ-tab in de webapp (getijdata_get/naam/lat_offset)
 #include "victron_ble.h"     // mini-widget interieurbalk
+#include "lettertype.h"     // lettertype_keuze in het ui-bericht
 #include "screen_meteo.h"    // METEO-tab + STROOM-weergave in de webapp
 #include "screen_victron.h"  // VICTRON-tab in de webapp
 #include "data_store.h"
@@ -425,6 +426,7 @@ static String _ui_json() {
         s += F("{\"l\":\""); _ui_esc(s, nav_midden[i].label); s += F("\",\"s\":"); s += nav_midden[i].scherm; s += '}';
     }
     { char hf[64]; haven_achtergrond_url(hf, sizeof(hf)); s += F("],\"hf\":\""); _ui_esc(s, hf); s += '"'; }
+    s += F(",\"fnt\":"); s += lettertype_keuze;   // gekozen lettertype (webapp laadt /bkos_font.js?f=N)
     s += F(",\"mg\":"); s += meteo_geladen ? 1 : 0;
     s += F(",\"mc\":"); s += meteo_weer_code; s += F(",\"md\":"); s += meteo_is_dag ? 1 : 0;
     // weerstrook
@@ -808,6 +810,11 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         int idx = t.indexOf(F("\"c\":"));
         cfg_sectie_zet(idx >= 0 ? (int)t.substring(idx + 4).toInt() : 0);
         _ws_prev_scherm = -1;
+
+    } else if (t.indexOf(F("\"ota_start\"")) >= 0) {   // firmware-update starten vanuit de webapp
+        if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
+        ota_web_start();
+        String r = F("{\"t\":\"ota_web\",\"r\":\"gestart\"}"); _tx(num, r);
 
     } else if (t.indexOf(F("\"set_meteo\"")) >= 0) {   // METEO-tabblad (synchroon met de webapp)
         if (_ws_niveau[num] < _scherm_min_niveau(SCREEN_METEO)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
@@ -1337,6 +1344,14 @@ void bkos_client_loop() {
         }
     }
 
+    {   // downloadvoortgang van een firmware-update (ook als die op het toestel zelf gestart is)
+        static int vorig_pct = -1;
+        int p = ota_web_pct;
+        if (p != vorig_pct) {
+            vorig_pct = p;
+            if (p >= 0) { String o = F("{\"t\":\"ota_st\",\"p\":"); o += p; o += '}'; _bc(o); }
+        }
+    }
     {   // STROOM-weergave die de GUI-taak klaarzette (na een webapp-actie of een tik op het toestel)
         String sj;
         if (meteo_web_stroom_json(sj)) _bc(sj);

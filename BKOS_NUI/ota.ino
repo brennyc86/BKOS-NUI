@@ -16,6 +16,7 @@ String ota_status_tekst  = "Niet gecontroleerd";
 // Signaalvlaggen voor inter-core communicatie (Core 0 = netwerk, Core 1 = UI)
 volatile bool ota_check_aangevraagd   = false;
 volatile bool ota_nieuwer_beschikbaar = false;
+volatile int  ota_web_pct = -1;   // voortgang van een lopende download (0-100) voor de webapp; -1 = geen
 
 OtaReleaseItem ota_releases[OTA_RELEASES_MAX];
 int            ota_releases_cnt = 0;
@@ -514,6 +515,7 @@ bool ota_download_toepassen(String url) {
             int pct = (int)(written * 100UL / (size_t)len);
             if (pct != laaste_pct) {
                 laaste_pct = pct;
+                ota_web_pct = pct;
                 int fill = (int)((long)bw * pct / 100);
                 tft.fillRoundRect(bx + 1, by + 1, bw - 2, bh - 2, 5, C_BG);
                 if (fill > 0) tft.fillRoundRect(bx + 1, by + 1, fill - 2, bh - 2, 5, C_GREEN);

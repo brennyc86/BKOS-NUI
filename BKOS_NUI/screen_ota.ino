@@ -742,3 +742,27 @@ void screen_ota_run(int x, int y, bool aanraking) {
     }
 #endif
 }
+
+// ─── Update starten vanuit de webapp (synchroon) ─────────────────────────────
+// De WebSocket draait in een andere taak; downloaden + flashen moet in de GUI-taak gebeuren (tekent de
+// voortgang en herstart daarna). bkos_client zet alleen een vlag; ota_web_tick() (hardware.ino) voert uit.
+static volatile bool _ota_web_vraag = false;
+void ota_web_start() { _ota_web_vraag = true; }
+void ota_web_tick() {
+    if (!_ota_web_vraag) return;
+    _ota_web_vraag = false;
+    actief_scherm = SCREEN_OTA;
+    screen_ota_teken();
+    ota_status_tekst = "Controleren (webapp)...";
+    tft_flush(true);
+    ota_git_check();
+    bool upd = (ota_versie_github.length() > 0 && ota_versie_github != BKOS_NUI_VERSIE);
+    if (upd) {
+        ota_nieuwer_beschikbaar = true;
+        ota_git_update();          // herstart bij succes; bij een fout staat de reden in ota_status_tekst
+    } else {
+        ota_status_tekst = ota_versie_github.length() ? "Al de nieuwste versie" : "Controleren mislukt";
+    }
+    ota_web_pct = -1;
+    scherm_bouwen = true;
+}

@@ -401,11 +401,11 @@ static bool _inst_doet_mee() {
     if (net_modus == NET_MASTER) return true;
     return net_modus == NET_SLAVE && net_gepaard && net_inst_sync && net_master_bekend();
 }
-static void _inst_stuur(const InstSet& s, const uint8_t* naar) {
+static void _inst_stuur(const void* s, const uint8_t* naar) {   // s = InstSet* (geen InstSet in de signatuur: Arduino-prototypes)
     NetPaket p = {};
     p.versie = NET_PROTOCOL_VERSIE; p.type = NET_MSG_INST_SYNC; p.modus = net_modus;
     strncpy(p.naam, net_eigen_naam, NET_NAAM_LEN - 1);
-    memcpy(p.data, &s, sizeof(InstSet));
+    memcpy(p.data, s, sizeof(InstSet));
     if (naar) { _stuur(naar, p, sizeof(InstSet)); return; }
     if (net_modus == NET_MASTER) {
         for (int i = 0; i < net_peers_cnt; i++) if (net_peers[i].bevestigd) _stuur(net_peers[i].mac, p, sizeof(InstSet));
@@ -420,11 +420,11 @@ static void _inst_ontvangen(const uint8_t* mac, const NetPaket& pkt) {
         int idx = -1;
         for (int i = 0; i < net_peers_cnt; i++) if (_mac_gelijk(net_peers[i].mac, mac)) { idx = i; break; }
         if (idx < 0 || !net_peers[idx].bevestigd) return;
-        if (s.v == 0) { InstSet h; inst_huidig(h); _inst_stuur(h, mac); return; }   // verzoek van een slave
+        if (s.v == 0) { InstSet h; inst_huidig(h); _inst_stuur(&h, mac); return; }   // verzoek van een slave
         if (s.v != INST_VERSIE) return;
         inst_toepassen(s);
         inst_huidig(_inst_laatst); _inst_laatst_geldig = true;
-        _inst_stuur(_inst_laatst, nullptr);
+        _inst_stuur(&_inst_laatst, nullptr);
         _inst_periodiek = millis();
     } else {
         if (!_mac_gelijk(mac, net_master_mac) || s.v != INST_VERSIE) return;
@@ -442,19 +442,19 @@ static void _inst_loop() {
         if (nu - _inst_verzoek >= 3000UL) {
             _inst_verzoek = nu;
             InstSet vraag; memset(&vraag, 0, sizeof(vraag));   // v = 0: verzoek
-            _inst_stuur(vraag, nullptr);
+            _inst_stuur(&vraag, nullptr);
         }
         return;
     }
     if (!_inst_laatst_geldig) { _inst_laatst = h; _inst_laatst_geldig = true; _inst_periodiek = nu; return; }
     if (memcmp(&h, &_inst_laatst, sizeof(InstSet)) != 0) {
         _inst_laatst = h;
-        _inst_stuur(h, nullptr);
+        _inst_stuur(&h, nullptr);
         _inst_periodiek = nu;
         _inst_rust_tot = nu + 1500UL;
         return;
     }
-    if (net_modus == NET_MASTER && nu - _inst_periodiek >= 10000UL) { _inst_periodiek = nu; _inst_stuur(h, nullptr); }
+    if (net_modus == NET_MASTER && nu - _inst_periodiek >= 10000UL) { _inst_periodiek = nu; _inst_stuur(&h, nullptr); }
 }
 
 #if ESP_IDF_VERSION_MAJOR >= 5

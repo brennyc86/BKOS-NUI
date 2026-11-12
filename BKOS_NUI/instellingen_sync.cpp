@@ -1,11 +1,15 @@
-// instellingen_sync.ino — zie instellingen_sync.h
+// instellingen_sync.cpp — zie instellingen_sync.h (.cpp i.p.v. .ino: Arduino-prototypes met InstSet in de
+// signatuur kwamen vóór de struct-definitie te staan)
 #include "instellingen_sync.h"
 #include "app_state.h"
 #include "ui_colors.h"
 #include "hw_scherm.h"
 #include "slaap.h"
-#include "wifi.h"
-#include "lettertype.h"
+// lettertype.h hier bewust niet: die trekt de statische letterdata (±112 KB) mee → dubbel in flash
+extern uint8_t lettertype_keuze;
+int         lettertype_aantal();
+const char* lettertype_naam(int i);
+void        lettertype_zet(int i);
 #include "bkos_net.h"
 
 bool net_inst_sync = true;

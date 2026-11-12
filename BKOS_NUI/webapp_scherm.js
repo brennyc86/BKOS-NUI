@@ -1825,7 +1825,7 @@ var BKS = (function () {
     if (m.t === 'ui') {
       S.ui = m; if (m.pal) zetPalet(m.pal);
       var nf = m.fnt | 0;
-      if (nf !== altNr) { altNr = nf; altLaad(nf); }   // letterdata ophalen (/bkos_font.js?f=N)
+      if (nf !== altNr) { altNr = nf; altLaad(nf); }   // letterdata ophalen (/bkos_font.bin?f=N)
     }   // foto: pas bij het HAVEN-scherm (schermHaven)
     else if (m.t === 'lampen') S.lampen = m;
     else if (m.t === 'huispaneel') S.huis = m.items || [];
@@ -1867,5 +1867,32 @@ var BKS = (function () {
   function zetVicTab(t) { if (t == null || t === vicTab || t < 0 || t > 1) return false; vicTab = t; return true; }
   function zetLettertype(nr, data) { altCache[nr] = data; if ((nr === altNr || nr === ALT_SYSTEEM) && opties.opnieuw) opties.opnieuw(); }
   function heeftLettertype(nr) { return !!altCache[nr]; }
-  return { zetLettertype: zetLettertype, fontOpnieuw: fontOpnieuw, heeftLettertype: heeftLettertype, zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
+  // Binaire letterdata van /bkos_font.bin (webapp.ino) → zelfde vorm als zetLettertype verwacht.
+  // Geeft false bij een onvolledig/ongeldig bestand (dan probeert de pagina het opnieuw).
+  function laadBin(nr, buf) {
+    var b = new Uint8Array(buf), p = 6;
+    if (b.length < 6 || b[0] !== 66 || b[1] !== 75 || b[2] !== 70 || b[3] !== 49 || b[4] !== nr) return false;
+    var ng = b[5], data = {};
+    for (var s = 1; s <= 4; s++) {
+      if (p + 4 > b.length) return false;
+      var dlen = b[p] | (b[p + 1] << 8) | (b[p + 2] << 16) | (b[p + 3] << 24); p += 4;
+      var gp = p, dp = p + ng * 9; p = dp + dlen;
+      if (p > b.length) return false;
+      var lijst = [];
+      for (var i = 0; i < ng; i++) {
+        var q = gp + i * 9, w = b[q + 3], h = b[q + 4];
+        var off = b[q + 5] | (b[q + 6] << 8) | (b[q + 7] << 16) | (b[q + 8] << 24), hex = '';
+        for (var k = 0; k < w * h; k++) {
+          var o = off + k, byte = b[dp + (o >> 1)];
+          hex += ((o & 1) ? (byte & 15) : (byte >> 4)).toString(16);
+        }
+        lijst.push([b[q], b[q + 1], b[q + 2], w, h, hex]);
+      }
+      data[s] = lijst;
+    }
+    if (p !== b.length) return false;
+    zetLettertype(nr, data);
+    return true;
+  }
+  return { zetLettertype: zetLettertype, fontOpnieuw: fontOpnieuw, heeftLettertype: heeftLettertype, laadBin: laadBin, zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
 })();

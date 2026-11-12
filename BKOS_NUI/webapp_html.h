@@ -2568,12 +2568,12 @@ function bkosSyncWissel(){
 var _bkLaadPog = 0;
 function bkosInit(){
   BKS.init(document.getElementById('bkosCv'), {actie: bkosActie, opnieuw: bkosTeken, lettertype: function(nr){
-    // letterdata van het gekozen lettertype (gzip, ±15 KB); het script roept zelf BKS.zetLettertype() aan
-    // mislukt of half aangekomen (dan wel geladen maar zonder zetLettertype-aanroep): na 4 s opnieuw
-    var sc = document.createElement('script'); sc.src = '/bkos_font.js?f=' + nr + '&t=' + Date.now();
-    var weer = function(){ sc.remove(); setTimeout(function(){ BKS.fontOpnieuw(nr); }, 4000); };
-    sc.onerror = weer; sc.onload = function(){ if (!BKS.heeftLettertype(nr)) weer(); };
-    document.body.appendChild(sc);
+    // letterdata van een lettertype (gekozen of basis)
+    // binaire letterdata (/bkos_font.bin, ±35 KB); onvolledig of mislukt → na 4 s opnieuw
+    fetch('/bkos_font.bin?f=' + nr + '&t=' + Date.now(), {cache: 'no-store'})
+      .then(function(r){ if (!r.ok) throw r.status; return r.arrayBuffer(); })
+      .then(function(buf){ if (!BKS.laadBin(nr, buf)) throw 'onvolledig'; })
+      .catch(function(){ setTimeout(function(){ BKS.fontOpnieuw(nr); }, 4000); });
   }});
   document.getElementById('weergBtn').classList.remove('laden');
 }

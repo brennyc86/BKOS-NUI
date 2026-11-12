@@ -10,7 +10,7 @@
 #include "webapp_html.h"
 #include "webapp_haven_html.h"
 #include "webapp_scherm_js.h"   // BKOS-weergave: renderer van het boordcomputerscherm (gegenereerd)
-#include "lettertype.h"   // BK_LETTERTYPEN: het webapp-script /bkos_font.js wordt hieruit ter plekke gemaakt
+#include "lettertype.h"   // BK_LETTERTYPEN: /bkos_font.bin stuurt deze data aan de webapp
 #include "haven_achtergrond.h"
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
@@ -248,45 +248,65 @@ void webapp_setup() {
         _http.send_P(200, "application/javascript; charset=utf-8", (PGM_P)WEBAPP_SCHERM_JS_GZ, WEBAPP_SCHERM_JS_GZ_LEN);
     });
 
-    // Letterdata van één lettertype (?f=1..N) voor de BKOS-weergave; roept BKS.zetLettertype() aan.
-    // Wordt ter plekke uit BK_LETTERTYPEN (dezelfde flash-data als het scherm) gemaakt i.p.v. een aparte
-    // gzip-kopie per lettertype: met 18 lettertypen paste die dubbele opslag niet meer in de app-partitie.
-    // Formaat = wat tools/genereer_lettertypen.py vroeger als script opleverde: {"1".."4": [[adv,xo,yo,w,h,"hex"],...]}
-    _http.on("/bkos_font.js", HTTP_GET, []() {
-        bkos_spoor("http:/bkos_font.js");
+    // Letterdata van één lettertype (?f=1..N) voor de BKOS-weergave, BINAIR uit BK_LETTERTYPEN (dezelfde
+    // flash-data als het scherm; geen aparte kopie: met 18 lettertypen paste dat niet). 0.2.261112.11/.12
+    // stuurden hier 50-75 KB platte JS via sendContent(): de ESP32-WebServer laat bij een volle TCP-buffer
+    // stilletjes bytes vallen → half script → webapp bleef klassiek. Nu half zo groot, vaste Content-Length
+    // en zelf schrijven met controle op elke write(). Formaat (little-endian), gelezen door BKS.laadBin():
+    //   "BKF1", u8 nr, u8 aantal_glyphs, dan per tekstgrootte 1..4: u32 dlen, glyphs x {u8 adv,xo,yo,w,h, u32 off}, dlen bytes
+    _http.on("/bkos_font.bin", HTTP_GET, []() {
+        bkos_spoor("http:/bkos_font.bin");
 #if BKOS_LETTERTYPEN
         int f = _http.hasArg("f") ? _http.arg("f").toInt() : 0;
         if (f < 1 || f > BK_LETTERTYPEN_N) { _http.send(404, "text/plain", "onbekend lettertype"); return; }
-        _http.sendHeader("Cache-Control", "no-cache");
-        _http.setContentLength(CONTENT_LENGTH_UNKNOWN);
-        _http.send(200, "application/javascript; charset=utf-8", "");
-        static char buf[1400]; int n = 0;   // alleen de HTTP-taak komt hier
-        auto leeg  = [&]() { if (n) { _http.sendContent(buf, n); n = 0; } };
-        auto teken = [&](char c) { if (n >= (int)sizeof(buf)) leeg(); buf[n++] = c; };
-        auto tekst = [&](const char* t) { while (*t) teken(*t++); };
-        static const char HEX_T[] = "0123456789abcdef";
-        char t[48];
-        snprintf(t, sizeof(t), "if(window.BKS&&BKS.zetLettertype)BKS.zetLettertype(%d,{", f); tekst(t);
         const BkLettertype& L = BK_LETTERTYPEN[f - 1];
-        for (int s = 1; s <= 4; s++) {
-            const BkMaat& m = L.m[s - 1];
-            snprintf(t, sizeof(t), "%s\"%d\":[", s > 1 ? "," : "", s); tekst(t);
+        uint32_t dlen[4], totaal = 6;
+        for (int s = 0; s < 4; s++) {
+            uint32_t mx = 0;
             for (int i = 0; i < BK_GLYPH_N; i++) {
-                const BkGlyph& g = m.g[i];
-                snprintf(t, sizeof(t), "%s[%u,%u,%u,%u,%u,\"", i ? "," : "", g.adv, g.xo, g.yo, g.w, g.h); tekst(t);
-                uint32_t k = (uint32_t)g.w * g.h;
-                for (uint32_t q = 0; q < k; q++) {
-                    uint32_t o = g.off + q;
-                    uint8_t a = (o & 1) ? (m.d[o >> 1] & 0x0F) : (m.d[o >> 1] >> 4);
-                    teken(HEX_T[a]);
-                }
-                tekst("\"]");
+                const BkGlyph& g = L.m[s].g[i];
+                uint32_t eind = g.off + (uint32_t)g.w * g.h;
+                if (eind > mx) mx = eind;
             }
-            teken(']');
+            dlen[s] = (mx + 1) / 2;
+            totaal += 4 + BK_GLYPH_N * 9 + dlen[s];
         }
-        tekst("});");
-        leeg();
-        _http.sendContent("");
+        _http.sendHeader("Cache-Control", "no-cache");
+        _http.setContentLength(totaal);
+        _http.send(200, "application/octet-stream", "");
+        WiFiClient cl = _http.client();
+        bool ok = true;
+        auto schrijf = [&](const uint8_t* p, size_t n) {
+            unsigned long t0 = millis();
+            while (ok && n) {
+                size_t w = cl.write(p, n > 1024 ? 1024 : n);
+                if (w == 0) {
+                    if (!cl.connected() || millis() - t0 > 8000UL) { ok = false; break; }
+                    delay(2); continue;
+                }
+                p += w; n -= w; t0 = millis();
+            }
+        };
+        uint8_t kop[6] = {'B', 'K', 'F', '1', (uint8_t)f, (uint8_t)BK_GLYPH_N};
+        schrijf(kop, 6);
+        for (int s = 0; s < 4 && ok; s++) {
+            uint8_t b4[4] = {(uint8_t)dlen[s], (uint8_t)(dlen[s] >> 8), (uint8_t)(dlen[s] >> 16), (uint8_t)(dlen[s] >> 24)};
+            schrijf(b4, 4);
+            uint8_t gb[BK_GLYPH_N * 9];
+            for (int i = 0; i < BK_GLYPH_N; i++) {
+                const BkGlyph& g = L.m[s].g[i];
+                uint8_t* q = gb + i * 9;
+                q[0] = g.adv; q[1] = g.xo; q[2] = g.yo; q[3] = g.w; q[4] = g.h;
+                q[5] = (uint8_t)g.off; q[6] = (uint8_t)(g.off >> 8); q[7] = (uint8_t)(g.off >> 16); q[8] = (uint8_t)(g.off >> 24);
+            }
+            schrijf(gb, sizeof(gb));
+            uint8_t tmp[512];   // flash → RAM in stukjes (veilig voor de WiFi-stack)
+            for (uint32_t o = 0; o < dlen[s] && ok; o += sizeof(tmp)) {
+                uint32_t k = min((uint32_t)sizeof(tmp), dlen[s] - o);
+                memcpy_P(tmp, L.m[s].d + o, k);
+                schrijf(tmp, k);
+            }
+        }
 #else
         _http.send(404, "text/plain", "geen lettertypen op dit platform");
 #endif

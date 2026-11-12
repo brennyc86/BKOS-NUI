@@ -427,7 +427,7 @@ static String _ui_json() {
         s += F("{\"l\":\""); _ui_esc(s, nav_midden[i].label); s += F("\",\"s\":"); s += nav_midden[i].scherm; s += '}';
     }
     { char hf[64]; haven_achtergrond_url(hf, sizeof(hf)); s += F("],\"hf\":\""); _ui_esc(s, hf); s += '"'; }
-    s += F(",\"fnt\":"); s += lettertype_keuze;   // gekozen lettertype (webapp laadt /bkos_font.js?f=N)
+    s += F(",\"fnt\":"); s += lettertype_keuze;   // gekozen lettertype (webapp laadt /bkos_font.bin?f=N)
     s += F(",\"mg\":"); s += meteo_geladen ? 1 : 0;
     s += F(",\"mc\":"); s += meteo_weer_code; s += F(",\"md\":"); s += meteo_is_dag ? 1 : 0;
     // weerstrook

@@ -654,7 +654,10 @@ static String _meteo_getij_json() {
 static String _scherm_json() {
     String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm;
     if (actief_scherm == SCREEN_CONFIG) { s += F(",\"c\":"); s += cfg_sectie_huidig(); }   // open CONFIG-onderdeel
-    if (actief_scherm == SCREEN_METEO)  { s += F(",\"m\":"); s += meteo_tab; }             // open METEO-tabblad
+    if (actief_scherm == SCREEN_METEO)  {                                                   // open METEO-tabblad (+ WEER: dagdetail/offset)
+        s += F(",\"m\":"); s += meteo_tab;
+        s += F(",\"md\":"); s += meteo_detail_huidig(); s += F(",\"mo\":"); s += meteo_offset_huidig();
+    }
     if (actief_scherm == SCREEN_VICTRON){ s += F(",\"v\":"); s += victron_tab; }           // open VICTRON-tabblad
     s += '}';
     return s;
@@ -662,7 +665,7 @@ static String _scherm_json() {
 // Subtoestand van het actieve scherm (CONFIG-onderdeel / METEO-tab / VICTRON-tab): wijziging = scherm opnieuw melden
 static int _scherm_sub() {
     if (actief_scherm == SCREEN_CONFIG)  return cfg_sectie_huidig();
-    if (actief_scherm == SCREEN_METEO)   return meteo_tab;
+    if (actief_scherm == SCREEN_METEO)   return meteo_sub_huidig();
     if (actief_scherm == SCREEN_VICTRON) return victron_tab;
     return -1;
 }
@@ -808,8 +811,10 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
 
     } else if (t.indexOf(F("\"set_meteo\"")) >= 0) {   // METEO-tabblad (synchroon met de webapp)
         if (_ws_niveau[num] < _scherm_min_niveau(SCREEN_METEO)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
-        int idx = t.indexOf(F("\"m\":"));
-        if (idx >= 0) meteo_web_tab((int)t.substring(idx + 4).toInt());
+        int idx = t.indexOf(F("\"m\":")), di = t.indexOf(F("\"d\":")), oi = t.indexOf(F("\"o\":"));
+        if (idx >= 0) meteo_web_tab((int)t.substring(idx + 4).toInt(),
+                                    di >= 0 ? (int)t.substring(di + 4).toInt() : -2,
+                                    oi >= 0 ? (int)t.substring(oi + 4).toInt() : -1);
 
     } else if (t.indexOf(F("\"set_vic\"")) >= 0) {     // VICTRON-tabblad (synchroon met de webapp)
         if (_ws_niveau[num] < _scherm_min_niveau(SCREEN_VICTRON)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }

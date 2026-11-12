@@ -1757,10 +1757,17 @@ var BKS = (function () {
       if (a.strScroll != null) { strScroll = a.strScroll; teken(); return; }
       if (a.stroom) { if (opties.actie) opties.actie({ vraag: { t: 'meteo_stroom', a: a.stroom.a, v: a.stroom.v } }); return; }
       if (a.vicTab != null) { vicTab = a.vicTab; teken(); if (opties.actie) opties.actie({ vicTabSync: vicTab }); return; }
-      if (a.meteoDag) { meteoDag = Math.max(0, Math.min(3, meteoDag + a.meteoDag)); teken(); return; }
+      if (a.meteoDag) {
+        meteoDag = Math.max(0, Math.min(3, meteoDag + a.meteoDag)); teken();
+        if (opties.actie) opties.actie({ meteoTabSync: meteoTab, d: meteoDetail, o: meteoDag });   // synchroon: zelfde dagen op het toestel
+        return;
+      }
       if (a.meteoDetail != null) {
         meteoDetail = a.meteoDetail; S.meteoDag = null; teken();
-        if (meteoDetail >= 0 && opties.actie) opties.actie({ vraag: { t: 'meteo_dag', d: meteoDetail } });
+        if (opties.actie) {
+          if (meteoDetail >= 0) opties.actie({ vraag: { t: 'meteo_dag', d: meteoDetail } });
+          opties.actie({ meteoTabSync: meteoTab, d: meteoDetail, o: meteoDag });                   // synchroon: zelfde dagdetail
+        }
         return;
       }
       if (a.getijScroll != null) { getijScroll = a.getijScroll; teken(); return; }
@@ -1801,7 +1808,14 @@ var BKS = (function () {
     u32.set(fb); ctx.putImageData(imgData, 0, 0);
   }
   // Tabblad van de boordcomputer overnemen (synchroon): geeft true als er iets veranderde
-  function zetMeteoTab(t) { if (t == null || t === meteoTab || t < 0 || t > 3) return false; meteoTab = t; meteoDetail = -1; return true; }
+  // detail/offset (WEER) optioneel; geeft het dagdetail terug dat nieuw opgevraagd moet worden (>= 0), of -1
+  function zetMeteoTab(t, det, off) {
+    if (t == null || t < 0 || t > 3) return -1;
+    if (t !== meteoTab) { meteoTab = t; meteoDetail = -1; }
+    if (t === 0 && off != null && off >= 0 && off <= 3) meteoDag = off;
+    if (t === 0 && det != null && det >= -1 && det <= 6 && det !== meteoDetail) { meteoDetail = det; S.meteoDag = null; return det; }
+    return -1;
+  }
   function zetVicTab(t) { if (t == null || t === vicTab || t < 0 || t > 1) return false; vicTab = t; return true; }
   return { zetMeteoTab: zetMeteoTab, zetVicTab: zetVicTab, meteoTabNu: function () { return meteoTab; }, _zetFoto: function (a) { foto565 = a; }, init: init, zet: zet, teken: teken, volledig: volledig, S: S, SC: SC, W: W, H: H, SB_H: SB_H, NAV_Y: NAV_Y, _fb: fb, _lut: LUT };
 })();

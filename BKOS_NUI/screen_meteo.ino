@@ -2205,12 +2205,26 @@ void screen_meteo_run(int x, int y, bool aanraking) {
 // (vanuit _gui_taak) voert het uit, hertekent zo nodig het toestel en bouwt de JSON
 // die bkos_client daarna ophaalt en naar alle clients stuurt.
 static volatile int  _web_meteo_tab  = -1;
+static volatile int  _web_meteo_det  = -2;   // -2 = niet meegegeven
+static volatile int  _web_meteo_off  = -1;
 static volatile char _web_str_actie  = 0;
 static volatile int  _web_str_waarde = 0;
 static String        _web_str_json;
 static volatile bool _web_str_klaar  = false;
 
-void meteo_web_tab(int t) { if (t >= 0 && t < TAB_CNT) _web_meteo_tab = t; }
+void meteo_web_tab(int t, int detail, int offset) {
+    if (t < 0 || t >= TAB_CNT) return;
+    _web_meteo_det = (detail >= -1 && detail <= 6) ? detail : -2;
+    _web_meteo_off = (offset >= 0 && offset <= 3) ? offset : -1;
+    _web_meteo_tab = t;
+}
+// Subtoestand voor de webapp-sync: tab + (WEER) gekozen dagdetail en dag-offset
+int meteo_sub_huidig() {
+    if (meteo_tab != METEO_TAB_WEER) return meteo_tab * 100;
+    return meteo_tab * 100 + (meteo_detail_dag + 1) * 10 + meteo_dag_offset;
+}
+int meteo_detail_huidig() { return meteo_detail_dag; }
+int meteo_offset_huidig() { return meteo_dag_offset; }
 void meteo_web_stroom(char a, int v) {
     if (a == '?' && _web_str_actie) return;   // een echte actie levert zelf al een verse weergave op
     _web_str_waarde = v; _web_str_actie = a;
@@ -2367,10 +2381,14 @@ void meteo_web_tick() {
     int t = _web_meteo_tab;
     if (t >= 0) {
         _web_meteo_tab = -1;
-        if (t != meteo_tab) {
-            meteo_tab = t; meteo_detail_dag = -1; meteo_plaats_kies = false;
-            if (actief_scherm == SCREEN_METEO) scherm_bouwen = true;
+        int det = _web_meteo_det, off = _web_meteo_off;
+        bool anders = false;
+        if (t != meteo_tab) { meteo_tab = t; meteo_detail_dag = -1; meteo_plaats_kies = false; anders = true; }
+        if (t == METEO_TAB_WEER) {
+            if (det >= -1 && det != meteo_detail_dag) { meteo_detail_dag = det; meteo_plaats_kies = false; anders = true; }
+            if (off >= 0 && off != meteo_dag_offset)  { meteo_dag_offset = off; anders = true; }
         }
+        if (anders && actief_scherm == SCREEN_METEO) scherm_bouwen = true;
         if (t == METEO_TAB_STROMING) _web_str_vraag = true;
     }
     char a = _web_str_actie;

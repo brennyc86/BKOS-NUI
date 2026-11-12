@@ -803,8 +803,10 @@ function handleMsg(msg){
         // FOTO'S & BESTANDEN is op de boordcomputer een eigen scherm (21); in de app blijft het een CONFIG-onderdeel
         if (msg.s === 21 && bkosScherm === 3 && BKS.S.cfgSectie === 'fotos') break;
         if (msg.s === 3 && msg.c != null) BKS.S.cfgSectie = CFG_IDS[msg.c - 1] || null;
-        if (msg.s === 2 && msg.m != null && BKS.zetMeteoTab(msg.m)) {   // METEO-tabblad volgt de boordcomputer
-          if (msg.m === 1) send({t:'meteo_getij'});
+        if (msg.s === 2 && msg.m != null) {   // METEO-tabblad (+ WEER: dagdetail/dagen) volgt de boordcomputer
+          var _mtVoor = BKS.meteoTabNu(), _md = BKS.zetMeteoTab(msg.m, msg.md, msg.mo);
+          if (_md >= 0) send({t:'meteo_dag', d:_md});
+          if (msg.m === 1 && _mtVoor !== 1) send({t:'meteo_getij'});
         }
         if (msg.s === 11 && msg.v != null) BKS.zetVicTab(msg.v);         // VICTRON-tabblad idem
         bkosToon(msg.s);
@@ -2281,7 +2283,10 @@ function bkosActie(a){
   if (a.sync) { bkosSyncWissel(); return; }
   if (a.volscherm) { volschermWissel(); return; }
   if (a.weergave) { bkosWissel(); return; }
-  if (a.meteoTabSync != null) { if (bkosSyncEff()) send({t:'set_meteo', m:a.meteoTabSync}); return; }
+  if (a.meteoTabSync != null) {
+    if (bkosSyncEff()) { var _sm = {t:'set_meteo', m:a.meteoTabSync}; if (a.d != null) { _sm.d = a.d; _sm.o = a.o; } send(_sm); }
+    return;
+  }
   if (a.vicTabSync != null) { if (bkosSyncEff()) send({t:'set_vic', v:a.vicTabSync}); return; }
   if (a.cfgSectie != null) {   // CONFIG-onderdeel openen/sluiten — synchroon: de boordcomputer opent hetzelfde onderdeel
     BKS.S.cfgSectie = a.cfgSectie || null; bkosToon(3);

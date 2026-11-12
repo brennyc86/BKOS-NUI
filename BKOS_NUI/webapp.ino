@@ -10,7 +10,7 @@
 #include "webapp_html.h"
 #include "webapp_haven_html.h"
 #include "webapp_scherm_js.h"   // BKOS-weergave: renderer van het boordcomputerscherm (gegenereerd)
-#include "webapp_lettertypen_js.h"   // letterdata per lettertype voor de BKOS-weergave (gegenereerd, gzip)
+#include "lettertype.h"   // BK_LETTERTYPEN: het webapp-script /bkos_font.js wordt hieruit ter plekke gemaakt
 #include "haven_achtergrond.h"
 #include "screen_config.h"  // pin_lezen_pub()
 #include "screen_info.h"    // info_boot_naam/type, info_eigenaar_naam — openbaar tonen
@@ -248,15 +248,48 @@ void webapp_setup() {
         _http.send_P(200, "application/javascript; charset=utf-8", (PGM_P)WEBAPP_SCHERM_JS_GZ, WEBAPP_SCHERM_JS_GZ_LEN);
     });
 
-    // Letterdata van één lettertype (?f=1..N) voor de BKOS-weergave; roept BKS.zetLettertype() aan
+    // Letterdata van één lettertype (?f=1..N) voor de BKOS-weergave; roept BKS.zetLettertype() aan.
+    // Wordt ter plekke uit BK_LETTERTYPEN (dezelfde flash-data als het scherm) gemaakt i.p.v. een aparte
+    // gzip-kopie per lettertype: met 18 lettertypen paste die dubbele opslag niet meer in de app-partitie.
+    // Formaat = wat tools/genereer_lettertypen.py vroeger als script opleverde: {"1".."4": [[adv,xo,yo,w,h,"hex"],...]}
     _http.on("/bkos_font.js", HTTP_GET, []() {
         bkos_spoor("http:/bkos_font.js");
+#if BKOS_LETTERTYPEN
         int f = _http.hasArg("f") ? _http.arg("f").toInt() : 0;
-        int n = (int)(sizeof(BKL_WEB_LEN) / sizeof(BKL_WEB_LEN[0]));
-        if (f < 1 || f > n) { _http.send(404, "text/plain", "onbekend lettertype"); return; }
-        _http.sendHeader("Cache-Control", "max-age=86400");
-        _http.sendHeader("Content-Encoding", "gzip");
-        _http.send_P(200, "application/javascript; charset=utf-8", (PGM_P)BKL_WEB[f - 1], BKL_WEB_LEN[f - 1]);
+        if (f < 1 || f > BK_LETTERTYPEN_N) { _http.send(404, "text/plain", "onbekend lettertype"); return; }
+        _http.sendHeader("Cache-Control", "no-cache");
+        _http.setContentLength(CONTENT_LENGTH_UNKNOWN);
+        _http.send(200, "application/javascript; charset=utf-8", "");
+        static char buf[1400]; int n = 0;   // alleen de HTTP-taak komt hier
+        auto leeg  = [&]() { if (n) { _http.sendContent(buf, n); n = 0; } };
+        auto teken = [&](char c) { if (n >= (int)sizeof(buf)) leeg(); buf[n++] = c; };
+        auto tekst = [&](const char* t) { while (*t) teken(*t++); };
+        static const char HEX_T[] = "0123456789abcdef";
+        char t[48];
+        snprintf(t, sizeof(t), "if(window.BKS&&BKS.zetLettertype)BKS.zetLettertype(%d,{", f); tekst(t);
+        const BkLettertype& L = BK_LETTERTYPEN[f - 1];
+        for (int s = 1; s <= 4; s++) {
+            const BkMaat& m = L.m[s - 1];
+            snprintf(t, sizeof(t), "%s\"%d\":[", s > 1 ? "," : "", s); tekst(t);
+            for (int i = 0; i < BK_GLYPH_N; i++) {
+                const BkGlyph& g = m.g[i];
+                snprintf(t, sizeof(t), "%s[%u,%u,%u,%u,%u,\"", i ? "," : "", g.adv, g.xo, g.yo, g.w, g.h); tekst(t);
+                uint32_t k = (uint32_t)g.w * g.h;
+                for (uint32_t q = 0; q < k; q++) {
+                    uint32_t o = g.off + q;
+                    uint8_t a = (o & 1) ? (m.d[o >> 1] & 0x0F) : (m.d[o >> 1] >> 4);
+                    teken(HEX_T[a]);
+                }
+                tekst("\"]");
+            }
+            teken(']');
+        }
+        tekst("});");
+        leeg();
+        _http.sendContent("");
+#else
+        _http.send(404, "text/plain", "geen lettertypen op dit platform");
+#endif
     });
 
     // Diagnose (platte tekst): toestand van netwerk, mDNS, Bluetooth en de laatste herstart

@@ -3,7 +3,7 @@
 
 Gebruik:  python3 tools/genereer_lettertypen.py
 Vereist:  Pillow
-Uitvoer:  BKOS_NUI/lettertypen_data.h, BKOS_NUI/webapp_lettertypen_js.h
+Uitvoer:  BKOS_NUI/lettertypen_data.h (de webapp krijgt dezelfde data via /bkos_font.js, webapp.ino)
 
 Per lettertype en tekstgrootte s (2,3,4; vak 6s x 8s) wordt de grootste puntgrootte gekozen waarbij
 hoofdletters <= 0.78 vakhoogte, op- + neerhalen binnen het vak passen en de gemiddelde breedte <= 1.08 vak.
@@ -20,6 +20,23 @@ LETTERTYPEN = [
     ('LEXEND EXA', 'LexendExa.ttf', 550),
     ('RUSSO ONE',  'RussoOne.ttf',  None),
     ('TEXTURINA',  'Texturina.ttf', 600),
+    # Ronde 5 (brennyc86.github.io/bkos-lettertypen): de rest van Brendans selectie. Volgorde hierboven
+    # niet wijzigen: het nummer wordt opgeslagen (fnt=) en 1 = systeemlettertype.
+    ('ATKINSON',   'atkinson.ttf',   None),
+    ('LEXEND',     'lexend.ttf',     600),
+    ('QUICKSAND',  'quicksand.ttf',  700),
+    ('COMFORTAA',  'comfortaa.ttf',  700),
+    ('MICHROMA',   'michroma.ttf',   None),
+    ('ORBITRON',   'orbitron.ttf',   600),
+    ('ZILLA SLAB', 'zilla.ttf',      None),
+    ('DANCING SCRIPT','dancing.ttf',    700),
+    ('PACIFICO',   'pacifico.ttf',   None),
+    ('GREAT VIBES','greatvibes.ttf', None),
+    ('ALLURA',     'allura.ttf',     None),
+    ('GRENZE GOTISCH','grenze.ttf',     650),
+    ('FRAKTUR',    'unifraktur.ttf', None),
+    ('GERMANIA ONE','germania.ttf',   None),
+    ('OSWALD',     'oswald.ttf',     500),
 ]
 TEKENS = list(range(32, 127)) + [247]
 
@@ -116,22 +133,8 @@ def main():
     o.append('#define BK_LETTERTYPEN_N %d' % len(data))
     open(os.path.join(ROOT, 'BKOS_NUI', 'lettertypen_data.h'), 'w').write('\n'.join(o) + '\n')
 
-    # ── webapp: per lettertype één gzip-script dat BKS.zetLettertype(nr, data) aanroept ──
-    w = ['// GEGENEREERD door tools/genereer_lettertypen.py — niet met de hand wijzigen.', '#pragma once', '#include <pgmspace.h>', '']
-    lens = []
-    for fi, (naam, maten) in enumerate(data):
-        js = {str(s): [[adv, xo, yo, gw, gh, ''.join('%x' % v for v in n)] for adv, xo, yo, gw, gh, n in glyphs] for s, glyphs in maten.items()}
-        src = 'if(window.BKS&&BKS.zetLettertype)BKS.zetLettertype(%d,%s);' % (fi + 1, json.dumps(js, separators=(',', ':')))
-        gz = gzip.compress(src.encode(), compresslevel=9, mtime=0)
-        lens.append(len(gz))
-        w.append('static const uint8_t BKL_WEB_%d[] PROGMEM = {' % fi)
-        for i in range(0, len(gz), 32):
-            w.append(','.join(str(b) for b in gz[i:i + 32]) + ',')
-        w.append('};')
-    w.append('static const uint8_t* const BKL_WEB[] = {%s};' % ','.join('BKL_WEB_%d' % i for i in range(len(data))))
-    w.append('static const size_t BKL_WEB_LEN[] = {%s};' % ','.join(str(l) for l in lens))
-    open(os.path.join(ROOT, 'BKOS_NUI', 'webapp_lettertypen_js.h'), 'w').write('\n'.join(w) + '\n')
-    print('firmware ~%d KB, webapp gzip %s bytes' % (totaal // 1024, lens))
+    # webapp: geen eigen kopie meer — /bkos_font.js?f=N (webapp.ino) maakt het script uit deze data
+    print('firmware ~%d KB' % (totaal // 1024))
 
 if __name__ == '__main__':
     main()

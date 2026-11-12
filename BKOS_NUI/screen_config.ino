@@ -3052,40 +3052,47 @@ static void preset_toepassen(int idx) {
 // Raster van 2 kolommen; elke tegel toont de naam + een proefregel in dat lettertype zelf
 // (lettertype_forceer). Onderaan ANNULEREN. Tik op een tegel = kiezen + alles opnieuw tekenen.
 #if BKOS_LETTERTYPEN
-#define FM_KOL   2
 #define FM_GAP   10
-#define FM_TOP   (CONTENT_Y + 34)
-#define FM_ANN_H 44
+#define FM_TOP   (CONTENT_Y + 40)
+#define FM_ANN_W 170
+#define FM_ANN_H 32
+static int _fm_kol() { return lettertype_aantal() > 8 ? 4 : 2; }   // 19 keuzes: 4 x 5
 static void _fm_tegel(int i, int& x, int& y, int& w, int& h) {
-    int n = lettertype_aantal(), rijen = (n + FM_KOL - 1) / FM_KOL;
-    int beschikbaar = NAV_Y - FM_TOP - FM_ANN_H - 2 * FM_GAP;
-    w = (TFT_W - FM_GAP * (FM_KOL + 1)) / FM_KOL;
+    int kol = _fm_kol(), n = lettertype_aantal(), rijen = (n + kol - 1) / kol;
+    int beschikbaar = NAV_Y - FM_TOP - FM_GAP;
+    w = (TFT_W - FM_GAP * (kol + 1)) / kol;
     h = min(110, (beschikbaar - FM_GAP * (rijen - 1)) / rijen);
-    x = FM_GAP + (i % FM_KOL) * (w + FM_GAP);
-    y = FM_TOP + (i / FM_KOL) * (h + FM_GAP);
+    x = FM_GAP + (i % kol) * (w + FM_GAP);
+    y = FM_TOP + (i / kol) * (h + FM_GAP);
 }
-static int _fm_ann_y() { return NAV_Y - FM_GAP - FM_ANN_H; }
+static int _fm_ann_x() { return TFT_W - FM_GAP - FM_ANN_W; }
+static int _fm_ann_y() { return CONTENT_Y + 4; }
 
 static void fnt_menu_teken() {
     tft.fillRect(0, CONTENT_Y, TFT_W, NAV_Y - CONTENT_Y, C_BG);
     tft.setTextSize(2); tft.setTextColor(C_CYAN);
-    tft.setCursor(FM_GAP + 4, CONTENT_Y + 10); tft.print("KIES LETTERTYPE");
+    tft.setCursor(FM_GAP + 4, CONTENT_Y + 12); tft.print("KIES LETTERTYPE");
+    ui_knop(_fm_ann_x(), _fm_ann_y(), FM_ANN_W, FM_ANN_H, "ANNULEREN", C_SURFACE2, C_TEXT_DIM);
     int n = lettertype_aantal();
     for (int i = 0; i < n; i++) {
         int x, y, w, h; _fm_tegel(i, x, y, w, h);
         bool sel = (i == lettertype_keuze);
         tft.fillRoundRect(x, y, w, h, 8, sel ? C_SURFACE3 : C_SURFACE2);
         tft.drawRoundRect(x, y, w, h, 8, sel ? C_CYAN : C_SURFACE3);
-        lettertype_forceer = i;   // naam + proef in het lettertype zelf
+        lettertype_forceer = i;   // naam (+ proef als er ruimte is) in het lettertype zelf
         const char* nm = lettertype_naam(i);
-        tft.setTextSize(3); tft.setTextColor(sel ? C_CYAN : C_TEXT);
-        tft.setCursor(x + (w - (int)strlen(nm) * 18) / 2, y + h / 2 - 30); tft.print(nm);
-        tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
-        const char* proef = "HAVEN 12:45 Wind 4 Bft";
-        tft.setCursor(x + (w - (int)strlen(proef) * 12) / 2, y + h / 2 + 6); tft.print(proef);
+        int gr = ((int)strlen(nm) * 18 <= w - 12 && h >= 60) ? 3 : 2;
+        tft.setTextSize(gr); tft.setTextColor(sel ? C_CYAN : C_TEXT);
+        if (h >= 90) {
+            tft.setCursor(x + (w - (int)strlen(nm) * 6 * gr) / 2, y + h / 2 - 30); tft.print(nm);
+            tft.setTextSize(2); tft.setTextColor(C_TEXT_DIM);
+            const char* proef = "HAVEN 12:45 Wind 4 Bft";
+            tft.setCursor(x + (w - (int)strlen(proef) * 12) / 2, y + h / 2 + 6); tft.print(proef);
+        } else {
+            tft.setCursor(x + (w - (int)strlen(nm) * 6 * gr) / 2, y + (h - 8 * gr) / 2); tft.print(nm);
+        }
         lettertype_forceer = -1;
     }
-    ui_knop(FM_GAP, _fm_ann_y(), TFT_W - 2 * FM_GAP, FM_ANN_H, "ANNULEREN", C_SURFACE2, C_TEXT_DIM);
 }
 
 // true = overzicht gesloten (aanroeper tekent alles opnieuw)
@@ -3100,8 +3107,8 @@ static bool fnt_menu_run(int x, int y) {
             return true;
         }
     }
-    int ay = _fm_ann_y();
-    if (y >= ay && y < ay + FM_ANN_H) { cfg_fnt_menu = false; return true; }
+    int ax = _fm_ann_x(), ay = _fm_ann_y();
+    if (x >= ax && x < ax + FM_ANN_W && y >= ay - 4 && y < ay + FM_ANN_H + 4) { cfg_fnt_menu = false; return true; }
     return false;
 }
 #endif

@@ -33,7 +33,6 @@ String   net_status       = "Niet actief";
 bool     net_klaar        = false;
 bool     net_staat_gesync = false;
 bool     net_auto_verbinden = true;
-    net_scherm_sync    = true;
 bool     net_scherm_sync    = true;
 
 #define NET_BESTAND      "/net_config.csv"
@@ -155,6 +154,7 @@ static void _mac_van_str(const char* str, uint8_t* mac) {
 void net_laden() {
     net_modus = NET_SLAVE;   // standaard voor nieuwe unit
     net_auto_verbinden = true;
+    net_scherm_sync    = true;
     snprintf(net_eigen_naam, NET_NAAM_LEN, "BKOS-NUI");
     memset(net_master_mac, 0, 6);
     net_peers_cnt = 0;

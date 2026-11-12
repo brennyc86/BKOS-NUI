@@ -7,6 +7,9 @@
 #include "app_manager.h"  // apps[], apps_cnt, app_master_lijst_verwerken
 #include "wifi.h"         // ntp_vanaf_net()
 #include "hw_scherm.h"    // tft_actief — voor NET_MSG_SCHERM_STATUS
+#include "screen_config.h"   // cfg_sectie_huidig/zet — synchrone weergave
+#include "screen_meteo.h"    // meteo_tab/_web_tab — synchrone weergave
+#include "screen_victron.h"  // victron_tab — synchrone weergave
 
 #if PLATFORM_ESP32
 #include <esp_now.h>
@@ -30,6 +33,8 @@ String   net_status       = "Niet actief";
 bool     net_klaar        = false;
 bool     net_staat_gesync = false;
 bool     net_auto_verbinden = true;
+    net_scherm_sync    = true;
+bool     net_scherm_sync    = true;
 
 #define NET_BESTAND      "/net_config.csv"
 #define NET_PEERS_BESTAND "/net_peers.csv"
@@ -168,6 +173,7 @@ void net_laden() {
         if (lijn.startsWith("naam:"))          strncpy(net_eigen_naam, lijn.substring(5).c_str(), NET_NAAM_LEN - 1);
         if (lijn.startsWith("master:"))        _mac_van_str(lijn.substring(7).c_str(), net_master_mac);
         if (lijn.startsWith("auto_verbinden:")) net_auto_verbinden = (lijn.substring(15).toInt() != 0);
+        if (lijn.startsWith("scherm_sync:"))   net_scherm_sync    = (lijn.substring(12).toInt() != 0);
     }
     f.close();
 
@@ -202,6 +208,7 @@ void net_opslaan() {
     f.printf("modus:%d\n",          net_modus);
     f.printf("naam:%s\n",           net_eigen_naam);
     f.printf("auto_verbinden:%d\n", (int)net_auto_verbinden);
+    f.printf("scherm_sync:%d\n",    (int)net_scherm_sync);
     if (net_master_bekend()) f.printf("master:%s\n", net_mac_str(net_master_mac).c_str());
     f.close();
 
@@ -283,6 +290,96 @@ static void _stuur_cmd_ack(const uint8_t* mac, uint8_t req_id) {
     strncpy(ack.naam, net_eigen_naam, NET_NAAM_LEN - 1);
     ack.data[0] = req_id;
     _stuur(mac, ack, 1);
+}
+
+// ─── Synchrone weergave tussen boordcomputers (NET_MSG_SCHERM_SYNC) ────────────
+// Zelfde idee als de webapp-sync: master en (gekoppelde) slaves met net_scherm_sync tonen hetzelfde
+// scherm, CONFIG-onderdeel, METEO-tab (+ WEER-dagdetail) en VICTRON-tab. Wijzigt het scherm op een
+// slave, dan stuurt die het naar de master; de master past het toe en stuurt het naar alle slaves.
+// Schermen die bij dit ene toestel horen (WiFi, update, IO-config, netwerk, tijd, kalibratie, apps)
+// worden nooit gedeeld, en een slave die zo'n scherm open heeft volgt even niet.
+#define NET_SYNC_LEN 6
+static uint8_t       _sync_laatst[NET_SYNC_LEN] = {0xFF, 0, 0, 0, 0, 0};
+static unsigned long _sync_rust_tot = 0;      // na ontvangen: even niet terugsturen (toepassen loopt via de GUI-taak)
+static unsigned long _sync_periodiek = 0;
+
+static bool _sync_lokaal_scherm(int s) {
+    return s == SCREEN_WIFI || s == SCREEN_OTA || s == SCREEN_IO_CFG || s == SCREEN_APPS || s == SCREEN_LUA_APP ||
+           s == SCREEN_CALIBRATIE || s == SCREEN_NETWERK || s == SCREEN_BRUG || s == SCREEN_TIJD || s == SCREEN_APPSTORE ||
+           s < 0 || s > SCREEN_POST;
+}
+static void _sync_huidig(uint8_t* b) {
+    b[0] = (uint8_t)actief_scherm;
+    b[1] = (actief_scherm == SCREEN_CONFIG) ? (uint8_t)cfg_sectie_huidig() : 0;
+    b[2] = (uint8_t)meteo_tab;
+    b[3] = (uint8_t)(meteo_detail_huidig() + 1);
+    b[4] = (uint8_t)meteo_offset_huidig();
+    b[5] = (uint8_t)victron_tab;
+}
+static bool _sync_doet_mee() {
+    if (net_modus == NET_MASTER) return true;
+    return net_modus == NET_SLAVE && net_gepaard && net_scherm_sync && net_master_bekend();
+}
+static void _sync_stuur(const uint8_t* b, const uint8_t* behalve) {
+    NetPaket p = {};
+    p.versie = NET_PROTOCOL_VERSIE; p.type = NET_MSG_SCHERM_SYNC; p.modus = net_modus;
+    strncpy(p.naam, net_eigen_naam, NET_NAAM_LEN - 1);
+    memcpy(p.data, b, NET_SYNC_LEN);
+    if (net_modus == NET_MASTER) {
+        for (int i = 0; i < net_peers_cnt; i++)
+            if (net_peers[i].bevestigd && (!behalve || !_mac_gelijk(net_peers[i].mac, behalve))) _stuur(net_peers[i].mac, p, NET_SYNC_LEN);
+    } else {
+        _stuur(net_master_mac, p, NET_SYNC_LEN);
+    }
+}
+// Toepassen (vanuit net_loop; de echte schermwissel gebeurt in de GUI-taak via scherm_bouwen/meteo_web_tab)
+static void _sync_toepassen(const uint8_t* b) {
+    int s = b[0];
+    if (_sync_lokaal_scherm(s)) return;
+    if (_sync_lokaal_scherm(actief_scherm) && actief_scherm != s) return;   // iemand zit hier in een eigen scherm
+    memcpy(_sync_laatst, b, NET_SYNC_LEN);
+    _sync_rust_tot = millis() + 800;
+    if (s == SCREEN_CONFIG) {
+        if (actief_scherm != SCREEN_CONFIG || cfg_sectie_huidig() != b[1]) cfg_sectie_zet(b[1]);
+    } else if (s == SCREEN_BESTANDEN) {
+        if (actief_scherm != SCREEN_BESTANDEN) cfg_sectie_zet(5);   // FOTO'S & BESTANDEN (reset + openen)
+    } else if (s != actief_scherm) {
+        hw_scherm_ga(s);
+    }
+    if (s == SCREEN_METEO) meteo_web_tab(b[2], (int)b[3] - 1, b[4]);
+    if (s == SCREEN_VICTRON && b[5] != victron_tab && b[5] <= 1) { victron_tab = b[5]; scherm_bouwen = true; }
+}
+static void _sync_ontvangen(const uint8_t* mac, const NetPaket& pkt) {
+    if (!_sync_doet_mee()) return;
+    if (net_modus == NET_MASTER) {
+        int idx = -1;
+        for (int i = 0; i < net_peers_cnt; i++) if (_mac_gelijk(net_peers[i].mac, mac)) { idx = i; break; }
+        if (idx < 0 || !net_peers[idx].bevestigd) return;
+        _sync_toepassen(pkt.data);
+        _sync_stuur(pkt.data, mac);   // doorgeven aan de andere slaves
+    } else {
+        if (!_mac_gelijk(mac, net_master_mac)) return;
+        _sync_toepassen(pkt.data);
+    }
+}
+// Elke ronde van net_loop: eigen wijziging melden + (master) elke 5 s de huidige stand herhalen
+static void _sync_loop() {
+    if (!_sync_doet_mee()) return;
+    unsigned long nu = millis();
+    uint8_t b[NET_SYNC_LEN]; _sync_huidig(b);
+    bool lokaal = _sync_lokaal_scherm(b[0]);
+    if (memcmp(b, _sync_laatst, NET_SYNC_LEN) != 0) {
+        if ((long)(nu - _sync_rust_tot) < 0) return;          // ontvangen stand wordt nog toegepast
+        if (lokaal) return;                                    // eigen scherm: niet delen
+        memcpy(_sync_laatst, b, NET_SYNC_LEN);
+        _sync_stuur(b, nullptr);
+        _sync_periodiek = nu;
+        return;
+    }
+    if (net_modus == NET_MASTER && !lokaal && nu - _sync_periodiek >= 5000UL) {   // nieuwe/gemiste slaves bijwerken
+        _sync_periodiek = nu;
+        _sync_stuur(b, nullptr);
+    }
 }
 
 #if ESP_IDF_VERSION_MAJOR >= 5
@@ -650,6 +747,10 @@ static void _verwerk(const uint8_t* mac, const NetPaket& pkt) {
             net_peers[idx].scherm_actief    = (pkt.data[0] != 0);
             net_peers[idx].scherm_actief_ms = millis();
         }
+        break;
+
+    case NET_MSG_SCHERM_SYNC:
+        _sync_ontvangen(mac, pkt);
         break;
 
     case NET_MSG_CMD_ACK:
@@ -1292,6 +1393,9 @@ void net_loop() {
         sp.data[0] = 1;
         _stuur(net_master_mac, sp, 1);
     }
+
+    // Synchrone weergave (zie _sync_loop)
+    _sync_loop();
 
     // Uitgaande IO-commando's die nog niet bevestigd zijn opnieuw proberen — dekt
     // het geval dat de master aan het slapen was toen we voor het eerst stuurden.

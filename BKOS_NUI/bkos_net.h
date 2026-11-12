@@ -26,6 +26,7 @@
 #define NET_MSG_PEER_INFO   0x33  // slave → master: lokale IO telling
 #define NET_MSG_SCHERM_STATUS 0x25 // slave → master: eigen scherm actief (data[0]=1/0), herhaald zolang actief
 #define NET_MSG_CMD_ACK     0x26  // master → slave: bevestiging van IO_TOGGLE/IO_NAAM (data[0]=req_id)
+#define NET_MSG_SCHERM_SYNC 0x27  // beide kanten: actief scherm + subtoestand (synchrone weergave), zie net_scherm_sync_*
 
 // App-gerelateerde berichten
 #define NET_MSG_APP_LIST    0x40  // master → slaves: geïnst. app IDs + namen
@@ -98,6 +99,7 @@ extern String   net_status;
 extern bool     net_klaar;
 extern bool     net_staat_gesync;   // master: true zodra staat gesynchroniseerd van een slave
 extern bool     net_auto_verbinden; // slave: automatisch zoeken naar master
+extern bool     net_scherm_sync;    // slave: scherm synchroon met de master (zelfde scherm/tab/onderdeel)
 
 // ─── Functies ─────────────────────────────────────────────────────────────────
 void        net_setup();

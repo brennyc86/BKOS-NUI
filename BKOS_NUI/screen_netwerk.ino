@@ -127,6 +127,24 @@ static void _snw_modus_tab_teken() {
         fy += 34;
     }
 
+    // Scherm synchroon met de master (alleen van belang op een slave; zie NET_MSG_SCHERM_SYNC)
+    {
+        bool sy = net_scherm_sync;
+        uint16_t tbg  = sy ? RGB565(0,20,10) : C_SURFACE2;
+        uint16_t tacc = sy ? C_GREEN : C_TEXT_DIM;
+        tft.fillRoundRect(4, fy, TFT_W-8, 30, 5, tbg);
+        tft.drawRoundRect(4, fy, TFT_W-8, 30, 5, tacc);
+        tft.setTextSize(1); tft.setTextColor(tacc);
+        tft.setCursor(16, fy + 11);
+#if SCREEN_SMALL
+        tft.print(sy ? "SCHERM SYNCHROON AAN" : "SCHERM SYNCHROON UIT");
+#else
+        tft.print(sy ? "SCHERM SYNCHROON AAN  (slave toont hetzelfde scherm als de master)"
+                     : "SCHERM SYNCHROON UIT  (slave kiest zelf zijn scherm)");
+#endif
+        fy += 34;
+    }
+
     // Herstart-banner of OPSLAAN
     if (snw_opgeslagen_modus != 0xFF) {
         tft.fillRect(4, fy+4, TFT_W-8, 36, C_AMBER);
@@ -673,7 +691,13 @@ void screen_netwerk_run(int x, int y, bool aanraking) {
             net_opslaan();
             scherm_bouwen = true; return;
         }
-        int knop_y = toggle_y + 34;
+        int sync_y = toggle_y + 34;
+        if (y >= sync_y && y < sync_y + 30) {
+            net_scherm_sync = !net_scherm_sync;
+            net_opslaan();
+            scherm_bouwen = true; return;
+        }
+        int knop_y = sync_y + 34;
         if (y >= knop_y && y < knop_y + 36) {
             if (snw_opgeslagen_modus != 0xFF) {
 #if SCREEN_SMALL

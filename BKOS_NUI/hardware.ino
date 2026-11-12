@@ -531,7 +531,7 @@ void hw_setup() {
     palette_toepassen(kleurenschema);
     tft_helderheid_zet(tft_helderheid);
 
-    // Opstartlogo + herstelmenu in LEXEND EXA, tenzij de vorige 2 opstarts niet volledig waren (lettertype.h)
+    // Opstartlogo + herstelmenu in het basislettertype (ORBITRON), tenzij de vorige 2 opstarts niet volledig waren (lettertype.h)
     lettertype_opstart_begin();
     // Splash scherm (overgeslagen bij deep sleep wake voor snellere herstart)
     bool splash = !slaap_was_deep_wake();
@@ -627,7 +627,7 @@ void hw_setup() {
     // Start netwerk taak op Core 0 (niet-blokkerend)
     wifi_taak_start();
     io_setup_taak(); // IO cyclus op Core 0 — UI loop niet meer geblokkeerd door UART
-    // Vanaf hier het gekozen lettertype (+ LEXEND EXA voor veldnamen in de instellingen). Opstartlogo en
+    // Vanaf hier het gekozen lettertype (+ het basislettertype voor veldnamen in de instellingen). Opstartlogo en
     // herstelmenu hierboven bleven bewust klassiek: daar mag niets geladen zijn (lettertype.h).
     lettertype_actief = true;
     _boot_stap("hw_setup klaar", false);

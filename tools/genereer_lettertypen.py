@@ -21,7 +21,7 @@ LETTERTYPEN = [
     ('RUSSO ONE',  'RussoOne.ttf',  None),
     ('TEXTURINA',  'Texturina.ttf', 600),
     # Ronde 5 (brennyc86.github.io/bkos-lettertypen): de rest van Brendans selectie. Volgorde hierboven
-    # niet wijzigen: het nummer wordt opgeslagen (fnt=) en 1 = systeemlettertype.
+    # niet wijzigen: het nummer wordt opgeslagen (fnt=); BK_LETTERTYPE_SYSTEEM wijst naar ORBITRON (9).
     ('ATKINSON',   'atkinson.ttf',   None),
     ('LEXEND',     'lexend.ttf',     600),
     ('QUICKSAND',  'quicksand.ttf',  700),
@@ -109,7 +109,7 @@ def main():
          'typedef struct { uint8_t adv; uint8_t xo; uint8_t yo; uint8_t w; uint8_t h; uint32_t off; } BkGlyph;   // off = nibble-index in d[]',
          'typedef struct { const BkGlyph* g; const uint8_t* d; } BkMaat;',
          'typedef struct { const char* naam; BkMaat m[4]; } BkLettertype;   // m[0..3] = tekstgrootte 1..4',
-         '#define BK_LETTERTYPE_SYSTEEM 1   // LEXEND EXA: veldnamen in de instellingen',
+         '#define BK_LETTERTYPE_SYSTEEM 9   // ORBITRON: basislettertype (opstart, veldnamen in de instellingen)',
          '#define BK_GLYPH_N %d' % len(TEKENS), '']
     totaal = 0
     for fi, (naam, maten) in enumerate(data):

@@ -38,7 +38,7 @@ int lettertype_voor(uint8_t grootte) {
     return lettertype_keuze;
 }
 
-// Teller "onvolledige opstarts" in NVS (overleeft ook stroom eraf). < 2 → opstartscherm in LEXEND EXA.
+// Teller "onvolledige opstarts" in NVS (overleeft ook stroom eraf). < 2 → opstartscherm in het basislettertype.
 #if PLATFORM_ESP32
 #include <Preferences.h>
 #endif

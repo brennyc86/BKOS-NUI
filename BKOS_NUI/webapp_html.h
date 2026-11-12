@@ -78,7 +78,7 @@ section h2{
 @media (max-width:400px){ .grid4{grid-template-columns:repeat(2,1fr);} }
 
 button,input,select,textarea{font-family:inherit;}
-/* Basislettertype (LEXEND EXA) voor veldnamen, kopjes en toelichtingen in de instellingen; wat je kunt
+/* Basislettertype (ORBITRON) voor veldnamen, kopjes en toelichtingen in de instellingen; wat je kunt
    veranderen (knoppen, invoer) blijft het gekozen lettertype — zelfde regels als TFT_BASIS op het toestel */
 #tabInstellingen h2,#tabInstellingen label,#tabInstellingen p{font-family:var(--fnt-basis,inherit),-apple-system,system-ui,sans-serif;}
 button.mbtn{
@@ -798,9 +798,9 @@ function _cssLaad(i){
 }
 function zetCssLettertype(i){
   i = i | 0; if (i === _cssFnt) return; _cssFnt = i;
-  _cssLaad(1); _cssLaad(i);
+  _cssLaad(9); _cssLaad(i);   // 9 = ORBITRON: basislettertype
   var r = document.documentElement.style;
-  r.setProperty('--fnt-basis', "'Lexend Exa'");
+  r.setProperty('--fnt-basis', "'Orbitron'");
   if (CSS_LETTERTYPEN[i]) r.setProperty('--fnt-gekozen', "'" + CSS_LETTERTYPEN[i][0] + "'");
   else r.setProperty('--fnt-gekozen', "monospace");   // KLASSIEK
 }

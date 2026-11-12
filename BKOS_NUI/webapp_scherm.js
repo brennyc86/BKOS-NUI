@@ -222,9 +222,9 @@ var BKS = (function () {
   // Kiesbaar lettertype (lettertype.h op het toestel): tekstgrootte 1..4 met 4-bit dekking, gecentreerd in het
   // vak van het klassieke lettertype (6*s per teken) — zelfde regels als BkosTekst::_tekst(), pixel voor pixel.
   // Welk lettertype: zelfde regels als lettertype_voor() (lettertype.ino). Twee lettertypen: het BASISlettertype
-  // (LEXEND EXA, vast) voor veldnamen/toelichtingen in de instellingen (tekstBasis(), = TFT_BASIS op het toestel)
+  // (ORBITRON, vast) voor veldnamen/toelichtingen in de instellingen (tekstBasis(), = TFT_BASIS op het toestel)
   // en het GEKOZEN lettertype voor al het andere, ook de navigatiebalk.
-  var altNr = 0, altCache = {}, altGevraagd = {}, ALT_SYSTEEM = 1, altBasis = 0;
+  var altNr = 0, altCache = {}, altGevraagd = {}, ALT_SYSTEEM = 9, altBasis = 0;   // 9 = ORBITRON (BK_LETTERTYPE_SYSTEEM)
   function altLaad(nr) { if (nr && !altCache[nr] && !altGevraagd[nr] && opties.lettertype) { altGevraagd[nr] = 1; opties.lettertype(nr); } }
   // Laden mislukt of onvolledig aangekomen (hotspot): na een pauze opnieuw (anders bleef het klassiek)
   function fontOpnieuw(nr) { if (!altCache[nr]) { altGevraagd[nr] = 0; altLaad(nr); } }

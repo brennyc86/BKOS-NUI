@@ -363,16 +363,34 @@ static void _rc_beta_installeren() {
         char r1[64]; snprintf(r1, sizeof(r1), "Nieuwste beta: %s%s", beschikbaar.c_str(), anders ? "" : " (= huidig)");
         _rc_regel(0, r0, C_TEXT_DIM, 1);
         _rc_regel(1, r1, anders ? C_GREEN : C_TEXT, 1);
-        const char* l1 = anders ? "FLASHEN" : "OPNIEUW";
-        const char* s1 = anders ? "deze beta installeren" : "nog eens controleren";
-        ui_knop_groot(_rc_mx, RC_BTN_TOP,                                 _rc_bw, RC_MENU_BTN_H, l1, s1, C_SURFACE, C_TEXT, anders ? C_AMBER : C_TEXT_DIM, true);
-        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP),     _rc_bw, RC_MENU_BTN_H, "WACHTEN", "op volgende versie (scherm zwart)", C_SURFACE, C_TEXT, C_CYAN, true);
-        ui_knop_groot(_rc_mx, RC_BTN_TOP + (RC_MENU_BTN_H + RC_MENU_GAP) * 2, _rc_bw, RC_MENU_BTN_H, "TERUG", "", C_SURFACE, C_TEXT, C_TEXT_DIM, true);
+        // Geen nieuwere beta: OPNIEUW ZOEKEN / HERINSTALLEREN (zelfde versie nog eens flashen) / WACHTEN / TERUG
+        int stap = RC_MENU_BTN_H + RC_MENU_GAP;
+        int n = 0;
+        if (anders) {
+            ui_knop_groot(_rc_mx, RC_BTN_TOP + stap * n++, _rc_bw, RC_MENU_BTN_H, "FLASHEN", "deze beta installeren", C_SURFACE, C_TEXT, C_AMBER, true);
+        } else {
+            ui_knop_groot(_rc_mx, RC_BTN_TOP + stap * n++, _rc_bw, RC_MENU_BTN_H, "OPNIEUW ZOEKEN", "nog eens controleren", C_SURFACE, C_TEXT, C_TEXT_DIM, true);
+            ui_knop_groot(_rc_mx, RC_BTN_TOP + stap * n++, _rc_bw, RC_MENU_BTN_H, "HERINSTALLEREN", "deze beta opnieuw flashen", C_SURFACE, C_TEXT, C_AMBER, true);
+        }
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + stap * n++, _rc_bw, RC_MENU_BTN_H, "WACHTEN", "op volgende versie (scherm zwart)", C_SURFACE, C_TEXT, C_CYAN, true);
+        ui_knop_groot(_rc_mx, RC_BTN_TOP + stap * n++, _rc_bw, RC_MENU_BTN_H, "TERUG", "", C_SURFACE, C_TEXT, C_TEXT_DIM, true);
         tft_flush(true);
-        int keuze = _rc_wacht_knop(RC_BTN_TOP, RC_MENU_BTN_H, 3, RC_MENU_GAP);
+        int keuze = _rc_wacht_knop(RC_BTN_TOP, RC_MENU_BTN_H, n, RC_MENU_GAP);
+        if (!anders) keuze--;              // zelfde nummering als met FLASHEN: -1 = opnieuw zoeken, 0 = (her)installeren
+        if (keuze == -1) continue;
         if (keuze == 2) return;
         if (keuze == 1) { _rc_beta_wachten(beschikbaar); continue; }
-        if (!anders) continue;
+
+        if (!anders) {
+            char rh[48];
+            snprintf(rh, sizeof(rh), "Beta %s opnieuw flashen?", beschikbaar.c_str());
+            if (!_rc_bevestig("HERINSTALLEREN", rh, "Zelfde versie; instellingen blijven bewaard.", "FLASHEN", C_AMBER)) continue;
+            _rc_titel("HERINSTALLEREN");
+            _rc_regel(0, "Downloaden en flashen...", C_TEXT_DIM, 1);
+            ota_download_toepassen(String(OTA_GITHUB_FIRMWARE_URL));   // herstart bij succes
+            _rc_melding_terug("HERINSTALLEREN", "Downloaden/flashen mislukt:", ota_status_tekst.c_str(), C_RED_BRIGHT);
+            return;
+        }
 
         char rb[40];
         snprintf(rb, sizeof(rb), "Beta %s flashen?", beschikbaar.c_str());

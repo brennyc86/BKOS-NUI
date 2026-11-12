@@ -1,3 +1,4 @@
+#include "slaap.h"   // bkos_gui_lang_bezig
 #include "ota.h"
 #include "hw_scherm.h"
 #include "ui_colors.h"
@@ -417,7 +418,17 @@ void ota_laad_releases() {
 #endif
 }
 
+// Wrapper: de download + flash duurt veel langer dan de 30 s van de GUI-waakhond (slaap_diag_loop).
+// Zonder pauze herstartte die het toestel midden in het flashen (o.a. update vanuit de webapp).
+static bool _ota_download_intern(const String& url);
 bool ota_download_toepassen(String url) {
+    bool oud = bkos_gui_lang_bezig;
+    bkos_gui_lang_bezig = true;
+    bool ok = _ota_download_intern(url);
+    bkos_gui_lang_bezig = oud;
+    return ok;
+}
+static bool _ota_download_intern(const String& url) {
 #if !PLATFORM_ESP32
     ota_status_tekst = "OTA downloaden n.v.t. op Pico";
     return false;

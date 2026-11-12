@@ -1,3 +1,4 @@
+#include "slaap.h"   // bkos_gui_lang_bezig
 #include "screen_ota.h"
 #include "nav_bar.h"
 
@@ -642,7 +643,7 @@ void screen_ota_run(int x, int y, bool aanraking) {
         if (y >= OTA_BTN_Y1 && y < OTA_BTN_Y1 + OTA_BTN_H) {
             ota_status_tekst = "Controleren...";
             _ota_info_rechts_teken();
-            ota_git_check();
+            bkos_gui_lang_bezig = true; ota_git_check(); bkos_gui_lang_bezig = false;
             // Zie de Pico-tak hierboven in dit bestand: ota_git_check() zet
             // zelf geen ota_nieuwer_beschikbaar, dat is anders het exclusieve
             // terrein van de achtergrond-netwerktaak. Handmatige check moet
@@ -751,6 +752,7 @@ void ota_web_start() { _ota_web_vraag = true; }
 void ota_web_tick() {
     if (!_ota_web_vraag) return;
     _ota_web_vraag = false;
+    bkos_gui_lang_bezig = true;   // check (TLS, evt. jsdelivr-terugval) + download duren > 30 s: GUI-waakhond pauzeren
     actief_scherm = SCREEN_OTA;
     screen_ota_teken();
     ota_status_tekst = "Controleren (webapp)...";
@@ -764,5 +766,6 @@ void ota_web_tick() {
         ota_status_tekst = ota_versie_github.length() ? "Al de nieuwste versie" : "Controleren mislukt";
     }
     ota_web_pct = -1;
+    bkos_gui_lang_bezig = false;
     scherm_bouwen = true;
 }

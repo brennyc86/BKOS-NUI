@@ -45,12 +45,21 @@ def raster(pad, wght, s):
         asc = hb - min(f.getbbox(c)[1] for c in 'bdfhklH')
         desc = max(f.getbbox(c)[3] for c in 'gjpqy') - hb
         gem = f.getlength(proef) / len(proef)
-        capmax = 7 if s == 1 else round(0.78 * h)          # grootte 1: net als het klassieke lettertype 7 px hoofdletters
-        if cap <= capmax and asc + desc <= h and gem <= 1.08 * 6 * s:
+        if s == 1:
+            # grootte 1: net als het klassieke lettertype — hoofdletters 7 px op basislijn 7; staartjes
+            # (g j p q y) mogen tot 3 px onder het 8-px-vak hangen. Anders bleef de letter 5 px en
+            # leek elk lettertype op het standaardlettertype.
+            ok = cap <= 7 and asc <= 7 and desc <= 3
+        else:
+            ok = cap <= round(0.78 * h) and asc + desc <= h
+        if ok and gem <= 1.08 * 6 * s:
             best = pt
     f = laad(pad, best, wght); bbH = f.getbbox('H'); hb = bbH[3]
     desc = max(f.getbbox(c)[3] for c in 'gjpqy') - hb
-    base = h - max(desc, 0)
+    if s == 1:
+        base, h = 7, 10
+    else:
+        base = h - max(desc, 0)
     glyphs = []
     for c in TEKENS:
         ch = '°' if c == 247 else chr(c)

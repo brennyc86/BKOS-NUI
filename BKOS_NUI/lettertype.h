@@ -7,7 +7,8 @@
 // dekking, gladde randen door te mengen met wat al in de framebuffer staat). Het klassieke lettertype
 // (keuze 0) gaat ongewijzigd naar Arduino_GFX. In de instellingen staan veldnamen (grootte 1) altijd in
 // het systeemlettertype (LEXEND EXA) en waarden (grootte 2+) in het gekozen lettertype. Opstartlogo en
-// herstelmenu blijven klassiek (lettertype_actief = false): daar mag niets geladen zijn.
+// herstelmenu: alleen LEXEND EXA (vaste flash-data, er wordt niets geladen). Als ultieme terugval
+// staan ze in het klassieke lettertype zodra de boordcomputer 2x achter elkaar niet volledig opstartte.
 //
 // Indeling blijft gelijk: een tekst wordt gecentreerd in het vak dat hij met het klassieke lettertype
 // zou innemen (6*s per teken) en de cursor schuift ook precies dat vak op. Alle bestaande
@@ -21,6 +22,9 @@
 extern uint8_t lettertype_keuze;     // 0 = klassiek; 1..N = BK_LETTERTYPEN[keuze-1]
 extern bool    lettertype_actief;    // false tijdens opstartlogo + herstelmenu: dan altijd klassiek (niets geladen)
 extern int     lettertype_forceer;   // >= 0: tijdelijk dit lettertype (kiesoverzicht), -1 = normaal
+extern bool    lettertype_opstart;   // opstartlogo + herstelmenu in LEXEND EXA (false na 2 onvolledige opstarts: klassiek)
+void        lettertype_opstart_begin();      // vóór het opstartlogo: teller onvolledige opstarts ophogen (NVS)
+void        lettertype_opstart_geslaagd();   // na een volledige opstart (±30 s in bedrijf): teller terug op 0
 int         lettertype_aantal();     // inclusief klassiek
 const char* lettertype_naam(int i);
 void        lettertype_zet(int i);   // + opslaan via state_save() door de aanroeper

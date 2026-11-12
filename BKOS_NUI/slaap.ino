@@ -128,6 +128,7 @@ void bkos_spoor(const char* stap) {
 #endif
 }
 void bkos_gui_tik() { _gui_tikken++; }
+volatile bool bkos_gui_lang_bezig = false;
 void bkos_gui_spoor(const char* stap) {
 #if PLATFORM_ESP32
     strncpy(_gspoor, stap ? stap : "", sizeof(_gspoor) - 1);
@@ -153,7 +154,7 @@ void slaap_diag_loop() {
     {
         static uint32_t vorige_tik = 0; static unsigned long stil_sinds = 0;
         uint32_t t = _gui_tikken;
-        if (t != vorige_tik || t == 0 || wifi_ota_modus) { vorige_tik = t; stil_sinds = millis(); }
+        if (t != vorige_tik || t == 0 || wifi_ota_modus || bkos_gui_lang_bezig) { vorige_tik = t; stil_sinds = millis(); }
         else if (millis() - stil_sinds > 30000UL) {
             _gui_hang = GUI_HANG_MAGIC;            // gspoor staat al in RTC
             delay(50);

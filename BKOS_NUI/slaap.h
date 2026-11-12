@@ -77,4 +77,5 @@ void        slaap_diag_loop();                // stuurt een uitgestelde crashmel
 // herstart slaap_diag_loop() het toestel — beter dan een zwart scherm dat niet meer reageert — en
 // gaat het GUI-spoor mee in de crashmelding na de herstart.
 void        bkos_gui_tik();
+extern volatile bool bkos_gui_lang_bezig;   // true = GUI-taak doet bewust iets lang (OTA check/download): waakhond pauzeert
 void        bkos_gui_spoor(const char* stap);

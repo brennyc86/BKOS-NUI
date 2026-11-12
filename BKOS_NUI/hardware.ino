@@ -531,6 +531,8 @@ void hw_setup() {
     palette_toepassen(kleurenschema);
     tft_helderheid_zet(tft_helderheid);
 
+    // Opstartlogo + herstelmenu in LEXEND EXA, tenzij de vorige 2 opstarts niet volledig waren (lettertype.h)
+    lettertype_opstart_begin();
     // Splash scherm (overgeslagen bij deep sleep wake voor snellere herstart)
     bool splash = !slaap_was_deep_wake();
     if (splash) {
@@ -693,6 +695,8 @@ void hw_setup() {
 void hw_loop() {
     // Eenmalig, ná de allereerste keer dat deze lus draait (dus ná de eerste
     // schermtekening) — zie _hw_achtergrond_init_eenmalig() hierboven.
+    static bool _opstart_geslaagd = false;   // na 30 s in bedrijf telt de opstart als volledig (lettertype.h)
+    if (!_opstart_geslaagd && millis() > 30000UL) { _opstart_geslaagd = true; lettertype_opstart_geslaagd(); }
     static bool _achtergrond_init_klaar = false;
     if (!_achtergrond_init_klaar) {
         _achtergrond_init_klaar = true;

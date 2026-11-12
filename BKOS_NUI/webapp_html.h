@@ -780,7 +780,7 @@ function lockClick(){
 function handleMsg(msg){
   if (typeof BKS !== 'undefined') {
     BKS.zet(msg);
-    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'meteo_dag' || msg.t === 'meteo_getij' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
+    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'meteo_dag' || msg.t === 'meteo_getij' || msg.t === 'meteo_stroom' || msg.t === 'victron' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
   }
   switch(msg.t){
     case 'io_full':
@@ -794,6 +794,10 @@ function handleMsg(msg){
         // FOTO'S & BESTANDEN is op de boordcomputer een eigen scherm (21); in de app blijft het een CONFIG-onderdeel
         if (msg.s === 21 && bkosScherm === 3 && BKS.S.cfgSectie === 'fotos') break;
         if (msg.s === 3 && msg.c != null) BKS.S.cfgSectie = CFG_IDS[msg.c - 1] || null;
+        if (msg.s === 2 && msg.m != null && BKS.zetMeteoTab(msg.m)) {   // METEO-tabblad volgt de boordcomputer
+          if (msg.m === 1) send({t:'meteo_getij'});
+        }
+        if (msg.s === 11 && msg.v != null) BKS.zetVicTab(msg.v);         // VICTRON-tabblad idem
         bkosToon(msg.s);
       }
       break;
@@ -2217,7 +2221,8 @@ function bkosToon(s){
   }
   if (s === 5) send({t:'info_scherm'});
   if (s === 16) berLaden();
-  if (s === 2) send({t:'meteo_scherm'});
+  if (s === 2) { send({t:'meteo_scherm'}); if (BKS.meteoTabNu() === 3 && niveau >= NIVEAU_GAST) send({t:'meteo_stroom', a:'?'}); }
+  if (s === 11 && niveau >= NIVEAU_GAST) send({t:'victron_vraag'});
   var geen = niveau < d.min;
   wrap.classList.toggle('geblurd', geen);
   if (geen) {
@@ -2232,7 +2237,7 @@ function bkosToon(s){
     document.getElementById('bkToegKnop').style.display = '';
   }
   // Schermen die (nog) niet in de webapp bestaan: duidelijke melding i.p.v. een lege of halve weergave
-  var komt = (s === 11), niet = !volledig && d.tab === 'onbekend';
+  var komt = false, niet = !volledig && d.tab === 'onbekend';
   wrap.classList.toggle('nietWeb', !geen && niet);
   if (!geen && niet) {
     document.getElementById('bkNietKop').textContent = d.n;
@@ -2251,6 +2256,7 @@ function bkosGa(s){
 }
 // Synchroon werkt alleen als je ingelogd bent; daarvoor kiest de webapp altijd zelf zijn scherm
 setInterval(function(){ if (bkosAan && bkosScherm === 2) send({t:'meteo_scherm'}); }, 60000);
+setInterval(function(){ if (bkosAan && bkosScherm === 11 && niveau >= NIVEAU_GAST) send({t:'victron_vraag'}); }, 5000);   // VICTRON: verse meetwaarden
 function bkosSyncEff(){ return bkosSync && unlocked && niveau >= NIVEAU_GAST; }
 // Verbindings-/inlogstatus en de sync-keuze doorgeven aan de canvas (slotje + sync-icoon in de statusbalk)
 function bkosWebStaat(){
@@ -2266,6 +2272,8 @@ function bkosActie(a){
   if (a.sync) { bkosSyncWissel(); return; }
   if (a.volscherm) { volschermWissel(); return; }
   if (a.weergave) { bkosWissel(); return; }
+  if (a.meteoTabSync != null) { if (bkosSyncEff()) send({t:'set_meteo', m:a.meteoTabSync}); return; }
+  if (a.vicTabSync != null) { if (bkosSyncEff()) send({t:'set_vic', v:a.vicTabSync}); return; }
   if (a.cfgSectie != null) {   // CONFIG-onderdeel openen/sluiten — synchroon: de boordcomputer opent hetzelfde onderdeel
     BKS.S.cfgSectie = a.cfgSectie || null; bkosToon(3);
     if (bkosSyncEff() && niveau >= NIVEAU_EIGENAAR) send({t:'set_cfg', c: CFG_IDS.indexOf(a.cfgSectie) + 1});

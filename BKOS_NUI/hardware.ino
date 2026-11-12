@@ -363,6 +363,7 @@ static void _gui_taak(void*) {
         // Geen aanraking: periodieke scherm-updates
         if (!aanraking_vast) {
             touch_verwerkt = false;
+            meteo_web_tick();   // webapp: METEO-tab/STROOM-actie uitvoeren in deze (GUI-)taak
             int app_upd = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
                           ? lua_forceer_app
                           : app_voor_scherm(actief_scherm);

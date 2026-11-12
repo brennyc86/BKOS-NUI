@@ -26,6 +26,8 @@
 #include "meteo.h"           // weerstrook op het hoofdscherm
 #include "getijdata.h"       // GETIJ-tab in de webapp (getijdata_get/naam/lat_offset)
 #include "victron_ble.h"     // mini-widget interieurbalk
+#include "screen_meteo.h"    // METEO-tab + STROOM-weergave in de webapp
+#include "screen_victron.h"  // VICTRON-tab in de webapp
 #include "data_store.h"
 #include "haven_achtergrond.h"  // haven_achtergrond_url() — foto op het HAVEN-scherm
 #include "slaap.h"            // slaap_laatste_onverwachte_reset() — INFO-scherm in de webapp
@@ -369,7 +371,7 @@ static int _scherm_min_niveau(int s) {
     switch (s) {
         case SCREEN_INFO: case SCREEN_POST: case SCREEN_BERICHT:         return NIVEAU_GEEN;
         case SCREEN_MAIN: case SCREEN_HAVEN: case SCREEN_PANEEL:
-        case SCREEN_HUISPANEEL: case SCREEN_METEO:                       return NIVEAU_GAST;
+        case SCREEN_HUISPANEEL: case SCREEN_METEO: case SCREEN_VICTRON:  return NIVEAU_GAST;
         default:                                                         return NIVEAU_EIGENAAR;
     }
 }
@@ -652,7 +654,54 @@ static String _meteo_getij_json() {
 static String _scherm_json() {
     String s = F("{\"t\":\"scherm\",\"s\":"); s += actief_scherm;
     if (actief_scherm == SCREEN_CONFIG) { s += F(",\"c\":"); s += cfg_sectie_huidig(); }   // open CONFIG-onderdeel
+    if (actief_scherm == SCREEN_METEO)  { s += F(",\"m\":"); s += meteo_tab; }             // open METEO-tabblad
+    if (actief_scherm == SCREEN_VICTRON){ s += F(",\"v\":"); s += victron_tab; }           // open VICTRON-tabblad
     s += '}';
+    return s;
+}
+// Subtoestand van het actieve scherm (CONFIG-onderdeel / METEO-tab / VICTRON-tab): wijziging = scherm opnieuw melden
+static int _scherm_sub() {
+    if (actief_scherm == SCREEN_CONFIG)  return cfg_sectie_huidig();
+    if (actief_scherm == SCREEN_METEO)   return meteo_tab;
+    if (actief_scherm == SCREEN_VICTRON) return victron_tab;
+    return -1;
+}
+// VICTRON-scherm in de webapp: per apparaat dezelfde waarden als de DATA-kaart (screen_victron.ino)
+static String _victron_json() {
+    String s; s.reserve(900);
+    char b[40], k[VICTRON_SLEUTEL_LEN];
+    s = F("{\"t\":\"victron\",\"a\":[");
+    for (int i = 0; i < victron_apparaten_cnt; i++) {
+        const VictronApparaat& a = victron_apparaten[i];
+        victron_sleutel(i, "batt_v",   k); float bv = data_lees_f(k, -1.0f);
+        victron_sleutel(i, "solar_w",  k); int   sw = data_lees_i(k, -1);
+        victron_sleutel(i, "yield_wh", k); float yw = data_lees_f(k, -1.0f);
+        victron_sleutel(i, "staat",    k); int   st = data_lees_i(k, -1); long lft = data_leeftijd(k);
+        int rssi = 0;
+        for (int j = 0; j < victron_ontdekt_cnt; j++) if (strcmp(victron_ontdekt[j].mac, a.mac) == 0) { rssi = victron_ontdekt[j].rssi; break; }
+        if (i) s += ',';
+        s += F("{\"n\":\""); _ui_esc(s, a.naam[0] ? a.naam : a.mac);
+        s += F("\",\"mac\":\""); _ui_esc(s, a.mac);
+        s += F("\",\"ty\":\""); _ui_esc(s, victron_type_naam(a.type));
+        s += F("\",\"st\":\""); if (st >= 0) _ui_esc(s, victron_staat_naam(st));
+        snprintf(b, sizeof(b), "\",\"v\":%.2f,\"w\":%d,\"y\":%.0f", bv, sw, yw); s += b;
+        s += F(",\"l\":"); s += lft; s += F(",\"k\":"); s += a.heeft_sleutel ? 1 : 0;
+        s += F(",\"r\":"); s += rssi; s += '}';
+    }
+    s += F("],\"o\":[");
+    bool eerste = true;
+    for (int j = 0; j < victron_ontdekt_cnt; j++) {
+        const VictronOntdekt& o = victron_ontdekt[j];
+        bool cfg = false;
+        for (int i = 0; i < victron_apparaten_cnt; i++) if (strcmp(victron_apparaten[i].mac, o.mac) == 0) cfg = true;
+        if (cfg) continue;
+        if (!eerste) s += ','; eerste = false;
+        s += F("{\"n\":\""); _ui_esc(s, o.naam[0] ? o.naam : o.mac);
+        s += F("\",\"mac\":\""); _ui_esc(s, o.mac);
+        s += F("\",\"ty\":\""); _ui_esc(s, victron_type_naam(o.type));
+        s += F("\",\"r\":"); s += o.rssi; s += '}';
+    }
+    s += F("],\"scan\":"); s += victron_scan_actief ? 1 : 0; s += '}';
     return s;
 }
 static int _ws_prev_scherm = -1, _ws_prev_cfg = -1;
@@ -703,6 +752,18 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         _tx(num, r); return;
     }
     if (t.indexOf(F("\"meteo_getij\"")) >= 0) { String r = _meteo_getij_json(); _tx(num, r); return; }
+    if (t.indexOf(F("\"meteo_stroom\"")) >= 0) {   // STROOM-weergave (vaartijd vs. getij): ook voor gasten, net als METEO
+        if (_ws_niveau[num] < NIVEAU_GAST) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        int ai = t.indexOf(F("\"a\":\""));
+        char a = (ai >= 0) ? t.charAt(ai + 5) : '?';
+        int vi = t.indexOf(F("\"v\":"));
+        meteo_web_stroom(a ? a : '?', vi >= 0 ? (int)t.substring(vi + 4).toInt() : 0);
+        return;   // antwoord volgt via bkos_client_loop zodra de GUI-taak de weergave heeft opgebouwd
+    }
+    if (t.indexOf(F("\"victron_vraag\"")) >= 0) {
+        if (_ws_niveau[num] < _scherm_min_niveau(SCREEN_VICTRON)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
+        String r = _victron_json(); _tx(num, r); return;
+    }
     if (t.indexOf(F("\"meteo_scherm\"")) >= 0) {   // weer is voor iedereen zichtbaar (ook op /info/publiek-niveau)
         String r = _meteo_scherm_json();
         _tx(num, r);
@@ -744,6 +805,20 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         int idx = t.indexOf(F("\"c\":"));
         cfg_sectie_zet(idx >= 0 ? (int)t.substring(idx + 4).toInt() : 0);
         _ws_prev_scherm = -1;
+
+    } else if (t.indexOf(F("\"set_meteo\"")) >= 0) {   // METEO-tabblad (synchroon met de webapp)
+        if (_ws_niveau[num] < _scherm_min_niveau(SCREEN_METEO)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
+        int idx = t.indexOf(F("\"m\":"));
+        if (idx >= 0) meteo_web_tab((int)t.substring(idx + 4).toInt());
+
+    } else if (t.indexOf(F("\"set_vic\"")) >= 0) {     // VICTRON-tabblad (synchroon met de webapp)
+        if (_ws_niveau[num] < _scherm_min_niveau(SCREEN_VICTRON)) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
+        int idx = t.indexOf(F("\"v\":"));
+        int v = (idx >= 0) ? (int)t.substring(idx + 4).toInt() : 0;
+        if ((v == VICTRON_TAB_DATA || v == VICTRON_TAB_CONFIG) && v != victron_tab) {
+            victron_tab = v;
+            if (actief_scherm == SCREEN_VICTRON) scherm_bouwen = true;
+        }
 
     } else if (t.indexOf(F("\"io_toggle\"")) >= 0) {
         if (_ws_niveau[num] < NIVEAU_EIGENAAR) { String r = F("{\"t\":\"geen_recht\"}"); _tx(num, r); return; }
@@ -1257,7 +1332,11 @@ void bkos_client_loop() {
         }
     }
 
-    int cfg_nu = (actief_scherm == SCREEN_CONFIG) ? cfg_sectie_huidig() : -1;
+    {   // STROOM-weergave die de GUI-taak klaarzette (na een webapp-actie of een tik op het toestel)
+        String sj;
+        if (meteo_web_stroom_json(sj)) _bc(sj);
+    }
+    int cfg_nu = _scherm_sub();
     if (actief_scherm != _ws_prev_scherm || cfg_nu != _ws_prev_cfg) {
         String sc = _scherm_json(); _bc(sc);
         _ws_prev_scherm = actief_scherm; _ws_prev_cfg = cfg_nu;

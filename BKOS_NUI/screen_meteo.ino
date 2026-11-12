@@ -980,7 +980,7 @@ static int    str_cand[24];
 static float  str_cmn[24], str_cmx[24];
 static int    str_candn      = 0;
 
-static int    str_dsort[40];           // vertrekhavens gesorteerd (land, naam)
+static int    str_dsort[64];           // vertrekhavens gesorteerd (afstand) — 48 havens, was [40] (las buiten de array)
 static int    str_dsortn     = 0;
 
 static float  str_uur_mn[24], str_uur_mx[24];
@@ -1271,9 +1271,10 @@ static float _str_haven_d2(int i) {
 // Vertrekhavens sorteren op afstand tot de weerlocatie (dichtstbij eerst)
 static void _str_sorteer_vertrek() {
     int n = stroming_haven_count();
+    if (n > 64) n = 64;
     str_dsortn = n;
-    for (int i = 0; i < n && i < 40; i++) str_dsort[i] = i;
-    for (int i = 1; i < n && i < 40; i++) {
+    for (int i = 0; i < n; i++) str_dsort[i] = i;
+    for (int i = 1; i < n; i++) {
         int v = str_dsort[i]; float dv = _str_haven_d2(v); int j = i - 1;
         while (j >= 0 && _str_haven_d2(str_dsort[j]) > dv) { str_dsort[j + 1] = str_dsort[j]; j--; }
         str_dsort[j + 1] = v;
@@ -1642,7 +1643,9 @@ static void _str_fase_tabel() {
     }
 }
 
+static volatile bool _web_str_vraag = false;   // webapp-weergave van STROOM verversen (zie meteo_web_tick)
 static void meteo_stroming_teken() {
+    _web_str_vraag = true;
     tft.fillRect(0, PANEL_Y, TFT_W, PANEL_H, C_BG);
     if      (str_fase == 0) _str_fase_vertrek();
     else if (str_fase == 1) _str_fase_aankomst();
@@ -2193,4 +2196,191 @@ void screen_meteo_run(int x, int y, bool aanraking) {
             }
         }
     }
+}
+
+
+// ─── Webapp-koppeling (bkos_client.ino) ───────────────────────────────────
+// De WebSocket draait in een andere taak dan de GUI. Alle stroming-staat (str_*) is
+// van de GUI-taak, dus de webapp zet hier alleen een verzoek klaar; meteo_web_tick()
+// (vanuit _gui_taak) voert het uit, hertekent zo nodig het toestel en bouwt de JSON
+// die bkos_client daarna ophaalt en naar alle clients stuurt.
+static volatile int  _web_meteo_tab  = -1;
+static volatile char _web_str_actie  = 0;
+static volatile int  _web_str_waarde = 0;
+static String        _web_str_json;
+static volatile bool _web_str_klaar  = false;
+
+void meteo_web_tab(int t) { if (t >= 0 && t < TAB_CNT) _web_meteo_tab = t; }
+void meteo_web_stroom(char a, int v) {
+    if (a == '?' && _web_str_actie) return;   // een echte actie levert zelf al een verse weergave op
+    _web_str_waarde = v; _web_str_actie = a;
+}
+bool meteo_web_stroom_json(String& uit) {
+    if (!_web_str_klaar) return false;
+    uit = _web_str_json; _web_str_json = String(); _web_str_klaar = false;
+    return true;
+}
+
+static void _wj_esc(String& s, const char* t) {
+    for (; *t; t++) { char c = *t; if (c == '"' || c == '\\') s += '\\'; if ((uint8_t)c >= 0x20) s += c; }
+}
+static int _wj_min(float u) { return (u < 0) ? -1 : (int)(u * 60.0f + 0.5f); }
+
+static void _web_str_actie_doe(char a, int v) {
+    switch (a) {
+        case 's': str_stw = v > 0 ? min(STROMING_STW_MAX, str_stw + STROMING_STW_STAP)
+                                  : max(STROMING_STW_MIN, str_stw - STROMING_STW_STAP); str_scroll = 0; break;
+        case 't':
+            if      (str_fase == 3 && str_uur_detail >= 0) str_uur_detail = -1;
+            else if (str_fase == 3)                        str_fase = (str_routen > 1) ? 2 : 1;
+            else if (str_fase > 0)                         str_fase--;
+            str_scroll = 0; break;
+        case 'v': if (v >= 0 && v < stroming_haven_count()) { str_van = v; str_fase = 1; str_scroll = 0; } break;
+        case 'n':
+            if (str_fase == 1 && v >= 0 && v < stroming_haven_count() && v != str_van) {
+                str_naar = v; str_omgekeerd = false; str_route_sel = 0; str_uur_detail = -1; _str_zoek();
+                str_fase = (str_routen > 1) ? 2 : 3; str_scroll = 0;
+            } break;
+        case 'r': if (str_fase == 2 && v >= 0 && v < str_routen) { str_route_sel = v; str_fase = 3; str_uur_detail = -1; str_scroll = 0; } break;
+        case 'o': if (str_fase == 3) { str_omgekeerd = !str_omgekeerd; str_uur_detail = -1; str_scroll = 0; _str_zoek(); } break;
+        case 'd':
+            if (str_fase == 3) {
+                if (v < 0 && str_dag > 0) str_dag--;
+                if (v > 0 && str_dag < STR_MAX_DAG) str_dag++;
+                str_uur_detail = -1; str_scroll = 0;
+            } break;
+        case 'u': if (str_fase == 3) { str_uur_detail = (v >= 0 && v < 24) ? v : -1; str_scroll = 0; } break;
+        case 'h':
+            if (str_fase == 3 && str_uur_detail >= 0) {
+                if (v < 0 && str_uur_detail > str_uur_start) str_uur_detail--;
+                if (v > 0 && str_uur_detail < 23) str_uur_detail++;
+            } break;
+        case 'g': getijdata_ophalen_aanvragen(4); if (!wifi_verbonden) wifi_verbind_aanvragen(); break;
+        default: break;
+    }
+}
+
+static void _web_str_bouw() {
+    String s; s.reserve(2600);
+    char b[48];
+    s = F("{\"t\":\"meteo_stroom\",\"f\":"); s += str_fase;
+    snprintf(b, sizeof(b), ",\"stw\":\"%.1f\"", str_stw); s += b;
+    if (str_fase == 0) {
+        if (str_dsortn == 0) _str_sorteer_vertrek();
+        s += F(",\"h\":[");
+        for (int k = 0; k < str_dsortn; k++) {
+            int i = str_dsort[k];
+            if (k) s += ',';
+            s += '['; s += i; s += F(",\""); _wj_esc(s, stroming_haven_naam(i)); s += F("\",\"");
+            _wj_esc(s, stroming_haven_prov(i)); s += F("\","); s += stroming_haven_land(i); s += ']';
+        }
+        s += ']';
+    } else if (str_fase == 1) {
+        _str_maak_cand();
+        s += F(",\"van\":\""); _wj_esc(s, stroming_haven_naam(str_van)); s += '"';
+        s += F(",\"vl\":"); s += stroming_haven_land(str_van);
+        s += F(",\"hw\":"); s += str_hwn > 0 ? 1 : 0;
+        s += F(",\"h\":[");
+        for (int k = 0; k < str_candn; k++) {
+            int i = str_cand[k];
+            if (k) s += ',';
+            s += '['; s += i; s += F(",\""); _wj_esc(s, stroming_haven_naam(i)); s += F("\",");
+            s += stroming_haven_land(i); s += ','; s += _wj_min(str_cmn[k]); s += ','; s += _wj_min(str_cmx[k]); s += ']';
+        }
+        s += ']';
+    } else if (str_fase == 2) {
+        s += F(",\"van\":\""); _wj_esc(s, stroming_haven_naam(str_van));
+        s += F("\",\"naar\":\""); _wj_esc(s, stroming_haven_naam(str_naar)); s += F("\",\"sel\":"); s += str_route_sel;
+        s += F(",\"r\":[");
+        for (int k = 0; k < str_routen; k++) {
+            const StromRoute* r = &str_routes[k];
+            float mn, mx; _str_route_range(k, &mn, &mx);
+            if (k) s += ',';
+            s += F("[\""); _wj_esc(s, r->via); s += F("\",");
+            snprintf(b, sizeof(b), "%.0f", r->afstand_nm); s += b; s += ',';
+            s += _wj_min(mn); s += ','; s += _wj_min(mx); s += ',';
+            s += r->sluis_min > 0 ? 1 : 0; s += ','; s += r->indicatief ? 1 : 0; s += ']';
+        }
+        s += ']';
+    } else {
+        int van = str_omgekeerd ? str_naar : str_van, naar = str_omgekeerd ? str_van : str_naar;
+        _str_laad_ref();
+        s += F(",\"van\":\""); _wj_esc(s, stroming_haven_naam(van));
+        s += F("\",\"naar\":\""); _wj_esc(s, stroming_haven_naam(naar));
+        s += F("\",\"vl\":"); s += stroming_haven_land(van);
+        s += F(",\"nl\":"); s += stroming_haven_land(naar);
+        const StromRoute* r = (str_routen > 0) ? &str_routes[str_route_sel] : nullptr;
+        if (r) {
+            snprintf(b, sizeof(b), "%.0f", r->afstand_nm);
+            s += F(",\"nm\":"); s += b; s += F(",\"via\":\""); _wj_esc(s, r->via); s += F("\",\"ind\":"); s += r->indicatief ? 1 : 0;
+        }
+        char dl[20]; _str_daglabel(dl, sizeof(dl));
+        s += F(",\"dag\":\""); _wj_esc(s, dl); s += F("\",\"dg\":"); s += str_dag; s += F(",\"dmax\":"); s += STR_MAX_DAG;
+        s += F(",\"hw\":"); s += str_hwn > 0 ? 1 : 0;
+        s += F(",\"ud\":"); s += str_uur_detail;
+        if (str_hwn > 0) {
+            _str_bereken_overzicht();
+            s += F(",\"us\":"); s += str_uur_start;
+            if (str_uur_detail < 0) {
+                s += F(",\"best\":"); s += str_best_uur; s += F(",\"worst\":"); s += str_worst_uur;
+                s += F(",\"u\":[");
+                for (int k = 0; k < str_ushown; k++) {
+                    int h = str_ushow[k];
+                    time_t wdep = _str_dep_tijd(h, 0);
+                    float wdv = _str_vt(wdep);
+                    int wc = -1, dnB = 0, dnA = 0;
+                    if (wdv >= 0) { time_t aank = wdep + (time_t)(wdv * 3600.0f); wc = _str_weer_code(wdep, aank); dnB = _str_dagnacht(wdep); dnA = _str_dagnacht(aank); }
+                    if (k) s += ',';
+                    s += '['; s += h; s += ','; s += _wj_min(str_uur_mn[h]); s += ','; s += _wj_min(str_uur_mx[h]);
+                    s += ','; s += wc; s += ','; s += dnB; s += ','; s += dnA; s += ']';
+                }
+                s += ']';
+            } else {
+                int H = str_uur_detail;
+                time_t now = time(nullptr);
+                s += F(",\"d\":[");
+                bool eerste = true;
+                for (int m = 0; m < 60; m += STR_DET_MIN_STAP) {
+                    time_t dep = _str_dep_tijd(H, m);
+                    float d = _str_vt(dep);
+                    int am = -1, wc = -1, dnB = 0, dnA = 0;
+                    if (d >= 0) {
+                        time_t aank = dep + (time_t)(d * 3600.0f);
+                        struct tm at; localtime_r(&aank, &at); am = at.tm_hour * 60 + at.tm_min;
+                        wc = _str_weer_code(dep, aank); dnB = _str_dagnacht(dep); dnA = _str_dagnacht(aank);
+                    }
+                    if (!eerste) s += ','; eerste = false;
+                    s += '['; s += m; s += ','; s += _wj_min(d); s += ','; s += am; s += ',';
+                    s += (str_dag == 0 && dep < now) ? 1 : 0; s += ','; s += wc; s += ','; s += dnB; s += ','; s += dnA; s += ']';
+                }
+                s += ']';
+            }
+        }
+    }
+    s += '}';
+    _web_str_json = s;
+    _web_str_klaar = true;
+}
+
+// Aangeroepen vanuit de GUI-taak (hardware.ino) wanneer er niet aangeraakt wordt
+void meteo_web_tick() {
+    int t = _web_meteo_tab;
+    if (t >= 0) {
+        _web_meteo_tab = -1;
+        if (t != meteo_tab) {
+            meteo_tab = t; meteo_detail_dag = -1; meteo_plaats_kies = false;
+            if (actief_scherm == SCREEN_METEO) scherm_bouwen = true;
+        }
+        if (t == METEO_TAB_STROMING) _web_str_vraag = true;
+    }
+    char a = _web_str_actie;
+    if (a) {
+        _web_str_actie = 0;
+        if (a != '?') {
+            _web_str_actie_doe(a, _web_str_waarde);
+            if (actief_scherm == SCREEN_METEO && meteo_tab == METEO_TAB_STROMING && !scherm_bouwen) meteo_stroming_teken();
+        }
+        _web_str_vraag = true;
+    }
+    if (_web_str_vraag && !_web_str_klaar) { _web_str_vraag = false; _web_str_bouw(); }
 }

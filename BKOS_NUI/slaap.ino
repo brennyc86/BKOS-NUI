@@ -8,6 +8,7 @@
 #include "fout_log.h"
 #include "wifi.h"      // wifi_verbonden — crashmelding pas versturen als er WiFi is
 #include "ota.h"       // BKOS_NUI_VERSIE in de crashmelding
+#include "logboek.h"   // crashtekst in het logboek
 #include "bkos_client.h"  // bkos_client_klanten() — niet slapen met een verbonden webapp
 #include "ble_app.h"      // ble_app_verbonden()
 #include "nav_bar.h"   // sb_waarschuwing_zet() — ATtiny-firmware-te-oud-voor-slaapstand-melding
@@ -176,7 +177,7 @@ void slaap_diag_loop() {
             if (fout_log_stuur(FOUT_ALGEMEEN, t, "gezondheid na opstarten", "gezondheid") || ++gpog >= 3) gezond_gestuurd = true;
         }
     }
-    if (!_crash_wacht || !wifi_verbonden || millis() < 70000UL) return;
+    if (true || !_crash_wacht || !wifi_verbonden || millis() < 70000UL) return;   // uit, zie slaap_reset_reden_verwerken()
     static unsigned long laatste = 0;
     if (laatste && millis() - laatste < 65000UL) return;
     laatste = millis();
@@ -217,7 +218,12 @@ void slaap_reset_reden_verwerken() {
     // slaap_diag_loop() stuurt hem zodra er WiFi is.
     snprintf(_crash_tekst, sizeof(_crash_tekst), "%s | spoor: %s | gui: %s | min. vrije loopstack: %lu B | versie %s",
              omschrijving, _spoor_vorig[0] ? _spoor_vorig : "?", _gspoor_vorig[0] ? _gspoor_vorig : "?", (unsigned long)_stack_min_vorig, BKOS_NUI_VERSIE);
-    _crash_wacht = true;
+    // 0.2.261112.2: NIET meer via HTTPS versturen. Logboeken 52/53: na elke onverwachte herstart liep het toestel
+    // op precies 70 s vast in deze fout_log_stuur() (TLS op de hoofdlus) -> taak-waakhond na 60 s -> weer een
+    // onverwachte herstart -> zelfversterkende lus. Zelfde patroon als de 120 s-gezondheidsmelding (0.2.261111.1).
+    // De tekst gaat nu in het logboek, dat via WERK AAN DE WINKEL / de Worker toch al binnenkomt.
+    logboek_log("vorige herstart: %s", _crash_tekst);
+    _crash_wacht = false;
 #endif
 }
 

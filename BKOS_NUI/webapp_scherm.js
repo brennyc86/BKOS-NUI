@@ -1030,10 +1030,12 @@ var BKS = (function () {
   function schermInfo() {
     fillRect(0, 0, W, H, C_BG);
     sbSchermTeken('BOOT & EIGENAAR', C_CYAN);
-    // Op de plek van de BEWERK-knop: terug naar de klassieke weergave van de webapp
+    // Op de plek van de BEWERK-knop: BKOS-weergave uitzetten (terug naar de klassieke webapp)
     var kx = WEB_ZWART_X - 120, ky = (SB_H - 26) >> 1;
-    fillRoundRect(kx, ky, 112, 26, KNOP_R, C_SURFACE2);
-    tekst('KLASSIEK', kx + ((112 - 8 * 12) >> 1), ky + 5, 2, C_TEXT_DIM);
+    // Schuifknop "BKOS" (aan, groen) — tikken = terug naar de klassieke webapp; zelfde knop als in de klassieke kop
+    tekst('BKOS', kx + 6, ky + 5, 2, C_GREEN);
+    fillRoundRect(kx + 60, ky + 1, 46, 24, 12, C_GREEN);
+    fillCircle(kx + 60 + 46 - 12, ky + 13, 9, C_WHITE);
     zone(kx, 0, 112 + 8, SB_H, function () { return { weergave: true }; });
     var labels = ['BOOT', 'EIGENAAR', 'SYSTEEM'];
     for (var i = 0; i < 3; i++) {

@@ -242,7 +242,9 @@ void webapp_setup() {
     _http.on("/bkos_scherm.js", HTTP_GET, []() {
         bkos_spoor("http:/bkos_scherm.js");
         _http.sendHeader("Cache-Control", "no-cache");
-        _http.send_P(200, "application/javascript; charset=utf-8", WEBAPP_SCHERM_JS);
+        // gzip (±5x kleiner): het platte script (>120 KB) kwam over de hotspot niet altijd heel aan -> BKOS-weergave weg
+        _http.sendHeader("Content-Encoding", "gzip");
+        _http.send_P(200, "application/javascript; charset=utf-8", (PGM_P)WEBAPP_SCHERM_JS_GZ, WEBAPP_SCHERM_JS_GZ_LEN);
     });
 
     // Diagnose (platte tekst): toestand van netwerk, mDNS, Bluetooth en de laatste herstart

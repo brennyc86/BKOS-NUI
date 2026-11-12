@@ -57,6 +57,15 @@ header button.lock{
   border-radius:8px;padding:8px 12px;font-size:1.1rem;line-height:1;flex:none;
 }
 header button.lock.open{color:var(--green);border-color:var(--green);}
+/* Schuifknop BKOS-weergave: aan (groen) = nagebouwd boordcomputerscherm, uit = klassieke webapp */
+header button.schuif{background:none;border:0;color:var(--text-dim);display:flex;align-items:center;gap:7px;padding:4px 6px 4px 0;
+  font-size:.74rem;font-weight:700;letter-spacing:.5px;flex:none;cursor:pointer;margin-right:4px;}
+header button.schuif i{position:relative;width:40px;height:22px;border-radius:11px;background:var(--surface2);border:1px solid var(--border);transition:background .2s,border-color .2s;}
+header button.schuif b{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--text-dim);transition:left .2s,background .2s;}
+header button.schuif.aan{color:var(--green);}
+header button.schuif.aan i{background:var(--green);border-color:var(--green);}
+header button.schuif.aan b{left:20px;background:#fff;}
+header button.schuif.laden{opacity:.5;}
 
 section{margin-top:18px;}
 section h2{
@@ -276,7 +285,7 @@ body.bkos .wrap.nietWeb #bkosNiet{display:flex;}
     <b>BKOS</b>
     <span id="hdrSub">verbinden…</span>
   </div>
-  <button class="lock" id="weergBtn" onclick="bkosWissel()" title="Weergave: klassiek of BKOS (nagebouwd boordcomputerscherm)" style="margin-right:6px;font-size:.72rem;font-weight:700;">KLASSIEK</button>
+  <button class="schuif" id="weergBtn" onclick="bkosWissel()" title="BKOS-weergave (nagebouwd boordcomputerscherm) aan of uit"><span>BKOS</span><i><b></b></i></button>
   <button class="lock" id="lockBtn" onclick="lockClick()">&#128274;</button>
 </header>
 
@@ -2421,13 +2430,13 @@ window.addEventListener('resize', bkosMaat);
 if (window.ResizeObserver) { var _bkRo = new ResizeObserver(bkosMaat); _bkRo.observe(document.querySelector('header')); _bkRo.observe(document.getElementById('botenBalk')); }   // (oude weergave tekende de pagina-achtergrond zelf; de canvas heeft zijn eigen foto)
 function bkosPas(){
   document.body.classList.toggle('bkos', bkosAan);
-  document.getElementById('weergBtn').textContent = bkosAan ? 'BKOS' : 'KLASSIEK';
+  document.getElementById('weergBtn').classList.toggle('aan', bkosAan);
   bkosWebStaat();
   bkosMaat();
   if (!bkosAan) { var w = document.querySelector('.wrap'); w.classList.remove('geblurd'); w.classList.remove('bkVolledig'); setTab(actieveTab === 'onbekend' ? 'info' : actieveTab); }
 }
 function bkosWissel(){
-  if (typeof BKS === 'undefined') return;
+  if (typeof BKS === 'undefined') { bkosScriptLaden(true); return; }
   bkosAan = !bkosAan; _bkLsSet('bkos_weergave', bkosAan ? 'bkos' : 'klassiek');
   bkosPas();
   if (bkosAan) bkosToon(bkosSyncEff() && bkosBoardScherm >= 0 ? bkosBoardScherm : bkosScherm);
@@ -2436,11 +2445,30 @@ function bkosSyncWissel(){
   bkosSync = !bkosSync; _bkLsSet('bkos_sync', bkosSync ? '1' : '0'); bkosPas();
   if (bkosSyncEff() && bkosBoardScherm >= 0) bkosToon(bkosBoardScherm);   // de boordcomputer leidt
 }
-if (typeof BKS !== 'undefined') {
+// De BKOS-weergave (/bkos_scherm.js) is groot; komt hij niet (heel) aan, dan opnieuw proberen i.p.v. de weergave
+// stil te laten verdwijnen. Zolang hij ontbreekt staat de schuifknop half doorzichtig; erop tikken probeert het opnieuw.
+var _bkLaadPog = 0;
+function bkosInit(){
   BKS.init(document.getElementById('bkosCv'), {actie: bkosActie, opnieuw: bkosTeken});
-} else {
-  var _wb = document.getElementById('weergBtn'); if (_wb) _wb.style.display = 'none';
+  document.getElementById('weergBtn').classList.remove('laden');
 }
+function bkosScriptLaden(enAanzetten){
+  if (typeof BKS !== 'undefined') return;
+  document.getElementById('weergBtn').classList.add('laden');
+  var sc = document.createElement('script');
+  sc.src = '/bkos_scherm.js?p=' + (++_bkLaadPog) + '_' + Date.now();
+  sc.onload = function(){
+    if (typeof BKS === 'undefined') return;
+    bkosInit();
+    bkosAan = enAanzetten || _bkLs('bkos_weergave','klassiek') === 'bkos';
+    if (enAanzetten) _bkLsSet('bkos_weergave', 'bkos');
+    bkosPas(); if (bkosAan) bkosToon(bkosSyncEff() && bkosBoardScherm >= 0 ? bkosBoardScherm : bkosScherm);
+  };
+  sc.onerror = function(){ if (_bkLaadPog < 4) setTimeout(function(){ bkosScriptLaden(enAanzetten); }, 3000); };
+  document.body.appendChild(sc);
+}
+if (typeof BKS !== 'undefined') bkosInit();
+else bkosScriptLaden(false);
 bkosPas();
 volschermPas();
 if (bkosAan) bkosToon(5);

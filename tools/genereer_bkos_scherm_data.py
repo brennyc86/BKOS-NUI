@@ -70,4 +70,13 @@ open(f'{root}/BKOS_NUI/webapp_scherm_js.h', 'w').write(
     '// GEGENEREERD door tools/genereer_bkos_scherm_data.py (webapp_scherm_data.js + webapp_scherm.js) — niet met de hand wijzigen.\n'
     '#pragma once\n#include <pgmspace.h>\n'
     'static const char WEBAPP_SCHERM_JS[] PROGMEM = R"BKSJS(' + js + ')BKSJS";\n')
-print('webapp_scherm_js.h', len(js), 'bytes')
+# 0.2.261112.3: ook gzip-gecomprimeerd (±5x kleiner) — de webserver stuurt die versie met Content-Encoding: gzip,
+# zodat het grote script betrouwbaar over de (trage) hotspot komt. De platte versie blijft als reserve.
+import gzip
+gz = gzip.compress(js.encode('utf-8'), compresslevel=9, mtime=0)
+with open(f'{root}/BKOS_NUI/webapp_scherm_js.h', 'a') as f:
+    f.write('static const uint8_t WEBAPP_SCHERM_JS_GZ[] PROGMEM = {\n')
+    for i in range(0, len(gz), 24):
+        f.write(','.join(str(b) for b in gz[i:i+24]) + ',\n')
+    f.write('};\nstatic const size_t WEBAPP_SCHERM_JS_GZ_LEN = ' + str(len(gz)) + ';\n')
+print('webapp_scherm_js.h', len(js), 'bytes, gzip', len(gz))

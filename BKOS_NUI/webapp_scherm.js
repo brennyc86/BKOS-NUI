@@ -1581,7 +1581,31 @@ var BKS = (function () {
 
   // ── METEO → GETIJ (_getij_hdr_teken + _getij_tabel_teken) ─────────────────
   var GTJ_HDR_H = 26, GTJ_NOW_H = 56, GTJ_ROW_H = 50, GTJ_STRIP_W = 56, GTJ_COLS = 2;
+  var getijKies = false;
+  // Keuzelijst getijstations (RWS), dichtstbij de weerlocatie eerst — zelfde als het LOCATIE-tabblad op het toestel.
+  function getijKiesTeken() {
+    var PY = M_PANEL_Y;
+    fillRect(0, PY, W, NAV_Y - PY, C_BG);
+    tekst('KIES GETIJSTATION', 12, PY + 10, 2, C_CYAN);
+    knopKlein(W - 130, PY + 4, 118, 30, 'SLUITEN', C_SURFACE2, C_TEXT);
+    zone(W - 130, PY, 118, 38, function () { return { getijKies: false }; });
+    var st = S.getijSt;
+    if (!st || !st.l) { tekstMidden(0, PY + 120, W, 'Stations laden...', C_TEXT_DIM, 2); return; }
+    var cols = 4, gw = (W - 24 - (cols - 1) * 6) / cols, gh = 46, y0 = PY + 46;
+    for (var k = 0; k < st.l.length; k++) {
+      var e = st.l[k], c = k % cols, rr = Math.floor(k / cols);
+      var bx = 12 + c * (gw + 6), by = y0 + rr * (gh + 6);
+      if (by + gh > NAV_Y - 4) break;
+      var sel = e.i === st.sel;
+      fillRoundRect(bx, by, gw, gh, 6, sel ? C_SURFACE3 : C_SURFACE);
+      if (sel) drawRoundRect(bx, by, gw, gh, 6, C_CYAN);
+      tekst(e.n, bx + 8, by + 8, 1, sel ? C_CYAN : C_TEXT);
+      tekst(e.km + ' km', bx + 8, by + 26, 1, C_TEXT_DIM);
+      (function (idx) { zone(bx, by, gw, gh, function () { return { getijZet: idx }; }); })(e.i);
+    }
+  }
   function getijTeken() {
+    if (getijKies) { getijKiesTeken(); return; }
     var PY = M_PANEL_Y, PH = M_PANEL_H, g = S.getij;
     fillRect(0, PY, W, PH, C_BG);
     var tabelY = PY + GTJ_HDR_H + GTJ_NOW_H + 4, colW = Math.trunc((W - 20) / GTJ_COLS), rowsN = Math.trunc((PH - GTJ_HDR_H - GTJ_NOW_H - 4) / GTJ_ROW_H);
@@ -1606,7 +1630,8 @@ var BKS = (function () {
     tekst(g.maan, 38, nowY + 18, 1, RGB(200, 210, 150));
     if (spring > 0.7) tekst('springtij', 38, nowY + 30, 1, C_RED_BRIGHT); else tekst(spring < 0.3 ? 'doodtij' : 'gemidd.', 38, nowY + 30, 1, C_TEXT_DIM);
     vl(175, nowY + 4, GTJ_NOW_H - 8, C_SURFACE2);
-    tekst('Station', 185, nowY + 16, 1, C_TEXT_DIM); tekst(g.station, 185, nowY + 28, 2, C_CYAN);
+    tekst('Station  (tik om te wijzigen)', 185, nowY + 16, 1, C_TEXT_DIM); tekst(g.station, 185, nowY + 28, 2, C_CYAN);
+    zone(176, nowY, 254, GTJ_NOW_H, function () { return { getijKies: true }; });
     if (n) tekst(' RWS', 185 + g.station.length * 12, nowY + 32, 1, C_GREEN);
     vl(430, nowY + 4, GTJ_NOW_H - 8, C_SURFACE2);
     if (n && prev >= 0 && next >= 0) {
@@ -1788,6 +1813,8 @@ var BKS = (function () {
       if (a.navScroll) { navScroll = Math.max(0, navScroll + a.navScroll); teken(); return; }
       if (a.hvScroll) { hvScroll = Math.max(0, Math.min(hvMaxScroll, hvScroll + a.hvScroll)); teken(); return; }
       if (a.infoTab != null) { infoTab = a.infoTab; teken(); return; }
+      if (a.getijKies != null) { getijKies = a.getijKies; if (getijKies && opties.actie) opties.actie({ vraag: { t: 'getij_stations' } }); teken(); return; }
+      if (a.getijZet != null) { getijKies = false; getijScroll = -1; if (opties.actie) opties.actie({ vraag: { t: 'getij_station_zet', i: a.getijZet } }); teken(); return; }
       if (a.ioPagina) { ioPagina = Math.max(0, ioPagina + a.ioPagina); teken(); return; }
       if (a.meteoTab != null) {
         meteoTab = a.meteoTab; meteoDetail = -1; teken();
@@ -1836,6 +1863,7 @@ var BKS = (function () {
     else if (m.t === 'meteo_scherm') S.meteo = m;
     else if (m.t === 'meteo_dag') S.meteoDag = m;
     else if (m.t === 'meteo_getij') { S.getij = m; }
+    else if (m.t === 'getij_stations') S.getijSt = m;
     else if (m.t === 'meteo_stroom') S.stroom = m;
     else if (m.t === 'victron') S.vic = m;
     else if (m.t === 'io_full') S.io = { o: m.o || [], i: m.i || [], r: m.r || [], n: m.n || [], lbl: m.lbl || [] };

@@ -2402,3 +2402,14 @@ void meteo_web_tick() {
     }
     if (_web_str_vraag && !_web_str_klaar) { _web_str_vraag = false; _web_str_bouw(); }
 }
+
+// 0.2.261113.12: getijstation kiezen vanuit de webapp (zelfde stappen als de stationsknop op het LOCATIE-tabblad).
+void meteo_getij_station_kies(int idx) {
+    if (idx < 0 || idx >= getijdata_aantal_locaties()) return;
+    getijdata_station_idx = idx;
+    rws_geladen_idx = -1;
+    rws_ext_cnt = 0;
+    meteo_inst_opslaan();
+    if (!getijdata_beschikbaar(idx)) wifi_verbind_aanvragen();
+    if (actief_scherm == SCREEN_METEO) scherm_bouwen = true;
+}

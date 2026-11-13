@@ -801,6 +801,32 @@ static void _verwerk_cmd(uint8_t num, const String& t) {
         _tx(num, r); return;
     }
     if (t.indexOf(F("\"meteo_getij\"")) >= 0) { String r = _meteo_getij_json(); _tx(num, r); return; }
+    if (t.indexOf(F("\"getij_stations\"")) >= 0) {   // lijst RWS-stations, dichtstbij (weerlocatie) eerst
+        String r; r.reserve(1200);
+        r = F("{\"t\":\"getij_stations\",\"sel\":"); r += getijdata_station_idx; r += F(",\"l\":[");
+        int n = getijdata_aantal_locaties(); if (n > 32) n = 32;
+        int vol[32]; float km[32];
+        float clat = cosf(meteo_lat * 0.01745329f);
+        for (int i = 0; i < n; i++) {
+            float la, lo; getijdata_latlon(i, &la, &lo);
+            float dx = (lo - meteo_lon) * clat * 111.3f, dy = (la - meteo_lat) * 111.3f;
+            km[i] = sqrtf(dx * dx + dy * dy); vol[i] = i;
+        }
+        for (int i = 1; i < n; i++) { int v = vol[i], j = i - 1; while (j >= 0 && km[vol[j]] > km[v]) { vol[j + 1] = vol[j]; j--; } vol[j + 1] = v; }
+        for (int k = 0; k < n; k++) {
+            if (k) r += ',';
+            r += F("{\"i\":"); r += vol[k]; r += F(",\"n\":\""); _ui_esc(r, getijdata_naam(vol[k]));
+            r += F("\",\"km\":"); r += (int)(km[vol[k]] + 0.5f); r += '}';
+        }
+        r += F("]}");
+        _tx(num, r); return;
+    }
+    if (t.indexOf(F("\"getij_station_zet\"")) >= 0) {
+        if (_ws_niveau[num] < NIVEAU_GAST) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
+        int ii = t.indexOf(F("\"i\":"));
+        if (ii >= 0) meteo_getij_station_kies((int)t.substring(ii + 4).toInt());
+        String r = _meteo_getij_json(); _tx(num, r); return;
+    }
     if (t.indexOf(F("\"meteo_stroom\"")) >= 0) {   // STROOM-weergave (vaartijd vs. getij): ook voor gasten, net als METEO
         if (_ws_niveau[num] < NIVEAU_GAST) { String r = F("{\"t\":\"auth_vereist\"}"); _tx(num, r); return; }
         int ai = t.indexOf(F("\"a\":\""));

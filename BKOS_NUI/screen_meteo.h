@@ -20,3 +20,4 @@ int  meteo_offset_huidig();
 void meteo_web_stroom(char a, int v);   // '?' = alleen de actuele weergave opvragen
 bool meteo_web_stroom_json(String& uit);
 void meteo_web_tick();                   // vanuit de GUI-taak
+void meteo_getij_station_kies(int idx);   // webapp: ander getijstation (RWS) kiezen

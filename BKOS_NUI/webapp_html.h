@@ -828,7 +828,7 @@ function handleMsg(msg){
   if (typeof BKS !== 'undefined') {
     BKS.zet(msg);
     if (msg.t === 'ui' && msg.fnt != null) zetCssLettertype(msg.fnt);
-    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'meteo_dag' || msg.t === 'meteo_getij' || msg.t === 'meteo_stroom' || msg.t === 'victron' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
+    if (bkosAan && (msg.t === 'ui' || msg.t === 'state' || msg.t === 'paneel' || msg.t === 'huispaneel' || msg.t === 'lampen' || msg.t === 'info' || msg.t === 'info_scherm' || msg.t === 'meteo_scherm' || msg.t === 'meteo_dag' || msg.t === 'meteo_getij' || msg.t === 'getij_stations' || msg.t === 'meteo_stroom' || msg.t === 'victron' || msg.t === 'io_full' || msg.t === 'io_delta')) bkosTeken();
   }
   switch(msg.t){
     case 'io_full':

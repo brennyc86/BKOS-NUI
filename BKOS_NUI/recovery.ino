@@ -9,6 +9,7 @@
 #include "wifi.h"
 #include "ota.h"
 #include "slaap.h"   // bewaker-rapport + sporen in het crashrapport
+#include "paniek_vanger.h"   // crash-adres + aanroepketen
 #if PLATFORM_ESP32
 #include "esp_core_dump.h"   // 0.2.261113.8: crashfoto mee in het automatische crashrapport
 #include "esp_flash.h"
@@ -651,7 +652,8 @@ void recovery_crashrapport_auto() {
     _rc_auto_bezig = 0;
     esp_reset_reason_t r = esp_reset_reason();
     const char* bewaker = bkos_bewaker_rapport();
-    bool onverwacht = (r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT || r == ESP_RST_PANIC || bewaker[0]);
+    const char* paniek = bkos_paniek_rapport();
+    bool onverwacht = (r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT || r == ESP_RST_PANIC || bewaker[0] || paniek[0]);
     if (!onverwacht || vorig == RC_AUTO_MAGIC) return;
     _rc_auto_bezig = RC_AUTO_MAGIC;
 
@@ -664,9 +666,9 @@ void recovery_crashrapport_auto() {
                       : r == ESP_RST_WDT ? "waakhond" : "crash (panic)";
     char kop[200];
     {
-        char k2[800];
-        snprintf(k2, sizeof(k2), "AUTOMATISCH NA HERSTART | %s | reden: %s | sporen bij herstart: %s\nBEWAKER: %s\nTIK-MONSTER: %s\n",
-                 BKOS_NUI_VERSIE, reden, bkos_sporen_rtc(), bewaker[0] ? bewaker : "-", bkos_tik_rapport());
+        char k2[1200];
+        snprintf(k2, sizeof(k2), "AUTOMATISCH NA HERSTART | %s | reden: %s | sporen bij herstart: %s\n%s\nBEWAKER: %s\nTIK-MONSTER: %s\n",
+                 BKOS_NUI_VERSIE, reden, bkos_sporen_rtc(), paniek[0] ? paniek : "CRASH: -", bewaker[0] ? bewaker : "-", bkos_tik_rapport());
         _rc_auto_deel(k2, "", 0);
     }
 

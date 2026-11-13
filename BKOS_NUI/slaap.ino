@@ -8,7 +8,8 @@
 #include "fout_log.h"
 #include "wifi.h"      // wifi_verbonden — crashmelding pas versturen als er WiFi is
 #include "ota.h"       // BKOS_NUI_VERSIE in de crashmelding
-#include "logboek.h"   // crashtekst in het logboek
+#include "logboek.h"
+#include "paniek_vanger.h"   // crashtekst in het logboek
 #include "bkos_client.h"  // bkos_client_klanten() — niet slapen met een verbonden webapp
 #include "ble_app.h"      // ble_app_verbonden()
 #include "nav_bar.h"   // sb_waarschuwing_zet() — ATtiny-firmware-te-oud-voor-slaapstand-melding
@@ -557,6 +558,7 @@ void slaap_reset_reden_verwerken() {
     }
     if (bkos_bewaker_rapport()[0]) logboek_log("vorige start herstart door BEWAKER: %s", bkos_bewaker_rapport());
     if (bkos_tik_rapport()[0]) logboek_log("tik-monster vorige start: %s", bkos_tik_rapport());
+    if (bkos_paniek_rapport()[0]) logboek_log("vorige start: %s", bkos_paniek_rapport());
 
     esp_reset_reason_t reden = esp_reset_reason();
     // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal

@@ -87,6 +87,8 @@ jobs:
           arduino-cli compile \
             --fqbn "esp32:esp32:esp32s3:CDCOnBoot=default,PartitionScheme=default_8MB,FlashSize=16M,FlashMode=dio,PSRAM=opi" \
             --library BKOS_NUI/libraries/LuaBKOS \
+            --build-property "compiler.cpp.extra_flags=-DBKOS_PANIEK_WRAP=1" \
+            --build-property "compiler.c.elf.extra_flags=-Wl,--wrap=esp_panic_handler" \
             --output-dir build_esp32s3/ \
             BKOS_NUI/
 

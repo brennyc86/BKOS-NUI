@@ -81,3 +81,11 @@ extern volatile bool bkos_gui_lang_bezig;   // true = GUI-taak doet bewust iets 
 void        bkos_gui_spoor(const char* stap);
 const char* bkos_spoor_nu();       // huidige stap van de loopTask (voor het logboek)
 const char* bkos_gui_spoor_nu();   // huidige stap van de GUI-taak
+// 0.2.261113.9: hoofdlus-bewaker. Eigen taak (kern 0, prio 22) die ziet of hw_loop() nog loopt; staat die 40 s
+// stil, dan legt hij vóór de 60 s-taakwaakhond vast WIE er op kern 1 draait (GUI-taak / hoofdlus / niemand),
+// in welke toestand hoofdlus, GUI en logboek staan, plus beide sporen, en herstart dan zelf. Het rapport
+// overleeft de herstart (RTC) en gaat mee in het automatische crashrapport (recovery.ino).
+void        bkos_lus_tik();
+void        bkos_bewaker_start(TaskHandle_t lus, TaskHandle_t gui);
+const char* bkos_bewaker_rapport();   // "" als er geen rapport van de vorige start is
+const char* bkos_sporen_rtc();        // "lus=… gui=…" zoals ze bij de herstart in RTC stonden (vroeg in de boot leesbaar)

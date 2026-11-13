@@ -8,6 +8,7 @@
 #include "ui_colors.h"
 #include "wifi.h"
 #include "ota.h"
+#include "slaap.h"   // bewaker-rapport + sporen in het crashrapport
 #if PLATFORM_ESP32
 #include "esp_core_dump.h"   // 0.2.261113.8: crashfoto mee in het automatische crashrapport
 #include "esp_flash.h"
@@ -649,7 +650,8 @@ void recovery_crashrapport_auto() {
     uint32_t vorig = _rc_auto_bezig;
     _rc_auto_bezig = 0;
     esp_reset_reason_t r = esp_reset_reason();
-    bool onverwacht = (r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT || r == ESP_RST_PANIC);
+    const char* bewaker = bkos_bewaker_rapport();
+    bool onverwacht = (r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT || r == ESP_RST_PANIC || bewaker[0]);
     if (!onverwacht || vorig == RC_AUTO_MAGIC) return;
     _rc_auto_bezig = RC_AUTO_MAGIC;
 
@@ -658,11 +660,15 @@ void recovery_crashrapport_auto() {
     _rc_regel(0, "Onverwachte herstart: rapport naar Claude sturen...", C_TEXT, 1);
     if (!wifi_verbind_opgeslagen()) { _rc_auto_bezig = 0; return; }
 
-    const char* reden = r == ESP_RST_TASK_WDT ? "taak-waakhond" : r == ESP_RST_INT_WDT ? "interrupt-waakhond"
+    const char* reden = bewaker[0] ? "hoofdlus-bewaker" : r == ESP_RST_TASK_WDT ? "taak-waakhond" : r == ESP_RST_INT_WDT ? "interrupt-waakhond"
                       : r == ESP_RST_WDT ? "waakhond" : "crash (panic)";
     char kop[200];
-    snprintf(kop, sizeof(kop), "AUTOMATISCH NA HERSTART | %s | reden: %s\n", BKOS_NUI_VERSIE, reden);
-    _rc_auto_deel(kop, "", 0);
+    {
+        char k2[420];
+        snprintf(k2, sizeof(k2), "AUTOMATISCH NA HERSTART | %s | reden: %s | sporen bij herstart: %s\nBEWAKER: %s\n",
+                 BKOS_NUI_VERSIE, reden, bkos_sporen_rtc(), bewaker[0] ? bewaker : "-");
+        _rc_auto_deel(k2, "", 0);
+    }
 
     // Logboek van de vastgelopen start (nog niet geroteerd: index 0 + RTC-staart)
     size_t n = 0;

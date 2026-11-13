@@ -1,3 +1,4 @@
+#include "slaap.h"   // bkos_gui_spoor() — fijnmazig spoor bij bootpaneel-knoppen
 #include "screen_main.h"
 #include "boot_modellen.h"
 #include "meteo.h"
@@ -1400,8 +1401,11 @@ void screen_main_run(int x, int y, bool aanraking) {
     // en zou anders óók als modus-tik geregistreerd kunnen worden.
     if (vaarmodus_auto_knop_klik(x, y)) {
         vaarmodus_auto = !vaarmodus_auto;
+        bkos_gui_spoor("gui:m auto opslaan");
         state_save();
+        bkos_gui_spoor("gui:m auto teken");
         screen_main_update_controls();
+        bkos_gui_spoor("gui:m klaar");
         return;
     }
 
@@ -1420,8 +1424,11 @@ void screen_main_run(int x, int y, bool aanraking) {
                     vaar_modus = modus;
                     licht_cfg_idx = 0;
                 }
+                bkos_gui_spoor("gui:m verlichting");
                 io_verlichting_update();
+                bkos_gui_spoor("gui:m espnow");
                 net_app_staat_sturen();  // slave stuurt nieuwe staat naar master
+                bkos_gui_spoor("gui:m knop klaar");
                 gewijzigd = true;
             }
         }
@@ -1438,8 +1445,11 @@ void screen_main_run(int x, int y, bool aanraking) {
             y >= LKNOP_Y   && y < LKNOP_Y + LKNOP_H) {
             if (licht_instelling != lkn[i].inst) {
                 licht_instelling = lkn[i].inst;
+                bkos_gui_spoor("gui:m verlichting");
                 io_verlichting_update();
+                bkos_gui_spoor("gui:m espnow");
                 net_app_staat_sturen();  // slave stuurt nieuwe staat naar master
+                bkos_gui_spoor("gui:m knop klaar");
                 gewijzigd = true;
             }
         }
@@ -1476,9 +1486,13 @@ void screen_main_run(int x, int y, bool aanraking) {
     }
 
     if (gewijzigd) {
+        bkos_gui_spoor("gui:m opslaan");
         state_save();
+        bkos_gui_spoor("gui:m knoppen teken");
         screen_main_update_controls();
+        bkos_gui_spoor("gui:m lichten teken");
         boot_lichten_teken();
+        bkos_gui_spoor("gui:m klaar");
     }
 #endif // SCREEN_SMALL
 }

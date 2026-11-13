@@ -696,13 +696,14 @@ void hw_setup() {
 #if PLATFORM_ESP32
     // Dedicated GUI taak op Core 1 met hogere prioriteit dan de achtergrondlus (loopTask=1).
     // Touch + schermtekenen worden altijd meteen verwerkt, ongeacht wat hw_loop() doet.
+    static TaskHandle_t gui_handle = nullptr;
     xTaskCreatePinnedToCore(
         _gui_taak,
         "gui_taak",
         24576,   // 24KB stack — original ESP32 (CYD) heeft geen PSRAM, meer stack nodig
         nullptr,
         4,       // prioriteit 4 > loopTask prioriteit 1 → GUI preempt achtergrond
-        nullptr,
+        &gui_handle,
         1        // Core 1 — zelfde core als loopTask, maar hogere prioriteit
     );
     // Hardware-waakhond op de hoofdlus (loopTask): staat die 60 s stil — bv. omdat hij samen met de
@@ -710,10 +711,12 @@ void hw_setup() {
     // dan herstart de chip (reset-reden TASK_WDT) en gaan beide sporen mee in de crashmelding.
     esp_task_wdt_init(60, true);
     esp_task_wdt_add(NULL);
+    bkos_bewaker_start(xTaskGetCurrentTaskHandle(), gui_handle);   // 0.2.261113.9: hoofdlus-bewaker (slaap.ino)
 #endif
 }
 
 void hw_loop() {
+    bkos_lus_tik();   // hoofdlus-bewaker (slaap.ino)
     // Eenmalig, ná de allereerste keer dat deze lus draait (dus ná de eerste
     // schermtekening) — zie _hw_achtergrond_init_eenmalig() hierboven.
     static bool _opstart_geslaagd = false;   // na 30 s in bedrijf telt de opstart als volledig (lettertype.h)

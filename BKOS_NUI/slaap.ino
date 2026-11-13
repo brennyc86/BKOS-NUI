@@ -298,6 +298,97 @@ void slaap_diag_loop() {
 #endif
 }
 
+#if PLATFORM_ESP32
+extern TaskHandle_t logboek_taak_handle;
+static volatile uint32_t _lus_tikken = 0;
+static TaskHandle_t _bw_lus = nullptr, _bw_gui = nullptr;
+static RTC_NOINIT_ATTR char     _bw_rtc[200];
+static RTC_NOINIT_ATTR uint32_t _bw_magic;
+#define BW_MAGIC 0xB3A4E5E1UL
+static char _bw_vorig[200] = "";
+static bool _bw_gelezen = false;
+#endif
+
+void bkos_lus_tik() {
+#if PLATFORM_ESP32
+    _lus_tikken++;
+#endif
+}
+
+#if PLATFORM_ESP32
+static char _bw_st(TaskHandle_t h) {
+    if (!h) return '-';
+    switch (eTaskGetState(h)) {
+        case eRunning:   return 'R';   // draait nu
+        case eReady:     return 'K';   // klaar, maar krijgt geen processortijd
+        case eBlocked:   return 'W';   // wacht (op een semafoor, wachtrij, vertraging...)
+        case eSuspended: return 'S';
+        case eDeleted:   return 'D';
+        default:         return '?';
+    }
+}
+static void _bw_taak(void*) {
+    uint32_t vorig = _lus_tikken, stil = 0;
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        uint32_t t = _lus_tikken;
+        if (t != vorig || wifi_ota_modus) { vorig = t; stil = 0; continue; }
+        if (++stil < 40) continue;
+        // 20 monsters over 2 s: wie draait er op kern 1?
+        int n_gui = 0, n_lus = 0, n_idle = 0, n_ander = 0; char ander[16] = "";
+        char st_lus = _bw_st(_bw_lus), st_gui = _bw_st(_bw_gui), st_log = _bw_st(logboek_taak_handle);
+        for (int i = 0; i < 20; i++) {
+            TaskHandle_t h = xTaskGetCurrentTaskHandleForCPU(1);
+            if (h == _bw_gui) n_gui++;
+            else if (h == _bw_lus) n_lus++;
+            else {
+                const char* nm = h ? pcTaskGetName(h) : "?";
+                if (nm && !strncmp(nm, "IDLE", 4)) n_idle++;
+                else { n_ander++; if (nm) { strncpy(ander, nm, sizeof(ander) - 1); ander[sizeof(ander) - 1] = 0; } }
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        snprintf(_bw_rtc, sizeof(_bw_rtc),
+                 "hoofdlus %lus stil | toestand lus %c gui %c log %c (W=wacht K=verdrongen R=draait) | kern1 20x: gui %d lus %d idle %d %s %d | lus=%.23s gui=%.23s",
+                 (unsigned long)stil, st_lus, st_gui, st_log, n_gui, n_lus, n_idle, ander[0] ? ander : "ander", n_ander,
+                 _spoor, _gspoor);
+        _bw_magic = BW_MAGIC;
+        logboek_log("BEWAKER: %s", _bw_rtc);
+        vTaskDelay(pdMS_TO_TICKS(300));
+        esp_restart();
+    }
+}
+#endif
+
+void bkos_bewaker_start(TaskHandle_t lus, TaskHandle_t gui) {
+#if PLATFORM_ESP32
+    _bw_lus = lus; _bw_gui = gui;
+    xTaskCreatePinnedToCore(_bw_taak, "bewaker", 4096, nullptr, 22, nullptr, 0);
+#endif
+}
+
+static void _bw_lees() {
+#if PLATFORM_ESP32
+    if (_bw_gelezen) return;
+    _bw_gelezen = true;
+    if (_bw_magic == BW_MAGIC) {
+        _bw_rtc[sizeof(_bw_rtc) - 1] = '\0';
+        strncpy(_bw_vorig, _bw_rtc, sizeof(_bw_vorig) - 1);
+    }
+    _bw_magic = 0;
+#endif
+}
+const char* bkos_bewaker_rapport() { _bw_lees(); return _bw_vorig; }
+
+const char* bkos_sporen_rtc() {
+    static char b[64] = "";
+#if PLATFORM_ESP32
+    if (_spoor_magic == SPOOR_MAGIC) snprintf(b, sizeof(b), "lus=%.23s gui=%.23s", _spoor, _gspoor);
+    else snprintf(b, sizeof(b), "lus=? gui=?");
+#endif
+    return b;
+}
+
 void slaap_reset_reden_verwerken() {
 #if PLATFORM_ESP32
     // Spoor van de vorige run veiligstellen en een nieuw spoor beginnen
@@ -338,15 +429,17 @@ void slaap_reset_reden_verwerken() {
             logboek_log("%s", r);
         } else logboek_log("crashfoto aanwezig, samenvatting niet leesbaar");
         free(cs);
+        esp_core_dump_image_erase();   // 0.2.261113.9: oude foto weg, zodat een volgende echt van de volgende crash is
     }
+    if (bkos_bewaker_rapport()[0]) logboek_log("vorige start herstart door BEWAKER: %s", bkos_bewaker_rapport());
 
     esp_reset_reason_t reden = esp_reset_reason();
     // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal
     // — alleen alles daarbuiten is een ONVERWACHTE herstart die het waard is om
     // te onthouden/melden.
-    if ((reden == ESP_RST_POWERON || reden == ESP_RST_SW) && !_was_gui_hang) return;
+    if ((reden == ESP_RST_POWERON || reden == ESP_RST_SW) && !_was_gui_hang && !bkos_bewaker_rapport()[0]) return;
 
-    const char* omschrijving = _was_gui_hang ? "GUI-taak hing (waakhond)" : _reset_reden_naam(reden);
+    const char* omschrijving = _was_gui_hang ? "GUI-taak hing (waakhond)" : bkos_bewaker_rapport()[0] ? "hoofdlus-bewaker (40 s stil)" : _reset_reden_naam(reden);
 
     Preferences prefs;
     prefs.begin("diag", false);

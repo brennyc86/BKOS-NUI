@@ -79,3 +79,5 @@ void        slaap_diag_loop();                // stuurt een uitgestelde crashmel
 void        bkos_gui_tik();
 extern volatile bool bkos_gui_lang_bezig;   // true = GUI-taak doet bewust iets lang (OTA check/download): waakhond pauzeert
 void        bkos_gui_spoor(const char* stap);
+const char* bkos_spoor_nu();       // huidige stap van de loopTask (voor het logboek)
+const char* bkos_gui_spoor_nu();   // huidige stap van de GUI-taak

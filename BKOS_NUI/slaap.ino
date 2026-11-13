@@ -127,6 +127,20 @@ void bkos_spoor(const char* stap) {
     _spoor_magic = SPOOR_MAGIC;
 #endif
 }
+const char* bkos_spoor_nu() {
+#if PLATFORM_ESP32
+    return _spoor;
+#else
+    return "";
+#endif
+}
+const char* bkos_gui_spoor_nu() {
+#if PLATFORM_ESP32
+    return _gspoor;
+#else
+    return "";
+#endif
+}
 void bkos_gui_tik() { _gui_tikken++; }
 volatile bool bkos_gui_lang_bezig = false;
 void bkos_gui_spoor(const char* stap) {
@@ -201,6 +215,11 @@ void slaap_reset_reden_verwerken() {
     bkos_gui_spoor("opstarten");
     _spoor_stack_min = 0;
     bkos_spoor("opstarten");
+
+    // 0.2.261113.1: ook na een gewone (software-)herstart het spoor van de vorige start in het logboek.
+    // Logboek 3 van 13 nov liep vast zonder enige aanwijzing, omdat dit alleen bij een onverwachte reset gebeurde.
+    logboek_log("vorige start eindigde bij: lus=%s gui=%s (min. vrije loopstack %lu B)",
+                _spoor_vorig[0] ? _spoor_vorig : "?", _gspoor_vorig[0] ? _gspoor_vorig : "?", (unsigned long)_stack_min_vorig);
 
     esp_reset_reason_t reden = esp_reset_reason();
     // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal

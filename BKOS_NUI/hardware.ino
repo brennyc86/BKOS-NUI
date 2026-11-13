@@ -8,6 +8,7 @@
 #include "logboek.h"
 #if PLATFORM_ESP32
 #include "esp_task_wdt.h"   // hardware-waakhond op de hoofdlus
+#include "esp_heap_caps.h"   // heap_caps_malloc_extmem_enable (hw_setup)
 #endif
 #include "getijdata.h"
 #include "screen_main.h"
@@ -517,7 +518,20 @@ static void _hw_achtergrond_init_eenmalig() {
 }
 
 void hw_setup() {
+#if PLATFORM_ESP32 && CONFIG_IDF_TARGET_ESP32S3
+    // 0.2.261113.1: gewone malloc() vanaf 256 bytes naar het PSRAM (was: pas vanaf 4 KB). Strings, JSON,
+    // WebSocket-frames, HTTP-/bestandsbuffers e.d. vraagt de code allemaal met malloc/new aan; dat at het
+    // schaarse interne RAM op (logboeken: ±75 KB vrij met webapp, minimum 2-15 KB). WiFi, lwIP, TLS en
+    // taakstacks vragen zelf expliciet intern geheugen en houden nu ruimte. Alle vastlopers van 12-13 nov
+    // gebeurden met de webapp verbonden, rond een schermwissel/fotowissel.
+    bool _extmem = psramFound();
+    if (_extmem) heap_caps_malloc_extmem_enable(256);
+#endif
     logboek_begin();       // RTC-staart van de vorige start veiligstellen (zie logboek.h)
+#if PLATFORM_ESP32 && CONFIG_IDF_TARGET_ESP32S3
+    logboek_log("geheugen: malloc >= 256 B naar PSRAM: %s | intern vrij %u", _extmem ? "ja" : "NEE",
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+#endif
     test_opties_laden();
     boot_log_reset();
     _boot_stap_vorige_ms = millis();  // startpunt voor de splash-tijdmeting hierboven

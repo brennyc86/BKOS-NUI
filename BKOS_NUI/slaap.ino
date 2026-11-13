@@ -25,6 +25,9 @@ volatile bool slaap_actief   = false;
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "esp_heap_caps.h"   // heap_caps_get_free_size() — diagnose intern RAM
+#include "esp_core_dump.h"   // 0.2.261113.7: crashfoto (coredump) na een waakhond-herstart uitlezen
+#include "esp_flash.h"
+#include "mbedtls/base64.h"
 
 // BEWUST geen RTC_DATA_ATTR: esp_reset_reason() is zelf al elke boot betrouwbaar
 // opvraagbaar (ESP_RST_DEEPSLEEP alleen bij een echte deep-sleep wake). Met
@@ -119,6 +122,15 @@ static uint32_t _stack_min_vorig = 0;
 static bool     _crash_wacht     = false;
 static char     _crash_tekst[180] = "";
 static uint8_t  _crash_pogingen  = 0;
+// 0.2.261113.7: na een onverwachte herstart automatisch logboek + crashfoto naar de meldingen-server, vanuit een
+// EIGEN taak (niet de hoofdlus: HTTPS op de hoofdlus liep eerder vast, zie slaap_reset_reden_verwerken()).
+// Eindigt de vorige start zelf tijdens dat versturen in een herstart, dan wordt het deze keer overgeslagen
+// (anders een herstartlus).
+static RTC_NOINIT_ATTR uint32_t _auto_stuur_bezig;
+#define AUTO_STUUR_MAGIC 0x5E4DB0D1UL
+static bool _auto_sturen   = false;
+static bool _cd_aanwezig   = false;
+static char _herstart_kop[200] = "";
 
 void bkos_spoor(const char* stap) {
 #if PLATFORM_ESP32
@@ -168,8 +180,88 @@ void bkos_stack_meten() {
 #endif
 }
 
+#if PLATFORM_ESP32
+static bool _auto_stuur_deel(const char* kop, const char* data, size_t n) {
+    // één bericht (max ±7000 tekens, grens van de meldingen-server)
+    size_t kl = strlen(kop);
+    char* b = (char*)malloc(kl + n + 2);
+    if (!b) return false;
+    memcpy(b, kop, kl); memcpy(b + kl, data, n); b[kl + n] = '\0';
+    int r = -1;
+    for (int poging = 0; poging < 3 && r != 200; poging++) {
+        if (poging) vTaskDelay(pdMS_TO_TICKS(5000));
+        r = fout_log_stuur_direct("suggestie", b);
+    }
+    free(b);
+    vTaskDelay(pdMS_TO_TICKS(400));
+    return r == 200;
+}
+
+static void _auto_stuur_logboek(int idx, const char* naam, bool alleen_begin) {
+    size_t n = 0;
+    char* t = logboek_laad(idx, &n);
+    if (!t) return;
+    const size_t STUK = 6600;
+    if (alleen_begin && n > STUK) n = STUK;
+    int delen = (int)((n + STUK - 1) / STUK); if (delen < 1) delen = 1;
+    if (delen > 10) delen = 10;
+    size_t start = (n > STUK * delen) ? n - STUK * delen : 0;   // nieuwste regels gaan voor
+    for (int d = 0; d < delen; d++) {
+        size_t a = start + d * STUK, l = n - a; if (l > STUK) l = STUK;
+        char kop[200];
+        snprintf(kop, sizeof(kop), "AUTOMATISCH NA HERSTART | %s | %s deel %d/%d\n", BKOS_NUI_VERSIE, naam, d + 1, delen);
+        _auto_stuur_deel(kop, t + a, l);
+    }
+    free(t);
+}
+
+static void _auto_stuur_coredump() {
+    size_t adres = 0, grootte = 0;
+    if (esp_core_dump_image_get(&adres, &grootte) != ESP_OK || grootte == 0 || grootte > 0x10000) return;
+    const size_t RUW = 4800;                       // -> 6400 tekens base64 per bericht
+    uint8_t* ruw = (uint8_t*)malloc(RUW);
+    char* b64 = (char*)malloc(6500);
+    if (!ruw || !b64) { free(ruw); free(b64); return; }
+    int delen = (int)((grootte + RUW - 1) / RUW);
+    int ok = 0;
+    for (int d = 0; d < delen; d++) {
+        size_t a = d * RUW, l = grootte - a; if (l > RUW) l = RUW;
+        if (esp_flash_read(NULL, ruw, adres + a, l) != ESP_OK) break;
+        size_t bl = 0;
+        if (mbedtls_base64_encode((unsigned char*)b64, 6500, &bl, ruw, l) != 0) break;
+        char kop[160];
+        snprintf(kop, sizeof(kop), "AUTOMATISCH NA HERSTART | %s | COREDUMP %u B deel %d/%d\n",
+                 BKOS_NUI_VERSIE, (unsigned)grootte, d + 1, delen);
+        if (_auto_stuur_deel(kop, b64, bl)) ok++;
+    }
+    free(ruw); free(b64);
+    if (ok == delen) esp_core_dump_image_erase();   // alleen wissen als alles aangekomen is
+}
+
+static void _auto_stuur_taak(void*) {
+    _auto_stuur_bezig = AUTO_STUUR_MAGIC;
+    char kop[260];
+    snprintf(kop, sizeof(kop), "AUTOMATISCH NA HERSTART | %s | %s\n", BKOS_NUI_VERSIE, _herstart_kop);
+    _auto_stuur_deel(kop, "", 0);
+    _auto_stuur_logboek(1, "LOGBOEK vorige start", false);
+    _auto_stuur_logboek(0, "LOGBOEK huidige start (begin)", true);
+    if (_cd_aanwezig) _auto_stuur_coredump();
+    _auto_stuur_bezig = 0;
+    logboek_log("automatisch versturen na herstart: klaar");
+    vTaskDelete(nullptr);
+}
+#endif
+
 void slaap_diag_loop() {
 #if PLATFORM_ESP32
+    {   // automatisch versturen na een onverwachte herstart: 90 s na het opstarten, met WiFi, in een eigen taak
+        static bool gestart = false;
+        if (_auto_sturen && !gestart && wifi_verbonden && millis() > 90000UL) {
+            gestart = true;
+            logboek_log("automatisch versturen na herstart: start");
+            xTaskCreatePinnedToCore(_auto_stuur_taak, "auto_stuur", 8192, nullptr, 1, nullptr, 1);
+        }
+    }
     // ── GUI-waakhond ──
     {
         static uint32_t vorige_tik = 0; static unsigned long stil_sinds = 0;
@@ -228,6 +320,26 @@ void slaap_reset_reden_verwerken() {
     logboek_log("vorige start eindigde bij: lus=%s gui=%s (min. vrije loopstack %lu B)",
                 _spoor_vorig[0] ? _spoor_vorig : "?", _gspoor_vorig[0] ? _gspoor_vorig : "?", (unsigned long)_stack_min_vorig);
 
+    uint32_t stuur_vorig = _auto_stuur_bezig;
+    _auto_stuur_bezig = 0;
+
+    // Crashfoto: bij een waakhond-/panic-herstart schrijft de chip zelf een coredump naar flash. Daarin staat welke
+    // taak de processor op dat moment bezet hield, met zijn aanroepketen (PC-adressen; te ontleden met de ELF uit CI).
+    if (esp_core_dump_image_check() == ESP_OK) {
+        _cd_aanwezig = true;
+        esp_core_dump_summary_t* cs = (esp_core_dump_summary_t*)malloc(sizeof(esp_core_dump_summary_t));
+        if (cs && esp_core_dump_get_summary(cs) == ESP_OK) {
+            char r[260];
+            int o = snprintf(r, sizeof(r), "crashfoto: taak %.15s pc 0x%08lx oorzaak %lu | bt",
+                             cs->exc_task, (unsigned long)cs->exc_pc, (unsigned long)cs->ex_info.exc_cause);
+            for (uint32_t i = 0; i < cs->exc_bt_info.depth && i < 16 && o < (int)sizeof(r) - 12; i++)
+                o += snprintf(r + o, sizeof(r) - o, " %08lx", (unsigned long)cs->exc_bt_info.bt[i]);
+            if (cs->exc_bt_info.corrupted && o < (int)sizeof(r) - 12) snprintf(r + o, sizeof(r) - o, " (corrupt)");
+            logboek_log("%s", r);
+        } else logboek_log("crashfoto aanwezig, samenvatting niet leesbaar");
+        free(cs);
+    }
+
     esp_reset_reason_t reden = esp_reset_reason();
     // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal
     // — alleen alles daarbuiten is een ONVERWACHTE herstart die het waard is om
@@ -251,6 +363,9 @@ void slaap_reset_reden_verwerken() {
     // De tekst gaat nu in het logboek, dat via WERK AAN DE WINKEL / de Worker toch al binnenkomt.
     logboek_log("vorige herstart: %s", _crash_tekst);
     _crash_wacht = false;
+    snprintf(_herstart_kop, sizeof(_herstart_kop), "%s", _crash_tekst);
+    if (stuur_vorig == AUTO_STUUR_MAGIC) logboek_log("automatisch versturen overgeslagen: de vorige poging eindigde zelf in een herstart");
+    else _auto_sturen = true;
 #endif
 }
 

@@ -90,6 +90,13 @@ jobs:
             --output-dir build_esp32s3/ \
             BKOS_NUI/
 
+      - name: Bewaar ELF (crashfoto/coredump ontleden)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bkos_esp32s3_elf
+          path: build_esp32s3/BKOS_NUI.ino.elf
+          retention-days: 30
+
       - name: Genereer SPIFFS-variant van de partitietabel
         run: |
           # Brendan wil bij "Volledige herinstallatie" zelf kunnen kiezen

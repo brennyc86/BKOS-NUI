@@ -365,7 +365,7 @@ void slaap_reset_reden_verwerken() {
     _crash_wacht = false;
     snprintf(_herstart_kop, sizeof(_herstart_kop), "%s", _crash_tekst);
     if (stuur_vorig == AUTO_STUUR_MAGIC) logboek_log("automatisch versturen overgeslagen: de vorige poging eindigde zelf in een herstart");
-    else _auto_sturen = true;
+    // 0.2.261113.8: niet meer vanuit een achtergrondtaak (bleef hangen, zie recovery_crashrapport_auto()).
 #endif
 }
 

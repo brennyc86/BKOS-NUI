@@ -568,6 +568,8 @@ void hw_setup() {
             recovery_menu();   // blokkerend; keert alleen terug bij "gewoon opstarten"
             _splash_teken();   // herstelmenu overschreef het scherm
         }
+        recovery_crashrapport_auto();   // alleen na een waakhond-/crashherstart (zie recovery.ino)
+        _splash_teken();
         // Klok resetten: het herstelvenster (2s, of langer bij een bezoek aan
         // het menu) mag niet meetellen bij de hierna gemeten IO-detectieduur.
         _boot_stap_vorige_ms = millis();

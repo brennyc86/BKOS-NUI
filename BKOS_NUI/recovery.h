@@ -10,3 +10,4 @@
 
 bool recovery_check();   // pollt kort op een centrale aanraking; true = herstelmenu tonen
 void recovery_menu();    // blokkerend; keert alleen terug bij "GEWOON OPSTARTEN"
+void recovery_crashrapport_auto();   // na een waakhond-/crashherstart: logboek + crashfoto versturen (vroeg in de boot)

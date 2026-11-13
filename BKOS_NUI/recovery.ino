@@ -8,6 +8,11 @@
 #include "ui_colors.h"
 #include "wifi.h"
 #include "ota.h"
+#if PLATFORM_ESP32
+#include "esp_core_dump.h"   // 0.2.261113.8: crashfoto mee in het automatische crashrapport
+#include "esp_flash.h"
+#include "mbedtls/base64.h"
+#endif
 
 #define RC_VENSTER_MS  2000UL   // hoe lang het opstartlogo zichtbaar blijft vóór normaal opstarten
 
@@ -613,4 +618,94 @@ void recovery_menu() {
         // Alle acties keren alleen terug bij annuleren/falen — dan gewoon
         // opnieuw het herstelmenu tonen i.p.v. meteen op te starten.
     }
+}
+
+
+// ─── 0.2.261113.8: automatisch crashrapport, VROEG in het opstarten ───────────────────────────────────
+// In .7 verstuurde een achtergrondtaak dit ná het volledig opstarten; dat bleef na 2 delen hangen (intern RAM
+// zakte tot 6 KB, daarna liep het hele toestel weer vast). Hier gebeurt het op hetzelfde moment als het
+// herstelmenu: alleen scherm, touch en WiFi draaien, er is ruim geheugen — de route waarlangs LOGBOEK DELEN
+// altijd betrouwbaar werkte. Alleen na een waakhond-/crashherstart, en nooit twee keer op rij als de vorige
+// poging zelf in een herstart eindigde.
+#if PLATFORM_ESP32
+static RTC_NOINIT_ATTR uint32_t _rc_auto_bezig;
+#define RC_AUTO_MAGIC 0xC8A5D00DUL
+
+static bool _rc_auto_deel(const char* kop, const char* data, size_t n) {
+    size_t kl = strlen(kop);
+    char* b = (char*)malloc(kl + n + 2);
+    if (!b) return false;
+    memcpy(b, kop, kl); memcpy(b + kl, data, n); b[kl + n] = '\0';
+    int r = -1;
+    for (int p = 0; p < 3 && r != 200; p++) { if (p) delay(3000); r = fout_log_stuur_direct("suggestie", b); }
+    free(b);
+    delay(250);
+    return r == 200;
+}
+#endif
+
+void recovery_crashrapport_auto() {
+#if PLATFORM_ESP32
+    uint32_t vorig = _rc_auto_bezig;
+    _rc_auto_bezig = 0;
+    esp_reset_reason_t r = esp_reset_reason();
+    bool onverwacht = (r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT || r == ESP_RST_PANIC);
+    if (!onverwacht || vorig == RC_AUTO_MAGIC) return;
+    _rc_auto_bezig = RC_AUTO_MAGIC;
+
+    _rc_layout();
+    _rc_titel("CRASHRAPPORT");
+    _rc_regel(0, "Onverwachte herstart: rapport naar Claude sturen...", C_TEXT, 1);
+    if (!wifi_verbind_opgeslagen()) { _rc_auto_bezig = 0; return; }
+
+    const char* reden = r == ESP_RST_TASK_WDT ? "taak-waakhond" : r == ESP_RST_INT_WDT ? "interrupt-waakhond"
+                      : r == ESP_RST_WDT ? "waakhond" : "crash (panic)";
+    char kop[200];
+    snprintf(kop, sizeof(kop), "AUTOMATISCH NA HERSTART | %s | reden: %s\n", BKOS_NUI_VERSIE, reden);
+    _rc_auto_deel(kop, "", 0);
+
+    // Logboek van de vastgelopen start (nog niet geroteerd: index 0 + RTC-staart)
+    size_t n = 0;
+    char* t = logboek_laad(0, &n);
+    if (t) {
+        const size_t STUK = 6600;
+        int delen = (int)((n + STUK - 1) / STUK); if (delen < 1) delen = 1;
+        if (delen > 10) delen = 10;
+        size_t start = (n > STUK * delen) ? n - STUK * delen : 0;
+        for (int d = 0; d < delen; d++) {
+            size_t a = start + d * STUK, l = n - a; if (l > STUK) l = STUK;
+            char st[48]; snprintf(st, sizeof(st), "Logboek: deel %d van %d...", d + 1, delen);
+            _rc_regel(1, st, C_TEXT, 1);
+            snprintf(kop, sizeof(kop), "AUTOMATISCH NA HERSTART | %s | LOGBOEK vorige start deel %d/%d\n", BKOS_NUI_VERSIE, d + 1, delen);
+            _rc_auto_deel(kop, t + a, l);
+        }
+        free(t);
+    }
+
+    // Crashfoto (coredump, ELF-formaat): de stand van ALLE taken op het moment van de herstart
+    size_t adres = 0, grootte = 0;
+    if (esp_core_dump_image_check() == ESP_OK && esp_core_dump_image_get(&adres, &grootte) == ESP_OK &&
+        grootte > 0 && grootte <= 0x10000) {
+        const size_t RUW = 4800;
+        uint8_t* ruw = (uint8_t*)malloc(RUW);
+        char* b64 = (char*)malloc(6500);
+        int delen = (int)((grootte + RUW - 1) / RUW), ok = 0;
+        for (int d = 0; ruw && b64 && d < delen; d++) {
+            size_t a = d * RUW, l = grootte - a; if (l > RUW) l = RUW;
+            if (esp_flash_read(NULL, ruw, adres + a, l) != ESP_OK) break;
+            size_t bl = 0;
+            if (mbedtls_base64_encode((unsigned char*)b64, 6500, &bl, ruw, l) != 0) break;
+            char st[48]; snprintf(st, sizeof(st), "Crashfoto: deel %d van %d...", d + 1, delen);
+            _rc_regel(2, st, C_TEXT, 1);
+            snprintf(kop, sizeof(kop), "AUTOMATISCH NA HERSTART | %s | COREDUMP %u B deel %d/%d\n",
+                     BKOS_NUI_VERSIE, (unsigned)grootte, d + 1, delen);
+            if (_rc_auto_deel(kop, b64, bl)) ok++;
+        }
+        free(ruw); free(b64);
+        if (ok == delen) esp_core_dump_image_erase();
+    }
+    _rc_regel(3, "Klaar, verder met opstarten.", C_GREEN, 1);
+    _rc_auto_bezig = 0;
+    delay(600);
+#endif
 }

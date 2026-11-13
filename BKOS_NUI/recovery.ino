@@ -664,9 +664,9 @@ void recovery_crashrapport_auto() {
                       : r == ESP_RST_WDT ? "waakhond" : "crash (panic)";
     char kop[200];
     {
-        char k2[420];
-        snprintf(k2, sizeof(k2), "AUTOMATISCH NA HERSTART | %s | reden: %s | sporen bij herstart: %s\nBEWAKER: %s\n",
-                 BKOS_NUI_VERSIE, reden, bkos_sporen_rtc(), bewaker[0] ? bewaker : "-");
+        char k2[800];
+        snprintf(k2, sizeof(k2), "AUTOMATISCH NA HERSTART | %s | reden: %s | sporen bij herstart: %s\nBEWAKER: %s\nTIK-MONSTER: %s\n",
+                 BKOS_NUI_VERSIE, reden, bkos_sporen_rtc(), bewaker[0] ? bewaker : "-", bkos_tik_rapport());
         _rc_auto_deel(k2, "", 0);
     }
 

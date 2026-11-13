@@ -88,4 +88,8 @@ const char* bkos_gui_spoor_nu();   // huidige stap van de GUI-taak
 void        bkos_lus_tik();
 void        bkos_bewaker_start(TaskHandle_t lus, TaskHandle_t gui);
 const char* bkos_bewaker_rapport();   // "" als er geen rapport van de vorige start is
-const char* bkos_sporen_rtc();        // "lus=… gui=…" zoals ze bij de herstart in RTC stonden (vroeg in de boot leesbaar)
+const char* bkos_sporen_rtc();
+// 0.2.261113.10: tik-monster. In de FreeRTOS-tick (IRAM, loopt ook als beide kernen 'bevroren' zijn door een
+// flash-schrijfactie) wordt elke 50 ms per kern vastgelegd welke taak er draait. Na een herstart: wie draaide er
+// in de laatste ±0,8 s op kern 0 en kern 1, en draaide de bewaker nog.
+const char* bkos_tik_rapport();        // "lus=… gui=…" zoals ze bij de herstart in RTC stonden (vroeg in de boot leesbaar)

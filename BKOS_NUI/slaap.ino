@@ -25,6 +25,7 @@ volatile bool slaap_actief   = false;
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "esp_heap_caps.h"   // heap_caps_get_free_size() — diagnose intern RAM
+#include "esp_freertos_hooks.h"   // tick-hook per kern (tik-monster)
 #include "esp_core_dump.h"   // 0.2.261113.7: crashfoto (coredump) na een waakhond-herstart uitlezen
 #include "esp_flash.h"
 #include "mbedtls/base64.h"
@@ -329,8 +330,11 @@ static char _bw_st(TaskHandle_t h) {
 }
 static void _bw_taak(void*) {
     uint32_t vorig = _lus_tikken, stil = 0;
+    uint32_t ronde = 0;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));
+        _bw_leeft_s = millis() / 1000UL;
+        if (_tk_actief && (++ronde % 10) == 0) _tk_tabel_vullen();   // later gestarte taken ook een naam geven
         uint32_t t = _lus_tikken;
         if (t != vorig || wifi_ota_modus) { vorig = t; stil = 0; continue; }
         if (++stil < 40) continue;
@@ -360,10 +364,90 @@ static void _bw_taak(void*) {
 }
 #endif
 
+#if PLATFORM_ESP32
+extern "C" { extern void* volatile pxCurrentTCB[]; }
+#define TK_N   16
+#define TK_TAB 20
+#define TK_MAGIC 0x71C4A55EUL
+static RTC_NOINIT_ATTR uint32_t _tk_cur[2][TK_N];
+static RTC_NOINIT_ATTR uint32_t _tk_pos[2];
+static RTC_NOINIT_ATTR uint32_t _tk_tellen[2];
+static RTC_NOINIT_ATTR uint32_t _tk_tab_h[TK_TAB];
+static RTC_NOINIT_ATTR char     _tk_tab_n[TK_TAB][12];
+static RTC_NOINIT_ATTR uint32_t _tk_magic;
+static RTC_NOINIT_ATTR uint32_t _bw_leeft_s;     // laatste seconde waarop de bewaker zelf nog draaide
+static DRAM_ATTR uint32_t _tk_deler[2] = {0, 0};
+static bool _tk_actief = false;
+
+static void IRAM_ATTR _tk_hook0() {
+    if (++_tk_deler[0] < 50) return; _tk_deler[0] = 0;
+    uint32_t p = _tk_pos[0] % TK_N; _tk_cur[0][p] = (uint32_t)pxCurrentTCB[0]; _tk_pos[0] = p + 1; _tk_tellen[0]++;
+}
+static void IRAM_ATTR _tk_hook1() {
+    if (++_tk_deler[1] < 50) return; _tk_deler[1] = 0;
+    uint32_t p = _tk_pos[1] % TK_N; _tk_cur[1][p] = (uint32_t)pxCurrentTCB[1]; _tk_pos[1] = p + 1; _tk_tellen[1]++;
+}
+
+static void _tk_tabel_vullen() {
+    static const char* namen[] = { "loopTask", "gui_taak", "logboek", "bewaker", "ipc0", "ipc1", "wifi", "tiT",
+                                   "esp_timer", "sys_evt", "io_taak", "arduino_events", "btController",
+                                   "nimble_host", "vic_ble", "app_router", "ble_app", "brug_ble" };
+    int n = 0;
+    for (int c = 0; c < 2 && n < TK_TAB; c++) {
+        _tk_tab_h[n] = (uint32_t)xTaskGetIdleTaskHandleForCPU(c);
+        snprintf(_tk_tab_n[n], sizeof(_tk_tab_n[n]), "IDLE%d", c); n++;
+    }
+    for (size_t i = 0; i < sizeof(namen) / sizeof(namen[0]) && n < TK_TAB; i++) {
+        TaskHandle_t h = xTaskGetHandle(namen[i]);
+        if (!h) continue;
+        _tk_tab_h[n] = (uint32_t)h;
+        strncpy(_tk_tab_n[n], namen[i], sizeof(_tk_tab_n[n]) - 1); _tk_tab_n[n][sizeof(_tk_tab_n[n]) - 1] = 0;
+        n++;
+    }
+    for (; n < TK_TAB; n++) { _tk_tab_h[n] = 0; _tk_tab_n[n][0] = 0; }
+}
+#endif
+
+const char* bkos_tik_rapport() {
+    static char r[300] = "";
+    static bool gedaan = false;
+#if PLATFORM_ESP32
+    if (gedaan) return r;
+    gedaan = true;
+    if (_tk_magic != TK_MAGIC) return r;
+    _tk_magic = 0;
+    int o = snprintf(r, sizeof(r), "bewaker leefde tot %lus | ticks k0 %lu k1 %lu", (unsigned long)_bw_leeft_s,
+                     (unsigned long)_tk_tellen[0], (unsigned long)_tk_tellen[1]);
+    for (int c = 0; c < 2; c++) {
+        // namen tellen over de laatste TK_N monsters
+        char nm[TK_N][12]; int cnt[TK_N]; int k = 0;
+        for (int i = 0; i < TK_N; i++) {
+            uint32_t h = _tk_cur[c][i];
+            char naam[12] = "?";
+            for (int t = 0; t < TK_TAB; t++) if (_tk_tab_h[t] && _tk_tab_h[t] == h) { memcpy(naam, _tk_tab_n[t], 11); naam[11] = 0; break; }
+            if (naam[0] == '?') snprintf(naam, sizeof(naam), "%08lx", (unsigned long)h);
+            int j = 0; for (; j < k; j++) if (!strcmp(nm[j], naam)) { cnt[j]++; break; }
+            if (j == k && k < TK_N) { strcpy(nm[k], naam); cnt[k] = 1; k++; }
+        }
+        o += snprintf(r + o, sizeof(r) - o, " | kern%d:", c);
+        for (int j = 0; j < k && o < (int)sizeof(r) - 20; j++) o += snprintf(r + o, sizeof(r) - o, " %s x%d", nm[j], cnt[j]);
+    }
+#endif
+    return r;
+}
+
 void bkos_bewaker_start(TaskHandle_t lus, TaskHandle_t gui) {
 #if PLATFORM_ESP32
     _bw_lus = lus; _bw_gui = gui;
+    bkos_tik_rapport();                         // eerst het rapport van de vorige start veiligstellen
     xTaskCreatePinnedToCore(_bw_taak, "bewaker", 4096, nullptr, 22, nullptr, 0);
+    _tk_pos[0] = _tk_pos[1] = 0; _tk_tellen[0] = _tk_tellen[1] = 0; _bw_leeft_s = 0;
+    for (int c = 0; c < 2; c++) for (int i = 0; i < TK_N; i++) _tk_cur[c][i] = 0;
+    _tk_tabel_vullen();
+    _tk_magic = TK_MAGIC;
+    esp_register_freertos_tick_hook_for_cpu(_tk_hook0, 0);
+    esp_register_freertos_tick_hook_for_cpu(_tk_hook1, 1);
+    _tk_actief = true;
 #endif
 }
 
@@ -432,6 +516,7 @@ void slaap_reset_reden_verwerken() {
         esp_core_dump_image_erase();   // 0.2.261113.9: oude foto weg, zodat een volgende echt van de volgende crash is
     }
     if (bkos_bewaker_rapport()[0]) logboek_log("vorige start herstart door BEWAKER: %s", bkos_bewaker_rapport());
+    if (bkos_tik_rapport()[0]) logboek_log("tik-monster vorige start: %s", bkos_tik_rapport());
 
     esp_reset_reason_t reden = esp_reset_reason();
     // POWERON (koude start) en SW (bewuste esp_restart(), bv. OTA) zijn normaal

@@ -127,8 +127,13 @@ void bkos_spoor(const char* stap) {
     _spoor_magic = SPOOR_MAGIC;
 #endif
 }
+// 0.2.261113.3: alleen geldig na slaap_reset_reden_verwerken()/bkos_spoor() van DEZE firmware. Direct na een
+// update staat er RTC-data van de vorige firmware (andere indeling, geen afsluitende 0): .2 las daar met %s
+// voorbij het RTC-geheugen en liep op 3,6 s vast (logboek 13 nov). Het logboek gebruikt bovendien %.23s.
+static bool _spoor_nu_geldig = false;
 const char* bkos_spoor_nu() {
 #if PLATFORM_ESP32
+    if (!_spoor_nu_geldig) return "-";
     return _spoor;
 #else
     return "";
@@ -136,6 +141,7 @@ const char* bkos_spoor_nu() {
 }
 const char* bkos_gui_spoor_nu() {
 #if PLATFORM_ESP32
+    if (!_spoor_nu_geldig) return "-";
     return _gspoor;
 #else
     return "";
@@ -215,6 +221,7 @@ void slaap_reset_reden_verwerken() {
     bkos_gui_spoor("opstarten");
     _spoor_stack_min = 0;
     bkos_spoor("opstarten");
+    _spoor_nu_geldig = true;   // beide sporen zijn nu door deze firmware gezet en afgesloten
 
     // 0.2.261113.1: ook na een gewone (software-)herstart het spoor van de vorige start in het logboek.
     // Logboek 3 van 13 nov liep vast zonder enige aanwijzing, omdat dit alleen bij een onverwachte reset gebeurde.

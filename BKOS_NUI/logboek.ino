@@ -149,7 +149,7 @@ static void _lb_schrijftaak(void*) {
             // 0.2.261109.16 (halveringsbuild op .18-code): zonder slaap_*-diagnose (kern-bewakers e.d. zitten er niet in)
             // 0.2.261113.1: + grootste vrije interne blok en waar loopTask/GUI-taak mee bezig zijn. Staat
             // alles stil, dan laat de laatste regel (ook in de RTC-staart) zien wáár.
-            logboek_log("st wifi %d verb %d | hotspot %d | ws %d | scherm %s | RAM %u (min %u, blok %u) | lus %s | gui %s",
+            logboek_log("st wifi %d verb %d | hotspot %d | ws %d | scherm %s | RAM %u (min %u, blok %u) | lus %.23s | gui %.23s",
                         (int)WiFi.status(), wifi_verbonden ? 1 : 0, wifi_hotspot_actief() ? 1 : 0, bkos_client_klanten(),
                         tft_actief ? "aan" : "uit",
                         (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),

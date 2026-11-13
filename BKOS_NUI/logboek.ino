@@ -262,7 +262,7 @@ void logboek_roteer() {
     // 0.2.261113.4: 4096 → 8192. De uitgebreide statusregel (regel[320] + vsnprintf met meer argumenten
     // + heap-opvragingen) liep in .2/.3 vermoedelijk over de stack heen: beide hingen precies bij de
     // eerste statusregel, 0,5 s na het aanmaken van deze taak.
-    xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 8192, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 8192, nullptr, 3, nullptr, 0);   // prio 3 (was 1): blijft loggen als een taak op kern 0 de rest verdringt
     logboek_log("logboek: vorige start bewaard als %s", a);
 #endif
 }

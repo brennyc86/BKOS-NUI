@@ -24,6 +24,7 @@
 #include "nav_bar.h"         // nav_midden[] — BKOS-weergave in de webapp (zelfde navigatiebalk)
 #include "post.h"            // post_ongelezen_aantal() — belletje in de statusbalk
 #include "meteo.h"           // weerstrook op het hoofdscherm
+#include "logboek.h"        // logboek_log() — trage webapp-klant gesloten
 #include "getijdata.h"       // GETIJ-tab in de webapp (getijdata_get/naam/lat_offset)
 #include "victron_ble.h"     // mini-widget interieurbalk
 #include "lettertype.h"     // lettertype_keuze in het ui-bericht
@@ -40,7 +41,33 @@
 #include <ESPmDNS.h>
 #include <time.h>
 
-static WebSocketsServer _ws(BKOS_WS_POORT);
+// 0.2.261113.6: de herstart met de webapp open. WiFiClient::write() (core 2.0.17) wacht tot 10x 1 s
+// op een volle TCP-zendbuffer; een telefoon die de verbinding open laat maar niets meer leest
+// (scherm op slot, tabblad op de achtergrond) hield de hoofdlus zo per bericht ~10 s vast. Een
+// kleurwissel stuurt meerdere berichten na elkaar -> >60 s -> taak-waakhond (spoor ws:interieur_kleur).
+// Daarom: vóór elk bericht zonder wachten kijken of er ruimte is; zo niet, dan overslaan, en na 3x
+// overslaan de verbinding hard sluiten (zonder close-frame, dat zou zelf weer moeten schrijven).
+// De webapp verbindt vanzelf opnieuw en krijgt dan de volledige stand.
+class BkosWsServer : public WebSocketsServer {
+public:
+    BkosWsServer(uint16_t poort) : WebSocketsServer(poort) {}
+    bool kan_schrijven(uint8_t num) {
+        if (num >= WEBSOCKETS_SERVER_CLIENT_MAX) return false;
+        WSclient_t* c = &_clients[num];
+        if (!c->tcp || c->status != WSC_CONNECTED) return false;
+        int fd = c->tcp->fd();
+        if (fd < 0) return false;
+        fd_set set; FD_ZERO(&set); FD_SET(fd, &set);
+        struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 0;
+        return select(fd + 1, NULL, &set, NULL, &tv) > 0 && FD_ISSET(fd, &set);
+    }
+    void hard_sluiten(uint8_t num) {
+        if (num >= WEBSOCKETS_SERVER_CLIENT_MAX) return;
+        WSclient_t* c = &_clients[num];
+        if (c->tcp) c->tcp->stop();   // de library ziet dit in loop() en meldt WStype_DISCONNECTED
+    }
+};
+static BkosWsServer _ws(BKOS_WS_POORT);
 // Array-grootte moet WEBSOCKETS_SERVER_CLIENT_MAX volgen (library-default 5),
 // niet een losse aanname — anders schrijft een 5e gelijktijdige klant (num=4)
 // buiten deze arrays, met corruptie van aangrenzend geheugen als gevolg.
@@ -70,12 +97,28 @@ static bool _ws_gestart = false;
 static bool _ws_handler_klaar = false;
 
 // Eén verzendpunt voor WebSocket én BLE. num == BKOS_BLE_NUM = de BLE-client.
+static uint8_t _ws_overgeslagen[WEBSOCKETS_SERVER_CLIENT_MAX] = {0};
+static void _ws_stuur(uint8_t num, const String& s) {
+    if (num >= WEBSOCKETS_SERVER_CLIENT_MAX) return;
+    if (!_ws.kan_schrijven(num)) {
+        if (++_ws_overgeslagen[num] >= 3) {
+            _ws_overgeslagen[num] = 0;
+            logboek_log("ws: klant %u leest niet meer (zendbuffer vol), verbinding gesloten", (unsigned)num);
+            _ws.hard_sluiten(num);
+        }
+        return;
+    }
+    _ws_overgeslagen[num] = 0;
+    _ws.sendTXT(num, s.c_str(), s.length());
+}
 static void _tx(uint8_t num, const String& s) {
     if (num == BKOS_BLE_NUM) ble_app_stuur(s);
-    else _ws.sendTXT(num, s.c_str(), s.length());
+    else _ws_stuur(num, s);
 }
 static void _bc(const String& s) {
-    if (_ws_gestart) _ws.broadcastTXT(s.c_str(), s.length());
+    if (_ws_gestart)
+        for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++)
+            if (_ws.clientIsConnected(i)) _ws_stuur(i, s);
     if (ble_app_verbonden()) ble_app_stuur(s);
 }
 

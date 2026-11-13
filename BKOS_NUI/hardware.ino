@@ -524,8 +524,10 @@ void hw_setup() {
     // schaarse interne RAM op (logboeken: ±75 KB vrij met webapp, minimum 2-15 KB). WiFi, lwIP, TLS en
     // taakstacks vragen zelf expliciet intern geheugen en houden nu ruimte. Alle vastlopers van 12-13 nov
     // gebeurden met de webapp verbonden, rond een schermwissel/fotowissel.
-    bool _extmem = psramFound();
-    if (_extmem) heap_caps_malloc_extmem_enable(256);
+    // 0.2.261113.2: TERUGGEDRAAID. Met de drempel op 256 B "deed .1 helemaal mis" (Brendan) — vermoedelijk
+    // gebruikt code (driver/ISR/DMA) gewone malloc() en heeft die intern geheugen nodig. Niet opnieuw zo
+    // breed aanzetten; als het RAM-tekort terugkomt: gericht grote buffers met ps_malloc() verplaatsen.
+    bool _extmem = false;
 #endif
     logboek_begin();       // RTC-staart van de vorige start veiligstellen (zie logboek.h)
 #if PLATFORM_ESP32 && CONFIG_IDF_TARGET_ESP32S3

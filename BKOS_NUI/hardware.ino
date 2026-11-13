@@ -359,6 +359,7 @@ static void _gui_taak(void*) {
                     }
                     }
                 }
+                bkos_gui_spoor("gui:flush tik");
                 tft_flush(false);   // dubbele buffering (indien actief): tik-updates snelheidsbegrensd doorzetten
             } else {
                 touch_verwerkt = true;
@@ -368,6 +369,7 @@ static void _gui_taak(void*) {
         // Geen aanraking: periodieke scherm-updates
         if (!aanraking_vast) {
             touch_verwerkt = false;
+            bkos_gui_spoor("gui:webtick");   // 0.2.261113.5: anders bleef bij een hang hier het spoor van de vorige ronde staan
             meteo_web_tick();   // webapp: METEO-tab/STROOM-actie uitvoeren in deze (GUI-)taak
             ota_web_tick();     // webapp: firmware-update starten (in deze taak: tekent + flasht)
             int app_upd = (lua_forceer_app >= 0 && lua_forceer_app < apps_cnt)
@@ -390,6 +392,7 @@ static void _gui_taak(void*) {
                     default: break;
                 }
             }
+            bkos_gui_spoor("gui:flush");
             tft_flush(false);   // dubbele buffering (indien actief): periodieke updates snelheidsbegrensd doorzetten
         }
 

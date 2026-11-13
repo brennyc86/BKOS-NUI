@@ -601,6 +601,7 @@ Recente taken:
 | 388 | Sessie 51 | **.1 ging helemaal mis** volgens Brendan (geen logboek binnen): `heap_caps_malloc_extmem_enable(256)` teruggedraaid; de logboekdiagnose (lus/gui-spoor, grootste blok, vorige-start-spoor) blijft. Beta `0.2.261113.2` |
 | 389 | Sessie 51 | **.1/.2 liepen vast bij de eerste start na een update (op 3,6 s)**: de nieuwe statusregel drukte het RTC-spoor (`_spoor`/`_gspoor`, RTC_NOINIT) af met `%s` vóórdat deze firmware het had gezet; na een update staat daar data van de vorige firmware zonder afsluitende 0. Nu `%.23s` en `bkos_spoor_nu()` geeft "-" tot `slaap_reset_reden_verwerken()`. Les: RTC_NOINIT-tekst nooit onbegrensd lezen. Beta `0.2.261113.3` |
 | 390 | Sessie 51 | **.3 hing ook op 3,6 s** (eerste statusregel van de logtaak), dus niet (alleen) het RTC-spoor. Vermoedelijk stackoverloop: de logtaak had maar 4096 B en de uitgebreide statusregel deed er `heap_caps_get_largest_free_block()` + meer vsnprintf-argumenten bij. Nu 8192 B stack en geen largest_free_block. Beta `0.2.261113.4` |
+| 391 | Sessie 51 | **.4 startte goed, maar liep na ±7 min vast met webapp verbonden** (laatste bestandsregel 418,6 s, daarna geen regel meer omdat het bestand na 5 min maar elke 30 s een regel krijgt). Nu: statusregel elke 2 s in de RTC-staart (`_lb_log_rtc`, alleen RTC) en elke 30 s in het bestand; extra GUI-sporen `gui:webtick`/`gui:flush`. Oorzaak nog onbekend: nodig = regel "vorige start eindigde bij" uit het logboek van de start ná de vastloper. Beta `0.2.261113.5` |
 
 ---
 

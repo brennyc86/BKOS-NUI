@@ -107,14 +107,12 @@ const char* logboek_rtc_vorig() {
 #endif
 }
 
-void logboek_log(const char* fmt, ...) {
 #if PLATFORM_ESP32
+static void _lb_vlog(bool bestand, const char* fmt, va_list ap) {
     char regel[320];
     unsigned long ms = millis();
     int k = snprintf(regel, sizeof(regel), "%5lu.%lu ", ms / 1000UL, (ms / 100UL) % 10UL);
-    va_list ap; va_start(ap, fmt);
     vsnprintf(regel + k, sizeof(regel) - k - 1, fmt, ap);
-    va_end(ap);
     size_t n = strlen(regel);
     regel[n++] = '\n'; regel[n] = '\0';
 
@@ -124,15 +122,30 @@ void logboek_log(const char* fmt, ...) {
         _lb_rtc[_lb_rtc_pos] = regel[i];
         _lb_rtc_pos = (_lb_rtc_pos + 1) % LB_RTC_GROOTTE;
     }
-    if (_lb_ram && _lb_ram_len + n <= cap) { memcpy(_lb_ram + _lb_ram_len, regel, n); _lb_ram_len += n; }
-    else _lb_verloren++;
+    if (bestand) {
+        if (_lb_ram && _lb_ram_len + n <= cap) { memcpy(_lb_ram + _lb_ram_len, regel, n); _lb_ram_len += n; }
+        else _lb_verloren++;
+    }
     portEXIT_CRITICAL(&_lb_mux);
+}
+// Alleen in de RTC-staart (overleeft een herstart), niet in het bestand: fijnmazige status zonder het
+// bestand (64 KB) vol te schrijven.
+static void _lb_log_rtc(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+static void _lb_log_rtc(const char* fmt, ...) {
+    va_list ap; va_start(ap, fmt); _lb_vlog(false, fmt, ap); va_end(ap);
+}
+#endif
+
+void logboek_log(const char* fmt, ...) {
+#if PLATFORM_ESP32
+    va_list ap; va_start(ap, fmt); _lb_vlog(true, fmt, ap); va_end(ap);
 #endif
 }
 
 #if PLATFORM_ESP32
 // Schrijftaak op kern 0: elke 2 s een statusregel + wachtende regels aan het bestand toevoegen.
 // Op een andere kern dan scherm en hoofdlus, zodat het logboek doorloopt als die vastlopen.
+#define LB_STATUS_FMT "st wifi %d verb %d | hotspot %d | ws %d | scherm %s | RAM %u (min %u) | lus %.23s | gui %.23s"
 static void _lb_schrijftaak(void*) {
     size_t geschreven = 0;
     File f0 = SPIFFS.open(LOGBOEK_HUIDIG, "r");
@@ -144,19 +157,19 @@ static void _lb_schrijftaak(void*) {
         vTaskDelay(pdMS_TO_TICKS(millis() < 120000UL ? 500 : 2000));   // eerste 2 min vaker wegschrijven
         unsigned long nu = millis();
         unsigned long interval = (nu < 300000UL) ? 2000UL : 30000UL;
-        if (nu - laatste_status >= interval) {
-            laatste_status = nu;
-            // 0.2.261109.16 (halveringsbuild op .18-code): zonder slaap_*-diagnose (kern-bewakers e.d. zitten er niet in)
-            // 0.2.261113.1: + grootste vrije interne blok en waar loopTask/GUI-taak mee bezig zijn. Staat
-            // alles stil, dan laat de laatste regel (ook in de RTC-staart) zien wáár.
-            // 0.2.261113.4: GEEN heap_caps_get_largest_free_block() meer — die loopt alle blokken af met het
-            // heap-slot vast; .2/.3 hingen precies op deze eerste statusregel (3,6 s). Verder gelijk aan .14
-            // plus het (begrensde) lus/gui-spoor.
-            logboek_log("st wifi %d verb %d | hotspot %d | ws %d | scherm %s | RAM %u (min %u) | lus %.23s | gui %.23s",
-                        (int)WiFi.status(), wifi_verbonden ? 1 : 0, wifi_hotspot_actief() ? 1 : 0, bkos_client_klanten(),
-                        tft_actief ? "aan" : "uit",
-                        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-                        bkos_spoor_nu(), bkos_gui_spoor_nu());
+        // 0.2.261113.5: ná 5 min staat er nog maar elke 30 s een regel in het BESTAND, maar elke 2 s één in de
+        // RTC-staart, zodat de laatste ±25 s vóór een vastloper/herstart altijd te zien zijn (de .4-vastloper
+        // viel tussen twee regels van 30 s in).
+        static unsigned long laatste_rtc = 0;
+        bool naar_bestand = (nu - laatste_status >= interval);
+        if (naar_bestand || nu - laatste_rtc >= 2000UL) {
+            laatste_rtc = nu;
+            if (naar_bestand) laatste_status = nu;
+            int a1_ = (int)WiFi.status(), a2_ = wifi_verbonden ? 1 : 0, a3_ = wifi_hotspot_actief() ? 1 : 0, a4_ = bkos_client_klanten();
+            const char* a5_ = tft_actief ? "aan" : "uit";
+            unsigned a6_ = (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), a7_ = (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+            if (naar_bestand) logboek_log(LB_STATUS_FMT, a1_, a2_, a3_, a4_, a5_, a6_, a7_, bkos_spoor_nu(), bkos_gui_spoor_nu());
+            else              _lb_log_rtc(LB_STATUS_FMT, a1_, a2_, a3_, a4_, a5_, a6_, a7_, bkos_spoor_nu(), bkos_gui_spoor_nu());
         }
         // RTC-waakhond voeden zolang het scherm leeft (of een OTA bezig is). Staat alles stil — ook als
         // beide kernen vastzitten — dan herstart de RTC-waakhond na 30 s; RTC-geheugen (logboek-staart)

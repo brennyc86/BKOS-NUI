@@ -149,11 +149,14 @@ static void _lb_schrijftaak(void*) {
             // 0.2.261109.16 (halveringsbuild op .18-code): zonder slaap_*-diagnose (kern-bewakers e.d. zitten er niet in)
             // 0.2.261113.1: + grootste vrije interne blok en waar loopTask/GUI-taak mee bezig zijn. Staat
             // alles stil, dan laat de laatste regel (ook in de RTC-staart) zien wáár.
-            logboek_log("st wifi %d verb %d | hotspot %d | ws %d | scherm %s | RAM %u (min %u, blok %u) | lus %.23s | gui %.23s",
+            // 0.2.261113.4: GEEN heap_caps_get_largest_free_block() meer — die loopt alle blokken af met het
+            // heap-slot vast; .2/.3 hingen precies op deze eerste statusregel (3,6 s). Verder gelijk aan .14
+            // plus het (begrensde) lus/gui-spoor.
+            logboek_log("st wifi %d verb %d | hotspot %d | ws %d | scherm %s | RAM %u (min %u) | lus %.23s | gui %.23s",
                         (int)WiFi.status(), wifi_verbonden ? 1 : 0, wifi_hotspot_actief() ? 1 : 0, bkos_client_klanten(),
                         tft_actief ? "aan" : "uit",
                         (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-                        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), bkos_spoor_nu(), bkos_gui_spoor_nu());
+                        bkos_spoor_nu(), bkos_gui_spoor_nu());
         }
         // RTC-waakhond voeden zolang het scherm leeft (of een OTA bezig is). Staat alles stil — ook als
         // beide kernen vastzitten — dan herstart de RTC-waakhond na 30 s; RTC-geheugen (logboek-staart)
@@ -243,7 +246,10 @@ void logboek_roteer() {
     wdt_hal_write_protect_enable(&_lb_rwdt);
     logboek_log("RTC-waakhond: aan (30 s)");
 #endif
-    xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 4096, nullptr, 1, nullptr, 0);
+    // 0.2.261113.4: 4096 → 8192. De uitgebreide statusregel (regel[320] + vsnprintf met meer argumenten
+    // + heap-opvragingen) liep in .2/.3 vermoedelijk over de stack heen: beide hingen precies bij de
+    // eerste statusregel, 0,5 s na het aanmaken van deze taak.
+    xTaskCreatePinnedToCore(_lb_schrijftaak, "logboek", 8192, nullptr, 1, nullptr, 0);
     logboek_log("logboek: vorige start bewaard als %s", a);
 #endif
 }

@@ -286,7 +286,7 @@ void slaap_diag_loop() {
             snprintf(t, sizeof(t), "Opgestart en %lus actief | intern RAM vrij %lu B (min %lu, grootste blok %lu) | PSRAM vrij %lu B | versie %s",
                      (unsigned long)(millis() / 1000UL),
                      (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-                     (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                     (unsigned long)0UL, (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
                      BKOS_NUI_VERSIE);
             static uint8_t gpog = 0;
             if (fout_log_stuur(FOUT_ALGEMEEN, t, "gezondheid na opstarten", "gezondheid") || ++gpog >= 3) gezond_gestuurd = true;

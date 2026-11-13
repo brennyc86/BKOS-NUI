@@ -148,9 +148,13 @@ static void _flog_taak(void* param) {
 
     // Geen TLS-sessie openen als het interne geheugen te krap is (hotspot + webapp + TLS liet het toestel vastlopen).
     {
-        size_t vrij = heap_caps_get_free_size(MALLOC_CAP_INTERNAL), blok = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        logboek_log("melding: versturen (%s) | RAM %u, blok %u", p->soort ? p->soort : "fout", (unsigned)vrij, (unsigned)blok);
-        if (vrij < 60000 || blok < 30000) {
+        // 0.2.261113.13: GEEN heap_caps_get_largest_free_block() meer. Die loopt het hele heap af met de heap-lock
+        // (interrupts uit) vast; dat duurde >300 ms -> interrupt-waakhond op kern 0 -> crash, die zich als
+        // "taak-waakhond" voordeed (crash-vanger .12: taak fout_log, multi_heap_get_info_tlsf). Alleen het
+        // vrije totaal (O(1)) gebruiken.
+        size_t vrij = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        logboek_log("melding: versturen (%s) | RAM %u", p->soort ? p->soort : "fout", (unsigned)vrij);
+        if (vrij < 60000) {
             logboek_log("melding: overgeslagen, te weinig geheugen");
             _laatste_http = -104; _reden = "geheugen";
             free(p->bericht); free(p->context);

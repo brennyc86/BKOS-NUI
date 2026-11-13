@@ -517,7 +517,7 @@ static bool _ins_download(int idx) {
 #if PLATFORM_ESP32
         snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d %.30s [%uk/%uk]", code, _laatste_tls,
                  (unsigned)(ESP.getFreeHeap() / 1024),
-                 (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));   // vrij / grootste blok (intern)
+                 (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));   // vrij totaal / vrij intern (geen heap-wandeling, zie fout_log.cpp)
 #else
         snprintf(app_ins_bericht, sizeof(app_ins_bericht), "HTTP fout %d", code);
 #endif

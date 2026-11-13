@@ -317,6 +317,23 @@ void bkos_lus_tik() {
 }
 
 #if PLATFORM_ESP32
+extern "C" { extern void* volatile pxCurrentTCB[]; }
+#define TK_N   16
+#define TK_TAB 20
+#define TK_MAGIC 0x71C4A55EUL
+static RTC_NOINIT_ATTR uint32_t _tk_cur[2][TK_N];
+static RTC_NOINIT_ATTR uint32_t _tk_pos[2];
+static RTC_NOINIT_ATTR uint32_t _tk_tellen[2];
+static RTC_NOINIT_ATTR uint32_t _tk_tab_h[TK_TAB];
+static RTC_NOINIT_ATTR char     _tk_tab_n[TK_TAB][12];
+static RTC_NOINIT_ATTR uint32_t _tk_magic;
+static RTC_NOINIT_ATTR uint32_t _bw_leeft_s;     // laatste seconde waarop de bewaker zelf nog draaide
+static DRAM_ATTR uint32_t _tk_deler[2] = {0, 0};
+static bool _tk_actief = false;
+static void _tk_tabel_vullen();
+#endif
+
+#if PLATFORM_ESP32
 static char _bw_st(TaskHandle_t h) {
     if (!h) return '-';
     switch (eTaskGetState(h)) {
@@ -365,19 +382,6 @@ static void _bw_taak(void*) {
 #endif
 
 #if PLATFORM_ESP32
-extern "C" { extern void* volatile pxCurrentTCB[]; }
-#define TK_N   16
-#define TK_TAB 20
-#define TK_MAGIC 0x71C4A55EUL
-static RTC_NOINIT_ATTR uint32_t _tk_cur[2][TK_N];
-static RTC_NOINIT_ATTR uint32_t _tk_pos[2];
-static RTC_NOINIT_ATTR uint32_t _tk_tellen[2];
-static RTC_NOINIT_ATTR uint32_t _tk_tab_h[TK_TAB];
-static RTC_NOINIT_ATTR char     _tk_tab_n[TK_TAB][12];
-static RTC_NOINIT_ATTR uint32_t _tk_magic;
-static RTC_NOINIT_ATTR uint32_t _bw_leeft_s;     // laatste seconde waarop de bewaker zelf nog draaide
-static DRAM_ATTR uint32_t _tk_deler[2] = {0, 0};
-static bool _tk_actief = false;
 
 static void IRAM_ATTR _tk_hook0() {
     if (++_tk_deler[0] < 50) return; _tk_deler[0] = 0;

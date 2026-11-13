@@ -709,7 +709,7 @@ void hw_setup() {
     // Hardware-waakhond op de hoofdlus (loopTask): staat die 60 s stil — bv. omdat hij samen met de
     // GUI-taak vastloopt, waardoor de software-waakhond in slaap_diag_loop() zelf niet meer draait —
     // dan herstart de chip (reset-reden TASK_WDT) en gaan beide sporen mee in de crashmelding.
-    esp_task_wdt_init(60, true);
+    esp_task_wdt_init(120, true);   // 0.2.261113.11: 120 s vangnet; de bewaker (slaap.ino) grijpt eerder in en legt vast waarom
     esp_task_wdt_add(NULL);
     bkos_bewaker_start(xTaskGetCurrentTaskHandle(), gui_handle);   // 0.2.261113.9: hoofdlus-bewaker (slaap.ino)
 #endif

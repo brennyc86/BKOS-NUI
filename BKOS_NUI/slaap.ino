@@ -331,6 +331,10 @@ static RTC_NOINIT_ATTR uint32_t _bw_leeft_s;     // laatste seconde waarop de be
 static DRAM_ATTR uint32_t _tk_deler[2] = {0, 0};
 static bool _tk_actief = false;
 static void _tk_tabel_vullen();
+static int  _tk_samenvatting(int c, char* r, int max);
+static volatile uint32_t _idle_tel[2] = {0, 0};
+static bool _idle_hook0() { _idle_tel[0]++; return true; }
+static bool _idle_hook1() { _idle_tel[1]++; return true; }
 #endif
 
 #if PLATFORM_ESP32
@@ -352,6 +356,25 @@ static void _bw_taak(void*) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         _bw_leeft_s = millis() / 1000UL;
         if (_tk_actief && (++ronde % 10) == 0) _tk_tabel_vullen();   // later gestarte taken ook een naam geven
+        // 0.2.261113.11: ook de IDLE-taken bewaken. De TWDT kijkt naar loopTask ÉN IDLE0; in .10 ging hij af
+        // terwijl de hoofdlus gewoon doorliep (sporen wisselden tot de laatste seconde) -> vermoedelijk IDLE0
+        // verdrongen door een taak op kern 0. Dat hier zelf vastleggen (welke taak) vóór de TWDT (nu 120 s) het doet.
+        {
+            static uint32_t iv[2] = {0, 0}, istil[2] = {0, 0};
+            for (int c = 0; c < 2; c++) {
+                uint32_t it = _idle_tel[c];
+                if (it != iv[c]) { iv[c] = it; istil[c] = 0; continue; }
+                if (++istil[c] < 30 || wifi_ota_modus) continue;
+                char k0[64] = "", k1[64] = "";
+                _tk_samenvatting(0, k0, sizeof(k0)); _tk_samenvatting(1, k1, sizeof(k1));
+                snprintf(_bw_rtc, sizeof(_bw_rtc), "IDLE%d %lus geen processortijd | kern0:%s | kern1:%s | lus=%.23s gui=%.23s",
+                         c, (unsigned long)istil[c], k0, k1, _spoor, _gspoor);
+                _bw_magic = BW_MAGIC;
+                logboek_log("BEWAKER: %s", _bw_rtc);
+                vTaskDelay(pdMS_TO_TICKS(300));
+                esp_restart();
+            }
+        }
         uint32_t t = _lus_tikken;
         if (t != vorig || wifi_ota_modus) { vorig = t; stil = 0; continue; }
         if (++stil < 40) continue;
@@ -412,6 +435,26 @@ static void _tk_tabel_vullen() {
 }
 #endif
 
+#if PLATFORM_ESP32
+// Telt de namen in de tik-ring van kern c ("gui_taak x14 IDLE1 x2"), schrijft in r, geeft lengte terug.
+static int _tk_samenvatting(int c, char* r, int max) {
+    if (max <= 1) return 0;
+    char nm[TK_N][12]; int cnt[TK_N]; int k = 0;
+    for (int i = 0; i < TK_N; i++) {
+        uint32_t h = _tk_cur[c][i];
+        char naam[12] = "?";
+        for (int t = 0; t < TK_TAB; t++) if (_tk_tab_h[t] && _tk_tab_h[t] == h) { memcpy(naam, _tk_tab_n[t], 11); naam[11] = 0; break; }
+        if (naam[0] == '?') snprintf(naam, sizeof(naam), "%08lx", (unsigned long)h);
+        int j = 0; for (; j < k; j++) if (!strcmp(nm[j], naam)) { cnt[j]++; break; }
+        if (j == k && k < TK_N) { strcpy(nm[k], naam); cnt[k] = 1; k++; }
+    }
+    int o = 0; r[0] = 0;
+    for (int j = 0; j < k && o < max - 20; j++) o += snprintf(r + o, max - o, " %s x%d", nm[j], cnt[j]);
+    if (o >= max) o = max - 1;
+    return o;
+}
+#endif
+
 const char* bkos_tik_rapport() {
     static char r[300] = "";
     static bool gedaan = false;
@@ -423,18 +466,9 @@ const char* bkos_tik_rapport() {
     int o = snprintf(r, sizeof(r), "bewaker leefde tot %lus | ticks k0 %lu k1 %lu", (unsigned long)_bw_leeft_s,
                      (unsigned long)_tk_tellen[0], (unsigned long)_tk_tellen[1]);
     for (int c = 0; c < 2; c++) {
-        // namen tellen over de laatste TK_N monsters
-        char nm[TK_N][12]; int cnt[TK_N]; int k = 0;
-        for (int i = 0; i < TK_N; i++) {
-            uint32_t h = _tk_cur[c][i];
-            char naam[12] = "?";
-            for (int t = 0; t < TK_TAB; t++) if (_tk_tab_h[t] && _tk_tab_h[t] == h) { memcpy(naam, _tk_tab_n[t], 11); naam[11] = 0; break; }
-            if (naam[0] == '?') snprintf(naam, sizeof(naam), "%08lx", (unsigned long)h);
-            int j = 0; for (; j < k; j++) if (!strcmp(nm[j], naam)) { cnt[j]++; break; }
-            if (j == k && k < TK_N) { strcpy(nm[k], naam); cnt[k] = 1; k++; }
-        }
+        if (o > (int)sizeof(r) - 40) break;
         o += snprintf(r + o, sizeof(r) - o, " | kern%d:", c);
-        for (int j = 0; j < k && o < (int)sizeof(r) - 20; j++) o += snprintf(r + o, sizeof(r) - o, " %s x%d", nm[j], cnt[j]);
+        o += _tk_samenvatting(c, r + o, (int)sizeof(r) - o);
     }
 #endif
     return r;
@@ -451,6 +485,8 @@ void bkos_bewaker_start(TaskHandle_t lus, TaskHandle_t gui) {
     _tk_magic = TK_MAGIC;
     esp_register_freertos_tick_hook_for_cpu(_tk_hook0, 0);
     esp_register_freertos_tick_hook_for_cpu(_tk_hook1, 1);
+    esp_register_freertos_idle_hook_for_cpu(_idle_hook0, 0);
+    esp_register_freertos_idle_hook_for_cpu(_idle_hook1, 1);
     _tk_actief = true;
 #endif
 }
